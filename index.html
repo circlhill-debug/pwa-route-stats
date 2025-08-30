@@ -1,0 +1,895 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- Progressive Web App metadata -->
+<meta name="theme-color" content="#2b7fff" />
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="RouteStats" />
+<title>Route Stats — Live Dashboard</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#141821; --border:#22262e; --text:#e8e8ea; --muted:#9aa0aa; --brand:#2b7fff;
+    --good:#7CE38B; --warn:#FFD27A; --bad:#FF8FA1
+  }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Inter,Segoe UI,Roboto,Arial,sans-serif }
+  header{ border-bottom:1px solid var(--border); padding:14px 16px }
+  .wrap{ max-width:1120px; margin:0 auto; padding:16px }
+  h1{ margin:0; font-size:20px; letter-spacing:.3px }
+  .grid{ display:grid; gap:12px }
+  @media(min-width:1000px){ .grid-2{ grid-template-columns:1.1fr .9fr } }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px }
+  label{ font-size:13px; color:var(--muted) }
+  input,select,textarea{ width:100%; padding:12px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:15px }
+  button{ background:var(--brand); color:#fff; border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer }
+  button.ghost{ background:transparent; color:var(--text); border:1px solid var(--border) }
+  small{ color:var(--muted) }
+  table{ width:100%; border-collapse:collapse }
+  th,td{ border-bottom:1px solid var(--border); padding:8px 6px; text-align:left }
+  th{ color:var(--muted); font-weight:600 }
+  .right{ text-align:right }
+  .pill{ display:inline-flex; gap:8px; align-items:center; border:1px solid var(--border); padding:6px 8px; border-radius:999px; background:transparent }
+  .stat{ display:flex; flex-direction:column; gap:4px; padding:10px; border:1px solid var(--border); border-radius:12px; min-width:140px }
+  .up{ color:var(--good) } .down{ color:var(--bad) } .warn{ color:var(--warn) }
+  canvas{ background:transparent; border:1px solid var(--border); border-radius:10px; padding:8px }
+  .fab{ position:fixed; right:16px; bottom:16px; z-index:10 }
+  #diag{ position:sticky; top:0; z-index:999; background:#111; color:#ddd; font:12px/1.35 system-ui; padding:6px 10px; border-bottom:1px solid #222 }
+  #diag b{ color:#fff }
+  tr.light td{ background:linear-gradient(90deg, rgba(124,227,139,.07), transparent) }
+  tr.heavy td{ background:linear-gradient(90deg, rgba(255,143,161,.10), transparent) }
+  tr.typical td{ background:linear-gradient(90deg, rgba(255,210,122,.08), transparent) }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+  dialog{ background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:12px; padding:16px }
+
+  /* Visibility + focus upgrades */
+  input,select,textarea{
+    background:#0b0f15;
+    border:1px solid #303643;
+    font-size:16px;
+    caret-color:var(--brand);
+  }
+  input:hover,select:hover,textarea:hover{ border-color:#3d4554 }
+  input:focus-visible,select:focus-visible,textarea:focus-visible{
+    outline:2px solid var(--brand);
+    outline-offset:0;
+    border-color:var(--brand);
+    box-shadow:0 0 0 3px rgba(43,127,255,.25);
+    background:#0c1220;
+  }
+  ::placeholder{ color:#b7beca; opacity:1 }
+  .card .grid > div:has(> input:focus-visible),
+  .card .grid > div:has(> select:focus-visible),
+  .card .grid > div:has(> textarea:focus-visible){
+    background:#101726;
+    border-radius:10px;
+    padding:6px;
+    transition:background .15s ease;
+  }
+
+  /* Save feedback */
+  button.saving{ opacity:.7; cursor:wait }
+  @keyframes savedFlash{
+    0%{ box-shadow:0 0 0 0 rgba(43,127,255,.6) }
+    100%{ box-shadow:0 0 0 14px rgba(43,127,255,0) }
+  }
+  button.savedFlash{ animation:savedFlash 600ms ease-out }
+
+  /* Clickable results */
+  #tbl tbody tr.rowLink{ cursor:pointer }
+  #tbl tbody tr.rowLink:hover td{ background:rgba(43,127,255,.06) }
+</style>
+</head>
+<body>
+<div id="diag">
+  ROUTE STATS · Supabase: <b id="dConn">…</b> · Auth: <b id="dAuth">…</b> · Write: <b id="dWrite">—</b>
+</div>
+
+<!-- Version tag -->
+<div style="position:fixed;top:6px;right:12px;color:#9aa0aa;font-size:11px;z-index:9999;">
+  v2025-08-27-patched+setpw
+</div>
+<header>
+  <div class="wrap row" style="justify-content:space-between">
+    <!-- CHANGED: dynamic date -->
+    <h1>📈 ROUTE STATS — Live Dashboard — <span id="headerDate">—</span></h1>
+    <div class="row">
+      <button id="signInBtn" class="ghost">Sign in</button>
+      <button id="setPwBtn" class="ghost" title="Set/Change password for the current account">Set password</button>
+      <button id="linkBtn" class="ghost">Link devices (magic link)</button>
+      <button id="signOut" class="ghost">Sign out</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap grid grid-2">
+  <!-- SNAPSHOT -->
+  <section class="card">
+    <div class="row" style="justify-content:space-between;align-items:flex-start;flex-wrap:wrap">
+      <div class="row" style="gap:8px;align-items:stretch">
+        <div class="stat">
+          <small>Expected End (today)</small>
+          <strong id="expEnd" style="font-size:20px">—</strong>
+          <small id="expMeta" style="color:var(--muted)">DOW avg —</small>
+        </div>
+        <div class="stat">
+          <small>Volume</small>
+          <strong id="badgeVolume" style="font-size:20px">—</strong>
+          <small class="muted">parcels + 0.33×letters</small>
+        </div>
+        <div class="stat">
+          <small>Route Eff.</small>
+          <strong id="badgeRouteEff" style="font-size:20px">—</strong>
+          <small class="muted">vs weekday baseline</small>
+        </div>
+        <div class="stat">
+          <small>Overall</small>
+          <strong id="badgeOverall" style="font-size:20px">—</strong>
+          <small class="muted">office + route vs expected</small>
+        </div>
+      </div>
+      <div class="row" style="gap:8px;align-items:stretch">
+        <div class="stat">
+          <small>Hours (week)</small>
+          <div><strong id="wkHours">—</strong> <span id="wkHoursDelta" class="pill">—</span></div>
+        </div>
+        <div class="stat">
+          <small>Parcels (week)</small>
+          <div><strong id="wkParcels">—</strong> <span id="wkParcelsDelta" class="pill">—</span></div>
+        </div>
+        <div class="stat">
+          <small>Letters (week)</small>
+          <div><strong id="wkLetters">—</strong> <span id="wkLettersDelta" class="pill">—</span></div>
+        </div>
+        <!-- Today vs same-weekday pills -->
+        <div class="stat">
+          <small>Today Parcels Δ</small>
+          <div><strong id="todayParcelsDelta">—</strong></div>
+          <small class="muted">vs past same weekday (worked)</small>
+        </div>
+        <div class="stat">
+          <small>Today Letters Δ</small>
+          <div><strong id="todayLettersDelta">—</strong></div>
+          <small class="muted">vs past same weekday (worked)</small>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FORM -->
+  <section class="card">
+    <h3 style="margin:0 0 8px 0">Add Entry</h3>
+
+    <div class="row" style="margin:6px 0 10px 0; gap:8px; flex-wrap:wrap">
+      <button id="btnStartNow" class="ghost">Start (now)</button>
+      <button id="btnStreetNow" class="ghost">Hit Street (now)</button>
+      <button id="btnClockNow" class="ghost">Clock Out (now)</button>
+      <!-- Quick actions -->
+      <button id="btnEditLast" class="ghost">Edit last entry</button>
+      <button id="btnDeleteDay" class="ghost" style="border-color:#ff8fa1;color:#ff8fa1">Delete this day</button>
+      <button id="btnUndoDelete" class="ghost" style="display:none">Undo delete</button>
+    </div>
+
+    <div class="grid" style="grid-template-columns:repeat(2,1fr);gap:10px">
+      <div><label>Date</label><input id="date" type="date"></div>
+
+      <div>
+        <label>Route</label>
+        <input id="route" type="text" value="R1" readonly>
+      </div>
+
+      <div><label>Start (defaults 08:00)</label><div class="row"><input id="start" type="time" value="08:00"><button id="btnStartNow2" class="ghost">Now</button></div></div>
+      <div><label>Hit Street</label><div class="row"><input id="departTime" type="time" placeholder="--:--"><button id="btnStreetNow2" class="ghost">Now</button></div></div>
+
+      <div><label>Return (optional)</label><div class="row"><input id="returnTime" type="time" placeholder="--:--"><button id="btnReturnNow" class="ghost">Now</button></div></div>
+      <div><label>Clock Out</label><div class="row"><input id="end" type="time" placeholder="--:--"><button id="btnClockNow2" class="ghost">Now</button></div></div>
+
+      <div><label>Parcels</label><input id="parcels" type="number" min="0" value="0"></div>
+      <div><label>Letters</label><input id="letters" type="number" min="0" value="0"></div>
+      <div><label>Miles</label><input id="miles" type="number" step="0.1" min="0" value="0"></div>
+
+      <div>
+        <label>Weather</label>
+        <div class="row">
+          <select id="weather" style="min-width:160px">
+            <option value="">—</option>
+            <option>☀️ Sunny</option>
+            <option>⛅ Partly Cloudy</option>
+            <option>🌧️ Rain</option>
+            <option>❄️ Snow</option>
+            <option>💨 Windy</option>
+            <option>🌫️ Fog</option>
+            <option>Other</option>
+          </select>
+          <select id="temp" title="Temp (°F)" style="min-width:110px">
+            <option value="">Temp (°F)</option>
+            <option>20</option><option>25</option><option>30</option><option>35</option>
+            <option>40</option><option>45</option><option>50</option><option>55</option>
+            <option>60</option><option>65</option><option>70</option><option>75</option>
+            <option>80</option><option>85</option><option>90</option><option>95</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label>Box holders</label>
+        <select id="boxholders">
+          <option value="">—</option>
+          <option>None</option>
+          <option>Light</option>
+          <option>Medium</option>
+          <option>Heavy</option>
+        </select>
+      </div>
+
+      <div><label>Mood</label><select id="mood"><option value="">—</option><option>🔥 dialed in</option><option>🙂 good</option><option>😐 meh</option><option>🥵 cooked</option><option>🌧️ soggy</option><option>🛑 off</option></select></div>
+      <div style="grid-column:1/-1"><label>Notes</label><textarea id="notes" rows="2" placeholder="Anything notable…"></textarea></div>
+
+      <div class="row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
+        <label class="pill"><input id="offDay" type="checkbox"> Off day</label>
+        <div class="row"><span class="pill"><small>Office:</small> <b id="officeH">—</b></span><span class="pill"><small>Route:</small> <b id="routeH">—</b></span><span class="pill"><small>Total:</small> <b id="totalH">—</b></span></div>
+        <div class="row"><button id="save">Save</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHARTS -->
+  <section class="card"><h3 style="margin:0 0 8px 0">Averages by Day of Week</h3><canvas id="dowChart" height="180"></canvas></section>
+  <section class="card"><h3 style="margin:0 0 8px 0">Parcels Over Time (worked days)</h3><canvas id="parcelsChart" height="180"></canvas></section>
+  <section class="card"><h3 style="margin:0 0 8px 0">Letters Over Time (worked days)</h3><canvas id="lettersChart" height="180"></canvas></section>
+
+  <!-- TABLE -->
+  <section class="card" style="grid-column:1/-1">
+    <div class="row" style="justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <h3 style="margin:0">Recent Entries</h3>
+      <div class="row" style="gap:8px">
+        <input id="searchBox" type="search" placeholder="Search date, mood, weather, notes…" style="min-width:240px">
+        <button id="exportCsv" class="ghost">Export CSV (All)</button>
+        <button id="exportCsvFiltered" class="ghost">Export CSV (Filtered)</button>
+        <input id="importFile" type="file" accept=".csv,text/csv" style="display:none">
+        <button id="importCsv" class="ghost">Import CSV</button>
+        <button id="showUid" class="ghost" title="Show current user id">Show UID</button>
+      </div>
+    </div>
+    <div style="max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:10px">
+      <table id="tbl"><thead><tr>
+        <th>Date</th><th>Route</th><th>Status</th><th class="right">Office (h)</th><th class="right">Route (h)</th><th class="right">Total (h)</th><th class="right">Parcels</th><th class="right">Letters</th><th class="right">Miles</th><th>Weather</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+</main>
+
+<!-- Magic link dialog -->
+<dialog id="linkDlg">
+  <form method="dialog" class="grid" style="min-width:320px;gap:10px">
+    <h3 style="margin:0">Link devices</h3>
+    <small>Enter your email, then tap the magic link in your inbox on each device.</small>
+    <input id="email" type="email" placeholder="you@example.com" required>
+    <div class="row" style="justify-content:flex-end;gap:8px"><button class="ghost" value="cancel">Cancel</button><button id="sendLink">Send link</button></div>
+  </form>
+</dialog>
+
+<!-- Email + Password dialog -->
+<dialog id="pwDlg">
+  <form method="dialog" class="grid" style="min-width:320px;gap:10px">
+    <h3 style="margin:0">Sign in</h3>
+    <input id="loginEmail" type="email" placeholder="Email" autocomplete="username" required>
+    <input id="loginPass"  type="password" placeholder="Password" autocomplete="current-password" required>
+    <div class="row" style="justify-content:flex-end;gap:8px">
+      <button class="ghost" value="cancel">Cancel</button>
+      <button id="doLogin">Sign In</button>
+      <button id="doSignup" class="ghost" type="button" title="Create a new account">Create Account</button>
+    </div>
+    <small id="authMsg"></small>
+  </form>
+</dialog>
+
+<!-- NEW: Set Password dialog -->
+<dialog id="setPwDlg">
+  <form method="dialog" class="grid" style="min-width:320px;gap:10px">
+    <h3 style="margin:0">Set a new password</h3>
+    <input id="newPass"  type="password" placeholder="New password (6+ chars)" required>
+    <input id="newPass2" type="password" placeholder="Confirm password" required>
+    <div class="row" style="justify-content:flex-end;gap:8px">
+      <button class="ghost" value="cancel">Cancel</button>
+      <button id="doSetPw">Save</button>
+    </div>
+    <small id="setPwMsg"></small>
+  </form>
+</dialog>
+
+<button class="fab" id="fab">+ Add Entry</button>
+
+<script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // ==== SUPABASE CONFIG ====
+  const SUPABASE_URL  = 'https://ouwkdtiixkaydrtfdhnh.supabase.co';
+  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91d2tkdGlpeGtheWRydGZkaG5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMDc0NDksImV4cCI6MjA3MDU4MzQ0OX0.KI-dYG5_A8jvPEHSog3wlnLbIGYIHQR_4ztXHL2SzIg';
+  const ZONE = 'America/Detroit';
+
+  // === Helpers ===
+  const $ = id => document.getElementById(id);
+  const DateTime = luxon.DateTime;
+  const dConn=$('dConn'), dAuth=$('dAuth'), dWrite=$('dWrite');
+
+  // NEW: set live header date
+  (function(){
+    const el = document.getElementById('headerDate');
+    if (el) {
+      const d = DateTime.now().setZone(ZONE);
+      el.textContent = d.toFormat('MMM d, yyyy');
+    }
+  })();
+
+  function todayStr(){ return DateTime.now().setZone(ZONE).toISODate(); }
+  function hhmmNow(){ const d = DateTime.now().setZone(ZONE); return `${String(d.hour).padStart(2,'0')}:${String(d.minute).padStart(2,'0')}`; }
+  function dowIndex(dateStr){ return DateTime.fromFormat(dateStr,'yyyy-MM-dd',{zone:ZONE}).weekday % 7; }
+  function startOfWeekMonday(dt){ const w = dt.weekday; const shift = (w+6)%7; return dt.startOf('day').minus({days:shift}); }
+  function endOfWeekSunday(dt){ return startOfWeekMonday(dt).plus({days:6}).endOf('day'); }
+
+  // NEW: Moon phase emoji helper
+  function moonPhaseEmoji(d) {
+    const lp = 2551443; // lunar period (seconds)
+    const now = DateTime.fromISO(d, {zone: ZONE}).toSeconds();
+    const base = DateTime.fromISO("2001-01-01", {zone: ZONE}).toSeconds(); // reference new moon
+    const phase = ((now - base) % lp) / lp;
+    if (phase < 0.03 || phase > 0.97) return "🌑";
+    if (phase < 0.25) return "🌒";
+    if (phase < 0.27) return "🌓";
+    if (phase < 0.48) return "🌔";
+    if (phase < 0.52) return "🌕";
+    if (phase < 0.75) return "🌖";
+    if (phase < 0.77) return "🌗";
+    return "🌘";
+  }
+
+  function diffHours(d, t1, t2){
+    if(!t1||!t2) return null;
+    const a = DateTime.fromISO(`${d}T${t1}`, { zone: ZONE });
+    const b = DateTime.fromISO(`${d}T${t2}`, { zone: ZONE });
+    let h = (b.toMillis()-a.toMillis())/3.6e6; if(h<0) h+=24; return Math.round(h*100)/100;
+  }
+  function routeEndTime(){ return ($('returnTime').value || $('end').value || ''); }
+
+  // Supabase
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth:{ persistSession:true }});
+
+  // === Handle auth callbacks (incl. password recovery links) ===
+  (async () => {
+    try {
+      const { data, error } = await sb.auth.getSessionFromUrl();
+      // If this was a password recovery link, prompt to set a new password
+      if (!error && data?.session && /type=recovery/i.test(location.hash)) {
+        const p1 = prompt('Enter a new password (6+ characters)');
+        if (p1 && p1.length >= 6) {
+          const { error: uerr } = await sb.auth.updateUser({ password: p1 });
+          if (uerr) alert('Update failed: ' + uerr.message);
+          else alert('Password updated. You can now sign in normally.');
+        } else {
+          alert('Password must be at least 6 characters.');
+        }
+        // clean the URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (!error && data?.session) {
+        // generic callback: clean hash
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch (e) {
+      console.warn('Auth callback error', e);
+    }
+  })();
+
+  // Connectivity + session bootstrap
+  (async ()=>{ try{ await fetch(SUPABASE_URL,{mode:'no-cors'}); dConn.textContent='Connected'; }catch{ dConn.textContent='Error'; }})();
+  (async function ensureSession(){
+    const { data:{ session } } = await sb.auth.getSession();
+    if(!session){ await sb.auth.signInAnonymously().catch(()=>{}); } // you can remove this later if you like
+    const { data:{ user } } = await sb.auth.getUser();
+    dAuth.textContent = user? 'Session' : 'No session';
+  })();
+
+  // Magic link
+  const linkBtn=$('linkBtn'), linkDlg=$('linkDlg'), sendLink=$('sendLink'), email=$('email');
+  linkBtn.addEventListener('click', ()=> linkDlg.showModal());
+  sendLink.addEventListener('click', async (e)=>{
+    e.preventDefault();
+    const redirectTo = location.origin + location.pathname;
+    const { error } = await sb.auth.signInWithOtp({ email: email.value, options:{ emailRedirectTo: redirectTo } });
+    if (error) alert(error.message); else { alert('Check your email for the magic link.'); linkDlg.close(); }
+  });
+  $('signOut').addEventListener('click', ()=> sb.auth.signOut().then(()=>location.reload()));
+
+  // === Email + Password auth ===
+  const signInBtn = $('signInBtn');
+  const pwDlg     = $('pwDlg');
+  const loginEmail= $('loginEmail');
+  const loginPass = $('loginPass');
+  const doLogin   = $('doLogin');
+  const doSignup  = $('doSignup');
+  const authMsg   = $('authMsg');
+
+  signInBtn?.addEventListener('click', ()=> {
+    authMsg.textContent = '';
+    loginEmail.value = loginEmail.value || '';
+    loginPass.value = '';
+    pwDlg.showModal();
+  });
+
+  doLogin?.addEventListener('click', async (e)=>{
+    e.preventDefault();
+    authMsg.textContent = 'Signing in…';
+    const { error } = await sb.auth.signInWithPassword({
+      email: (loginEmail.value||'').trim(),
+      password: loginPass.value||''
+    });
+    if (error) {
+      if (/Email not confirmed/i.test(error.message)) authMsg.textContent = 'Email not confirmed. Use reset link or check your inbox.';
+      else if (/Invalid login credentials/i.test(error.message)) authMsg.textContent = 'Invalid email or password. Try Reset or Create Account.';
+      else authMsg.textContent = 'Error: ' + error.message;
+      return;
+    }
+    authMsg.textContent = 'Signed in!';
+    pwDlg.close();
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows);
+  });
+
+  doSignup?.addEventListener('click', async ()=>{
+    authMsg.textContent = 'Creating account…';
+    const { error } = await sb.auth.signUp({
+      email: (loginEmail.value||'').trim(),
+      password: loginPass.value||''
+    });
+    authMsg.textContent = error
+      ? ('Error: ' + error.message)
+      : 'Account created. If email confirmation is on, check your inbox, then Sign In.';
+  });
+
+  // === Set password for the CURRENT logged-in user ===
+  const setPwBtn = $('setPwBtn');
+  const setPwDlg = $('setPwDlg');
+  const newPass  = $('newPass');
+  const newPass2 = $('newPass2');
+  const setPwMsg = $('setPwMsg');
+  const doSetPw  = $('doSetPw');
+
+  setPwBtn?.addEventListener('click', ()=> {
+    setPwMsg.textContent = '';
+    newPass.value = '';
+    newPass2.value = '';
+    setPwDlg.showModal();
+  });
+
+  doSetPw?.addEventListener('click', async (e)=>{
+    e.preventDefault();
+    const p1 = newPass.value || '';
+    const p2 = newPass2.value || '';
+    if (p1.length < 6) { setPwMsg.textContent = 'Password must be at least 6 characters.'; return; }
+    if (p1 !== p2)     { setPwMsg.textContent = 'Passwords do not match.'; return; }
+    setPwMsg.textContent = 'Updating…';
+    const { error } = await sb.auth.updateUser({ password: p1 });
+    if (error) { setPwMsg.textContent = 'Error: ' + error.message; return; }
+    setPwMsg.textContent = 'Password set! You can now sign in anywhere.';
+    setTimeout(()=> setPwDlg.close(), 600);
+  });
+
+  sb.auth.onAuthStateChange((_evt, session) => {
+    const authed = !!session;
+    const signOutBtn = $('signOut');
+    if (signOutBtn) signOutBtn.style.display = authed ? 'inline-block' : 'none';
+    dAuth.textContent = authed ? 'Session' : 'No session';
+  });
+
+  // ====== APP LOGIC (unchanged beyond tiny UX tweaks) ======
+
+  function dowIndex(dateStr){ return DateTime.fromFormat(dateStr,'yyyy-MM-dd',{zone:ZONE}).weekday % 7; }
+
+  function routeEndTime(){ return ($('returnTime').value || $('end').value || ''); }
+
+  const date=$('date'), route=$('route'), start=$('start'), end=$('end'), departTime=$('departTime'), returnTime=$('returnTime');
+  const parcels=$('parcels'), letters=$('letters'), miles=$('miles'), mood=$('mood'), notes=$('notes');
+  const weather=$('weather'), temp=$('temp'), boxholders=$('boxholders');
+  const offDay=$('offDay');
+  const officeH=$('officeH'), routeH=$('routeH'), totalH=$('totalH');
+  const expEnd=$('expEnd'), expMeta=$('expMeta');
+  const badgeVolume=$('badgeVolume'), badgeRouteEff=$('badgeRouteEff'), badgeOverall=$('badgeOverall');
+  const dConnEl=$('dConn'), dAuthEl=$('dAuth'), dWriteEl=$('dWrite');
+
+  badgeVolume.title   = 'Volume = parcels + 0.33×letters (rank vs recent, 0–10)';
+  badgeRouteEff.title = 'Route Efficiency = today’s street hours vs typical for this weekday (0–10)';
+  badgeOverall.title  = 'Overall = total hours vs expected (weekday avg)';
+
+  date.value = todayStr();
+  route.value = 'R1';
+
+  function computeBreakdown(){
+    if (offDay.checked){ officeH.textContent='0.00'; routeH.textContent='0.00'; totalH.textContent='0.00'; return 0; }
+    const d=date.value; const s=start.value||'08:00';
+    const off=diffHours(d, s, departTime.value);
+    let rte  = diffHours(d, departTime.value, routeEndTime());
+    if (rte==null && routeEndTime()){
+      const span = diffHours(d, s, routeEndTime());
+      if (span!=null && off!=null) rte = Math.max(0, +(span - off).toFixed(2));
+    }
+    const tot=Math.max(0, (off??0)+(rte??0));
+    officeH.textContent = off!=null? off.toFixed(2) : '—';
+    routeH.textContent  = rte!=null? rte.toFixed(2) : '—';
+    totalH.textContent  = (off!=null||rte!=null)? tot.toFixed(2) : '—';
+    const diag=$('diag');
+    if (diag){ diag.innerHTML = `ROUTE STATS · Supabase: <b id="dConn">${dConn.textContent}</b> · Auth: <b id="dAuth">${dAuth.textContent}</b> · Write: <b id="dWrite">${dWrite.textContent}</b> · <b>Off:</b> ${off ?? '—'}h · <b>Route:</b> ${rte ?? '—'}h · <b>Total:</b> ${((off??0)+(rte??0)).toFixed(2)}h`; }
+    return tot;
+  }
+
+  function setNow(el){ el.value=hhmmNow(); computeBreakdown(); }
+  $('btnStartNow').addEventListener('click',()=>{ if(!start.value) setNow(start); });
+  $('btnStreetNow').addEventListener('click',()=> setNow(departTime));
+  $('btnClockNow').addEventListener('click',()=>{ setNow(end); if(!returnTime.value){ returnTime.value = end.value; } });
+  $('btnStartNow2').addEventListener('click',()=> setNow(start));
+  $('btnStreetNow2').addEventListener('click',()=> setNow(departTime));
+  $('btnReturnNow').addEventListener('click',()=> setNow(returnTime));
+  $('btnClockNow2').addEventListener('click',()=>{ setNow(end); if(!returnTime.value){ returnTime.value = end.value; } });
+
+  offDay.addEventListener('change', ()=>{ if(offDay.checked){ end.value=hhmmNow(); parcels.value=letters.value=miles.value=0; mood.value='🛑 off'; computeBreakdown(); }});
+  ;[date,start,departTime,returnTime,end,parcels,letters,miles,offDay,weather,temp,boxholders].forEach(el=> el.addEventListener('input', computeBreakdown));
+
+  document.addEventListener('keydown', (e)=>{
+    const mod = e.metaKey || e.ctrlKey; if(!mod) return; const k = e.key.toLowerCase();
+    if(k==='s'){ e.preventDefault(); $('save')?.click(); }
+    else if(k==='d'){ e.preventDefault(); $('btnEditLast')?.click(); }
+    else if(e.key==='Backspace'){ e.preventDefault(); $('btnDeleteDay')?.click(); }
+  });
+
+  function weatherString(){
+    const parts=[]; if(weather?.value) parts.push(weather.value); if(temp?.value) parts.push(`${temp.value}°F`); if(boxholders?.value) parts.push(`Box: ${boxholders.value}`);
+    return parts.length? parts.join(' · ') : null;
+  }
+
+  function collectPayload(userId){
+    const d=date.value; const s=start.value||'08:00';
+    const offRaw = diffHours(d, s, departTime.value);
+    let rteRaw   = diffHours(d, departTime.value, routeEndTime());
+    if (rteRaw==null && routeEndTime()){
+      const span = diffHours(d, s, routeEndTime());
+      if (span!=null && offRaw!=null) rteRaw = Math.max(0, +(span - offRaw).toFixed(2));
+    }
+    const off = offDay.checked ? 0 : offRaw;
+    const rte = offDay.checked ? 0 : rteRaw;
+    const tot = offDay.checked ? 0 : ((off??0)+(rte??0));
+    return {
+      user_id:userId,
+      work_date:d,
+      route:'R1',
+      start_time:   offDay.checked ? null : (s||null),
+      end_time:     offDay.checked ? null : (end.value || null),
+      hours:        offDay.checked ? 0 : (tot||null),
+      parcels:      offDay.checked ? 0 : (+parcels.value||0),
+      letters:      offDay.checked ? 0 : (+letters.value||0),
+      miles:        offDay.checked ? 0 : (+miles.value||0),
+      mood:         offDay.checked ? '🛑 off' : (mood.value||null),
+      notes:        notes.value||null,
+      status:       offDay.checked ? 'off' : 'worked',
+      office_start: s||null,
+      depart_time:  departTime.value||null,
+      return_time:  returnTime.value||null,
+      office_minutes: offDay.checked ? 0 : (offRaw!=null? +offRaw.toFixed(2): null),
+      route_minutes:  offDay.checked ? 0 : (rteRaw!=null? +rteRaw.toFixed(2): null),
+      weather_json: weatherString()
+    };
+  }
+
+  function fillForm(r){
+    start.value       = r.start_time || '08:00';
+    end.value         = r.end_time   || '';
+    departTime.value  = r.depart_time || '';
+    returnTime.value  = r.return_time || '';
+    parcels.value     = r.parcels || 0;
+    letters.value     = r.letters || 0;
+    miles.value       = r.miles   || 0;
+    mood.value        = r.mood    || '';
+    notes.value       = r.notes   || '';
+    offDay.checked    = (r.status === 'off');
+
+    const raw = r.weather_json || '';
+    if (!raw){ if(temp) temp.value=''; if(boxholders) boxholders.value=''; weather.value=''; }
+    else {
+      const parts = String(raw).split('·').map(s=>s.trim());
+      let w='', t='', b='';
+      for (const p of parts){
+        if (/°F$/.test(p)) t = p.replace('°F','').trim();
+        else if (/^Box:/i.test(p)) b = p.split(':').slice(1).join(':').trim();
+        else w = p;
+      }
+      weather.value = w || '';
+      if (temp) temp.value = t || '';
+      if (boxholders) boxholders.value = b || '';
+    }
+    try { computeBreakdown(); } catch(_){}
+  }
+
+  let editingKey = null; let lastDeleted = null; const btnUndoDelete = $('btnUndoDelete');
+  function showUndo(show){ if(!btnUndoDelete) return; btnUndoDelete.style.display = show ? 'inline-block' : 'none'; }
+
+  const searchBox = $('searchBox'); let allRows = [];
+  function applySearch(rows){
+    const q = (searchBox.value||'').trim().toLowerCase(); if(!q) return rows;
+    return rows.filter(r=>{
+      const fields=[ r.work_date, r.status, r.mood, r.weather_json, r.notes, String(r.parcels||''), String(r.letters||''), String(r.miles||'') ];
+      return fields.some(v=> String(v||'').toLowerCase().includes(q));
+    });
+  }
+
+  async function loadByDate(){
+    editingKey = null; const { data:{ user } } = await sb.auth.getUser(); if(!user) return; const d=date.value; if(!d) return;
+    const { data, error } = await sb.from('entries').select('*').eq('user_id', user.id).eq('work_date', d).limit(1).maybeSingle();
+    if (error && error.code !== 'PGRST116') { console.error(error); return; }
+    const saveBtn=$('save'); saveBtn.classList.remove('ghost');
+    if (data) { editingKey = { user_id:user.id, work_date:d }; fillForm(data); saveBtn.textContent='Update'; }
+    else { saveBtn.textContent='Save'; }
+  }
+  date.addEventListener('change', loadByDate);
+
+  (function replaceSave(){
+    const btn=$('save'); const clone=btn.cloneNode(true); btn.parentNode.replaceChild(clone,btn);
+    clone.addEventListener('click', async ()=>{
+      const { data:{ user } } = await sb.auth.getUser(); if (!user) { alert('No session. Try Link devices or refresh.'); return; }
+      const payload = collectPayload(user.id); let error;
+      if (editingKey) ({ error } = await sb.from('entries').update(payload).eq('user_id', editingKey.user_id).eq('work_date', editingKey.work_date));
+      else ({ error } = await sb.from('entries').insert(payload));
+      dWrite.textContent = error ? 'Failed' : 'OK'; if (error){ alert(error.message); return; }
+      clone.textContent = 'Update'; clone.disabled = true; clone.classList.add('saving','savedFlash');
+      setTimeout(()=>{ clone.disabled=false; clone.classList.remove('saving'); }, 400); setTimeout(()=> clone.classList.remove('savedFlash'), 700);
+      const rows = await fetchEntries(); allRows = rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows);
+      editingKey = { user_id:user.id, work_date:date.value }; clone.classList.remove('ghost');
+    });
+  })();
+
+  $('btnEditLast')?.addEventListener('click', async ()=>{
+    const rows = await fetchEntries(); if(!rows.length){ alert('No entries yet.'); return; }
+    const latest = rows[0]; $('date').value = latest.work_date; await loadByDate(); window.scrollTo({ top:0, behavior:'smooth' });
+  });
+
+  $('btnDeleteDay')?.addEventListener('click', async ()=>{
+    const { data:{ user } } = await sb.auth.getUser(); if(!user){ alert('No session. Try Link devices.'); return; }
+    const d = $('date').value; if(!d){ alert('Pick a date first.'); return; }
+    const { data: rowToDelete, error: fetchErr } = await sb.from('entries').select('*').eq('user_id',user.id).eq('work_date',d).maybeSingle();
+    if(fetchErr && fetchErr.code!=='PGRST116'){ alert(fetchErr.message); return; }
+    if(!rowToDelete){ alert('No entry exists for this date.'); return; }
+    if(!confirm(`Delete your entry for ${d}? This cannot be undone (unless you press Undo).`)) return;
+    const { error } = await sb.from('entries').delete().eq('user_id',user.id).eq('work_date',d); if(error){ alert(error.message); return; }
+    lastDeleted = rowToDelete; showUndo(true);
+    $('notes').value=''; parcels.value=0; letters.value=0; miles.value=0; offDay.checked=false; start.value='08:00'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; computeBreakdown();
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); alert(`Deleted ${d}. You can Undo now.`);
+  });
+
+  btnUndoDelete?.addEventListener('click', async ()=>{
+    if(!lastDeleted){ showUndo(false); return; }
+    dWrite.textContent='—'; const { error } = await sb.from('entries').insert(lastDeleted);
+    if(error){ alert('Undo failed: '+error.message); return; }
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows);
+    alert(`Restored ${lastDeleted.work_date}.`); $('date').value = lastDeleted.work_date; await loadByDate(); lastDeleted=null; showUndo(false);
+  });
+
+  async function fetchEntries(){
+    const { data:{ user } } = await sb.auth.getUser(); if(!user) return [];
+    const { data, error } = await sb.from('entries').select('*').eq('user_id',user.id).order('work_date',{ascending:false}).limit(365);
+    if(error){ console.error(error); return []; } return data;
+  }
+
+  function classifyRow(total, avg){ if(total==null||avg==null) return ''; const diff=(total-avg)/avg; if(diff<=-0.15) return 'light'; if(diff>=0.15) return 'heavy'; return 'typical'; }
+
+  function renderTable(rows){
+    const tbody=document.querySelector('#tbl tbody'); tbody.innerHTML='';
+    const byDow=Array.from({length:7},()=>[]);
+    rows.forEach(r=>{ if(r.status==='off') return; const h=Number(r.hours||0); const d=dowIndex(r.work_date); if(h>0) byDow[d].push(h); });
+    const avgByDow=byDow.map(list=> list.length? (list.reduce((a,b)=>a+b,0)/list.length) : null);
+
+    for(const r of rows){
+      const tot=Number(r.hours||0)||null;
+      const offH=(r.office_minutes!=null)? Number(r.office_minutes).toFixed(2):'';
+      const rteH=(r.route_minutes!=null)? Number(r.route_minutes).toFixed(2):'';
+
+      // NEW: weekday shorthand + moon phase
+      const dObj = DateTime.fromISO(r.work_date, { zone: ZONE });
+      const dowShort = dObj.toFormat('ccc').charAt(0); // M, T, W, T, F, S, S
+      const moon = moonPhaseEmoji(r.work_date);
+
+      const d=dowIndex(r.work_date);
+      const avg=avgByDow[d];
+      const cls=classifyRow(tot,avg);
+
+      const tr=document.createElement('tr');
+      tr.classList.add('rowLink');
+      if(cls) tr.classList.add(cls);
+      tr.dataset.date=r.work_date;
+      tr.tabIndex=0;
+
+      tr.innerHTML = `<td>${r.work_date} (${dowShort}) ${moon}</td><td>R1</td><td>${r.status||'worked'}</td>
+        <td class="right">${offH}</td><td class="right">${rteH}</td><td class="right">${tot!=null? tot.toFixed(2):''}</td>
+        <td class="right">${r.parcels||0}</td><td class="right">${r.letters||0}</td><td class="right">${r.miles||0}</td>
+        <td>${r.weather_json||''}</td>`;
+      tbody.appendChild(tr);
+    }
+  }
+
+  const VERSION_TAG='v2025-08-27-patched';
+  function toCsv(rows){
+    const headers=['work_date','route','status','start_time','depart_time','return_time','end_time','hours','office_minutes','route_minutes','parcels','letters','miles','mood','notes','weather_json','created_at'];
+    const lines=[headers.join(',')];
+    for(const r of rows){
+      const vals=headers.map(h=>{ let v; if(h==='route') v='R1'; else v=r[h]; if(v==null) return ''; const s=String(v).replace(/"/g,'""'); return /[",\n]/.test(s)? '"'+s+'"': s; });
+      lines.push(vals.join(','));
+    }
+    return lines.join('\n');
+  }
+
+  $('exportCsv').addEventListener('click', async ()=>{ const rows = allRows.length? allRows : await fetchEntries(); const blob=new Blob([toCsv(rows)],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`route-stats-all_${VERSION_TAG}.csv`; a.click(); });
+  $('exportCsvFiltered').addEventListener('click', async ()=>{ const rows = applySearch(allRows.length? allRows : await fetchEntries()); const blob=new Blob([toCsv(rows)],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`route-stats-filtered_${VERSION_TAG}.csv`; a.click(); });
+
+  const showUidBtn=$('showUid');
+  showUidBtn?.addEventListener('click', async ()=>{ const { data:{ user } } = await sb.auth.getUser(); if(!user){ alert('No session. Use Link devices.'); return; } alert(`Current user id (account key):\n${user.id}\n\nEntries are filtered by this id.`); });
+
+  const importFile=$('importFile'); $('importCsv')?.addEventListener('click', ()=> importFile.click());
+  importFile?.addEventListener('change', async ()=>{
+    const file=importFile.files?.[0]; if(!file) return; const text=await file.text();
+    const lines=text.split(/\r?\n/).filter(Boolean); if(lines.length<2){ alert('CSV is empty'); return; }
+    const headers=lines[0].split(',').map(h=> h.trim().replace(/^"|"$/g,'')); const idx=(n)=> headers.indexOf(n);
+    const splitCsv=(row)=> row.split(/,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)/); const unq=(v)=> (/^".*"$/.test(v)? v.slice(1,-1).replace(/""/g,'"') : v);
+    const { data:{ user } } = await sb.auth.getUser(); if(!user){ alert('No session. Use Link devices.'); return; }
+    const rows=[]; for(let i=1;i<lines.length;i++){ const cols=splitCsv(lines[i]); const get=(name)=> unq(cols[idx(name)] ?? ''); const r={ user_id:user.id, work_date:get('work_date'), route:'R1', status:get('status')||'worked', start_time:get('start_time')||null, depart_time:get('depart_time')||null, return_time:get('return_time')||null, end_time:get('end_time')||null, hours:+(get('hours')||0)||null, office_minutes:get('office_minutes')||null, route_minutes:get('route_minutes')||null, parcels:+(get('parcels')||0)||0, letters:+(get('letters')||0)||0, miles:+(get('miles')||0)||0, mood:get('mood')||null, notes:get('notes')||null, weather_json:get('weather_json')||null }; if(r.work_date) rows.push(r); }
+    if(!rows.length){ alert('No rows detected'); return; }
+    const chunk=200; for(let i=0;i<rows.length;i+=chunk){ const slice=rows.slice(i,i+chunk); const { error } = await sb.from('entries').insert(slice); if(error){ alert('Import failed: '+error.message); return; } }
+    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); alert(`Imported ${rows.length} rows into this account.`);
+  });
+
+  let dowChart, parcelsChart, lettersChart; function destroyCharts(){ [dowChart,parcelsChart,lettersChart].forEach(c=>c&&c.destroy()); }
+  function buildCharts(rows){
+    destroyCharts(); const workRows=rows.filter(r=>r.status!=='off');
+    const byDow=Array.from({length:7},()=>({h:0,c:0}));
+    for(const r of workRows){ const h=Number(r.hours||0); if(h>0){ const d=dowIndex(r.work_date); byDow[d].h+=h; byDow[d].c++; } }
+    const dowLabels=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; const dowData=byDow.map(x=> x.c? +(x.h/x.c).toFixed(2):0);
+    dowChart=new Chart(document.getElementById('dowChart'),{type:'bar',data:{labels:dowLabels,datasets:[{label:'Avg Total Hours',data:dowData}]},options:{responsive:true,plugins:{legend:{display:false}}}});
+    const sortedWork=[...workRows].sort((a,b)=> a.work_date.localeCompare(b.work_date)); const labels=sortedWork.map(r=> r.work_date);
+    parcelsChart=new Chart(document.getElementById('parcelsChart'),{ type:'line', data:{ labels, datasets:[{ label:'Parcels', data: sortedWork.map(r=> +r.parcels||0) }] }, options:{ responsive:true, plugins:{ legend:{ display:false }}, scales:{x:{ticks:{maxTicksLimit:8}}}} });
+    lettersChart=new Chart(document.getElementById('lettersChart'),{ type:'line', data:{ labels, datasets:[{ label:'Letters', data: sortedWork.map(r=> +r.letters||0) }] }, options:{ responsive:true, plugins:{ legend:{ display:false }}, scales:{x:{ticks:{maxTicksLimit:8}}}} });
+  }
+
+  function hhmmFrom(baseDateStr, hours){ if(hours==null) return '—'; const d=DateTime.fromISO(baseDateStr,{zone:ZONE}).set({hour:8,minute:0}); return d.plus({hours}).toFormat('h:mm a'); }
+
+  function buildSnapshot(rows){
+    const today=DateTime.now().setZone(ZONE);
+    const dow=today.weekday%7; // 0=Sun
+    const workRows=rows.filter(r=>r.status!=='off');
+
+    // Baselines by DOW for expected end
+    const byDow=Array.from({length:7},()=>({h:0,c:0}));
+    for(const r of workRows){ const h=Number(r.hours||0); if(h>0){ const d=dowIndex(r.work_date); byDow[d].h+=h; byDow[d].c++; } }
+    const avgH=byDow.map(x=> x.c? x.h/x.c : null); const todayAvgH=avgH[dow];
+    expEnd.textContent = todayAvgH? hhmmFrom(today.toISODate(), todayAvgH) : '—';
+    expMeta.textContent = `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]} avg ${todayAvgH? todayAvgH.toFixed(2)+'h':'—'}`;
+
+    // Badges (volume, route eff, overall) using last 30 worked rows
+    const lastN = workRows.slice(0,30);
+    const volMetric = (r)=> (+r.parcels||0) + 0.33*(+r.letters||0);
+    const vols = lastN.map(volMetric); const v = vols.length? volMetric(workRows[0]||{}):0;
+    const rank = (arr,x)=>{ const s=[...arr].sort((a,b)=>a-b); let i=s.findIndex(n=>x<=n); if(i<0) i=s.length; return i/s.length; };
+    badgeVolume.textContent = vols.length? Math.round(rank(vols,v)*10)+"/10" : '—';
+    const rhs = workRows.filter(r=> dowIndex(r.work_date)===dow).map(r=> +r.route_minutes||0).filter(n=>n>0);
+    const rteAvg = rhs.length? (rhs.reduce((a,b)=>a+b,0)/rhs.length) : null; const todayRoute = workRows[0]? (+workRows[0].route_minutes||0) : null;
+    const rteScore = (rteAvg && todayRoute!=null && rteAvg>0)? Math.max(0, Math.min(10, Math.round((1 - (todayRoute - rteAvg)/Math.max(1,rteAvg))*10))) : 0;
+    badgeRouteEff.textContent = `${rteScore}/10`;
+    const totToday = workRows[0]? (+workRows[0].hours||0) : 0; const exp = todayAvgH || 0; const overallScore = exp>0? Math.max(0, Math.min(10, Math.round((1 - (totToday - exp)/Math.max(1,exp))*10))) : 0; badgeOverall.textContent = `${overallScore}/10`;
+
+    // ===== Weekly tiles (Monday-based) =====
+    const weekStart = startOfWeekMonday(today);
+    const weekEnd   = today.endOf('day');
+    const prevWeekStart = startOfWeekMonday(today.minus({weeks:1}));
+    const prevWeekEnd   = endOfWeekSunday(today.minus({weeks:1}));
+    const priorWeekStart = startOfWeekMonday(today.minus({weeks:2}));
+    const priorWeekEnd   = endOfWeekSunday(today.minus({weeks:2}));
+
+    const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
+    const sum=(arr,fn)=>arr.reduce((t,x)=>t+(fn(x)||0),0);
+
+    const thisW = workRows.filter(r=> inRange(r,weekStart,weekEnd));
+    const lastW = workRows.filter(r=> inRange(r,prevWeekStart,prevWeekEnd));
+    const priorW= workRows.filter(r=> inRange(r,priorWeekStart,priorWeekEnd));
+
+    const daysWorked = arr=> arr.filter(r=> (r.hours||0)>0).length;
+    const dThis = daysWorked(thisW), dLast = daysWorked(lastW), dPrior = daysWorked(priorW);
+
+    const hThis=sum(thisW,r=>+r.hours||0), pThis=sum(thisW,r=>+r.parcels||0), lThis=sum(thisW,r=>+r.letters||0);
+    const hLast=sum(lastW,r=>+r.hours||0), pLast=sum(lastW,r=>+r.parcels||0), lLast=sum(lastW,r=>+r.letters||0);
+
+    // Show live totals as "thisWeek / lastWeek"
+    $('wkHours').textContent   = `${(hThis||0).toFixed(2)} / ${(hLast||0).toFixed(2)}`;
+    $('wkParcels').textContent = `${pThis||0} / ${pLast||0}`;
+    $('wkLetters').textContent = `${lThis||0} / ${lLast||0}`;
+
+    // Carry-forward percentage = last full week's % vs prior week (per-worked-day averages)
+    const avgOrNull=(tot,days)=> days? tot/days : null;
+    const pct=(a,b)=> (a==null||b==null||b===0)? null : ((a-b)/b)*100;
+
+    const hCarry = pct(avgOrNull(hLast,dLast), avgOrNull(sum(priorW,r=>+r.hours||0), dPrior));
+    const pCarry = pct(avgOrNull(pLast,dLast), avgOrNull(sum(priorW,r=>+r.parcels||0), dPrior));
+    const lCarry = pct(avgOrNull(lLast,dLast), avgOrNull(sum(priorW,r=>+r.letters||0), dPrior));
+
+    // Current-week target % vs last week (per-worked-day averages so far)
+    const hTarget = pct(avgOrNull(hThis,dThis), avgOrNull(hLast,dLast));
+    const pTarget = pct(avgOrNull(pThis,dThis), avgOrNull(pLast,dLast));
+    const lTarget = pct(avgOrNull(lThis,dThis), avgOrNull(lLast,dLast));
+
+    // Blend from carry-forward toward current as the week progresses (Mon..Fri ≈ 5 workdays)
+    const progress = Math.min(1, dThis/5);
+    const blend=(carry,target)=> (carry==null && target==null)? null : (carry==null? target : target==null? carry : carry*(1-progress) + target*progress);
+
+    const dh = blend(hCarry, hTarget);
+    const dp = blend(pCarry, pTarget);
+    const dl = blend(lCarry, lTarget);
+
+    const fmt = p => {
+      if (p == null) return '—';
+      const rounded = Math.round(p);
+      return rounded >= 0 ? `↑ ${rounded}%` : `↓ ${Math.abs(rounded)}%`;
+    };
+    const setPill=(el,delta)=>{ el.textContent=fmt(delta); el.className='pill '+(delta==null?'warn':delta>=0?'up':'down'); };
+    setPill($('wkHoursDelta'),   dh);
+    setPill($('wkParcelsDelta'), dp);
+    setPill($('wkLettersDelta'), dl);
+
+    // Today vs same-weekday baseline (worked days only)
+    const todayIso = today.toISODate();
+    const todaysRow = workRows.find(r => r.work_date === todayIso);
+    const sameDow = workRows.filter(r => r.work_date !== todayIso && (dowIndex(r.work_date) === dow));
+    const meanOf=(arr,fn)=> arr.length? arr.reduce((t,x)=>t+(fn(x)||0),0)/arr.length : null;
+    const baseParcels = meanOf(sameDow, r=> +r.parcels||0);
+    const baseLetters = meanOf(sameDow, r=> +r.letters||0);
+    const todayParcels = todaysRow? (+todaysRow.parcels||0): null;
+    const todayLetters = todaysRow? (+todaysRow.letters||0): null;
+    const dayPct=(val,base)=> (val==null || !base)? null : ((val-base)/base)*100;
+    const tdp=dayPct(todayParcels, baseParcels), tdl=dayPct(todayLetters, baseLetters);
+    const wkNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    document.querySelector('#todayParcelsDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs past ${wkNames[dow]}s (worked)`));
+    document.querySelector('#todayLettersDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs past ${wkNames[dow]}s (worked)`));
+    const fmtTiny=p=> p==null? '—' : (p>=0? `↑ ${p.toFixed(0)}%` : `↓ ${Math.abs(p).toFixed(0)}%`);
+    $('todayParcelsDelta').textContent = fmtTiny(tdp);
+    $('todayLettersDelta').textContent = fmtTiny(tdl);
+  }
+
+  try{
+    sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{
+      const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows);
+    }).subscribe();
+  }catch(e){ console.warn('Realtime not enabled:', e?.message||e); }
+
+  $('fab').addEventListener('click',()=>{ window.scrollTo({ top:0, behavior:'smooth' }); $('departTime').focus(); });
+  $('searchBox').addEventListener('input', ()=>{ renderTable(applySearch(allRows)); });
+
+  (function enableRowNavigation(){
+    const tbody=document.querySelector('#tbl tbody'); if(!tbody) return; function activate(e){ const tr=e.target.closest('tr.rowLink'); if(!tr) return; $('date').value=tr.dataset.date; loadByDate(); window.scrollTo({ top:0, behavior:'smooth' }); }
+    tbody.addEventListener('click', activate);
+    tbody.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ if(e.target.closest('tr.rowLink')){ e.preventDefault(); activate(e); } } });
+  })();
+
+  (async()=>{
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); computeBreakdown();
+  })();
+
+  console.log('Route Stats loaded — v2025-08-27-patched+setpw');
+</script>
+<!-- Register the service worker for offline support -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('sw.js').catch(function(err) {
+        console.error('Service worker registration failed:', err);
+      });
+    });
+  }
+</script>
+</body>
+</html>

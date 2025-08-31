@@ -45,6 +45,7 @@
   tr.typical td{ background:linear-gradient(90deg, rgba(255,210,122,.08), transparent) }
   .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
   dialog{ background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:12px; padding:16px }
+  dialog label.pill{ color: var(--text); }
 
   /* Visibility + focus upgrades */
   input,select,textarea{
@@ -91,7 +92,7 @@
 
 <!-- Version tag -->
 <div style="position:fixed;top:6px;right:12px;color:#9aa0aa;font-size:11px;z-index:9999;">
-  v2025-08-27-patched+setpw
+  <span id="versionTag">v2025-08-31-progressive+flags</span>
 </div>
 <header>
   <div class="wrap row" style="justify-content:space-between">
@@ -768,7 +769,8 @@ function moonPhaseEmoji(dateStr) {
     }
   }
 
-  const VERSION_TAG='v2025-08-27-patched';
+  const VERSION_TAG='v2025-08-31-progressive+flags';
+  document.querySelector('#versionTag')?.textContent = VERSION_TAG;
   function toCsv(rows){
     const headers=['work_date','route','status','start_time','depart_time','return_time','end_time','hours','office_minutes','route_minutes','parcels','letters','miles','mood','notes','weather_json','created_at'];
     const lines=[headers.join(',')];

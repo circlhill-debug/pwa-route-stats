@@ -835,11 +835,35 @@ function moonPhaseEmoji(dateStr) {
     const dl = blend(lCarry, lTarget);
 
     const fmt = p => {
-      if (p == null) return '—';
-      const rounded = Math.round(p);
-      return rounded >= 0 ? `↑ ${rounded}%` : `↓ ${Math.abs(rounded)}%`;
-    };
-    const setPill=(el,delta)=>{ el.textContent=fmt(delta); el.className='pill '+(delta==null?'warn':delta>=0?'up':'down'); };
+  if (p == null) return '—';
+  const rounded = Math.round(p);
+  return rounded >= 0 ? `↑ ${rounded}%` : `↓ ${Math.abs(rounded)}%`;
+};
+
+// Progressive color scale for deltas (±60% window)
+function colorForDelta(pct){
+  if (pct == null) return { fg:'var(--warn)', bg:'transparent', bc:'var(--border)' };
+  const clamp = Math.max(-60, Math.min(60, pct));
+  const t = Math.abs(clamp)/60; // 0..1
+  // 3-step ramps
+  const green = ['#A8E6A3','#4CAF50','#087F23'];
+  const red   = ['#F7A6A6','#F44336','#B71C1C'];
+  const step = (t<0.17?0 : (t<0.42?1:2));
+  const fg = clamp >= 0 ? green[step] : red[step];
+  // subtle translucent backgrounds
+  const bg = clamp >= 0 ? 'rgba(76,175,80,0.12)' : 'rgba(244,67,54,0.12)';
+  const bc = clamp >= 0 ? 'rgba(76,175,80,0.35)' : 'rgba(244,67,54,0.35)';
+  return { fg, bg, bc };
+}
+
+const setPill=(el,delta)=>{
+  el.textContent = fmt(delta);
+  el.className = 'pill';
+  const { fg, bg, bc } = colorForDelta(delta);
+  el.style.color = fg;
+  el.style.background = bg;
+  el.style.borderColor = bc;
+};
     setPill($('wkHoursDelta'),   dh);
     setPill($('wkParcelsDelta'), dp);
     setPill($('wkLettersDelta'), dl);
@@ -860,8 +884,16 @@ function moonPhaseEmoji(dateStr) {
     document.querySelector('#todayLettersDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs past ${wkNames[dow]}s (worked)`));
     const fmtTiny=p=> p==null? '—' : (p>=0? `↑ ${p.toFixed(0)}%` : `↓ ${Math.abs(p).toFixed(0)}%`);
     $('todayParcelsDelta').textContent = fmtTiny(tdp);
-    $('todayLettersDelta').textContent = fmtTiny(tdl);
-  }
+$('todayLettersDelta').textContent = fmtTiny(tdl);
+// Apply progressive colors to today's deltas too
+(() => {
+  const tp = document.getElementById('todayParcelsDelta');
+  const tl = document.getElementById('todayLettersDelta');
+  const { fg:fgP, bg:bgP, bc:bcP } = colorForDelta(tdp);
+  const { fg:fgL, bg:bgL, bc:bcL } = colorForDelta(tdl);
+  if (tp) { tp.className='pill'; tp.style.color=fgP; tp.style.background=bgP; tp.style.borderColor=bcP; }
+  if (tl) { tl.className='pill'; tl.style.color=fgL; tl.style.background=bgL; tl.style.borderColor=bcL; }
+})();}
 
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{

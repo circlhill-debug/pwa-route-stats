@@ -329,6 +329,15 @@
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91d2tkdGlpeGtheWRydGZkaG5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMDc0NDksImV4cCI6MjA3MDU4MzQ0OX0.KI-dYG5_A8jvPEHSog3wlnLbIGYIHQR_4ztXHL2SzIg';
   const ZONE = 'America/Detroit';
 
+  // Surface any runtime errors to the UI so buttons aren't mysteriously dead
+  window.addEventListener('error', (e) => {
+    try {
+      const diag = document.getElementById('diag');
+      if (diag) diag.textContent = 'JS error: ' + (e?.message || 'Unknown error');
+    } catch(_){}
+    alert('Route Stats error: ' + (e?.message || 'Unknown error'));
+  });
+
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
   function loadFlags(){
@@ -539,10 +548,6 @@ function moonPhaseEmoji(dateStr) {
   });
 
   // ====== APP LOGIC (unchanged beyond tiny UX tweaks) ======
-
-  function dowIndex(dateStr){ return DateTime.fromFormat(dateStr,'yyyy-MM-dd',{zone:ZONE}).weekday % 7; }
-
-  function routeEndTime(){ return ($('returnTime').value || $('end').value || ''); }
 
   const date=$('date'), route=$('route'), start=$('start'), end=$('end'), departTime=$('departTime'), returnTime=$('returnTime');
   const parcels=$('parcels'), letters=$('letters'), miles=$('miles'), mood=$('mood'), notes=$('notes');
@@ -1054,7 +1059,7 @@ $('todayLettersDelta').textContent = fmtTiny(tdl);
     $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); computeBreakdown();
   })();
 
-  console.log('Route Stats loaded — v2025-08-27-patched+setpw');
+  console.log('Route Stats loaded — v2025-08-31-progressive+flags');
 </script>
 <!-- Register the service worker for offline support -->
 <script>

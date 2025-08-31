@@ -91,7 +91,7 @@
 
 <!-- Version tag -->
 <div style="position:fixed;top:6px;right:12px;color:#9aa0aa;font-size:11px;z-index:9999;">
-  <span id="versionTag">v2025-08-31-baseline</span>
+  v2025-08-27-patched+setpw
 </div>
 <header>
   <div class="wrap row" style="justify-content:space-between">
@@ -353,10 +353,7 @@
 
   function todayStr(){ return DateTime.now().setZone(ZONE).toISODate(); }
   function hhmmNow(){ const d = DateTime.now().setZone(ZONE); return `${String(d.hour).padStart(2,'0')}:${String(d.minute).padStart(2,'0')}`; }
-  function dowIndex(dateStr){
-    const wd = DateTime.fromFormat(dateStr,'yyyy-MM-dd',{zone:ZONE}).weekday; // Luxon: Mon=1..Sun=7
-    return (wd + 6) % 7; // Monday=0..Sunday=6
-  }
+  function dowIndex(dateStr){ return DateTime.fromFormat(dateStr,'yyyy-MM-dd',{zone:ZONE}).weekday % 7; }
   function startOfWeekMonday(dt){ const w = dt.weekday; const shift = (w+6)%7; return dt.startOf('day').minus({days:shift}); }
   function endOfWeekSunday(dt){ return startOfWeekMonday(dt).plus({days:6}).endOf('day'); }
 
@@ -542,10 +539,7 @@ function moonPhaseEmoji(dateStr) {
 
   // ====== APP LOGIC (unchanged beyond tiny UX tweaks) ======
 
-  function dowIndex(dateStr){
-    const wd = DateTime.fromFormat(dateStr,'yyyy-MM-dd',{zone:ZONE}).weekday; // Luxon: Mon=1..Sun=7
-    return (wd + 6) % 7; // Monday=0..Sunday=6
-  }
+  function dowIndex(dateStr){ return DateTime.fromFormat(dateStr,'yyyy-MM-dd',{zone:ZONE}).weekday % 7; }
 
   function routeEndTime(){ return ($('returnTime').value || $('end').value || ''); }
 
@@ -774,8 +768,7 @@ function moonPhaseEmoji(dateStr) {
     }
   }
 
-  const VERSION_TAG='v2025-08-31-baseline';
-  document.querySelector('#versionTag')?.textContent = VERSION_TAG;
+  const VERSION_TAG='v2025-08-27-patched';
   function toCsv(rows){
     const headers=['work_date','route','status','start_time','depart_time','return_time','end_time','hours','office_minutes','route_minutes','parcels','letters','miles','mood','notes','weather_json','created_at'];
     const lines=[headers.join(',')];
@@ -810,7 +803,7 @@ function moonPhaseEmoji(dateStr) {
     destroyCharts(); const workRows=rows.filter(r=>r.status!=='off');
     const byDow=Array.from({length:7},()=>({h:0,c:0}));
     for(const r of workRows){ const h=Number(r.hours||0); if(h>0){ const d=dowIndex(r.work_date); byDow[d].h+=h; byDow[d].c++; } }
-    const dowLabels=['Mon','Tue','Wed','Thu','Fri','Sat','Sun']; const dowData=byDow.map(x=> x.c? +(x.h/x.c).toFixed(2):0);
+    const dowLabels=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; const dowData=byDow.map(x=> x.c? +(x.h/x.c).toFixed(2):0);
     dowChart=new Chart(document.getElementById('dowChart'),{type:'bar',data:{labels:dowLabels,datasets:[{label:'Avg Total Hours',data:dowData}]},options:{responsive:true,plugins:{legend:{display:false}}}});
     const sortedWork=[...workRows].sort((a,b)=> a.work_date.localeCompare(b.work_date)); const labels=sortedWork.map(r=> r.work_date);
     parcelsChart=new Chart(document.getElementById('parcelsChart'),{
@@ -891,7 +884,7 @@ function moonPhaseEmoji(dateStr) {
 
   function buildSnapshot(rows){
     const today=DateTime.now().setZone(ZONE);
-    const dow=(today.weekday+6)%7; // 0=Mon
+    const dow=today.weekday%7; // 0=Sun
     const workRows=rows.filter(r=>r.status!=='off');
 
     // Baselines by DOW for expected end
@@ -899,7 +892,7 @@ function moonPhaseEmoji(dateStr) {
     for(const r of workRows){ const h=Number(r.hours||0); if(h>0){ const d=dowIndex(r.work_date); byDow[d].h+=h; byDow[d].c++; } }
     const avgH=byDow.map(x=> x.c? x.h/x.c : null); const todayAvgH=avgH[dow];
     expEnd.textContent = todayAvgH? hhmmFrom(today.toISODate(), todayAvgH) : '—';
-    expMeta.textContent = `${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][dow]} avg ${todayAvgH? todayAvgH.toFixed(2)+'h':'—'}`;
+    expMeta.textContent = `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]} avg ${todayAvgH? todayAvgH.toFixed(2)+'h':'—'}`;
 
     // Badges (volume, route eff, overall) using last 30 worked rows
     const lastN = workRows.slice(0,30);
@@ -1011,7 +1004,7 @@ const setPill=(el,delta)=>{
     const todayLetters = todaysRow? (+todaysRow.letters||0): null;
     const dayPct=(val,base)=> (val==null || !base)? null : ((val-base)/base)*100;
     const tdp=dayPct(todayParcels, baseParcels), tdl=dayPct(todayLetters, baseLetters);
-    const wkNames=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    const wkNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     document.querySelector('#todayParcelsDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs past ${wkNames[dow]}s (worked)`));
     document.querySelector('#todayLettersDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs past ${wkNames[dow]}s (worked)`));
     const fmtTiny=p=> p==null? '—' : (p>=0? `↑ ${p.toFixed(0)}%` : `↓ ${Math.abs(p).toFixed(0)}%`);
@@ -1051,7 +1044,7 @@ $('todayLettersDelta').textContent = fmtTiny(tdl);
     $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); computeBreakdown();
   })();
 
-  console.log('Route Stats loaded — v2025-08-31-baseline');
+  console.log('Route Stats loaded — v2025-08-27-patched+setpw');
 </script>
 <!-- Register the service worker for offline support -->
 <script>

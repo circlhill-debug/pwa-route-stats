@@ -334,20 +334,23 @@
   function endOfWeekSunday(dt){ return startOfWeekMonday(dt).plus({days:6}).endOf('day'); }
 
   // NEW: Moon phase emoji helper
-  function moonPhaseEmoji(d) {
-    const lp = 2551443; // lunar period (seconds)
-    const now = DateTime.fromISO(d, {zone: ZONE}).toSeconds();
-    const base = DateTime.fromISO("2001-01-01", {zone: ZONE}).toSeconds(); // reference new moon
-    const phase = ((now - base) % lp) / lp;
-    if (phase < 0.03 || phase > 0.97) return "🌑";
-    if (phase < 0.25) return "🌒";
-    if (phase < 0.27) return "🌓";
-    if (phase < 0.48) return "🌔";
-    if (phase < 0.52) return "🌕";
-    if (phase < 0.75) return "🌖";
-    if (phase < 0.77) return "🌗";
-    return "🌘";
-  }
+  // Improved Moon phase calc (better epoch)
+function moonPhaseEmoji(dateStr) {
+  const d = DateTime.fromISO(dateStr, { zone: ZONE });
+  const lp = 2551442.8; // synodic month (sec)
+  // Reference new moon: Jan 6, 2000 at 18:14 UTC
+  const newMoon = DateTime.fromISO("2000-01-06T18:14:00Z").toSeconds();
+  const phase = ((d.toSeconds() - newMoon) % lp + lp) % lp / lp;
+
+  if (phase < 0.03 || phase > 0.97) return "🌑";   // New
+  if (phase < 0.25) return "🌒";                  // Waxing crescent
+  if (phase < 0.27) return "🌓";                  // First quarter
+  if (phase < 0.48) return "🌔";                  // Waxing gibbous
+  if (phase < 0.52) return "🌕";                  // Full
+  if (phase < 0.75) return "🌖";                  // Waning gibbous
+  if (phase < 0.77) return "🌗";                  // Last quarter
+  return "🌘";                                    // Waning crescent
+}
 
   function diffHours(d, t1, t2){
     if(!t1||!t2) return null;

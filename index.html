@@ -338,6 +338,21 @@
     alert('Route Stats error: ' + (e?.message || 'Unknown error'));
   });
 
+  // --- Boot diagnostics ---
+  (function bootDiag(){
+    const hasLuxon = !!(window.luxon && window.luxon.DateTime);
+    const hasChart = !!(window.Chart && window.Chart.defaults);
+    const hasSB    = !!(window.supabase && window.supabase.createClient);
+    const diag = document.getElementById('diag');
+    if (diag) {
+      diag.innerHTML = `ROUTE STATS · <b>Boot</b>: OK · Luxon: <b>${hasLuxon?'✓':'×'}</b> · Chart: <b>${hasChart?'✓':'×'}</b> · Supabase: <b>${hasSB?'✓':'×'}</b>`;
+    }
+    if (!hasLuxon || !hasChart || !hasSB) {
+      console.warn('Vendors not ready', { hasLuxon, hasChart, hasSB });
+      window.addEventListener('load', ()=>location.reload(), { once: true });
+    }
+  })();
+
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
   function loadFlags(){
@@ -433,10 +448,12 @@ function moonPhaseEmoji(dateStr) {
 
   // Magic link
   const linkBtn=$('linkBtn'), linkDlg=$('linkDlg'), sendLink=$('sendLink'), email=$('email');
-  linkBtn.addEventListener('click', ()=> linkDlg.showModal());
+  linkBtn?.addEventListener('click', ()=>{
+    if (linkDlg?.showModal) linkDlg.showModal(); else linkDlg?.setAttribute('open','open');
+  });
   sendLink.addEventListener('click', async (e)=>{
     e.preventDefault();
-    const redirectTo = location.origin + location.pathname;
+    const redirectTo = (location.origin && location.origin !== 'null') ? (location.origin + location.pathname) : (window.location.href.split('#')[0]);
     const { error } = await sb.auth.signInWithOtp({ email: email.value, options:{ emailRedirectTo: redirectTo } });
     if (error) alert(error.message); else { alert('Check your email for the magic link.'); linkDlg.close(); }
   });
@@ -455,7 +472,7 @@ function moonPhaseEmoji(dateStr) {
     authMsg.textContent = '';
     loginEmail.value = loginEmail.value || '';
     loginPass.value = '';
-    pwDlg.showModal();
+    if (pwDlg?.showModal) pwDlg.showModal(); else pwDlg?.setAttribute('open','open');
   });
 
   doLogin?.addEventListener('click', async (e)=>{
@@ -499,7 +516,7 @@ function moonPhaseEmoji(dateStr) {
     setPwMsg.textContent = '';
     newPass.value = '';
     newPass2.value = '';
-    setPwDlg.showModal();
+    if (setPwDlg?.showModal) setPwDlg.showModal(); else setPwDlg?.setAttribute('open','open');
   });
 
   doSetPw?.addEventListener('click', async (e)=>{
@@ -526,7 +543,7 @@ function moonPhaseEmoji(dateStr) {
     // populate from FLAGS
     flagWeekdayTicks.checked = !!FLAGS.weekdayTicks;
     flagProgressivePills.checked = !!FLAGS.progressivePills;
-    settingsDlg.showModal();
+    if (settingsDlg?.showModal) settingsDlg.showModal(); else settingsDlg?.setAttribute('open','open');
   });
 
   saveSettings?.addEventListener('click', (e)=>{

@@ -45,7 +45,6 @@
   tr.typical td{ background:linear-gradient(90deg, rgba(255,210,122,.08), transparent) }
   .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
   dialog{ background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:12px; padding:16px }
-  dialog label.pill{ color: var(--text); }
 
   /* Visibility + focus upgrades */
   input,select,textarea{
@@ -87,12 +86,12 @@
 </head>
 <body>
 <div id="diag">
-  ROUTE STATS · <b>Boot:</b> <span id="dBoot">—</span> · Supabase: <b id="dConn">…</b> · Auth: <b id="dAuth">…</b> · Write: <b id="dWrite">—</b>
+  ROUTE STATS · Supabase: <b id="dConn">…</b> · Auth: <b id="dAuth">…</b> · Write: <b id="dWrite">—</b>
 </div>
 
 <!-- Version tag -->
 <div style="position:fixed;top:6px;right:12px;color:#9aa0aa;font-size:11px;z-index:9999;">
-  <span id="versionTag">v2025-08-31-progressive+flags</span>
+  v2025-08-27-patched+setpw
 </div>
 <header>
   <div class="wrap row" style="justify-content:space-between">
@@ -103,7 +102,6 @@
       <button id="setPwBtn" class="ghost" title="Set/Change password for the current account">Set password</button>
       <button id="linkBtn" class="ghost">Link devices (magic link)</button>
       <button id="signOut" class="ghost">Sign out</button>
-      <button id="btnSettings" class="ghost" title="Toggle feature flags">Settings</button>
     </div>
   </div>
 </header>
@@ -304,30 +302,6 @@
   </form>
 </dialog>
 
-<!-- Settings / Feature Flags dialog -->
-<dialog id="settingsDlg">
-  <form method="dialog" class="grid" style="min-width:320px;gap:10px">
-    <h3 style="margin:0">Settings</h3>
-    <label class="pill"><input id="flagWeekdayTicks" type="checkbox"> Show weekday + short date on line charts</label>
-    <label class="pill"><input id="flagProgressivePills" type="checkbox"> Progressive color pills for deltas</label>
-    <div class="row" style="justify-content:flex-end;gap:8px">
-      <button class="ghost" value="cancel">Close</button>
-      <button id="saveSettings">Save</button>
-    </div>
-    <small class="muted">Flags are stored locally (this device only).</small>
-    <hr style="border:0;border-top:1px solid var(--border);margin:4px 0">
-    <details>
-      <summary><small class="muted">Diagnostics</small></summary>
-      <div class="grid" style="gap:6px">
-        <small>URL: <code id="dbgUrl"></code></small>
-        <small>User: <code id="dbgUser">(none)</code></small>
-        <small>Last error: <code id="dbgErr">(none)</code></small>
-        <div class="row" style="gap:8px"><button id="btnTestDb" class="ghost" type="button">Test DB</button><small id="dbgPing">—</small></div>
-      </div>
-    </details>
-  </form>
-</dialog>
-
 <button class="fab" id="fab">+ Add Entry</button>
 
 <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
@@ -338,38 +312,6 @@
   const SUPABASE_URL  = 'https://ouwkdtiixkaydrtfdhnh.supabase.co';
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91d2tkdGlpeGtheWRydGZkaG5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMDc0NDksImV4cCI6MjA3MDU4MzQ0OX0.KI-dYG5_A8jvPEHSog3wlnLbIGYIHQR_4ztXHL2SzIg';
   const ZONE = 'America/Detroit';
-
-  // Surface any runtime errors to the UI so buttons aren't mysteriously dead
-  window.addEventListener('error', (e) => {
-    try {
-      const diag = document.getElementById('diag');
-      if (diag) diag.textContent = 'JS error: ' + (e?.message || 'Unknown error');
-    } catch(_){}
-    alert('Route Stats error: ' + (e?.message || 'Unknown error'));
-  });
-
-  // --- Boot diagnostics ---
-  (function bootDiag(){
-    const hasLuxon = !!(window.luxon && window.luxon.DateTime);
-    const hasChart = !!(window.Chart && window.Chart.defaults);
-    const hasSB    = !!(window.supabase && window.supabase.createClient);
-    const diag = document.getElementById('diag');
-    const dBoot = document.getElementById('dBoot');
-    if (dBoot) dBoot.textContent = `Luxon ${hasLuxon?'✓':'×'} · Chart ${hasChart?'✓':'×'} · Supabase ${hasSB?'✓':'×'}`;
-    if (!hasLuxon || !hasChart || !hasSB) {
-      console.warn('Vendors not ready', { hasLuxon, hasChart, hasSB });
-      window.addEventListener('load', ()=>location.reload(), { once: true });
-    }
-  })();
-
-  // === Feature Flags (localStorage) ===
-  const FLAG_KEY = 'routeStats.flags.v1';
-  function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:true }; }
-  }
-  function saveFlags(f){ localStorage.setItem(FLAG_KEY, JSON.stringify(f)); }
-  let FLAGS = loadFlags();
 
   // === Helpers ===
   const $ = id => document.getElementById(id);
@@ -457,12 +399,10 @@ function moonPhaseEmoji(dateStr) {
 
   // Magic link
   const linkBtn=$('linkBtn'), linkDlg=$('linkDlg'), sendLink=$('sendLink'), email=$('email');
-  linkBtn?.addEventListener('click', ()=>{
-    if (linkDlg?.showModal) linkDlg.showModal(); else linkDlg?.setAttribute('open','open');
-  });
+  linkBtn.addEventListener('click', ()=> linkDlg.showModal());
   sendLink.addEventListener('click', async (e)=>{
     e.preventDefault();
-    const redirectTo = (location.origin && location.origin !== 'null') ? (location.origin + location.pathname) : (window.location.href.split('#')[0]);
+    const redirectTo = location.origin + location.pathname;
     const { error } = await sb.auth.signInWithOtp({ email: email.value, options:{ emailRedirectTo: redirectTo } });
     if (error) alert(error.message); else { alert('Check your email for the magic link.'); linkDlg.close(); }
   });
@@ -481,7 +421,7 @@ function moonPhaseEmoji(dateStr) {
     authMsg.textContent = '';
     loginEmail.value = loginEmail.value || '';
     loginPass.value = '';
-    if (pwDlg?.showModal) pwDlg.showModal(); else pwDlg?.setAttribute('open','open');
+    pwDlg.showModal();
   });
 
   doLogin?.addEventListener('click', async (e)=>{
@@ -525,7 +465,7 @@ function moonPhaseEmoji(dateStr) {
     setPwMsg.textContent = '';
     newPass.value = '';
     newPass2.value = '';
-    if (setPwDlg?.showModal) setPwDlg.showModal(); else setPwDlg?.setAttribute('open','open');
+    setPwDlg.showModal();
   });
 
   doSetPw?.addEventListener('click', async (e)=>{
@@ -541,54 +481,6 @@ function moonPhaseEmoji(dateStr) {
     setTimeout(()=> setPwDlg.close(), 600);
   });
 
-  // === Settings dialog (Feature Flags) ===
-  const settingsDlg = document.getElementById('settingsDlg');
-  const btnSettings = document.getElementById('btnSettings');
-  const flagWeekdayTicks = document.getElementById('flagWeekdayTicks');
-  const flagProgressivePills = document.getElementById('flagProgressivePills');
-  const saveSettings = document.getElementById('saveSettings');
-
-  btnSettings?.addEventListener('click', ()=>{
-    // populate from FLAGS
-    flagWeekdayTicks.checked = !!FLAGS.weekdayTicks;
-    flagProgressivePills.checked = !!FLAGS.progressivePills;
-    if (settingsDlg?.showModal) settingsDlg.showModal(); else settingsDlg?.setAttribute('open','open');
-  });
-
-  saveSettings?.addEventListener('click', (e)=>{
-    e.preventDefault();
-    FLAGS.weekdayTicks = !!flagWeekdayTicks.checked;
-    FLAGS.progressivePills = !!flagProgressivePills.checked;
-    saveFlags(FLAGS);
-    settingsDlg.close();
-    // Re-render visuals affected by flags
-    buildCharts(allRows||[]);
-    buildSnapshot(allRows||[]);
-  });
-
-  // === Settings Diagnostics ===
-  const dbgUrl = document.getElementById('dbgUrl');
-  const dbgUser = document.getElementById('dbgUser');
-  const dbgErr = document.getElementById('dbgErr');
-  const dbgPing = document.getElementById('dbgPing');
-  const btnTestDb = document.getElementById('btnTestDb');
-  if (dbgUrl) dbgUrl.textContent = SUPABASE_URL;
-
-  sb.auth.onAuthStateChange(async (_evt, session) => {
-    try { const { data:{ user } } = await sb.auth.getUser(); if (dbgUser) dbgUser.textContent = user? user.id : '(none)'; } catch {}
-  });
-
-  btnTestDb?.addEventListener('click', async ()=>{
-    dbgPing.textContent = 'Pinging…';
-    try{
-      const { data:{ user } } = await sb.auth.getUser();
-      if (!user) { dbgPing.textContent = 'No session'; return; }
-      const { error, count } = await sb.from('entries').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
-      if (error) { dbgPing.textContent = 'Error'; if (dbgErr) dbgErr.textContent = error.message; }
-      else { dbgPing.textContent = `OK (rows for user: ${count ?? '0'})`; }
-    }catch(e){ dbgPing.textContent = 'Error'; if (dbgErr) dbgErr.textContent = String(e?.message||e); }
-  });
-
   sb.auth.onAuthStateChange((_evt, session) => {
     const authed = !!session;
     const signOutBtn = $('signOut');
@@ -597,6 +489,10 @@ function moonPhaseEmoji(dateStr) {
   });
 
   // ====== APP LOGIC (unchanged beyond tiny UX tweaks) ======
+
+  function dowIndex(dateStr){ return DateTime.fromFormat(dateStr,'yyyy-MM-dd',{zone:ZONE}).weekday % 7; }
+
+  function routeEndTime(){ return ($('returnTime').value || $('end').value || ''); }
 
   const date=$('date'), route=$('route'), start=$('start'), end=$('end'), departTime=$('departTime'), returnTime=$('returnTime');
   const parcels=$('parcels'), letters=$('letters'), miles=$('miles'), mood=$('mood'), notes=$('notes');
@@ -628,11 +524,7 @@ function moonPhaseEmoji(dateStr) {
     routeH.textContent  = rte!=null? rte.toFixed(2) : '—';
     totalH.textContent  = (off!=null||rte!=null)? tot.toFixed(2) : '—';
     const diag=$('diag');
-    if (diag){
-      const dBoot = document.getElementById('dBoot');
-      const bootTxt = dBoot ? dBoot.textContent : '—';
-      diag.innerHTML = `ROUTE STATS · <b>Boot:</b> <span id="dBoot">${bootTxt}</span> · Supabase: <b id="dConn">${dConn.textContent}</b> · Auth: <b id="dAuth">${dAuth.textContent}</b> · Write: <b id="dWrite">${dWrite.textContent}</b> · <b>Off:</b> ${off ?? '—'}h · <b>Route:</b> ${rte ?? '—'}h · <b>Total:</b> ${((off??0)+(rte??0)).toFixed(2)}h`;
-    }
+    if (diag){ diag.innerHTML = `ROUTE STATS · Supabase: <b id="dConn">${dConn.textContent}</b> · Auth: <b id="dAuth">${dAuth.textContent}</b> · Write: <b id="dWrite">${dWrite.textContent}</b> · <b>Off:</b> ${off ?? '—'}h · <b>Route:</b> ${rte ?? '—'}h · <b>Total:</b> ${((off??0)+(rte??0)).toFixed(2)}h`; }
     return tot;
   }
 
@@ -827,8 +719,7 @@ function moonPhaseEmoji(dateStr) {
     }
   }
 
-  const VERSION_TAG='v2025-08-31-progressive+flags';
-  document.querySelector('#versionTag')?.textContent = VERSION_TAG;
+  const VERSION_TAG='v2025-08-27-patched';
   function toCsv(rows){
     const headers=['work_date','route','status','start_time','depart_time','return_time','end_time','hours','office_minutes','route_minutes','parcels','letters','miles','mood','notes','weather_json','created_at'];
     const lines=[headers.join(',')];
@@ -866,86 +757,8 @@ function moonPhaseEmoji(dateStr) {
     const dowLabels=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; const dowData=byDow.map(x=> x.c? +(x.h/x.c).toFixed(2):0);
     dowChart=new Chart(document.getElementById('dowChart'),{type:'bar',data:{labels:dowLabels,datasets:[{label:'Avg Total Hours',data:dowData}]},options:{responsive:true,plugins:{legend:{display:false}}}});
     const sortedWork=[...workRows].sort((a,b)=> a.work_date.localeCompare(b.work_date)); const labels=sortedWork.map(r=> r.work_date);
-    parcelsChart=new Chart(document.getElementById('parcelsChart'),{
-      type:'line',
-      data:{
-        labels,
-        datasets:[{ label:'Parcels', data: sortedWork.map(r=> +r.parcels||0) }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              title: (items) => {
-                const iso = items?.[0]?.label;
-                const d = DateTime.fromISO(iso, { zone: ZONE });
-                return d.toFormat("cccc • MMM d, yyyy");
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            ticks: (FLAGS.weekdayTicks ? {
-              maxRotation: 0,
-              autoSkip: true,
-              maxTicksLimit: 8,
-              callback: function (value) {
-                const iso = this.getLabelForValue(value);
-                const d = DateTime.fromISO(iso, { zone: ZONE });
-                return [d.toFormat('ccc'), d.toFormat('M/d')];
-              }
-            } : {
-              maxRotation: 0,
-              autoSkip: true,
-              maxTicksLimit: 8
-            })
-          }
-        }
-      }
-    });
-    lettersChart=new Chart(document.getElementById('lettersChart'),{
-      type:'line',
-      data:{
-        labels,
-        datasets:[{ label:'Letters', data: sortedWork.map(r=> +r.letters||0) }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              title: (items) => {
-                const iso = items?.[0]?.label;
-                const d = DateTime.fromISO(iso, { zone: ZONE });
-                return d.toFormat("cccc • MMM d, yyyy");
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            ticks: (FLAGS.weekdayTicks ? {
-              maxRotation: 0,
-              autoSkip: true,
-              maxTicksLimit: 8,
-              callback: function (value) {
-                const iso = this.getLabelForValue(value);
-                const d = DateTime.fromISO(iso, { zone: ZONE });
-                return [d.toFormat('ccc'), d.toFormat('M/d')];
-              }
-            } : {
-              maxRotation: 0,
-              autoSkip: true,
-              maxTicksLimit: 8
-            })
-          }
-        }
-      }
-    });
+    parcelsChart=new Chart(document.getElementById('parcelsChart'),{ type:'line', data:{ labels, datasets:[{ label:'Parcels', data: sortedWork.map(r=> +r.parcels||0) }] }, options:{ responsive:true, plugins:{ legend:{ display:false }}, scales:{x:{ticks:{maxTicksLimit:8}}}} });
+    lettersChart=new Chart(document.getElementById('lettersChart'),{ type:'line', data:{ labels, datasets:[{ label:'Letters', data: sortedWork.map(r=> +r.letters||0) }] }, options:{ responsive:true, plugins:{ legend:{ display:false }}, scales:{x:{ticks:{maxTicksLimit:8}}}} });
   }
 
   function hhmmFrom(baseDateStr, hours){ if(hours==null) return '—'; const d=DateTime.fromISO(baseDateStr,{zone:ZONE}).set({hour:8,minute:0}); return d.plus({hours}).toFormat('h:mm a'); }
@@ -1046,16 +859,10 @@ function colorForDelta(pct){
 const setPill=(el,delta)=>{
   el.textContent = fmt(delta);
   el.className = 'pill';
-  if (FLAGS.progressivePills) {
-    const { fg, bg, bc } = colorForDelta(delta);
-    el.style.color = fg;
-    el.style.background = bg;
-    el.style.borderColor = bc;
-  } else {
-    el.style.color = 'var(--text)';
-    el.style.background = 'transparent';
-    el.style.borderColor = 'var(--border)';
-  }
+  const { fg, bg, bc } = colorForDelta(delta);
+  el.style.color = fg;
+  el.style.background = bg;
+  el.style.borderColor = bc;
 };
     setPill($('wkHoursDelta'),   dh);
     setPill($('wkParcelsDelta'), dp);
@@ -1078,19 +885,14 @@ const setPill=(el,delta)=>{
     const fmtTiny=p=> p==null? '—' : (p>=0? `↑ ${p.toFixed(0)}%` : `↓ ${Math.abs(p).toFixed(0)}%`);
     $('todayParcelsDelta').textContent = fmtTiny(tdp);
 $('todayLettersDelta').textContent = fmtTiny(tdl);
-// Apply (or disable) progressive colors to today's deltas based on flag
+// Apply progressive colors to today's deltas too
 (() => {
   const tp = document.getElementById('todayParcelsDelta');
   const tl = document.getElementById('todayLettersDelta');
-  if (FLAGS.progressivePills) {
-    const { fg:fgP, bg:bgP, bc:bcP } = colorForDelta(tdp);
-    const { fg:fgL, bg:bgL, bc:bcL } = colorForDelta(tdl);
-    if (tp) { tp.className='pill'; tp.style.color=fgP; tp.style.background=bgP; tp.style.borderColor=bcP; }
-    if (tl) { tl.className='pill'; tl.style.color=fgL; tl.style.background=bgL; tl.style.borderColor=bcL; }
-  } else {
-    if (tp) { tp.className='pill'; tp.style.color='var(--text)'; tp.style.background='transparent'; tp.style.borderColor='var(--border)'; }
-    if (tl) { tl.className='pill'; tl.style.color='var(--text)'; tl.style.background='transparent'; tl.style.borderColor='var(--border)'; }
-  }
+  const { fg:fgP, bg:bgP, bc:bcP } = colorForDelta(tdp);
+  const { fg:fgL, bg:bgL, bc:bcL } = colorForDelta(tdl);
+  if (tp) { tp.className='pill'; tp.style.color=fgP; tp.style.background=bgP; tp.style.borderColor=bcP; }
+  if (tl) { tl.className='pill'; tl.style.color=fgL; tl.style.background=bgL; tl.style.borderColor=bcL; }
 })();}
 
   try{
@@ -1112,7 +914,7 @@ $('todayLettersDelta').textContent = fmtTiny(tdl);
     $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); computeBreakdown();
   })();
 
-  console.log('Route Stats loaded — v2025-08-31-progressive+flags');
+  console.log('Route Stats loaded — v2025-08-27-patched+setpw');
 </script>
 <!-- Register the service worker for offline support -->
 <script>

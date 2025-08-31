@@ -87,7 +87,7 @@
 </head>
 <body>
 <div id="diag">
-  ROUTE STATS · Supabase: <b id="dConn">…</b> · Auth: <b id="dAuth">…</b> · Write: <b id="dWrite">—</b>
+  ROUTE STATS · <b>Boot:</b> <span id="dBoot">—</span> · Supabase: <b id="dConn">…</b> · Auth: <b id="dAuth">…</b> · Write: <b id="dWrite">—</b>
 </div>
 
 <!-- Version tag -->
@@ -315,6 +315,16 @@
       <button id="saveSettings">Save</button>
     </div>
     <small class="muted">Flags are stored locally (this device only).</small>
+    <hr style="border:0;border-top:1px solid var(--border);margin:4px 0">
+    <details>
+      <summary><small class="muted">Diagnostics</small></summary>
+      <div class="grid" style="gap:6px">
+        <small>URL: <code id="dbgUrl"></code></small>
+        <small>User: <code id="dbgUser">(none)</code></small>
+        <small>Last error: <code id="dbgErr">(none)</code></small>
+        <div class="row" style="gap:8px"><button id="btnTestDb" class="ghost" type="button">Test DB</button><small id="dbgPing">—</small></div>
+      </div>
+    </details>
   </form>
 </dialog>
 
@@ -344,9 +354,8 @@
     const hasChart = !!(window.Chart && window.Chart.defaults);
     const hasSB    = !!(window.supabase && window.supabase.createClient);
     const diag = document.getElementById('diag');
-    if (diag) {
-      diag.innerHTML = `ROUTE STATS · <b>Boot</b>: OK · Luxon: <b>${hasLuxon?'✓':'×'}</b> · Chart: <b>${hasChart?'✓':'×'}</b> · Supabase: <b>${hasSB?'✓':'×'}</b>`;
-    }
+    const dBoot = document.getElementById('dBoot');
+    if (dBoot) dBoot.textContent = `Luxon ${hasLuxon?'✓':'×'} · Chart ${hasChart?'✓':'×'} · Supabase ${hasSB?'✓':'×'}`;
     if (!hasLuxon || !hasChart || !hasSB) {
       console.warn('Vendors not ready', { hasLuxon, hasChart, hasSB });
       window.addEventListener('load', ()=>location.reload(), { once: true });
@@ -557,6 +566,29 @@ function moonPhaseEmoji(dateStr) {
     buildSnapshot(allRows||[]);
   });
 
+  // === Settings Diagnostics ===
+  const dbgUrl = document.getElementById('dbgUrl');
+  const dbgUser = document.getElementById('dbgUser');
+  const dbgErr = document.getElementById('dbgErr');
+  const dbgPing = document.getElementById('dbgPing');
+  const btnTestDb = document.getElementById('btnTestDb');
+  if (dbgUrl) dbgUrl.textContent = SUPABASE_URL;
+
+  sb.auth.onAuthStateChange(async (_evt, session) => {
+    try { const { data:{ user } } = await sb.auth.getUser(); if (dbgUser) dbgUser.textContent = user? user.id : '(none)'; } catch {}
+  });
+
+  btnTestDb?.addEventListener('click', async ()=>{
+    dbgPing.textContent = 'Pinging…';
+    try{
+      const { data:{ user } } = await sb.auth.getUser();
+      if (!user) { dbgPing.textContent = 'No session'; return; }
+      const { error, count } = await sb.from('entries').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
+      if (error) { dbgPing.textContent = 'Error'; if (dbgErr) dbgErr.textContent = error.message; }
+      else { dbgPing.textContent = `OK (rows for user: ${count ?? '0'})`; }
+    }catch(e){ dbgPing.textContent = 'Error'; if (dbgErr) dbgErr.textContent = String(e?.message||e); }
+  });
+
   sb.auth.onAuthStateChange((_evt, session) => {
     const authed = !!session;
     const signOutBtn = $('signOut');
@@ -596,7 +628,11 @@ function moonPhaseEmoji(dateStr) {
     routeH.textContent  = rte!=null? rte.toFixed(2) : '—';
     totalH.textContent  = (off!=null||rte!=null)? tot.toFixed(2) : '—';
     const diag=$('diag');
-    if (diag){ diag.innerHTML = `ROUTE STATS · Supabase: <b id="dConn">${dConn.textContent}</b> · Auth: <b id="dAuth">${dAuth.textContent}</b> · Write: <b id="dWrite">${dWrite.textContent}</b> · <b>Off:</b> ${off ?? '—'}h · <b>Route:</b> ${rte ?? '—'}h · <b>Total:</b> ${((off??0)+(rte??0)).toFixed(2)}h`; }
+    if (diag){
+      const dBoot = document.getElementById('dBoot');
+      const bootTxt = dBoot ? dBoot.textContent : '—';
+      diag.innerHTML = `ROUTE STATS · <b>Boot:</b> <span id="dBoot">${bootTxt}</span> · Supabase: <b id="dConn">${dConn.textContent}</b> · Auth: <b id="dAuth">${dAuth.textContent}</b> · Write: <b id="dWrite">${dWrite.textContent}</b> · <b>Off:</b> ${off ?? '—'}h · <b>Route:</b> ${rte ?? '—'}h · <b>Total:</b> ${((off??0)+(rte??0)).toFixed(2)}h`;
+    }
     return tot;
   }
 

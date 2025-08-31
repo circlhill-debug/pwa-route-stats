@@ -828,7 +828,7 @@ function moonPhaseEmoji(dateStr) {
         },
         scales: {
           x: {
-            ticks: (FLAGS.weekdayTicks ? {
+            ticks: {
               maxRotation: 0,
               autoSkip: true,
               maxTicksLimit: 8,
@@ -837,11 +837,7 @@ function moonPhaseEmoji(dateStr) {
                 const d = DateTime.fromISO(iso, { zone: ZONE });
                 return [d.toFormat('ccc'), d.toFormat('M/d')];
               }
-            } : {
-              maxRotation: 0,
-              autoSkip: true,
-              maxTicksLimit: 8
-            })
+            }
           }
         }
       }
@@ -868,7 +864,7 @@ function moonPhaseEmoji(dateStr) {
         },
         scales: {
           x: {
-            ticks: (FLAGS.weekdayTicks ? {
+            ticks: {
               maxRotation: 0,
               autoSkip: true,
               maxTicksLimit: 8,
@@ -877,11 +873,7 @@ function moonPhaseEmoji(dateStr) {
                 const d = DateTime.fromISO(iso, { zone: ZONE });
                 return [d.toFormat('ccc'), d.toFormat('M/d')];
               }
-            } : {
-              maxRotation: 0,
-              autoSkip: true,
-              maxTicksLimit: 8
-            })
+            }
           }
         }
       }

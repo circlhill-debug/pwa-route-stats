@@ -436,13 +436,13 @@ function moonPhaseEmoji(dateStr) {
   // Magic link
   const linkBtn=$('linkBtn'), linkDlg=$('linkDlg'), sendLink=$('sendLink'), email=$('email');
   linkBtn?.addEventListener('click', ()=> { if (linkDlg?.showModal) linkDlg.showModal(); else linkDlg?.setAttribute('open','open'); });
-  sendLink.addEventListener('click', async (e)=>{
+  sendLink?.addEventListener('click', async (e)=>{
     e.preventDefault();
-    const redirectTo = location.origin + location.pathname;
+    const redirectTo = (location.origin && location.origin !== 'null') ? (location.origin + location.pathname) : (window.location.href.split('#')[0]);
     const { error } = await sb.auth.signInWithOtp({ email: email.value, options:{ emailRedirectTo: redirectTo } });
     if (error) alert(error.message); else { alert('Check your email for the magic link.'); linkDlg.close(); }
   });
-  $('signOut').addEventListener('click', ()=> sb.auth.signOut().then(()=>location.reload()));
+  $('signOut')?.addEventListener('click', ()=> sb.auth.signOut().then(()=>location.reload()));
 
   // === Email + Password auth ===
   const signInBtn = $('signInBtn');

@@ -90,9 +90,7 @@
 </div>
 
 <!-- Version tag -->
-<div style="position:fixed;top:6px;right:12px;color:#9aa0aa;font-size:11px;z-index:9999;">
-  v2025-08-27-patched+setpw
-</div>
+<div id="verTag" style="position:fixed;top:6px;right:12px;color:#9aa0aa;font-size:11px;z-index:9999;">v—</div>
 <header>
   <div class="wrap row" style="justify-content:space-between">
     <!-- CHANGED: dynamic date -->
@@ -191,7 +189,7 @@
 
       <div><label>Parcels</label><input id="parcels" type="number" min="0" value="0"></div>
       <div><label>Letters</label><input id="letters" type="number" min="0" value="0"></div>
-      <div><label>Miles</label><input id="miles" type="number" step="0.1" min="0" value="0"></div>
+      <div><label>Miles</label><input id="miles" type="number" step="0.1" min="0" value="53"></div>
 
       <div>
         <label>Weather</label>
@@ -342,13 +340,13 @@
   const DateTime = luxon.DateTime;
   const dConn=$('dConn'), dAuth=$('dAuth'), dWrite=$('dWrite');
 
-  // NEW: set live header date
+  // NEW: set live header date + version tag
   (function(){
+    const d = DateTime.now().setZone(ZONE);
     const el = document.getElementById('headerDate');
-    if (el) {
-      const d = DateTime.now().setZone(ZONE);
-      el.textContent = d.toFormat('MMM d, yyyy');
-    }
+    if (el) el.textContent = d.toFormat('MMM d, yyyy');
+    const ver = document.getElementById('verTag');
+    if (ver) ver.textContent = 'v' + d.toFormat('yyyy-MM-dd');
   })();
 
   function todayStr(){ return DateTime.now().setZone(ZONE).toISODate(); }
@@ -714,7 +712,7 @@ function moonPhaseEmoji(dateStr) {
     if(!confirm(`Delete your entry for ${d}? This cannot be undone (unless you press Undo).`)) return;
     const { error } = await sb.from('entries').delete().eq('user_id',user.id).eq('work_date',d); if(error){ alert(error.message); return; }
     lastDeleted = rowToDelete; showUndo(true);
-    $('notes').value=''; parcels.value=0; letters.value=0; miles.value=0; offDay.checked=false; start.value='08:00'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; computeBreakdown();
+    $('notes').value=''; parcels.value=0; letters.value=0; miles.value=53; offDay.checked=false; start.value='08:00'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; computeBreakdown();
     const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); alert(`Deleted ${d}. You can Undo now.`);
   });
 
@@ -768,7 +766,8 @@ function moonPhaseEmoji(dateStr) {
     }
   }
 
-  const VERSION_TAG='v2025-08-27-patched';
+  // Dynamic version tag with today's date (for exports)
+  const VERSION_TAG = (function(){ try{ return 'v' + DateTime.now().setZone(ZONE).toFormat('yyyy-MM-dd'); }catch(_){ return 'v-current'; } })();
   function toCsv(rows){
     const headers=['work_date','route','status','start_time','depart_time','return_time','end_time','hours','office_minutes','route_minutes','parcels','letters','miles','mood','notes','weather_json','created_at'];
     const lines=[headers.join(',')];
@@ -803,8 +802,16 @@ function moonPhaseEmoji(dateStr) {
     destroyCharts(); const workRows=rows.filter(r=>r.status!=='off');
     const byDow=Array.from({length:7},()=>({h:0,c:0}));
     for(const r of workRows){ const h=Number(r.hours||0); if(h>0){ const d=dowIndex(r.work_date); byDow[d].h+=h; byDow[d].c++; } }
-    const dowLabels=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; const dowData=byDow.map(x=> x.c? +(x.h/x.c).toFixed(2):0);
-    dowChart=new Chart(document.getElementById('dowChart'),{type:'bar',data:{labels:dowLabels,datasets:[{label:'Avg Total Hours',data:dowData}]},options:{responsive:true,plugins:{legend:{display:false}}}});
+    // Monday-first labels and data ordering (Mon..Sun)
+    const dowLabels=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const order=[1,2,3,4,5,6,0];
+    const perDow=byDow.map(x=> x.c? +(x.h/x.c).toFixed(2):0);
+    const dowData=order.map(i=> perDow[i]);
+    dowChart=new Chart(document.getElementById('dowChart'),{
+      type:'bar',
+      data:{ labels:dowLabels, datasets:[{label:'Avg Total Hours',data:dowData}] },
+      options:{ responsive:true, plugins:{ legend:{ display:false } } }
+    });
     const sortedWork=[...workRows].sort((a,b)=> a.work_date.localeCompare(b.work_date)); const labels=sortedWork.map(r=> r.work_date);
     parcelsChart=new Chart(document.getElementById('parcelsChart'),{
       type:'line',
@@ -1044,7 +1051,7 @@ $('todayLettersDelta').textContent = fmtTiny(tdl);
     $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); computeBreakdown();
   })();
 
-  console.log('Route Stats loaded — v2025-08-27-patched+setpw');
+  console.log('Route Stats loaded —', VERSION_TAG);
 </script>
 <!-- Register the service worker for offline support -->
 <script>

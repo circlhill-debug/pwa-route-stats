@@ -328,6 +328,15 @@
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91d2tkdGlpeGtheWRydGZkaG5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMDc0NDksImV4cCI6MjA3MDU4MzQ0OX0.KI-dYG5_A8jvPEHSog3wlnLbIGYIHQR_4ztXHL2SzIg';
   const ZONE = 'America/Detroit';
 
+  // Surface any runtime errors so we know exactly what's breaking
+  window.addEventListener('error', (e) => {
+    const msg = e?.message || 'Unknown error';
+    const diag = document.getElementById('diag');
+    if (diag) diag.textContent = 'JS error: ' + msg;
+    console.error('Route Stats runtime error:', e?.error || msg);
+    alert('Route Stats error: ' + msg);
+  });
+
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
   function loadFlags(){
@@ -426,7 +435,7 @@ function moonPhaseEmoji(dateStr) {
 
   // Magic link
   const linkBtn=$('linkBtn'), linkDlg=$('linkDlg'), sendLink=$('sendLink'), email=$('email');
-  linkBtn.addEventListener('click', ()=> linkDlg.showModal());
+  linkBtn?.addEventListener('click', ()=> { if (linkDlg?.showModal) linkDlg.showModal(); else linkDlg?.setAttribute('open','open'); });
   sendLink.addEventListener('click', async (e)=>{
     e.preventDefault();
     const redirectTo = location.origin + location.pathname;
@@ -448,7 +457,7 @@ function moonPhaseEmoji(dateStr) {
     authMsg.textContent = '';
     loginEmail.value = loginEmail.value || '';
     loginPass.value = '';
-    pwDlg.showModal();
+    if (pwDlg?.showModal) pwDlg.showModal(); else pwDlg?.setAttribute('open','open');
   });
 
   doLogin?.addEventListener('click', async (e)=>{
@@ -492,7 +501,7 @@ function moonPhaseEmoji(dateStr) {
     setPwMsg.textContent = '';
     newPass.value = '';
     newPass2.value = '';
-    setPwDlg.showModal();
+    if (setPwDlg?.showModal) setPwDlg.showModal(); else setPwDlg?.setAttribute('open','open');
   });
 
   doSetPw?.addEventListener('click', async (e)=>{
@@ -519,7 +528,7 @@ function moonPhaseEmoji(dateStr) {
     // populate from FLAGS
     flagWeekdayTicks.checked = !!FLAGS.weekdayTicks;
     flagProgressivePills.checked = !!FLAGS.progressivePills;
-    settingsDlg.showModal();
+    if (settingsDlg?.showModal) settingsDlg.showModal(); else settingsDlg?.setAttribute('open','open');
   });
 
   saveSettings?.addEventListener('click', (e)=>{

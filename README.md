@@ -18,3 +18,6 @@ Troubleshooting
 - If the page doesn’t load: ensure the terminal shows “Starting local server…” and visit the printed URL.
 - If a different app already uses port 8000, the script picks the next free port automatically.
 - If double‑clicking the script doesn’t run, right‑click → Open. You may need to allow it in System Settings → Privacy & Security.
+
+Project Plan
+- See `project-plan.md:1` for the roadmap and implementation phases.

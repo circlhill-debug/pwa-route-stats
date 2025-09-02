@@ -59,5 +59,7 @@ if command -v php >/dev/null 2>&1; then
   exec php -S "localhost:$PORT"
 fi
 
-echo "No local server runtime found. Please install Python 3 from https://www.python.org/downloads/"
+echo "No local server runtime found (Python/Ruby/PHP)." >&2
+echo "Tip: Install Python 3 from https://www.python.org/downloads/" >&2
+read -p $'Press Enter to close this window…' _
 exit 1

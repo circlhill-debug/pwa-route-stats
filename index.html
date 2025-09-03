@@ -347,12 +347,15 @@
   (function(){
     function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded', fn); }
     ready(function(){
-      var missing=[]; if(!window.luxon) missing.push('Luxon'); if(!window.Chart) missing.push('Chart.js'); if(!window.supabase) missing.push('Supabase');
-      if(missing.length){
+      var missingCore=[]; if(!window.luxon) missingCore.push('Luxon'); if(!window.supabase) missingCore.push('Supabase');
+      if(missingCore.length){
         var div=document.createElement('div');
         div.style.cssText='position:fixed;left:0;right:0;bottom:0;background:#c62828;color:#fff;padding:10px 14px;z-index:99999;font:14px/1.4 system-ui';
-        div.textContent='Missing libraries: '+missing.join(', ')+'. Run "Fetch Vendor Libraries.command" to download local copies, then reload.';
+        div.textContent='Missing libraries: '+missingCore.join(', ')+'. Run "Fetch Vendor Libraries.command" to download local copies, then reload.';
         document.body.appendChild(div);
+      }
+      if(!window.Chart){
+        console.warn('Chart.js missing — charts disabled. Everything else should work.');
       }
     });
   })();

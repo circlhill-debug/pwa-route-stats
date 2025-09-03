@@ -156,6 +156,24 @@
           <small class="muted">vs past same weekday (worked)</small>
         </div>
       </div>
+      <!-- Advanced Weekly Metrics (Phase 1) -->
+      <div class="row" style="gap:8px;align-items:stretch">
+        <div class="stat">
+          <small>Weekly Hours Trend</small>
+          <div><span id="advHoursTrend" class="pill">—</span></div>
+          <small class="muted">day-by-day vs last week</small>
+        </div>
+        <div class="stat">
+          <small>Weekly Parcels Trend</small>
+          <div><span id="advParcelsTrend" class="pill">—</span></div>
+          <small class="muted">day-by-day vs last week</small>
+        </div>
+        <div class="stat">
+          <small>Weekly Letters Trend</small>
+          <div><span id="advLettersTrend" class="pill">—</span></div>
+          <small class="muted">day-by-day vs last week</small>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -999,6 +1017,72 @@ const setPill=(el,delta)=>{
     setPill($('wkHoursDelta'),   dh);
     setPill($('wkParcelsDelta'), dp);
     setPill($('wkLettersDelta'), dl);
+
+    // ===== Advanced Weekly Metrics (Phase 1) =====
+    // Day-by-day comparison Mon..today vs same weekday last week,
+    // then compute weighted average and cumulative impact (percent).
+    const dayIndexToday = (today.weekday + 6) % 7; // Mon=0..Sun=6
+
+    // Build arrays for this week and last week by weekday index (Mon..Sun)
+    const toWeekArray = (from, to) => {
+      const out = Array.from({ length: 7 }, () => ({ h: 0, p: 0, l: 0 }));
+      const inRange = (r) => {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        return d >= from && d <= to;
+      };
+      workRows.filter(inRange).forEach(r => {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        const idx = (d.weekday + 6) % 7; // Mon=0
+        const h = +r.hours || 0;
+        const p = +r.parcels || 0;
+        const l = +r.letters || 0;
+        out[idx].h += h; out[idx].p += p; out[idx].l += l;
+      });
+      return out;
+    };
+    const thisWeek = toWeekArray(weekStart, weekEnd);
+    const lastWeek = toWeekArray(prevWeekStart, prevWeekEnd);
+
+    const pct = (a, b) => (a == null || b == null || b === 0) ? null : ((a - b) / b) * 100;
+    const dailyDeltas = (key) => {
+      const arr = [];
+      for (let i = 0; i <= dayIndexToday && i < 7; i++) {
+        const cur = thisWeek[i][key];
+        const base = lastWeek[i][key];
+        arr.push(pct(cur || 0, base || 0));
+      }
+      return arr; // may include nulls
+    };
+    const dH = dailyDeltas('h');
+    const dP = dailyDeltas('p');
+    const dL = dailyDeltas('l');
+
+    const weightedAvg = (arr) => {
+      let s = 0, wsum = 0;
+      for (let i = 0; i < arr.length; i++) {
+        const v = arr[i]; if (v == null || !isFinite(v)) continue;
+        const w = i + 1; s += v * w; wsum += w;
+      }
+      return wsum ? (s / wsum) : null;
+    };
+    const cumulative = (arr) => {
+      let s = 0, seen = false;
+      for (const v of arr) { if (v == null || !isFinite(v)) continue; s += v; seen = true; }
+      return seen ? s : null;
+    };
+
+    const advH = weightedAvg(dH);
+    const advP = weightedAvg(dP);
+    const advL = weightedAvg(dL);
+    const cumH = cumulative(dH);
+    const cumP = cumulative(dP);
+    const cumL = cumulative(dL);
+
+    // Display as combined cue: prefer weighted average; fallback to cumulative
+    const pick = (w, c) => (w != null ? w : c);
+    setPill($('advHoursTrend'),   pick(advH, cumH));
+    setPill($('advParcelsTrend'), pick(advP, cumP));
+    setPill($('advLettersTrend'), pick(advL, cumL));
 
     // Today vs same-weekday baseline (worked days only)
     const todayIso = today.toISODate();

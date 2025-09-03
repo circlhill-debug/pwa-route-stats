@@ -335,9 +335,28 @@
 
 <button class="fab" id="fab">+ Add Entry</button>
 
+<!-- Prefer local vendored libraries; fall back to CDN -->
+<script src="vendor/luxon.min.js"></script>
+<script src="vendor/chart.umd.js"></script>
+<script src="vendor/supabase.js"></script>
 <script src="https://unpkg.com/luxon@3/build/global/luxon.min.js"></script>
 <script src="https://unpkg.com/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+  // If libs failed to load, show a clear banner with next step
+  (function(){
+    function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded', fn); }
+    ready(function(){
+      var missing=[]; if(!window.luxon) missing.push('Luxon'); if(!window.Chart) missing.push('Chart.js'); if(!window.supabase) missing.push('Supabase');
+      if(missing.length){
+        var div=document.createElement('div');
+        div.style.cssText='position:fixed;left:0;right:0;bottom:0;background:#c62828;color:#fff;padding:10px 14px;z-index:99999;font:14px/1.4 system-ui';
+        div.textContent='Missing libraries: '+missing.join(', ')+'. Run "Fetch Vendor Libraries.command" to download local copies, then reload.';
+        document.body.appendChild(div);
+      }
+    });
+  })();
+  </script>
 <script>
   // ==== SUPABASE CONFIG ====
   const SUPABASE_URL  = 'https://ouwkdtiixkaydrtfdhnh.supabase.co';

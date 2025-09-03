@@ -156,6 +156,24 @@
           <small class="muted">vs past same weekday (worked)</small>
         </div>
       </div>
+      <!-- Advanced Weekly Metrics (Phase 1) -->
+      <div class="row" style="gap:8px;align-items:stretch">
+        <div class="stat">
+          <small>Weekly Hours Trend</small>
+          <div><span id="advHoursTrend" class="pill">—</span></div>
+          <small class="muted">day-by-day vs last week</small>
+        </div>
+        <div class="stat">
+          <small>Weekly Parcels Trend</small>
+          <div><span id="advParcelsTrend" class="pill">—</span></div>
+          <small class="muted">day-by-day vs last week</small>
+        </div>
+        <div class="stat">
+          <small>Weekly Letters Trend</small>
+          <div><span id="advLettersTrend" class="pill">—</span></div>
+          <small class="muted">day-by-day vs last week</small>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -317,11 +335,51 @@
 
 <button class="fab" id="fab">+ Add Entry</button>
 
-<script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Prefer local vendored libraries; fall back to CDN -->
+<script src="vendor/luxon.min.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="https://unpkg.com/luxon@3/build/global/luxon.min.js"></script>
+<!-- Chart.js intentionally not loaded statically to avoid parse errors on blocked/truncated networks. Charts are optional. -->
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+  // If libs failed to load, show a clear banner with next step
+  (function(){
+    function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded', fn); }
+    ready(function(){
+      var missingCore=[]; if(!window.luxon) missingCore.push('Luxon'); if(!window.supabase) missingCore.push('Supabase');
+      if(missingCore.length){
+        var div=document.createElement('div');
+        div.style.cssText='position:fixed;left:0;right:0;bottom:0;background:#c62828;color:#fff;padding:10px 14px;z-index:99999;font:14px/1.4 system-ui';
+        div.textContent='Missing libraries: '+missingCore.join(', ')+'. Run "Fetch Vendor Libraries.command" to download local copies, then reload.';
+        document.body.appendChild(div);
+      }
+      if(!window.Chart){
+        console.warn('Chart.js missing — charts disabled. Everything else should work.');
+      }
+    });
+  })();
+  </script>
+<script>
+  // Global error handler to surface issues in the UI
+  (function(){
+    window.addEventListener('error', function(e){
+      try{
+        var div=document.createElement('div');
+        div.style.cssText='position:fixed;left:0;right:0;top:0;background:#b00020;color:#fff;padding:10px 14px;z-index:100000;font:13px/1.4 system-ui';
+        var loc = '';
+        if (e && (e.filename || e.lineno)) {
+          loc = ' (' + (e.filename||'inline') + ':' + (e.lineno||'?') + ':' + (e.colno||'?') + ')';
+        }
+        div.textContent='JavaScript error: ' + (e && e.message ? e.message : 'unknown') + loc;
+        document.body.appendChild(div);
+        console.error('[RouteStats] error', e);
+      }catch(_){ /* ignore */ }
+    }, true);
+  })();
+</script>
 <script>
   // ==== SUPABASE CONFIG ====
+  console.log('[RouteStats] boot start');
   const SUPABASE_URL  = 'https://ouwkdtiixkaydrtfdhnh.supabase.co';
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91d2tkdGlpeGtheWRydGZkaG5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMDc0NDksImV4cCI6MjA3MDU4MzQ0OX0.KI-dYG5_A8jvPEHSog3wlnLbIGYIHQR_4ztXHL2SzIg';
   const ZONE = 'America/Detroit';
@@ -799,6 +857,8 @@ function moonPhaseEmoji(dateStr) {
 
   let dowChart, parcelsChart, lettersChart; function destroyCharts(){ [dowChart,parcelsChart,lettersChart].forEach(c=>c&&c.destroy()); }
   function buildCharts(rows){
+    // If Chart.js isn't available, skip chart rendering so the rest of the app works
+    if (!window.Chart) { console.warn('Chart.js missing — skipping charts'); return; }
     destroyCharts(); const workRows=rows.filter(r=>r.status!=='off');
     const byDow=Array.from({length:7},()=>({h:0,c:0}));
     for(const r of workRows){ const h=Number(r.hours||0); if(h>0){ const d=dowIndex(r.work_date); byDow[d].h+=h; byDow[d].c++; } }
@@ -1000,6 +1060,71 @@ const setPill=(el,delta)=>{
     setPill($('wkParcelsDelta'), dp);
     setPill($('wkLettersDelta'), dl);
 
+    // ===== Advanced Weekly Metrics (Phase 1) =====
+    // Day-by-day comparison Mon..today vs same weekday last week,
+    // then compute weighted average and cumulative impact (percent).
+    const dayIndexToday = (today.weekday + 6) % 7; // Mon=0..Sun=6
+
+    // Build arrays for this week and last week by weekday index (Mon..Sun)
+    const toWeekArray = (from, to) => {
+      const out = Array.from({ length: 7 }, () => ({ h: 0, p: 0, l: 0 }));
+      const inRange = (r) => {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        return d >= from && d <= to;
+      };
+      workRows.filter(inRange).forEach(r => {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        const idx = (d.weekday + 6) % 7; // Mon=0
+        const h = +r.hours || 0;
+        const p = +r.parcels || 0;
+        const l = +r.letters || 0;
+        out[idx].h += h; out[idx].p += p; out[idx].l += l;
+      });
+      return out;
+    };
+    const thisWeek = toWeekArray(weekStart, weekEnd);
+    const lastWeek = toWeekArray(prevWeekStart, prevWeekEnd);
+
+    const dailyDeltas = (key) => {
+      const arr = [];
+      for (let i = 0; i <= dayIndexToday && i < 7; i++) {
+        const cur = thisWeek[i][key];
+        const base = lastWeek[i][key];
+        arr.push(pct(cur || 0, base || 0));
+      }
+      return arr; // may include nulls
+    };
+    const dH = dailyDeltas('h');
+    const dP = dailyDeltas('p');
+    const dL = dailyDeltas('l');
+
+    const weightedAvg = (arr) => {
+      let s = 0, wsum = 0;
+      for (let i = 0; i < arr.length; i++) {
+        const v = arr[i]; if (v == null || !isFinite(v)) continue;
+        const w = i + 1; s += v * w; wsum += w;
+      }
+      return wsum ? (s / wsum) : null;
+    };
+    const cumulative = (arr) => {
+      let s = 0, seen = false;
+      for (const v of arr) { if (v == null || !isFinite(v)) continue; s += v; seen = true; }
+      return seen ? s : null;
+    };
+
+    const advH = weightedAvg(dH);
+    const advP = weightedAvg(dP);
+    const advL = weightedAvg(dL);
+    const cumH = cumulative(dH);
+    const cumP = cumulative(dP);
+    const cumL = cumulative(dL);
+
+    // Display as combined cue: prefer weighted average; fallback to cumulative
+    const pick = (w, c) => (w != null ? w : c);
+    setPill($('advHoursTrend'),   pick(advH, cumH));
+    setPill($('advParcelsTrend'), pick(advP, cumP));
+    setPill($('advLettersTrend'), pick(advL, cumL));
+
     // Today vs same-weekday baseline (worked days only)
     const todayIso = today.toISODate();
     const todaysRow = workRows.find(r => r.work_date === todayIso);
@@ -1030,7 +1155,8 @@ $('todayLettersDelta').textContent = fmtTiny(tdl);
     if (tp) { tp.className='pill'; tp.style.color='var(--text)'; tp.style.background='transparent'; tp.style.borderColor='var(--border)'; }
     if (tl) { tl.className='pill'; tl.style.color='var(--text)'; tl.style.background='transparent'; tl.style.borderColor='var(--border)'; }
   }
-})();}
+})();
+}
 
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{

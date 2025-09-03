@@ -1043,7 +1043,6 @@ const setPill=(el,delta)=>{
     const thisWeek = toWeekArray(weekStart, weekEnd);
     const lastWeek = toWeekArray(prevWeekStart, prevWeekEnd);
 
-    const pct = (a, b) => (a == null || b == null || b === 0) ? null : ((a - b) / b) * 100;
     const dailyDeltas = (key) => {
       const arr = [];
       for (let i = 0; i <= dayIndexToday && i < 7; i++) {
@@ -1114,7 +1113,7 @@ $('todayLettersDelta').textContent = fmtTiny(tdl);
     if (tp) { tp.className='pill'; tp.style.color='var(--text)'; tp.style.background='transparent'; tp.style.borderColor='var(--border)'; }
     if (tl) { tl.className='pill'; tl.style.color='var(--text)'; tl.style.background='transparent'; tl.style.borderColor='var(--border)'; }
   }
-})();}
+})();
 
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{

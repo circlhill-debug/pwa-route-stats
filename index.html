@@ -361,7 +361,21 @@
   })();
   </script>
 <script>
+  // Global error handler to surface issues in the UI
+  (function(){
+    window.addEventListener('error', function(e){
+      try{
+        var div=document.createElement('div');
+        div.style.cssText='position:fixed;left:0;right:0;top:0;background:#b00020;color:#fff;padding:10px 14px;z-index:100000;font:13px/1.4 system-ui';
+        div.textContent='JavaScript error: ' + (e && e.message ? e.message : 'unknown');
+        document.body.appendChild(div);
+      }catch(_){ /* ignore */ }
+    });
+  })();
+</script>
+<script>
   // ==== SUPABASE CONFIG ====
+  console.log('[RouteStats] boot start');
   const SUPABASE_URL  = 'https://ouwkdtiixkaydrtfdhnh.supabase.co';
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91d2tkdGlpeGtheWRydGZkaG5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMDc0NDksImV4cCI6MjA3MDU4MzQ0OX0.KI-dYG5_A8jvPEHSog3wlnLbIGYIHQR_4ztXHL2SzIg';
   const ZONE = 'America/Detroit';

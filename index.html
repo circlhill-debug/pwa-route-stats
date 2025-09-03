@@ -366,10 +366,15 @@
       try{
         var div=document.createElement('div');
         div.style.cssText='position:fixed;left:0;right:0;top:0;background:#b00020;color:#fff;padding:10px 14px;z-index:100000;font:13px/1.4 system-ui';
-        div.textContent='JavaScript error: ' + (e && e.message ? e.message : 'unknown');
+        var loc = '';
+        if (e && (e.filename || e.lineno)) {
+          loc = ' (' + (e.filename||'inline') + ':' + (e.lineno||'?') + ':' + (e.colno||'?') + ')';
+        }
+        div.textContent='JavaScript error: ' + (e && e.message ? e.message : 'unknown') + loc;
         document.body.appendChild(div);
+        console.error('[RouteStats] error', e);
       }catch(_){ /* ignore */ }
-    });
+    }, true);
   })();
 </script>
 <script>
@@ -1151,6 +1156,7 @@ $('todayLettersDelta').textContent = fmtTiny(tdl);
     if (tl) { tl.className='pill'; tl.style.color='var(--text)'; tl.style.background='transparent'; tl.style.borderColor='var(--border)'; }
   }
 })();
+}
 
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{

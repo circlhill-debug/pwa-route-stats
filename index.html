@@ -836,6 +836,8 @@ function moonPhaseEmoji(dateStr) {
 
   let dowChart, parcelsChart, lettersChart; function destroyCharts(){ [dowChart,parcelsChart,lettersChart].forEach(c=>c&&c.destroy()); }
   function buildCharts(rows){
+    // If Chart.js isn't available, skip chart rendering so the rest of the app works
+    if (!window.Chart) { console.warn('Chart.js missing — skipping charts'); return; }
     destroyCharts(); const workRows=rows.filter(r=>r.status!=='off');
     const byDow=Array.from({length:7},()=>({h:0,c:0}));
     for(const r of workRows){ const h=Number(r.hours||0); if(h>0){ const d=dowIndex(r.work_date); byDow[d].h+=h; byDow[d].c++; } }

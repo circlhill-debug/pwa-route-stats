@@ -337,10 +337,9 @@
 
 <!-- Prefer local vendored libraries; fall back to CDN -->
 <script src="vendor/luxon.min.js"></script>
-<script src="vendor/chart.umd.js"></script>
 <script src="vendor/supabase.js"></script>
 <script src="https://unpkg.com/luxon@3/build/global/luxon.min.js"></script>
-<script src="https://unpkg.com/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- Chart.js intentionally not loaded statically to avoid parse errors on blocked/truncated networks. Charts are optional. -->
 <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
   // If libs failed to load, show a clear banner with next step

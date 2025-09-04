@@ -144,19 +144,7 @@
           <small>Letters (week)</small>
           <div><strong id="wkLetters">—</strong> <span id="wkLettersDelta" class="pill">—</span></div>
         </div>
-        <!-- Today vs same-weekday pills -->
-        <div class="stat">
-          <small>Today Parcels Δ</small>
-          <div><strong id="todayParcelsDelta">—</strong></div>
-          <small class="muted">vs past same weekday (worked)</small>
-        </div>
-        <div class="stat">
-          <small>Today Letters Δ</small>
-          <div><strong id="todayLettersDelta">—</strong></div>
-          <small class="muted">vs past same weekday (worked)</small>
-        </div>
-      </div>
-      <!-- Advanced Weekly Metrics (Phase 1) -->
+      <!-- Advanced Weekly Metrics (Phase 1) — moved above today's deltas -->
       <div class="row" style="gap:8px;align-items:stretch">
         <div class="stat">
           <small>Weekly Hours Trend</small>
@@ -174,7 +162,18 @@
           <small class="muted">day-by-day vs last week</small>
         </div>
       </div>
-    </div>
+      <!-- Today vs same-weekday pills -->
+      <div class="stat">
+        <small>Today Parcels Δ</small>
+        <div><strong id="todayParcelsDelta">—</strong></div>
+        <small class="muted">vs past same weekday (worked)</small>
+      </div>
+      <div class="stat">
+        <small>Today Letters Δ</small>
+        <div><strong id="todayLettersDelta">—</strong></div>
+        <small class="muted">vs past same weekday (worked)</small>
+      </div>
+      </div>
   </section>
 
   <!-- FORM -->
@@ -337,6 +336,7 @@
 
 <!-- Prefer local vendored libraries; fall back to CDN -->
 <script src="vendor/luxon.min.js"></script>
+<script src="vendor/chart.umd.js"></script>
 <script src="vendor/supabase.js"></script>
 <script src="https://unpkg.com/luxon@3/build/global/luxon.min.js"></script>
 <!-- Chart.js intentionally not loaded statically to avoid parse errors on blocked/truncated networks. Charts are optional. -->

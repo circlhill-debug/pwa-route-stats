@@ -1045,20 +1045,20 @@ function colorForDelta(pct){
 const setPill=(el,delta)=>{
   el.textContent = fmt(delta);
   el.className = 'pill';
-  if (FLAGS.progressivePills) {
-    const { fg, bg, bc } = colorForDelta(delta);
-    el.style.color = fg;
-    el.style.background = bg;
-    el.style.borderColor = bc;
-  } else {
-    el.style.color = 'var(--text)';
-    el.style.background = 'transparent';
-    el.style.borderColor = 'var(--border)';
-  }
+  // Minimal style: color only, no background tile/border
+  const { fg } = colorForDelta(delta || 0);
+  el.style.color = fg || 'var(--text)';
+  el.style.background = 'transparent';
+  el.style.borderColor = 'transparent';
 };
     setPill($('wkHoursDelta'),   dh);
     setPill($('wkParcelsDelta'), dp);
     setPill($('wkLettersDelta'), dl);
+    // Add concise tooltips
+    const setTip=(id,text)=>{ const el=$(id); if(el) el.title=text; };
+    setTip('wkHoursDelta',   'Weekly Hours Δ: blend of last week vs prior (per-workday) and this week vs last week so far');
+    setTip('wkParcelsDelta', 'Weekly Parcels Δ: blend of last week vs prior (per-workday) and this week vs last week so far');
+    setTip('wkLettersDelta', 'Weekly Letters Δ: blend of last week vs prior (per-workday) and this week vs last week so far');
 
     // ===== Advanced Weekly Metrics (Phase 1) =====
     // Day-by-day comparison Mon..today vs same weekday last week,
@@ -1124,6 +1124,9 @@ const setPill=(el,delta)=>{
     setPill($('advHoursTrend'),   pick(advH, cumH));
     setPill($('advParcelsTrend'), pick(advP, cumP));
     setPill($('advLettersTrend'), pick(advL, cumL));
+    setTip('advHoursTrend',   'Weekly Hours Trend: day-by-day vs last week (weighted; later days count more)');
+    setTip('advParcelsTrend', 'Weekly Parcels Trend: day-by-day vs last week (weighted; later days count more)');
+    setTip('advLettersTrend', 'Weekly Letters Trend: day-by-day vs last week (weighted; later days count more)');
 
     // Today vs same-weekday baseline (worked days only)
     const todayIso = today.toISODate();
@@ -1141,21 +1144,18 @@ const setPill=(el,delta)=>{
     document.querySelector('#todayLettersDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs past ${wkNames[dow]}s (worked)`));
     const fmtTiny=p=> p==null? '—' : (p>=0? `↑ ${p.toFixed(0)}%` : `↓ ${Math.abs(p).toFixed(0)}%`);
     $('todayParcelsDelta').textContent = fmtTiny(tdp);
-$('todayLettersDelta').textContent = fmtTiny(tdl);
-// Apply (or disable) progressive colors to today's deltas based on flag
-(() => {
-  const tp = document.getElementById('todayParcelsDelta');
-  const tl = document.getElementById('todayLettersDelta');
-  if (FLAGS.progressivePills) {
-    const { fg:fgP, bg:bgP, bc:bcP } = colorForDelta(tdp);
-    const { fg:fgL, bg:bgL, bc:bcL } = colorForDelta(tdl);
-    if (tp) { tp.className='pill'; tp.style.color=fgP; tp.style.background=bgP; tp.style.borderColor=bcP; }
-    if (tl) { tl.className='pill'; tl.style.color=fgL; tl.style.background=bgL; tl.style.borderColor=bcL; }
-  } else {
-    if (tp) { tp.className='pill'; tp.style.color='var(--text)'; tp.style.background='transparent'; tp.style.borderColor='var(--border)'; }
-    if (tl) { tl.className='pill'; tl.style.color='var(--text)'; tl.style.background='transparent'; tl.style.borderColor='var(--border)'; }
-  }
-})();
+    $('todayLettersDelta').textContent = fmtTiny(tdl);
+    setTip('todayParcelsDelta', 'Today vs past same weekday (worked days only) — Parcels');
+    setTip('todayLettersDelta', 'Today vs past same weekday (worked days only) — Letters');
+    // Minimal color-only styling for today's deltas
+    (() => {
+      const tp = document.getElementById('todayParcelsDelta');
+      const tl = document.getElementById('todayLettersDelta');
+      const { fg:fgP } = colorForDelta(tdp);
+      const { fg:fgL } = colorForDelta(tdl);
+      if (tp) { tp.className='pill'; tp.style.color=fgP; tp.style.background='transparent'; tp.style.borderColor='transparent'; }
+      if (tl) { tl.className='pill'; tl.style.color=fgL; tl.style.background='transparent'; tl.style.borderColor='transparent'; }
+    })();
 }
 
   try{

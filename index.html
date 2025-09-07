@@ -314,6 +314,26 @@
   <section class="card"><h3 style="margin:0 0 8px 0">Parcels Over Time (worked days)</h3><canvas id="parcelsChart" height="180"></canvas></section>
   <section class="card"><h3 style="margin:0 0 8px 0">Letters Over Time (worked days)</h3><canvas id="lettersChart" height="180"></canvas></section>
 
+  <!-- Monthly Glance (preview) — behind feature flag -->
+  <section class="card" id="monthlyGlanceCard" style="grid-column:1/-1; display:none">
+    <h3 style="margin:0 0 8px 0">Monthly Glance (preview)</h3>
+    <small class="muted">Last 4 weeks (Mon..Sun). Charts coming soon.</small>
+    <div class="grid" style="margin-top:8px; gap:8px">
+      <div>
+        <label>Hours</label>
+        <div id="mgHours" class="row" style="color:var(--muted)">—</div>
+      </div>
+      <div>
+        <label>Parcels</label>
+        <div id="mgParcels" class="row" style="color:var(--muted)">—</div>
+      </div>
+      <div>
+        <label>Letters</label>
+        <div id="mgLetters" class="row" style="color:var(--muted)">—</div>
+      </div>
+    </div>
+  </section>
+
   <!-- TABLE -->
   <section class="card" style="grid-column:1/-1">
     <div class="row" style="justify-content:space-between;gap:10px;flex-wrap:wrap">
@@ -380,6 +400,7 @@
     <h3 style="margin:0">Settings</h3>
     <label class="pill"><input id="flagWeekdayTicks" type="checkbox"> Show weekday + short date on line charts</label>
     <label class="pill"><input id="flagProgressivePills" type="checkbox"> Progressive color pills for deltas</label>
+    <label class="pill"><input id="flagMonthlyGlance" type="checkbox"> Monthly Glance (preview): 4-week stacked sparklines</label>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="ghost" value="cancel">Close</button>
       <button id="saveSettings">Save</button>
@@ -443,8 +464,8 @@
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:true }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:true, monthlyGlance:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:true, monthlyGlance:false }; }
   }
   function saveFlags(f){ localStorage.setItem(FLAG_KEY, JSON.stringify(f)); }
   let FLAGS = loadFlags();
@@ -575,7 +596,7 @@ function moonPhaseEmoji(dateStr) {
     }
     authMsg.textContent = 'Signed in!';
     pwDlg.close();
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows);
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows);
   });
 
   doSignup?.addEventListener('click', async ()=>{
@@ -622,12 +643,14 @@ function moonPhaseEmoji(dateStr) {
   const btnSettings = document.getElementById('btnSettings');
   const flagWeekdayTicks = document.getElementById('flagWeekdayTicks');
   const flagProgressivePills = document.getElementById('flagProgressivePills');
+  const flagMonthlyGlance = document.getElementById('flagMonthlyGlance');
   const saveSettings = document.getElementById('saveSettings');
 
   btnSettings?.addEventListener('click', ()=>{
     // populate from FLAGS
     flagWeekdayTicks.checked = !!FLAGS.weekdayTicks;
     flagProgressivePills.checked = !!FLAGS.progressivePills;
+    if (flagMonthlyGlance) flagMonthlyGlance.checked = !!FLAGS.monthlyGlance;
     settingsDlg.showModal();
   });
 
@@ -635,11 +658,13 @@ function moonPhaseEmoji(dateStr) {
     e.preventDefault();
     FLAGS.weekdayTicks = !!flagWeekdayTicks.checked;
     FLAGS.progressivePills = !!flagProgressivePills.checked;
+    if (flagMonthlyGlance) FLAGS.monthlyGlance = !!flagMonthlyGlance.checked;
     saveFlags(FLAGS);
     settingsDlg.close();
     // Re-render visuals affected by flags
     buildCharts(allRows||[]);
     buildSnapshot(allRows||[]);
+    buildMonthlyGlance(allRows||[]);
   });
 
   sb.auth.onAuthStateChange((_evt, session) => {
@@ -807,7 +832,7 @@ function moonPhaseEmoji(dateStr) {
       dWrite.textContent = error ? 'Failed' : 'OK'; if (error){ alert(error.message); return; }
       clone.textContent = 'Update'; clone.disabled = true; clone.classList.add('saving','savedFlash');
       setTimeout(()=>{ clone.disabled=false; clone.classList.remove('saving'); }, 400); setTimeout(()=> clone.classList.remove('savedFlash'), 700);
-      const rows = await fetchEntries(); allRows = rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows);
+      const rows = await fetchEntries(); allRows = rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows);
       editingKey = { user_id:user.id, work_date:date.value }; clone.classList.remove('ghost');
     });
   })();
@@ -827,14 +852,14 @@ function moonPhaseEmoji(dateStr) {
     const { error } = await sb.from('entries').delete().eq('user_id',user.id).eq('work_date',d); if(error){ alert(error.message); return; }
     lastDeleted = rowToDelete; showUndo(true);
     $('notes').value=''; parcels.value=0; letters.value=0; miles.value=53; offDay.checked=false; start.value='08:00'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; computeBreakdown();
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); alert(`Deleted ${d}. You can Undo now.`);
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); alert(`Deleted ${d}. You can Undo now.`);
   });
 
   btnUndoDelete?.addEventListener('click', async ()=>{
     if(!lastDeleted){ showUndo(false); return; }
     dWrite.textContent='—'; const { error } = await sb.from('entries').insert(lastDeleted);
     if(error){ alert('Undo failed: '+error.message); return; }
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows);
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows);
     alert(`Restored ${lastDeleted.work_date}.`); $('date').value = lastDeleted.work_date; await loadByDate(); lastDeleted=null; showUndo(false);
   });
 
@@ -908,7 +933,7 @@ function moonPhaseEmoji(dateStr) {
     const rows=[]; for(let i=1;i<lines.length;i++){ const cols=splitCsv(lines[i]); const get=(name)=> unq(cols[idx(name)] ?? ''); const r={ user_id:user.id, work_date:get('work_date'), route:'R1', status:get('status')||'worked', start_time:get('start_time')||null, depart_time:get('depart_time')||null, return_time:get('return_time')||null, end_time:get('end_time')||null, hours:+(get('hours')||0)||null, office_minutes:get('office_minutes')||null, route_minutes:get('route_minutes')||null, parcels:+(get('parcels')||0)||0, letters:+(get('letters')||0)||0, miles:+(get('miles')||0)||0, mood:get('mood')||null, notes:get('notes')||null, weather_json:get('weather_json')||null }; if(r.work_date) rows.push(r); }
     if(!rows.length){ alert('No rows detected'); return; }
     const chunk=200; for(let i=0;i<rows.length;i+=chunk){ const slice=rows.slice(i,i+chunk); const { error } = await sb.from('entries').insert(slice); if(error){ alert('Import failed: '+error.message); return; } }
-    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); alert(`Imported ${rows.length} rows into this account.`);
+    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); alert(`Imported ${rows.length} rows into this account.`);
   });
 
   let dowChart, parcelsChart, lettersChart; function destroyCharts(){ [dowChart,parcelsChart,lettersChart].forEach(c=>c&&c.destroy()); }
@@ -1363,7 +1388,7 @@ const setPill=(el,delta)=>{
 
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{
-      const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows);
+      const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows);
     }).subscribe();
   }catch(e){ console.warn('Realtime not enabled:', e?.message||e); }
 
@@ -1403,7 +1428,7 @@ const setPill=(el,delta)=>{
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); computeBreakdown();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); computeBreakdown();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);
@@ -1416,6 +1441,43 @@ const setPill=(el,delta)=>{
         console.error('Service worker registration failed:', err);
       });
     });
+  }
+
+  // Monthly Glance (preview): compute last 4 weeks totals and show as text when enabled
+  function buildMonthlyGlance(rows){
+    const card = document.getElementById('monthlyGlanceCard');
+    if (!card) return;
+    if (!FLAGS.monthlyGlance) { card.style.display='none'; return; }
+    card.style.display='block';
+    const today = DateTime.now().setZone(ZONE);
+    const weekStart0 = startOfWeekMonday(today);
+    const weekEnd0   = today.endOf('day');
+    const weekStart1 = startOfWeekMonday(today.minus({weeks:1}));
+    const weekEnd1   = endOfWeekSunday(today.minus({weeks:1}));
+    const weekStart2 = startOfWeekMonday(today.minus({weeks:2}));
+    const weekEnd2   = endOfWeekSunday(today.minus({weeks:2}));
+    const weekStart3 = startOfWeekMonday(today.minus({weeks:3}));
+    const weekEnd3   = endOfWeekSunday(today.minus({weeks:3}));
+
+    const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
+    const worked = rows.filter(r=> r.status!=='off');
+
+    function totals(from,to){
+      const arr = worked.filter(r=> inRange(r,from,to));
+      const h = arr.reduce((t,r)=> t + (+r.hours||0), 0);
+      const p = arr.reduce((t,r)=> t + (+r.parcels||0), 0);
+      const l = arr.reduce((t,r)=> t + (+r.letters||0), 0);
+      return {h,p,l};
+    }
+    const W3 = totals(weekStart3, weekEnd3);
+    const W2 = totals(weekStart2, weekEnd2);
+    const W1 = totals(weekStart1, weekEnd1);
+    const W0 = totals(weekStart0, weekEnd0);
+
+    const fmtH = n => (n||0).toFixed(1);
+    document.getElementById('mgHours').textContent   = `W-3 ${fmtH(W3.h)} • W-2 ${fmtH(W2.h)} • W-1 ${fmtH(W1.h)} • W0 ${fmtH(W0.h)}`;
+    document.getElementById('mgParcels').textContent = `W-3 ${W3.p} • W-2 ${W2.p} • W-1 ${W1.p} • W0 ${W0.p}`;
+    document.getElementById('mgLetters').textContent = `W-3 ${W3.l} • W-2 ${W2.l} • W-1 ${W1.l} • W0 ${W0.l}`;
   }
 </script>
 </body>

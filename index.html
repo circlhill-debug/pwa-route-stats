@@ -132,31 +132,31 @@
         </div>
       </div>
       <div class="row" style="gap:8px;align-items:stretch">
-        <div class="stat">
+        <div class="stat" id="tileWkHours" style="cursor:pointer" tabindex="0" title="Click for weekly hours breakdown">
           <small>Hours (week)</small>
           <div><strong id="wkHours">—</strong> <span id="wkHoursDelta" class="pill">—</span></div>
         </div>
-        <div class="stat">
+        <div class="stat" id="tileWkParcels" style="cursor:pointer" tabindex="0" title="Click for weekly parcels breakdown">
           <small>Parcels (week)</small>
           <div><strong id="wkParcels">—</strong> <span id="wkParcelsDelta" class="pill">—</span></div>
         </div>
-        <div class="stat">
+        <div class="stat" id="tileWkLetters" style="cursor:pointer" tabindex="0" title="Click for weekly letters breakdown">
           <small>Letters (week)</small>
           <div><strong id="wkLetters">—</strong> <span id="wkLettersDelta" class="pill">—</span></div>
         </div>
       <!-- Advanced Weekly Metrics (Phase 1) — moved above today's deltas -->
       <div class="row" style="gap:8px;align-items:stretch">
-        <div class="stat">
+        <div class="stat" id="tileAdvHours" style="cursor:pointer" tabindex="0" title="Click for weighted daily hour deltas">
           <small>Weekly Hours Trend</small>
           <div><span id="advHoursTrend" class="pill">—</span></div>
           <small class="muted">day-by-day vs last week</small>
         </div>
-        <div class="stat">
+        <div class="stat" id="tileAdvParcels" style="cursor:pointer" tabindex="0" title="Click for weighted daily parcel deltas">
           <small>Weekly Parcels Trend</small>
           <div><span id="advParcelsTrend" class="pill">—</span></div>
           <small class="muted">day-by-day vs last week</small>
         </div>
-        <div class="stat">
+        <div class="stat" id="tileAdvLetters" style="cursor:pointer" tabindex="0" title="Click for weighted daily letter deltas">
           <small>Weekly Letters Trend</small>
           <div><span id="advLettersTrend" class="pill">—</span></div>
           <small class="muted">day-by-day vs last week</small>
@@ -174,6 +174,62 @@
         <small class="muted">vs past same weekday (worked)</small>
       </div>
       </div>
+    <!-- Inline details panel for weekly hours breakdown (toggled on click) -->
+    <div id="wkHoursDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Weekly Hours Breakdown</h4>
+        <button id="closeWkHoursDetails" class="ghost">Close</button>
+      </div>
+      <small class="muted">Shows this week (Mon..today) vs last week (Mon..Sun). Δ% compares each weekday and the totals.</small>
+      <div id="wkHoursDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px">
+        <!-- populated by script -->
+      </div>
+    </div>
+    <!-- Inline details panel for weekly parcels breakdown -->
+    <div id="wkParcelsDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Weekly Parcels Breakdown</h4>
+        <button id="closeWkParcelsDetails" class="ghost">Close</button>
+      </div>
+      <small class="muted">This week (Mon..today) vs last week (Mon..Sun). Δ% per day and totals.</small>
+      <div id="wkParcelsDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
+    </div>
+    <!-- Inline details panel for weekly letters breakdown -->
+    <div id="wkLettersDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Weekly Letters Breakdown</h4>
+        <button id="closeWkLettersDetails" class="ghost">Close</button>
+      </div>
+      <small class="muted">This week (Mon..today) vs last week (Mon..Sun). Δ% per day and totals.</small>
+      <div id="wkLettersDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
+    </div>
+    <!-- Inline details panel for advanced Weekly Trend (Hours) -->
+    <div id="advHoursDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Weekly Hours Trend — Weighted daily deltas</h4>
+        <button id="closeAdvHoursDetails" class="ghost">Close</button>
+      </div>
+      <small class="muted">Mon..today vs same weekday last week. Uses Weighted average (falls back to Cumulative if needed).</small>
+      <div id="advHoursDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
+    </div>
+    <!-- Inline details panel for advanced Weekly Trend (Parcels) -->
+    <div id="advParcelsDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Weekly Parcels Trend — Weighted daily deltas</h4>
+        <button id="closeAdvParcelsDetails" class="ghost">Close</button>
+      </div>
+      <small class="muted">Mon..today vs same weekday last week. Uses Weighted average (falls back to Cumulative if needed).</small>
+      <div id="advParcelsDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
+    </div>
+    <!-- Inline details panel for advanced Weekly Trend (Letters) -->
+    <div id="advLettersDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Weekly Letters Trend — Weighted daily deltas</h4>
+        <button id="closeAdvLettersDetails" class="ghost">Close</button>
+      </div>
+      <small class="muted">Mon..today vs same weekday last week. Uses Weighted average (falls back to Cumulative if needed).</small>
+      <div id="advLettersDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
+    </div>
   </section>
 
   <!-- FORM -->
@@ -1120,6 +1176,163 @@ const setPill=(el,delta)=>{
     setPill($('advParcelsTrend'), pick(advP, cumP));
     setPill($('advLettersTrend'), pick(advL, cumL));
 
+    // ===== Populate Weekly Hours Details panel =====
+    try {
+      const panelBody = document.getElementById('wkHoursDetailsBody');
+      if (panelBody) {
+        // Use precomputed Mon..Sun buckets from Advanced Weekly Metrics
+        
+        const dNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+        const rowsHtml = [];
+        let tThis = 0, tLast = 0;
+        for (let i = 0; i < 7; i++) {
+          const cur = (i <= dayIndexToday) ? (thisWeek[i]?.h || 0) : null; // only Mon..today for this week
+          const base = lastWeek[i]?.h || 0;
+          if (cur != null) tThis += cur;
+          tLast += base;
+          const delta = (cur == null || base === 0) ? null : ((cur - base) / base) * 100;
+          const curTxt = (cur == null) ? '—' : cur.toFixed(2);
+          const baseTxt = (base === 0) ? 'Off' : base.toFixed(2);
+          const { fg } = colorForDelta(delta || 0);
+          const deltaTxt = (delta == null) ? '—' : (delta >= 0 ? `↑ ${Math.round(delta)}%` : `↓ ${Math.abs(Math.round(delta))}%`);
+          rowsHtml.push(`<tr><td>${dNames[i]}</td><td class="right">${curTxt}</td><td class="right">${baseTxt}</td><td class="right" style="color:${fg};white-space:nowrap">${deltaTxt}</td></tr>`);
+        }
+        const totalDelta = (tLast === 0) ? null : ((tThis - tLast) / tLast) * 100;
+        const { fg:totFg } = colorForDelta(totalDelta || 0);
+        const totalRow = `<tr><th>Total</th><th class="right">${tThis.toFixed(2)}</th><th class="right">${tLast.toFixed(2)}</th><th class="right" style="color:${totFg}">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
+
+        const summary = `This week so far: ${tThis.toFixed(2)}h over ${dThis} day(s). Last week: ${tLast.toFixed(2)}h over ${dLast} day(s). Tile shows a blended % from last week’s per-worked-day baseline toward this week’s progress.`;
+
+        panelBody.innerHTML = `
+          <div style="padding:8px 10px;border-bottom:1px solid var(--border)"><small>${summary}</small></div>
+          <table style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr><th>Day</th><th class="right">This week</th><th class="right">Last week</th><th class="right">Δ%</th></tr>
+            </thead>
+            <tbody>
+              ${rowsHtml.join('')}
+            </tbody>
+            <tfoot>
+              ${totalRow}
+            </tfoot>
+          </table>
+        `;
+      }
+    } catch (e) {
+      console.warn('Failed to populate weekly hours details', e);
+    }
+
+    // ===== Populate Weekly Parcels Details panel =====
+    try {
+      const panelBody = document.getElementById('wkParcelsDetailsBody');
+      if (panelBody) {
+        const dNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+        const rowsHtml = [];
+        let tThis = 0, tLast = 0;
+        for (let i = 0; i < 7; i++) {
+          const cur = (i <= dayIndexToday) ? (thisWeek[i]?.p || 0) : null;
+          const base = lastWeek[i]?.p || 0;
+          if (cur != null) tThis += cur;
+          tLast += base;
+          const delta = (cur == null || base === 0) ? null : ((cur - base) / base) * 100;
+          const curTxt = (cur == null) ? '—' : String(cur);
+          const baseTxt = String(base); // show 0 explicitly
+          const { fg } = colorForDelta(delta || 0);
+          const deltaTxt = (delta == null) ? '—' : (delta >= 0 ? `↑ ${Math.round(delta)}%` : `↓ ${Math.abs(Math.round(delta))}%`);
+          rowsHtml.push(`<tr><td>${dNames[i]}</td><td class="right">${curTxt}</td><td class="right">${baseTxt}</td><td class="right" style="color:${fg};white-space:nowrap">${deltaTxt}</td></tr>`);
+        }
+        const totalDelta = (tLast === 0) ? null : ((tThis - tLast) / tLast) * 100;
+        const { fg:totFg } = colorForDelta(totalDelta || 0);
+        const totalRow = `<tr><th>Total</th><th class=\"right\">${tThis}</th><th class=\"right\">${tLast}</th><th class=\"right\" style=\"color:${totFg}\">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
+        const summary = `This week so far: ${tThis} parcels over ${dThis} day(s). Last week: ${tLast} parcels over ${dLast} day(s).`;
+        panelBody.innerHTML = `
+          <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\"><small>${summary}</small></div>
+          <table style=\"width:100%;border-collapse:collapse\">
+            <thead><tr><th>Day</th><th class=\"right\">This week</th><th class=\"right\">Last week</th><th class=\"right\">Δ%</th></tr></thead>
+            <tbody>${rowsHtml.join('')}</tbody>
+            <tfoot>${totalRow}</tfoot>
+          </table>`;
+      }
+    } catch (e) {
+      console.warn('Failed to populate weekly parcels details', e);
+    }
+
+    // ===== Populate Weekly Letters Details panel =====
+    try {
+      const panelBody = document.getElementById('wkLettersDetailsBody');
+      if (panelBody) {
+        const dNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+        const rowsHtml = [];
+        let tThis = 0, tLast = 0;
+        for (let i = 0; i < 7; i++) {
+          const cur = (i <= dayIndexToday) ? (thisWeek[i]?.l || 0) : null;
+          const base = lastWeek[i]?.l || 0;
+          if (cur != null) tThis += cur;
+          tLast += base;
+          const delta = (cur == null || base === 0) ? null : ((cur - base) / base) * 100;
+          const curTxt = (cur == null) ? '—' : String(cur);
+          const baseTxt = String(base); // show 0 explicitly
+          const { fg } = colorForDelta(delta || 0);
+          const deltaTxt = (delta == null) ? '—' : (delta >= 0 ? `↑ ${Math.round(delta)}%` : `↓ ${Math.abs(Math.round(delta))}%`);
+          rowsHtml.push(`<tr><td>${dNames[i]}</td><td class="right">${curTxt}</td><td class="right">${baseTxt}</td><td class="right" style="color:${fg};white-space:nowrap">${deltaTxt}</td></tr>`);
+        }
+        const totalDelta = (tLast === 0) ? null : ((tThis - tLast) / tLast) * 100;
+        const { fg:totFg } = colorForDelta(totalDelta || 0);
+        const totalRow = `<tr><th>Total</th><th class=\"right\">${tThis}</th><th class=\"right\">${tLast}</th><th class=\"right\" style=\"color:${totFg}\">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
+        const summary = `This week so far: ${tThis} letters over ${dThis} day(s). Last week: ${tLast} letters over ${dLast} day(s).`;
+        panelBody.innerHTML = `
+          <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\"><small>${summary}</small></div>
+          <table style=\"width:100%;border-collapse:collapse\">
+            <thead><tr><th>Day</th><th class=\"right\">This week</th><th class=\"right\">Last week</th><th class=\"right\">Δ%</th></tr></thead>
+            <tbody>${rowsHtml.join('')}</tbody>
+            <tfoot>${totalRow}</tfoot>
+          </table>`;
+      }
+    } catch (e) {
+      console.warn('Failed to populate weekly letters details', e);
+    }
+
+    // ===== Populate Advanced Weekly Trend panels (H/P/L) =====
+    const renderTrendPanel = (bodyId, dailyArr, weightedVal, cumulativeVal, key) => {
+      const body = document.getElementById(bodyId);
+      if (!body) return;
+      const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      const rows = [];
+      for (let i = 0; i <= dayIndexToday && i < 7; i++) {
+        const v = dailyArr[i];
+        const cur = thisWeek[i]?.[key] || 0;
+        const base = lastWeek[i]?.[key] || 0;
+        const pctTxt = (v == null || !isFinite(v)) ? '—' : (v >= 0 ? `↑ ${Math.round(v)}%` : `↓ ${Math.abs(Math.round(v))}%`);
+        const { fg } = colorForDelta(v || 0);
+        const fmt = key === 'h' ? (n)=> n.toFixed(2) : (n)=> String(n);
+        const curTxt = (i <= dayIndexToday) ? fmt(cur) : '—';
+        const baseTxt = (key === 'h') ? ((base === 0) ? 'Off' : fmt(base)) : fmt(base);
+        rows.push(`<tr><td>${days[i]}</td><td class="right">${curTxt}</td><td class="right">${baseTxt}</td><td class="right" style="color:${fg};white-space:nowrap">${pctTxt}</td></tr>`);
+      }
+      const pickUsed = (weightedVal != null && isFinite(weightedVal)) ? 'Weighted' : 'Cumulative';
+      const wTxt = (weightedVal == null || !isFinite(weightedVal)) ? '—' : `${weightedVal>=0?'↑':'↓'} ${Math.abs(Math.round(weightedVal))}%`;
+      const cTxt = (cumulativeVal == null || !isFinite(cumulativeVal)) ? '—' : `${cumulativeVal>=0?'↑':'↓'} ${Math.abs(Math.round(cumulativeVal))}%`;
+      const { fg: wFg } = colorForDelta(weightedVal || 0);
+      const { fg: cFg } = colorForDelta(cumulativeVal || 0);
+      body.innerHTML = `
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr><th>Day</th><th class=\"right\">This week</th><th class=\"right\">Last week</th><th class=\"right\">Δ%</th></tr></thead>
+          <tbody>${rows.join('')}</tbody>
+          <tfoot>
+            <tr><th colspan=\"3\" class=\"right\">Weighted avg Δ%</th><th class=\"right\" style=\"color:${wFg}\">${wTxt}</th></tr>
+            <tr><th colspan=\"3\" class=\"right\">Cumulative Δ%</th><th class=\"right\" style=\"color:${cFg}\">${cTxt}</th></tr>
+            <tr><th colspan=\"4\" class=\"right\"><small class=\"muted\">Using: ${pickUsed}</small></th></tr>
+          </tfoot>
+        </table>`;
+    };
+    try {
+      renderTrendPanel('advHoursDetailsBody', dH, advH, cumH, 'h');
+      renderTrendPanel('advParcelsDetailsBody', dP, advP, cumP, 'p');
+      renderTrendPanel('advLettersDetailsBody', dL, advL, cumL, 'l');
+    } catch (e) {
+      console.warn('Failed to populate trend panels', e);
+    }
+
     // Today vs same-weekday baseline (worked days only)
     const todayIso = today.toISODate();
     const todaysRow = workRows.find(r => r.work_date === todayIso);
@@ -1161,6 +1374,32 @@ const setPill=(el,delta)=>{
     const tbody=document.querySelector('#tbl tbody'); if(!tbody) return; function activate(e){ const tr=e.target.closest('tr.rowLink'); if(!tr) return; $('date').value=tr.dataset.date; loadByDate(); window.scrollTo({ top:0, behavior:'smooth' }); }
     tbody.addEventListener('click', activate);
     tbody.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ if(e.target.closest('tr.rowLink')){ e.preventDefault(); activate(e); } } });
+  })();
+
+  // Toggle Weekly details panels (hours, parcels, letters)
+  (function enableWeeklyPanels(){
+    const panels = ['wkHoursDetails','wkParcelsDetails','wkLettersDetails','advHoursDetails','advParcelsDetails','advLettersDetails'];
+    function hideOthers(except){ panels.forEach(id => { if(id!==except){ const el=document.getElementById(id); if(el) el.style.display='none'; } }); }
+    function enable(tileId, panelId, closeId){
+      const tile=document.getElementById(tileId);
+      const panel=document.getElementById(panelId);
+      const close=document.getElementById(closeId);
+      const toggle=()=>{
+        if(!panel) return;
+        const show = panel.style.display==='none';
+        if(show){ hideOthers(panelId); panel.style.display='block'; panel.scrollIntoView({behavior:'smooth', block:'nearest'}); }
+        else { panel.style.display='none'; }
+      };
+      tile?.addEventListener('click', toggle);
+      tile?.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggle(); } });
+      close?.addEventListener('click', ()=>{ if(panel) panel.style.display='none'; });
+    }
+    enable('tileWkHours','wkHoursDetails','closeWkHoursDetails');
+    enable('tileWkParcels','wkParcelsDetails','closeWkParcelsDetails');
+    enable('tileWkLetters','wkLettersDetails','closeWkLettersDetails');
+    enable('tileAdvHours','advHoursDetails','closeAdvHoursDetails');
+    enable('tileAdvParcels','advParcelsDetails','closeAdvParcelsDetails');
+    enable('tileAdvLetters','advLettersDetails','closeAdvLettersDetails');
   })();
 
   (async()=>{

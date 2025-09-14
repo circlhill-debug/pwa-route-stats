@@ -1,5 +1,6 @@
 #!/bin/bash
-# Download local copies of required libraries for offline/blocked-CDN use
+# Download local
+ copies of required libraries for offline/blocked-CDN use
 set -e
 cd "$(dirname "$0")"
 mkdir -p vendor

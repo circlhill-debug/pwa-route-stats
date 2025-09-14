@@ -67,3 +67,72 @@ This project aims to enhance the analytics capabilities of our platform by intro
 
 ---
 This plan outlines a comprehensive approach to delivering these advanced features efficiently and strategically.
+
+---
+
+## Working Notes / Dev Log
+
+### 2025-09-07 — Phase 2 (part 1) shipped (tag: v2.0.1)
+
+What we implemented
+- Clickable weekly tiles: Hours, Parcels, Letters now open inline breakdown panels.
+- Breakdown content: Mon..today (this week) vs Mon..Sun (last week), per-day values, totals, and Δ%.
+- Clickable Weekly X Trend pills (Hours/Parcels/Letters) with detail panels that show:
+  - Day-by-day Δ% vs last week (Mon..today)
+  - Weighted average Δ% (Mon weight=1 … today=n)
+  - Cumulative Δ% (totals so far vs same range last week)
+  - Label showing which aggregate the pill uses (Weighted; falls back to Cumulative).
+- Color-only rule: only the percentage text is colored (no backgrounds/borders).
+- Baseline display rules:
+  - Hours: last-week baseline of 0 shows as “Off”.
+  - Parcels/Letters: last-week baseline of 0 shows as “0”.
+- Service worker cache version bumped to force client refresh.
+
+Decisions captured
+- Keep entire tiles/pills clickable (keyboard: Enter/Space) for simplicity.
+- No hover tooltips; clarity comes from the click-through panels.
+- “Numbers-first” presentation; avoid heavy visuals.
+
+Repo state
+- Tag: v2.0.1
+- Branch for next work: `feature/monthly-glance`
+
+Verification checklist (manual)
+- Click Hours/Parcels/Letters (week) tiles → see tables with Mon..today vs last week, totals, Δ%.
+- Click Weekly X Trend pills → see per-day This/Last and Δ% plus Weighted/Cumulative footer.
+- Confirm Hours baseline 0 → “Off”; Parcels/Letters baseline 0 → “0”.
+- Confirm percentages use color-only styling.
+
+### Next Up — Phase 2 (part 2): Monthly Glance (stacked sparklines)
+
+Scope
+- Add a “Monthly Glance” card with three slim, stacked sparklines (Hours, Parcels, Letters).
+- Each shows the last 4 Monday-based weeks: current week (partial) + previous 3 full weeks.
+- Dots-only with a subtle connecting line; numbers-first, color on points/labels only.
+- If Chart.js unavailable, show a compact text fallback (e.g., H: 28, 32, 31, 14).
+
+Data definition
+- Weeks are Monday→Sunday.
+- W0: current week (Mon..today) partial total.
+- W-1, W-2, W-3: previous full week totals.
+- Compute totals for each metric (hours, parcels, letters) using existing helpers
+  (`startOfWeekMonday`, `endOfWeekSunday`).
+
+Interactions (v1)
+- Optional: clicking a dot opens an inline mini-summary for that week (keep minimal to avoid scope creep).
+- No tooltips.
+
+Acceptance criteria
+- Monthly Glance renders reliably with existing data; does not block app if charts fail to load.
+- Labels show week-ending dates (e.g., Sun: “Sep 01”, “Sep 08”…).
+- Visual style consistent with current app (no backgrounds, color-only emphasis).
+- Behind a feature flag (e.g., `monthlyGlance: false` by default); easy to toggle via Settings.
+
+Out of scope (for this pass)
+- Deep drill-down views; advanced hover tooltips.
+- Persisted settings server-side (flags remain local).
+
+Ship plan
+- Implement on `feature/monthly-glance` behind flag.
+- Bump service worker cache version.
+- Manual test, PR → merge to `main`, tag v2.0.2.

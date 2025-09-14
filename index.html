@@ -41,6 +41,8 @@
   canvas.sparkline{ display:block; width:100%; border:none; padding:0; height:48px; max-height:48px }
   .sparkline-labels{ color:var(--muted); font-size:12px; margin-top:4px }
   .sparkline-summary{ color:var(--muted); font-size:12px; margin-top:4px }
+  canvas.scatter{ display:block; width:100%; height:180px; max-height:180px }
+  .panel-hint{ color:var(--muted); font-size:12px; margin:6px 0 0 0 }
   .fab{ position:fixed; right:16px; bottom:16px; z-index:10 }
   #diag{ position:sticky; top:0; z-index:999; background:#111; color:#ddd; font:12px/1.35 system-ui; padding:6px 10px; border-bottom:1px solid #222 }
   #diag b{ color:#fff }
@@ -1593,7 +1595,66 @@ const setPill=(el,delta)=>{
         rows.push(`<tr><td colspan=5><small class=\"muted\">Per-day breakdown</small></td></tr>`);
         const both=[...W1.map(x=>({w:'W-1',...x})), ...W0.map(x=>({w:'W0',...x}))].sort((a,b)=> (a.d<b.d?-1:1));
         for (const r of both){ rows.push(`<tr><td>${r.w}</td><td>${day(r.d)}</td><td class=\"right\">${r.vol.toFixed(1)}</td><td class=\"right\">${r.rm||'—'}</td><td></td></tr>`); }
-        body.innerHTML = `<div style=\"overflow:auto\"><table style=\"width:100%;border-collapse:collapse\"><tbody>${rows.join('')}</tbody></table></div>`;
+        // Build container with optional scatter chart
+        const parts = [];
+        parts.push('<div id="volChartWrap"></div>');
+        parts.push(`<div style=\"overflow:auto;margin-top:8px\"><table style=\"width:100%;border-collapse:collapse\"><tbody>${rows.join('')}</tbody></table></div>`);
+        parts.push(`<div class=\"panel-hint\">Click points to summarize · X = volume · Y = route minutes</div>`);
+        body.innerHTML = parts.join('');
+
+        const drawScatter = ()=>{
+          if (!window.Chart) return;
+          try{
+            const wrap = document.getElementById('volChartWrap'); if(!wrap) return;
+            const canvas = document.createElement('canvas'); canvas.className='scatter'; wrap.appendChild(canvas);
+            const ctx = canvas.getContext('2d');
+            const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#2b7fff';
+            const mut = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#9aa0aa';
+            const good = getComputedStyle(document.documentElement).getPropertyValue('--good').trim() || '#7CE38B';
+            const pts0 = W0.filter(p=>p.vol>0 && p.rm>0).map(p=>({x:+p.vol.toFixed(1), y:+p.rm.toFixed(1), _d:p.d, w:'W0'}));
+            const pts1 = W1.filter(p=>p.vol>0 && p.rm>0).map(p=>({x:+p.vol.toFixed(1), y:+p.rm.toFixed(1), _d:p.d, w:'W-1'}));
+            const all = pts1.concat(pts0);
+            const xs = all.map(p=>p.x), ys = all.map(p=>p.y);
+            if (all.length >= 2){
+              const n = all.length;
+              const mean = a=> a.reduce((t,x)=>t+x,0)/a.length;
+              const mx = mean(xs), my = mean(ys);
+              let cov=0, vx=0; for(let i=0;i<n;i++){ const dx=xs[i]-mx, dy=ys[i]-my; cov+=dx*dy; vx+=dx*dx; }
+              const m = vx>0 ? (cov/vx) : 0; const b = my - m*mx;
+              const minX = Math.min(...xs), maxX = Math.max(...xs);
+              const line = [{x:minX, y: +(m*minX + b).toFixed(1)}, {x:maxX, y:+(m*maxX + b).toFixed(1)}];
+              new Chart(ctx, {
+                type:'scatter',
+                data:{
+                  datasets:[
+                    { label:'W-1', data: pts1, borderColor: mut, backgroundColor: mut, pointRadius:4 },
+                    { label:'W0',  data: pts0, borderColor: brand, backgroundColor: brand, pointRadius:5 },
+                    { label:'trend', type:'line', data: line, borderColor: good, backgroundColor: good, pointRadius:0, borderWidth:1, tension:0, parsing:false }
+                  ]
+                },
+                options:{
+                  responsive:true, maintainAspectRatio:false,
+                  plugins:{ legend:{ display:true }, tooltip:{ enabled:false } },
+                  scales:{ x:{ title:{ display:true, text:'Volume' } }, y:{ title:{ display:true, text:'Route minutes' } } }
+                }
+              });
+              // Click summary
+              canvas.addEventListener('click', (evt)=>{
+                try{
+                  const chart = Chart.getChart(ctx);
+                  const points = chart.getElementsAtEventForMode(evt,'nearest',{intersect:true}, false);
+                  if(!points.length) return;
+                  const ds = chart.data.datasets[points[0].datasetIndex]; const p = ds.data[points[0].index];
+                  const sum = document.querySelector('#volDetails .panel-hint'); if(sum){ const d=DateTime.fromISO(p._d,{zone:ZONE}).toFormat('ccc LLL dd'); sum.textContent = `${p.w} ${d}: vol ${p.x}, route ${p.y} min`; }
+                }catch(_){ }
+              });
+            }
+          }catch(e){ console.warn('vol scatter fail', e); }
+        };
+        if (window.Chart) drawScatter();
+        else if (!window.__chartVolEffLoaded){
+          window.__chartVolEffLoaded = true; const s=document.createElement('script'); s.src='vendor/chart.umd.js'; s.onload=()=>{ try{ drawScatter(); }catch(_){ } }; s.onerror=()=>console.warn('Chart.js load failed'); document.head.appendChild(s);
+        }
       }catch(e){ console.warn('vol panel build error', e); }
     }
     function effBuilder(){
@@ -1627,7 +1688,66 @@ const setPill=(el,delta)=>{
         rows.push(`<tr><td colspan=4><small class=\"muted\">Per-day breakdown</small></td></tr>`);
         const both=[...W1.map(x=>({w:'W-1',...x})), ...W0.map(x=>({w:'W0',...x}))].sort((a,b)=> (a.d<b.d?-1:1));
         for (const r of both){ rows.push(`<tr><td>${r.w}</td><td>${day(r.d)}</td><td class=\"right\">${r.vol.toFixed(1)}</td><td class=\"right\">${r.rm||'—'}</td></tr>`); }
-        body.innerHTML = `<div style=\"overflow:auto\"><table style=\"width:100%;border-collapse:collapse\"><tbody>${rows.join('')}</tbody></table></div>`;
+        // Build container with optional scatter chart
+        const parts = [];
+        parts.push('<div id="effChartWrap"></div>');
+        parts.push(`<div style=\"overflow:auto;margin-top:8px\"><table style=\"width:100%;border-collapse:collapse\"><tbody>${rows.join('')}</tbody></table></div>`);
+        parts.push(`<div class=\"panel-hint\">Click points to summarize · X = volume · Y = route minutes</div>`);
+        body.innerHTML = parts.join('');
+
+        const drawScatter = ()=>{
+          if (!window.Chart) return;
+          try{
+            const wrap = document.getElementById('effChartWrap'); if(!wrap) return;
+            const canvas = document.createElement('canvas'); canvas.className='scatter'; wrap.appendChild(canvas);
+            const ctx = canvas.getContext('2d');
+            const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#2b7fff';
+            const mut = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#9aa0aa';
+            const good = getComputedStyle(document.documentElement).getPropertyValue('--good').trim() || '#7CE38B';
+            const pts0 = W0.filter(p=>p.vol>0 && p.rm>0).map(p=>({x:+p.vol.toFixed(1), y:+p.rm.toFixed(1), _d:p.d, w:'W0'}));
+            const pts1 = W1.filter(p=>p.vol>0 && p.rm>0).map(p=>({x:+p.vol.toFixed(1), y:+p.rm.toFixed(1), _d:p.d, w:'W-1'}));
+            const all = pts1.concat(pts0);
+            const xs = all.map(p=>p.x), ys = all.map(p=>p.y);
+            if (all.length >= 2){
+              const n = all.length;
+              const mean = a=> a.reduce((t,x)=>t+x,0)/a.length;
+              const mx = mean(xs), my = mean(ys);
+              let cov=0, vx=0; for(let i=0;i<n;i++){ const dx=xs[i]-mx, dy=ys[i]-my; cov+=dx*dy; vx+=dx*dx; }
+              const m = vx>0 ? (cov/vx) : 0; const b = my - m*mx;
+              const minX = Math.min(...xs), maxX = Math.max(...xs);
+              const line = [{x:minX, y: +(m*minX + b).toFixed(1)}, {x:maxX, y:+(m*maxX + b).toFixed(1)}];
+              new Chart(ctx, {
+                type:'scatter',
+                data:{
+                  datasets:[
+                    { label:'W-1', data: pts1, borderColor: mut, backgroundColor: mut, pointRadius:4 },
+                    { label:'W0',  data: pts0, borderColor: brand, backgroundColor: brand, pointRadius:5 },
+                    { label:'trend', type:'line', data: line, borderColor: good, backgroundColor: good, pointRadius:0, borderWidth:1, tension:0, parsing:false }
+                  ]
+                },
+                options:{
+                  responsive:true, maintainAspectRatio:false,
+                  plugins:{ legend:{ display:true }, tooltip:{ enabled:false } },
+                  scales:{ x:{ title:{ display:true, text:'Volume' } }, y:{ title:{ display:true, text:'Route minutes' } } }
+                }
+              });
+              // Click summary
+              canvas.addEventListener('click', (evt)=>{
+                try{
+                  const chart = Chart.getChart(ctx);
+                  const points = chart.getElementsAtEventForMode(evt,'nearest',{intersect:true}, false);
+                  if(!points.length) return;
+                  const ds = chart.data.datasets[points[0].datasetIndex]; const p = ds.data[points[0].index];
+                  const sum = document.querySelector('#effDetails .panel-hint'); if(sum){ const d=DateTime.fromISO(p._d,{zone:ZONE}).toFormat('ccc LLL dd'); sum.textContent = `${p.w} ${d}: vol ${p.x}, route ${p.y} min`; }
+                }catch(_){ }
+              });
+            }
+          }catch(e){ console.warn('eff scatter fail', e); }
+        };
+        if (window.Chart) drawScatter();
+        else if (!window.__chartVolEffLoaded){
+          window.__chartVolEffLoaded = true; const s=document.createElement('script'); s.src='vendor/chart.umd.js'; s.onload=()=>{ try{ drawScatter(); }catch(_){ } }; s.onerror=()=>console.warn('Chart.js load failed'); document.head.appendChild(s);
+        }
       }catch(e){ console.warn('eff panel build error', e); }
     }
     const enable=!!show;

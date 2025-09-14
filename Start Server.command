@@ -1,3 +1,4 @@
+
 #!/bin/bash
 # Simple local server for Route Stats (macOS)
 set -e

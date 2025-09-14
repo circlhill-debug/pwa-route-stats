@@ -1602,6 +1602,9 @@ const setPill=(el,delta)=>{
         for (const r of both){ rows.push(`<tr><td>${r.w}</td><td>${day(r.d)}</td><td class=\"right\">${r.vol.toFixed(1)}</td><td class=\"right\">${r.rm||'—'}</td><td></td></tr>`); }
         // Build container with optional scatter chart
         const parts = [];
+        // Context line with week ranges and counts
+        const rangeTxt = `${weekStart.toFormat('LLL dd')}..${weekEnd.toFormat('LLL dd')} vs ${prevWeekStart.toFormat('LLL dd')}..${prevWeekEnd.toFormat('LLL dd')}`;
+        parts.push(`<div class=\"panel-hint\">Range: ${rangeTxt} · Days: ${n0} vs ${n1}</div>`);
         parts.push('<div id="volChartWrap"></div>');
         if ((n0+n1) === 0){
           parts.push('<div class=\"panel-hint\">No worked days found for the selected/current week.</div>');
@@ -1702,6 +1705,8 @@ const setPill=(el,delta)=>{
         for (const r of both){ rows.push(`<tr><td>${r.w}</td><td>${day(r.d)}</td><td class=\"right\">${r.vol.toFixed(1)}</td><td class=\"right\">${r.rm||'—'}</td></tr>`); }
         // Build container with optional scatter chart
         const parts = [];
+        const rangeTxt = `${weekStart.toFormat('LLL dd')}..${weekEnd.toFormat('LLL dd')} vs ${prevWeekStart.toFormat('LLL dd')}..${prevWeekEnd.toFormat('LLL dd')}`;
+        parts.push(`<div class=\"panel-hint\">Range: ${rangeTxt} · Days with route minutes: ${n0} vs ${n1}</div>`);
         parts.push('<div id="effChartWrap"></div>');
         if ((n0+n1) === 0){
           parts.push('<div class=\"panel-hint\">No route-minute data found for the selected/current week.</div>');
@@ -1768,13 +1773,19 @@ const setPill=(el,delta)=>{
         }
       }catch(e){ console.warn('eff panel build error', e); }
     }
-    const enable=!!show;
     if (vBadge) vBadge.addEventListener('click', ()=> togglePanel(vPanel, volBuilder));
     if (eBadge) eBadge.addEventListener('click', ()=> togglePanel(ePanel, effBuilder));
     if (vBadge) vBadge.addEventListener('keydown', (e)=>{ if((e.key==='Enter'||e.key===' ')){ e.preventDefault(); togglePanel(vPanel, volBuilder); } });
     if (eBadge) eBadge.addEventListener('keydown', (e)=>{ if((e.key==='Enter'||e.key===' ')){ e.preventDefault(); togglePanel(ePanel, effBuilder); } });
     if (vClose) vClose.addEventListener('click', ()=>{ if(vPanel) vPanel.style.display='none'; });
     if (eClose) eClose.addEventListener('click', ()=>{ if(ePanel) ePanel.style.display='none'; });
+    // Rebuild open panels when Date changes (for selected-date mode)
+    const dateEl = document.getElementById('date');
+    dateEl?.addEventListener('change', ()=>{
+      if (!isEnabled()) return;
+      if (vPanel && vPanel.style.display !== 'none') volBuilder();
+      if (ePanel && ePanel.style.display !== 'none') effBuilder();
+    });
   })();
 
   (async()=>{

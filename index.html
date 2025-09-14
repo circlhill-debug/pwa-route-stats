@@ -431,6 +431,7 @@
     </label>
     <label class="pill"><input id="flagTrendPills" type="checkbox"> Show Weekly Trend pills (power users)</label>
     <label class="pill"><input id="flagVolEffDetails" type="checkbox"> Volume/Efficiency click-through panels (preview)</label>
+    <label class="pill"><input id="flagVolEffUseSelectedDate" type="checkbox"> Use selected Date for Vol/Eff panels</label>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="ghost" value="cancel">Close</button>
       <button id="saveSettings">Save</button>
@@ -494,8 +495,8 @@
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, volEffDetails:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, volEffDetails:false }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, volEffDetails:false, volEffUseSelectedDate:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, volEffDetails:false, volEffUseSelectedDate:true }; }
   }
   function saveFlags(f){ localStorage.setItem(FLAG_KEY, JSON.stringify(f)); }
   let FLAGS = loadFlags();
@@ -677,6 +678,7 @@ function moonPhaseEmoji(dateStr) {
   const flagHolidayAdjust = document.getElementById('flagHolidayAdjust');
   const flagTrendPills = document.getElementById('flagTrendPills');
   const flagVolEffDetails = document.getElementById('flagVolEffDetails');
+  const flagVolEffUseSelectedDate = document.getElementById('flagVolEffUseSelectedDate');
   const saveSettings = document.getElementById('saveSettings');
 
   btnSettings?.addEventListener('click', ()=>{
@@ -687,6 +689,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagHolidayAdjust) flagHolidayAdjust.checked = !!FLAGS.holidayAdjustments;
     if (flagTrendPills) flagTrendPills.checked = !!FLAGS.trendPills;
     if (flagVolEffDetails) flagVolEffDetails.checked = !!FLAGS.volEffDetails;
+    if (flagVolEffUseSelectedDate) flagVolEffUseSelectedDate.checked = !!FLAGS.volEffUseSelectedDate;
     settingsDlg.showModal();
   });
 
@@ -698,6 +701,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagHolidayAdjust) FLAGS.holidayAdjustments = !!flagHolidayAdjust.checked;
     if (flagTrendPills) FLAGS.trendPills = !!flagTrendPills.checked;
     if (flagVolEffDetails) FLAGS.volEffDetails = !!flagVolEffDetails.checked;
+    if (flagVolEffUseSelectedDate) FLAGS.volEffUseSelectedDate = !!flagVolEffUseSelectedDate.checked;
     saveFlags(FLAGS);
     settingsDlg.close();
     // Re-render visuals affected by flags
@@ -1567,7 +1571,7 @@ const setPill=(el,delta)=>{
       try{
         const body = document.getElementById('volDetailsBody'); if(!body) return;
         const sel = document.getElementById('date')?.value;
-        const base = (FLAGS && FLAGS.volEffDetails && sel) ? DateTime.fromISO(sel,{zone:ZONE}) : DateTime.now().setZone(ZONE);
+        const base = (FLAGS && FLAGS.volEffDetails && FLAGS.volEffUseSelectedDate && sel) ? DateTime.fromISO(sel,{zone:ZONE}) : DateTime.now().setZone(ZONE);
         const weekStart = startOfWeekMonday(base);
         const weekEnd   = base.endOf('day');
         const prevWeekStart = startOfWeekMonday(base.minus({weeks:1}));
@@ -1662,7 +1666,7 @@ const setPill=(el,delta)=>{
       try{
         const body = document.getElementById('effDetailsBody'); if(!body) return;
         const sel = document.getElementById('date')?.value;
-        const base = (FLAGS && FLAGS.volEffDetails && sel) ? DateTime.fromISO(sel,{zone:ZONE}) : DateTime.now().setZone(ZONE);
+        const base = (FLAGS && FLAGS.volEffDetails && FLAGS.volEffUseSelectedDate && sel) ? DateTime.fromISO(sel,{zone:ZONE}) : DateTime.now().setZone(ZONE);
         const weekStart = startOfWeekMonday(base);
         const weekEnd   = base.endOf('day');
         const prevWeekStart = startOfWeekMonday(base.minus({weeks:1}));

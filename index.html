@@ -708,12 +708,12 @@ function moonPhaseEmoji(dateStr) {
     applyVolEffVisibility();
   });
 
-  function applyVolEffVisibility(){
-    const enable = !!(FLAGS && FLAGS.volEffDetails);
-    const v = document.getElementById('volDetails');
-    const r = document.getElementById('effDetails');
-    if (v) v.style.display = 'none';
-    if (r) r.style.display = 'none';
+    function applyVolEffVisibility(){
+      const enable = !!(FLAGS && FLAGS.volEffDetails);
+      const v = document.getElementById('volDetails');
+      const r = document.getElementById('effDetails');
+      if (v) v.style.display = 'none';
+      if (r) r.style.display = 'none';
     // Only affect clickability; panels remain hidden until clicked
     const vol = document.getElementById('badgeVolume');
     const eff = document.getElementById('badgeRouteEff');
@@ -1566,11 +1566,12 @@ const setPill=(el,delta)=>{
     function volBuilder(){
       try{
         const body = document.getElementById('volDetailsBody'); if(!body) return;
-        const today=DateTime.now().setZone(ZONE);
-        const weekStart = startOfWeekMonday(today);
-        const weekEnd   = today.endOf('day');
-        const prevWeekStart = startOfWeekMonday(today.minus({weeks:1}));
-        const prevWeekEnd   = endOfWeekSunday(today.minus({weeks:1}));
+        const sel = document.getElementById('date')?.value;
+        const base = (FLAGS && FLAGS.volEffDetails && sel) ? DateTime.fromISO(sel,{zone:ZONE}) : DateTime.now().setZone(ZONE);
+        const weekStart = startOfWeekMonday(base);
+        const weekEnd   = base.endOf('day');
+        const prevWeekStart = startOfWeekMonday(base.minus({weeks:1}));
+        const prevWeekEnd   = endOfWeekSunday(base.minus({weeks:1}));
         const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
         const worked = (allRows||[]).filter(r=> r.status!=='off');
         const W0 = worked.filter(r=> inRange(r,weekStart,weekEnd)).map(r=>({ d:r.work_date, vol:(+r.parcels||0)+0.33*(+r.letters||0), rm:+(r.route_minutes||0) }));
@@ -1660,11 +1661,12 @@ const setPill=(el,delta)=>{
     function effBuilder(){
       try{
         const body = document.getElementById('effDetailsBody'); if(!body) return;
-        const today=DateTime.now().setZone(ZONE);
-        const weekStart = startOfWeekMonday(today);
-        const weekEnd   = today.endOf('day');
-        const prevWeekStart = startOfWeekMonday(today.minus({weeks:1}));
-        const prevWeekEnd   = endOfWeekSunday(today.minus({weeks:1}));
+        const sel = document.getElementById('date')?.value;
+        const base = (FLAGS && FLAGS.volEffDetails && sel) ? DateTime.fromISO(sel,{zone:ZONE}) : DateTime.now().setZone(ZONE);
+        const weekStart = startOfWeekMonday(base);
+        const weekEnd   = base.endOf('day');
+        const prevWeekStart = startOfWeekMonday(base.minus({weeks:1}));
+        const prevWeekEnd   = endOfWeekSunday(base.minus({weeks:1}));
         const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
         const worked = (allRows||[]).filter(r=> r.status!=='off');
         const mapRow = r=>({ d:r.work_date, vol:(+r.parcels||0)+0.33*(+r.letters||0), rm:+(r.route_minutes||0) });

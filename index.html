@@ -189,6 +189,24 @@
         <!-- populated by script -->
       </div>
     </div>
+    <!-- Volume details (preview) -->
+    <div id="volDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Volume — This week vs Last week</h4>
+        <button id="closeVolDetails" class="ghost">Close</button>
+      </div>
+      <small class="muted">Volume per worked day = parcels + 0.33×letters</small>
+      <div id="volDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
+    </div>
+    <!-- Route Efficiency details (preview) -->
+    <div id="effDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Route Efficiency — This week vs Last week</h4>
+        <button id="closeEffDetails" class="ghost">Close</button>
+      </div>
+      <small class="muted">Lower route minutes is better for a given volume</small>
+      <div id="effDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
+    </div>
     <!-- Inline details panel for weekly parcels breakdown -->
     <div id="wkParcelsDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
       <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
@@ -408,6 +426,7 @@
     <label class="pill"><input id="flagHolidayAdjust" type="checkbox"> Holiday adjustments (carry Monday into Tuesday)
     </label>
     <label class="pill"><input id="flagTrendPills" type="checkbox"> Show Weekly Trend pills (power users)</label>
+    <label class="pill"><input id="flagVolEffDetails" type="checkbox"> Volume/Efficiency click-through panels (preview)</label>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="ghost" value="cancel">Close</button>
       <button id="saveSettings">Save</button>
@@ -471,8 +490,8 @@
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, volEffDetails:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, volEffDetails:false }; }
   }
   function saveFlags(f){ localStorage.setItem(FLAG_KEY, JSON.stringify(f)); }
   let FLAGS = loadFlags();
@@ -653,6 +672,7 @@ function moonPhaseEmoji(dateStr) {
   const flagMonthlyGlance = document.getElementById('flagMonthlyGlance');
   const flagHolidayAdjust = document.getElementById('flagHolidayAdjust');
   const flagTrendPills = document.getElementById('flagTrendPills');
+  const flagVolEffDetails = document.getElementById('flagVolEffDetails');
   const saveSettings = document.getElementById('saveSettings');
 
   btnSettings?.addEventListener('click', ()=>{
@@ -662,6 +682,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagMonthlyGlance) flagMonthlyGlance.checked = !!FLAGS.monthlyGlance;
     if (flagHolidayAdjust) flagHolidayAdjust.checked = !!FLAGS.holidayAdjustments;
     if (flagTrendPills) flagTrendPills.checked = !!FLAGS.trendPills;
+    if (flagVolEffDetails) flagVolEffDetails.checked = !!FLAGS.volEffDetails;
     settingsDlg.showModal();
   });
 
@@ -672,6 +693,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagMonthlyGlance) FLAGS.monthlyGlance = !!flagMonthlyGlance.checked;
     if (flagHolidayAdjust) FLAGS.holidayAdjustments = !!flagHolidayAdjust.checked;
     if (flagTrendPills) FLAGS.trendPills = !!flagTrendPills.checked;
+    if (flagVolEffDetails) FLAGS.volEffDetails = !!flagVolEffDetails.checked;
     saveFlags(FLAGS);
     settingsDlg.close();
     // Re-render visuals affected by flags
@@ -679,7 +701,21 @@ function moonPhaseEmoji(dateStr) {
     buildSnapshot(allRows||[]);
     buildMonthlyGlance(allRows||[]);
     applyTrendPillsVisibility();
+    applyVolEffVisibility();
   });
+
+  function applyVolEffVisibility(){
+    const enable = !!(FLAGS && FLAGS.volEffDetails);
+    const v = document.getElementById('volDetails');
+    const r = document.getElementById('effDetails');
+    if (v) v.style.display = 'none';
+    if (r) r.style.display = 'none';
+    // Only affect clickability; panels remain hidden until clicked
+    const vol = document.getElementById('badgeVolume');
+    const eff = document.getElementById('badgeRouteEff');
+    if (vol) vol.style.cursor = enable ? 'pointer' : '';
+    if (eff) eff.style.cursor = enable ? 'pointer' : '';
+  }
 
   function applyTrendPillsVisibility(){
     const ids = ['tileAdvHours','tileAdvParcels','tileAdvLetters'];
@@ -1507,8 +1543,102 @@ const setPill=(el,delta)=>{
     enable('tileAdvLetters','advLettersDetails','closeAdvLettersDetails');
   })();
 
+  // Volume / Efficiency panels (preview, behind flag)
+  (function enableVolEffPanels(){
+    const show = !!(FLAGS && FLAGS.volEffDetails);
+    const vBadge = document.getElementById('badgeVolume');
+    const eBadge = document.getElementById('badgeRouteEff');
+    const vPanel = document.getElementById('volDetails');
+    const ePanel = document.getElementById('effDetails');
+    const vClose = document.getElementById('closeVolDetails');
+    const eClose = document.getElementById('closeEffDetails');
+    function hidePanels(){ if(vPanel) vPanel.style.display='none'; if(ePanel) ePanel.style.display='none'; }
+    function togglePanel(panel, builder){
+      if (!show || !panel) return;
+      const vis = panel.style.display !== 'none';
+      if (vis){ panel.style.display='none'; return; }
+      hidePanels(); builder(); panel.style.display='block'; panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+    }
+    function volBuilder(){
+      try{
+        const body = document.getElementById('volDetailsBody'); if(!body) return;
+        const today=DateTime.now().setZone(ZONE);
+        const weekStart = startOfWeekMonday(today);
+        const weekEnd   = today.endOf('day');
+        const prevWeekStart = startOfWeekMonday(today.minus({weeks:1}));
+        const prevWeekEnd   = endOfWeekSunday(today.minus({weeks:1}));
+        const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
+        const worked = (allRows||[]).filter(r=> r.status!=='off');
+        const W0 = worked.filter(r=> inRange(r,weekStart,weekEnd)).map(r=>({ d:r.work_date, vol:(+r.parcels||0)+0.33*(+r.letters||0), rm:+(r.route_minutes||0) }));
+        const W1 = worked.filter(r=> inRange(r,prevWeekStart,prevWeekEnd)).map(r=>({ d:r.work_date, vol:(+r.parcels||0)+0.33*(+r.letters||0), rm:+(r.route_minutes||0) }));
+        const sum=a=>a.reduce((t,x)=>t+(x||0),0);
+        const avg=a=> a.length? sum(a)/a.length : null;
+        const a0=W0.map(x=>x.vol), a1=W1.map(x=>x.vol);
+        const tot0=sum(a0).toFixed(1), tot1=sum(a1).toFixed(1);
+        const n0=a0.length, n1=a1.length;
+        const m0=avg(a0), m1=avg(a1);
+        const pct=(a,b)=> (a==null||b==null||b===0)? null : ((a-b)/b)*100;
+        const dAvg=pct(m0,m1);
+        const sTxt = dAvg==null? '—' : (dAvg>=0? `↑ ${Math.round(dAvg)}%` : `↓ ${Math.abs(Math.round(dAvg))}%`);
+        const { fg } = colorForDelta(dAvg||0);
+        const rows = [];
+        const day=(s)=>DateTime.fromISO(s,{zone:ZONE}).toFormat('ccc LLL dd');
+        rows.push(`<tr><th colspan=4 class=\"right\">Avg/day Δ% (N=${n0}, last N=${n1})</th><th class=\"right\" style=\"color:${fg}\">${sTxt}</th></tr>`);
+        rows.push(`<tr><td colspan=5><small class=\"muted\">Volume = parcels + 0.33×letters</small></td></tr>`);
+        rows.push(`<tr><th colspan=2>Week</th><th class=\"right\">Days</th><th class=\"right\">Total</th><th class=\"right\">Avg/day</th></tr>`);
+        rows.push(`<tr><td colspan=2>This week</td><td class=\"right\">${n0}</td><td class=\"right\">${tot0}</td><td class=\"right\">${m0?.toFixed(1)??'—'}</td></tr>`);
+        rows.push(`<tr><td colspan=2>Last week</td><td class=\"right\">${n1}</td><td class=\"right\">${tot1}</td><td class=\"right\">${m1?.toFixed(1)??'—'}</td></tr>`);
+        rows.push(`<tr><td colspan=5><small class=\"muted\">Per-day breakdown</small></td></tr>`);
+        const both=[...W1.map(x=>({w:'W-1',...x})), ...W0.map(x=>({w:'W0',...x}))].sort((a,b)=> (a.d<b.d?-1:1));
+        for (const r of both){ rows.push(`<tr><td>${r.w}</td><td>${day(r.d)}</td><td class=\"right\">${r.vol.toFixed(1)}</td><td class=\"right\">${r.rm||'—'}</td><td></td></tr>`); }
+        body.innerHTML = `<div style=\"overflow:auto\"><table style=\"width:100%;border-collapse:collapse\"><tbody>${rows.join('')}</tbody></table></div>`;
+      }catch(e){ console.warn('vol panel build error', e); }
+    }
+    function effBuilder(){
+      try{
+        const body = document.getElementById('effDetailsBody'); if(!body) return;
+        const today=DateTime.now().setZone(ZONE);
+        const weekStart = startOfWeekMonday(today);
+        const weekEnd   = today.endOf('day');
+        const prevWeekStart = startOfWeekMonday(today.minus({weeks:1}));
+        const prevWeekEnd   = endOfWeekSunday(today.minus({weeks:1}));
+        const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
+        const worked = (allRows||[]).filter(r=> r.status!=='off');
+        const mapRow = r=>({ d:r.work_date, vol:(+r.parcels||0)+0.33*(+r.letters||0), rm:+(r.route_minutes||0) });
+        const W0 = worked.filter(r=> inRange(r,weekStart,weekEnd)).map(mapRow);
+        const W1 = worked.filter(r=> inRange(r,prevWeekStart,prevWeekEnd)).map(mapRow);
+        const sum=a=>a.reduce((t,x)=>t+(x||0),0);
+        const avg=a=> a.length? sum(a)/a.length : null;
+        const r0=W0.map(x=>x.rm).filter(Boolean), r1=W1.map(x=>x.rm).filter(Boolean);
+        const n0=r0.length, n1=r1.length;
+        const m0=avg(r0), m1=avg(r1);
+        const pct=(a,b)=> (a==null||b==null||b===0)? null : ((a-b)/b)*100;
+        const dAvg=pct(m0,m1);
+        const sTxt = dAvg==null? '—' : (dAvg>=0? `↑ ${Math.round(dAvg)}%` : `↓ ${Math.abs(Math.round(dAvg))}%`);
+        const { fg } = colorForDelta(dAvg||0);
+        const rows=[];
+        const day=(s)=>DateTime.fromISO(s,{zone:ZONE}).toFormat('ccc LLL dd');
+        rows.push(`<tr><th colspan=3 class=\"right\">Avg route minutes Δ% (N=${n0}, last N=${n1})</th><th class=\"right\" style=\"color:${fg}\">${sTxt}</th></tr>`);
+        rows.push(`<tr><th colspan=2>Week</th><th class=\"right\">Days</th><th class=\"right\">Avg route minutes</th></tr>`);
+        rows.push(`<tr><td colspan=2>This week</td><td class=\"right\">${n0}</td><td class=\"right\">${m0?.toFixed(1)??'—'}</td></tr>`);
+        rows.push(`<tr><td colspan=2>Last week</td><td class=\"right\">${n1}</td><td class=\"right\">${m1?.toFixed(1)??'—'}</td></tr>`);
+        rows.push(`<tr><td colspan=4><small class=\"muted\">Per-day breakdown</small></td></tr>`);
+        const both=[...W1.map(x=>({w:'W-1',...x})), ...W0.map(x=>({w:'W0',...x}))].sort((a,b)=> (a.d<b.d?-1:1));
+        for (const r of both){ rows.push(`<tr><td>${r.w}</td><td>${day(r.d)}</td><td class=\"right\">${r.vol.toFixed(1)}</td><td class=\"right\">${r.rm||'—'}</td></tr>`); }
+        body.innerHTML = `<div style=\"overflow:auto\"><table style=\"width:100%;border-collapse:collapse\"><tbody>${rows.join('')}</tbody></table></div>`;
+      }catch(e){ console.warn('eff panel build error', e); }
+    }
+    const enable=!!show;
+    if (vBadge) vBadge.addEventListener('click', ()=> togglePanel(vPanel, volBuilder));
+    if (eBadge) eBadge.addEventListener('click', ()=> togglePanel(ePanel, effBuilder));
+    if (vBadge) vBadge.addEventListener('keydown', (e)=>{ if(enable && (e.key==='Enter'||e.key===' ')){ e.preventDefault(); togglePanel(vPanel, volBuilder); } });
+    if (eBadge) eBadge.addEventListener('keydown', (e)=>{ if(enable && (e.key==='Enter'||e.key===' ')){ e.preventDefault(); togglePanel(ePanel, effBuilder); } });
+    if (vClose) vClose.addEventListener('click', ()=>{ if(vPanel) vPanel.style.display='none'; });
+    if (eClose) eClose.addEventListener('click', ()=>{ if(ePanel) ePanel.style.display='none'; });
+  })();
+
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); computeBreakdown(); applyTrendPillsVisibility();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyVolEffVisibility();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);

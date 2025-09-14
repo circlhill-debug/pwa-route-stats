@@ -1553,7 +1553,7 @@ const setPill=(el,delta)=>{
 
   // Volume / Efficiency panels (preview, behind flag)
   (function enableVolEffPanels(){
-    const show = !!(FLAGS && FLAGS.volEffDetails);
+    const isEnabled = ()=> !!(FLAGS && FLAGS.volEffDetails);
     const vBadge = document.getElementById('badgeVolume');
     const eBadge = document.getElementById('badgeRouteEff');
     const vPanel = document.getElementById('volDetails');
@@ -1562,7 +1562,7 @@ const setPill=(el,delta)=>{
     const eClose = document.getElementById('closeEffDetails');
     function hidePanels(){ if(vPanel) vPanel.style.display='none'; if(ePanel) ePanel.style.display='none'; }
     function togglePanel(panel, builder){
-      if (!show || !panel) return;
+      if (!isEnabled() || !panel) return;
       const vis = panel.style.display !== 'none';
       if (vis){ panel.style.display='none'; return; }
       hidePanels(); builder(); panel.style.display='block'; panel.scrollIntoView({behavior:'smooth', block:'nearest'});
@@ -1603,7 +1603,11 @@ const setPill=(el,delta)=>{
         // Build container with optional scatter chart
         const parts = [];
         parts.push('<div id="volChartWrap"></div>');
-        parts.push(`<div style=\"overflow:auto;margin-top:8px\"><table style=\"width:100%;border-collapse:collapse\"><tbody>${rows.join('')}</tbody></table></div>`);
+        if ((n0+n1) === 0){
+          parts.push('<div class=\"panel-hint\">No worked days found for the selected/current week.</div>');
+        } else {
+          parts.push(`<div style=\"overflow:auto;margin-top:8px\"><table style=\"width:100%;border-collapse:collapse\"><tbody>${rows.join('')}</tbody></table></div>`);
+        }
         parts.push(`<div class=\"panel-hint\">Click points to summarize · X = volume · Y = route minutes</div>`);
         body.innerHTML = parts.join('');
 
@@ -1656,9 +1660,11 @@ const setPill=(el,delta)=>{
             }
           }catch(e){ console.warn('vol scatter fail', e); }
         };
-        if (window.Chart) drawScatter();
-        else if (!window.__chartVolEffLoaded){
-          window.__chartVolEffLoaded = true; const s=document.createElement('script'); s.src='vendor/chart.umd.js'; s.onload=()=>{ try{ drawScatter(); }catch(_){ } }; s.onerror=()=>console.warn('Chart.js load failed'); document.head.appendChild(s);
+        if ((n0+n1) > 0){
+          if (window.Chart) drawScatter();
+          else if (!window.__chartVolEffLoaded){
+            window.__chartVolEffLoaded = true; const s=document.createElement('script'); s.src='vendor/chart.umd.js'; s.onload=()=>{ try{ drawScatter(); }catch(_){ } }; s.onerror=()=>console.warn('Chart.js load failed'); document.head.appendChild(s);
+          }
         }
       }catch(e){ console.warn('vol panel build error', e); }
     }
@@ -1697,7 +1703,11 @@ const setPill=(el,delta)=>{
         // Build container with optional scatter chart
         const parts = [];
         parts.push('<div id="effChartWrap"></div>');
-        parts.push(`<div style=\"overflow:auto;margin-top:8px\"><table style=\"width:100%;border-collapse:collapse\"><tbody>${rows.join('')}</tbody></table></div>`);
+        if ((n0+n1) === 0){
+          parts.push('<div class=\"panel-hint\">No route-minute data found for the selected/current week.</div>');
+        } else {
+          parts.push(`<div style=\"overflow:auto;margin-top:8px\"><table style=\"width:100%;border-collapse:collapse\"><tbody>${rows.join('')}</tbody></table></div>`);
+        }
         parts.push(`<div class=\"panel-hint\">Click points to summarize · X = volume · Y = route minutes</div>`);
         body.innerHTML = parts.join('');
 
@@ -1750,17 +1760,19 @@ const setPill=(el,delta)=>{
             }
           }catch(e){ console.warn('eff scatter fail', e); }
         };
-        if (window.Chart) drawScatter();
-        else if (!window.__chartVolEffLoaded){
-          window.__chartVolEffLoaded = true; const s=document.createElement('script'); s.src='vendor/chart.umd.js'; s.onload=()=>{ try{ drawScatter(); }catch(_){ } }; s.onerror=()=>console.warn('Chart.js load failed'); document.head.appendChild(s);
+        if ((n0+n1) > 0){
+          if (window.Chart) drawScatter();
+          else if (!window.__chartVolEffLoaded){
+            window.__chartVolEffLoaded = true; const s=document.createElement('script'); s.src='vendor/chart.umd.js'; s.onload=()=>{ try{ drawScatter(); }catch(_){ } }; s.onerror=()=>console.warn('Chart.js load failed'); document.head.appendChild(s);
+          }
         }
       }catch(e){ console.warn('eff panel build error', e); }
     }
     const enable=!!show;
     if (vBadge) vBadge.addEventListener('click', ()=> togglePanel(vPanel, volBuilder));
     if (eBadge) eBadge.addEventListener('click', ()=> togglePanel(ePanel, effBuilder));
-    if (vBadge) vBadge.addEventListener('keydown', (e)=>{ if(enable && (e.key==='Enter'||e.key===' ')){ e.preventDefault(); togglePanel(vPanel, volBuilder); } });
-    if (eBadge) eBadge.addEventListener('keydown', (e)=>{ if(enable && (e.key==='Enter'||e.key===' ')){ e.preventDefault(); togglePanel(ePanel, effBuilder); } });
+    if (vBadge) vBadge.addEventListener('keydown', (e)=>{ if((e.key==='Enter'||e.key===' ')){ e.preventDefault(); togglePanel(vPanel, volBuilder); } });
+    if (eBadge) eBadge.addEventListener('keydown', (e)=>{ if((e.key==='Enter'||e.key===' ')){ e.preventDefault(); togglePanel(ePanel, effBuilder); } });
     if (vClose) vClose.addEventListener('click', ()=>{ if(vPanel) vPanel.style.display='none'; });
     if (eClose) eClose.addEventListener('click', ()=>{ if(ePanel) ePanel.style.display='none'; });
   })();

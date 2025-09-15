@@ -1572,6 +1572,8 @@ const setPill=(el,delta)=>{
     const isEnabled = ()=> !!(FLAGS && FLAGS.volEffDetails);
     const vBadge = document.getElementById('badgeVolume');
     const eBadge = document.getElementById('badgeRouteEff');
+    const vTile  = vBadge ? vBadge.closest('.stat') : null;
+    const eTile  = eBadge ? eBadge.closest('.stat') : null;
     const vPanel = document.getElementById('volDetails');
     const ePanel = document.getElementById('effDetails');
     const vClose = document.getElementById('closeVolDetails');
@@ -1809,10 +1811,13 @@ const setPill=(el,delta)=>{
         }
       }catch(e){ console.warn('eff panel build error', e); }
     }
-    if (vBadge) vBadge.addEventListener('click', ()=> togglePanel(vPanel, volBuilder));
-    if (eBadge) eBadge.addEventListener('click', ()=> togglePanel(ePanel, effBuilder));
-    if (vBadge) vBadge.addEventListener('keydown', (e)=>{ if((e.key==='Enter'||e.key===' ')){ e.preventDefault(); togglePanel(vPanel, volBuilder); } });
-    if (eBadge) eBadge.addEventListener('keydown', (e)=>{ if((e.key==='Enter'||e.key===' ')){ e.preventDefault(); togglePanel(ePanel, effBuilder); } });
+    const add = (el, build, panel)=>{
+      el?.addEventListener('click', ()=> togglePanel(panel, build));
+      el?.addEventListener('keydown', (e)=>{ if((e.key==='Enter'||e.key===' ')){ e.preventDefault(); togglePanel(panel, build); } });
+      if (el) el.style.cursor = 'pointer';
+    };
+    add(vBadge, volBuilder, vPanel); add(eBadge, effBuilder, ePanel);
+    add(vTile,  volBuilder, vPanel); add(eTile,  effBuilder, ePanel);
     if (vClose) vClose.addEventListener('click', ()=>{ if(vPanel) vPanel.style.display='none'; });
     if (eClose) eClose.addEventListener('click', ()=>{ if(ePanel) ePanel.style.display='none'; });
     // Rebuild open panels when Date changes (for selected-date mode)

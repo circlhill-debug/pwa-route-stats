@@ -1479,16 +1479,17 @@ const setPill=(el,delta)=>{
     const todayIso = today.toISODate();
     const todaysRow = workRows.find(r => r.work_date === todayIso);
     const sameDow = workRows.filter(r => r.work_date !== todayIso && (dowIndex(r.work_date) === dow));
-    const meanOf=(arr,fn)=> arr.length? arr.reduce((t,x)=>t+(fn(x)||0),0)/arr.length : null;
-    const baseParcels = meanOf(sameDow, r=> +r.parcels||0);
-    const baseLetters = meanOf(sameDow, r=> +r.letters||0);
+    // Use last same-weekday (most recent prior) as baseline instead of multi-week average
+    const lastSame = sameDow.length ? sameDow[0] : null;
+    const baseParcels = lastSame ? (+lastSame.parcels||0) : null;
+    const baseLetters = lastSame ? (+lastSame.letters||0) : null;
     const todayParcels = todaysRow? (+todaysRow.parcels||0): null;
     const todayLetters = todaysRow? (+todaysRow.letters||0): null;
     const dayPct=(val,base)=> (val==null || !base)? null : ((val-base)/base)*100;
     const tdp=dayPct(todayParcels, baseParcels), tdl=dayPct(todayLetters, baseLetters);
     const wkNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    document.querySelector('#todayParcelsDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs past ${wkNames[dow]}s (worked)`));
-    document.querySelector('#todayLettersDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs past ${wkNames[dow]}s (worked)`));
+    document.querySelector('#todayParcelsDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    document.querySelector('#todayLettersDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
     const fmtTiny=p=> p==null? '—' : (p>=0? `↑ ${p.toFixed(0)}%` : `↓ ${Math.abs(p).toFixed(0)}%`);
     $('todayParcelsDelta').textContent = fmtTiny(tdp);
     $('todayLettersDelta').textContent = fmtTiny(tdl);

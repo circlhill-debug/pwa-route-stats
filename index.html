@@ -1643,6 +1643,10 @@ const setPill=(el,delta)=>{
             const pts1 = W1.filter(p=>p.vol>0 && p.rm>0).map(p=>({x:+p.vol.toFixed(1), y:+p.rm.toFixed(1), _d:p.d, w:'W-1'}));
             const all = pts1.concat(pts0);
             const xs = all.map(p=>p.x), ys = all.map(p=>p.y);
+            const datasets = [
+              { label:'W-1', data: pts1, borderColor: mut,  backgroundColor: mut,  pointRadius:4 },
+              { label:'W0',  data: pts0, borderColor: brand, backgroundColor: brand, pointRadius:5 }
+            ];
             if (all.length >= 2){
               const n = all.length;
               const mean = a=> a.reduce((t,x)=>t+x,0)/a.length;
@@ -1651,32 +1655,28 @@ const setPill=(el,delta)=>{
               const m = vx>0 ? (cov/vx) : 0; const b = my - m*mx;
               const minX = Math.min(...xs), maxX = Math.max(...xs);
               const line = [{x:minX, y: +(m*minX + b).toFixed(1)}, {x:maxX, y:+(m*maxX + b).toFixed(1)}];
-              new Chart(ctx, {
-                type:'scatter',
-                data:{
-                  datasets:[
-                    { label:'W-1', data: pts1, borderColor: mut, backgroundColor: mut, pointRadius:4 },
-                    { label:'W0',  data: pts0, borderColor: brand, backgroundColor: brand, pointRadius:5 },
-                    { label:'trend', type:'line', data: line, borderColor: good, backgroundColor: good, pointRadius:0, borderWidth:1, tension:0, parsing:false }
-                  ]
-                },
-                options:{
-                  responsive:true, maintainAspectRatio:false,
-                  plugins:{ legend:{ display:true }, tooltip:{ enabled:false } },
-                  scales:{ x:{ title:{ display:true, text:'Volume' } }, y:{ title:{ display:true, text:'Route minutes' } } }
-                }
-              });
-              // Click summary
-              canvas.addEventListener('click', (evt)=>{
-                try{
-                  const chart = Chart.getChart(ctx);
-                  const points = chart.getElementsAtEventForMode(evt,'nearest',{intersect:true}, false);
-                  if(!points.length) return;
-                  const ds = chart.data.datasets[points[0].datasetIndex]; const p = ds.data[points[0].index];
-                  const sum = document.querySelector('#volDetails .panel-hint'); if(sum){ const d=DateTime.fromISO(p._d,{zone:ZONE}).toFormat('ccc LLL dd'); sum.textContent = `${p.w} ${d}: vol ${p.x}, route ${p.y} min`; }
-                }catch(_){ }
-              });
+              datasets.push({ label:'trend', type:'line', data: line, borderColor: good, backgroundColor: good, pointRadius:0, borderWidth:1, tension:0, parsing:false });
             }
+            new Chart(ctx, {
+              type:'scatter',
+              data:{ datasets },
+              options:{
+                responsive:true, maintainAspectRatio:false,
+                plugins:{ legend:{ display:true }, tooltip:{ enabled:false } },
+                scales:{ x:{ title:{ display:true, text:'Volume' } }, y:{ title:{ display:true, text:'Route minutes' } } }
+              }
+            });
+            // Click summary
+            canvas.addEventListener('click', (evt)=>{
+              try{
+                const chart = Chart.getChart(ctx);
+                const points = chart.getElementsAtEventForMode(evt,'nearest',{intersect:true}, false);
+                if(!points.length) return;
+                const ds = chart.data.datasets[points[0].datasetIndex]; const p = ds.data[points[0].index];
+                if (!p || p.x==null || p.y==null) return;
+                const sum = document.querySelector('#volDetails .panel-hint'); if(sum){ const d=DateTime.fromISO(p._d,{zone:ZONE}).toFormat('ccc LLL dd'); sum.textContent = `${p.w} ${d}: vol ${p.x}, route ${p.y} min`; }
+              }catch(_){ }
+            });
           }catch(e){ console.warn('vol scatter fail', e); }
         };
         if ((n0+n1) > 0){
@@ -1745,6 +1745,10 @@ const setPill=(el,delta)=>{
             const pts1 = W1.filter(p=>p.vol>0 && p.rm>0).map(p=>({x:+p.vol.toFixed(1), y:+p.rm.toFixed(1), _d:p.d, w:'W-1'}));
             const all = pts1.concat(pts0);
             const xs = all.map(p=>p.x), ys = all.map(p=>p.y);
+            const datasets = [
+              { label:'W-1', data: pts1, borderColor: mut,  backgroundColor: mut,  pointRadius:4 },
+              { label:'W0',  data: pts0, borderColor: brand, backgroundColor: brand, pointRadius:5 }
+            ];
             if (all.length >= 2){
               const n = all.length;
               const mean = a=> a.reduce((t,x)=>t+x,0)/a.length;
@@ -1753,32 +1757,28 @@ const setPill=(el,delta)=>{
               const m = vx>0 ? (cov/vx) : 0; const b = my - m*mx;
               const minX = Math.min(...xs), maxX = Math.max(...xs);
               const line = [{x:minX, y: +(m*minX + b).toFixed(1)}, {x:maxX, y:+(m*maxX + b).toFixed(1)}];
-              new Chart(ctx, {
-                type:'scatter',
-                data:{
-                  datasets:[
-                    { label:'W-1', data: pts1, borderColor: mut, backgroundColor: mut, pointRadius:4 },
-                    { label:'W0',  data: pts0, borderColor: brand, backgroundColor: brand, pointRadius:5 },
-                    { label:'trend', type:'line', data: line, borderColor: good, backgroundColor: good, pointRadius:0, borderWidth:1, tension:0, parsing:false }
-                  ]
-                },
-                options:{
-                  responsive:true, maintainAspectRatio:false,
-                  plugins:{ legend:{ display:true }, tooltip:{ enabled:false } },
-                  scales:{ x:{ title:{ display:true, text:'Volume' } }, y:{ title:{ display:true, text:'Route minutes' } } }
-                }
-              });
-              // Click summary
-              canvas.addEventListener('click', (evt)=>{
-                try{
-                  const chart = Chart.getChart(ctx);
-                  const points = chart.getElementsAtEventForMode(evt,'nearest',{intersect:true}, false);
-                  if(!points.length) return;
-                  const ds = chart.data.datasets[points[0].datasetIndex]; const p = ds.data[points[0].index];
-                  const sum = document.querySelector('#effDetails .panel-hint'); if(sum){ const d=DateTime.fromISO(p._d,{zone:ZONE}).toFormat('ccc LLL dd'); sum.textContent = `${p.w} ${d}: vol ${p.x}, route ${p.y} min`; }
-                }catch(_){ }
-              });
+              datasets.push({ label:'trend', type:'line', data: line, borderColor: good, backgroundColor: good, pointRadius:0, borderWidth:1, tension:0, parsing:false });
             }
+            new Chart(ctx, {
+              type:'scatter',
+              data:{ datasets },
+              options:{
+                responsive:true, maintainAspectRatio:false,
+                plugins:{ legend:{ display:true }, tooltip:{ enabled:false } },
+                scales:{ x:{ title:{ display:true, text:'Volume' } }, y:{ title:{ display:true, text:'Route minutes' } } }
+              }
+            });
+            // Click summary
+            canvas.addEventListener('click', (evt)=>{
+              try{
+                const chart = Chart.getChart(ctx);
+                const points = chart.getElementsAtEventForMode(evt,'nearest',{intersect:true}, false);
+                if(!points.length) return;
+                const ds = chart.data.datasets[points[0].datasetIndex]; const p = ds.data[points[0].index];
+                if (!p || p.x==null || p.y==null) return;
+                const sum = document.querySelector('#effDetails .panel-hint'); if(sum){ const d=DateTime.fromISO(p._d,{zone:ZONE}).toFormat('ccc LLL dd'); sum.textContent = `${p.w} ${d}: vol ${p.x}, route ${p.y} min`; }
+              }catch(_){ }
+            });
           }catch(e){ console.warn('eff scatter fail', e); }
         };
         if ((n0+n1) > 0){
@@ -1786,6 +1786,26 @@ const setPill=(el,delta)=>{
           else if (!window.__chartVolEffLoaded){
             window.__chartVolEffLoaded = true; const s=document.createElement('script'); s.src='vendor/chart.umd.js'; s.onload=()=>{ try{ drawScatter(); }catch(_){ } }; s.onerror=()=>console.warn('Chart.js load failed'); document.head.appendChild(s);
           }
+        } else {
+          // Fallback: volume-only line if no route-minute points exist
+          try{
+            const wrap = document.getElementById('effChartWrap'); if(!wrap) return;
+            const canvas = document.createElement('canvas'); canvas.className='sparkline'; wrap.appendChild(canvas);
+            const ctx = canvas.getContext('2d');
+            const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#2b7fff';
+            const mut = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#9aa0aa';
+            const labels = [...W1.map(x=> DateTime.fromISO(x.d,{zone:ZONE}).toFormat('ccc')), ...W0.map(x=> DateTime.fromISO(x.d,{zone:ZONE}).toFormat('ccc'))];
+            const series1 = W1.map(x=> +x.vol.toFixed(1));
+            const series0 = W0.map(x=> +x.vol.toFixed(1));
+            if (window.Chart){
+              new Chart(ctx, {
+                type:'line', data:{ labels, datasets:[
+                  { label:'W-1 vol', data: series1, borderColor: mut,  backgroundColor: mut,  tension:0.2, pointRadius:2, borderWidth:1 },
+                  { label:'W0 vol',  data: series0, borderColor: brand, backgroundColor: brand, tension:0.2, pointRadius:3, borderWidth:1 }
+                ]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{ tooltip:{ enabled:false } }, scales:{ x:{ display:false }, y:{ display:false } } }
+              });
+            }
+          }catch(_){ }
         }
       }catch(e){ console.warn('eff panel build error', e); }
     }

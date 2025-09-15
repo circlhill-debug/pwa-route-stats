@@ -1,5 +1,5 @@
 // Route Stats PWA Service Worker (safe)
-const CACHE_VERSION = 'rs-pwa-v2025-09-12-10';
+const CACHE_VERSION = 'rs-pwa-v2025-09-12-11';
 const STATIC_CACHE = CACHE_VERSION + '-static';
 
 const SAME_ORIGIN = self.location.origin;
@@ -18,6 +18,14 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE).then(cache => cache.addAll(PRECACHE_URLS)).then(() => self.skipWaiting())
   );
+});
+
+// Allow page to ask SW to activate immediately
+self.addEventListener('message', (event) => {
+  const data = event && event.data;
+  if (data && data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {

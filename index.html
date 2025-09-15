@@ -412,6 +412,13 @@
       <button class="ghost" value="cancel">Close</button>
       <button id="saveSettings">Save</button>
     </div>
+    <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
+      <small class="muted">Maintenance</small>
+      <div class="row" style="gap:8px;margin-top:6px">
+        <button id="forceRefreshBtn" class="ghost" title="Force update service worker and clear caches">Force Refresh (update + clear cache)</button>
+      </div>
+      <small class="muted">Use if updates don’t appear due to caching.</small>
+    </div>
     <small class="muted">Flags are stored locally (this device only).</small>
   </form>
 </dialog>
@@ -679,6 +686,21 @@ function moonPhaseEmoji(dateStr) {
     buildSnapshot(allRows||[]);
     buildMonthlyGlance(allRows||[]);
     applyTrendPillsVisibility();
+  });
+
+  // Force Refresh: update SW, clear caches, reload
+  document.getElementById('forceRefreshBtn')?.addEventListener('click', async (e)=>{
+    e.preventDefault();
+    try{
+      try{ const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); }catch(_){ }
+      if ('serviceWorker' in navigator){
+        const reg = await navigator.serviceWorker.getRegistration();
+        try{ await reg?.update(); }catch(_){ }
+        try{ reg?.waiting?.postMessage({ type:'SKIP_WAITING' }); }catch(_){ }
+      }
+    } finally {
+      setTimeout(()=> location.reload(), 200);
+    }
   });
 
   function applyTrendPillsVisibility(){

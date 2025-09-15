@@ -849,8 +849,23 @@ function moonPhaseEmoji(dateStr) {
     clone.addEventListener('click', async ()=>{
       const { data:{ user } } = await sb.auth.getUser(); if (!user) { alert('No session. Try Link devices or refresh.'); return; }
       const payload = collectPayload(user.id); let error;
-      if (editingKey) ({ error } = await sb.from('entries').update(payload).eq('user_id', editingKey.user_id).eq('work_date', editingKey.work_date));
-      else ({ error } = await sb.from('entries').insert(payload));
+      try{
+        // Guard against duplicates: replace all rows for this user/date with a single fresh payload
+        const { data: existing, error: findErr } = await sb
+          .from('entries').select('work_date', { count: 'exact', head: false })
+          .eq('user_id', user.id).eq('work_date', payload.work_date);
+        if (findErr) console.warn('find existing failed', findErr);
+        const exists = Array.isArray(existing) && existing.length > 0;
+        if (exists){
+          const { error: delErr } = await sb.from('entries').delete().eq('user_id', user.id).eq('work_date', payload.work_date);
+          if (delErr) { error = delErr; throw delErr; }
+          const { error: insErr } = await sb.from('entries').insert(payload);
+          if (insErr) { error = insErr; throw insErr; }
+        } else {
+          const { error: insErr } = await sb.from('entries').insert(payload);
+          if (insErr) { error = insErr; throw insErr; }
+        }
+      }catch(e){ error = e; }
       dWrite.textContent = error ? 'Failed' : 'OK'; if (error){ alert(error.message); return; }
       clone.textContent = 'Update'; clone.disabled = true; clone.classList.add('saving','savedFlash');
       setTimeout(()=>{ clone.disabled=false; clone.classList.remove('saving'); }, 400); setTimeout(()=> clone.classList.remove('savedFlash'), 700);

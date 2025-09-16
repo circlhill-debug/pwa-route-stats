@@ -14,3 +14,10 @@
 ---
 
 Previous releases: see tags v2.0 and v2.0.1.
+## v2.0.3 — UI polish + weekly totals fix
+
+- Weekly totals: compare Mon..today vs last Mon..today in Hours/Parcels/Letters panels; label totals as “this week vs last”.
+- Hours panel copy: kept explainer in normal color; shows numeric summary with amber highlight (matches Monthly Glance); removed redundant sentence.
+- Parcels/Letters panels: cleaned explainer duplication; added matching amber numeric summary.
+- Settings: added “Compare weekly totals: Mon..today vs last Mon..today” toggle (on by default).
+- Service worker: multiple cache bumps to ensure smooth rollout.

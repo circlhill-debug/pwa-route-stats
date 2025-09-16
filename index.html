@@ -408,6 +408,7 @@
     <label class="pill"><input id="flagHolidayAdjust" type="checkbox"> Holiday adjustments (carry Monday into Tuesday)
     </label>
     <label class="pill"><input id="flagTrendPills" type="checkbox"> Show Weekly Trend pills (power users)</label>
+    <label class="pill"><input id="flagSameRangeTotals" type="checkbox"> Compare weekly totals: Mon..today vs last Mon..today</label>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="ghost" value="cancel">Close</button>
       <button id="saveSettings">Save</button>
@@ -478,8 +479,8 @@
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true }; }
   }
   function saveFlags(f){ localStorage.setItem(FLAG_KEY, JSON.stringify(f)); }
   let FLAGS = loadFlags();
@@ -660,6 +661,7 @@ function moonPhaseEmoji(dateStr) {
   const flagMonthlyGlance = document.getElementById('flagMonthlyGlance');
   const flagHolidayAdjust = document.getElementById('flagHolidayAdjust');
   const flagTrendPills = document.getElementById('flagTrendPills');
+  const flagSameRangeTotals = document.getElementById('flagSameRangeTotals');
   const saveSettings = document.getElementById('saveSettings');
 
   btnSettings?.addEventListener('click', ()=>{
@@ -669,6 +671,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagMonthlyGlance) flagMonthlyGlance.checked = !!FLAGS.monthlyGlance;
     if (flagHolidayAdjust) flagHolidayAdjust.checked = !!FLAGS.holidayAdjustments;
     if (flagTrendPills) flagTrendPills.checked = !!FLAGS.trendPills;
+    if (flagSameRangeTotals) flagSameRangeTotals.checked = !!FLAGS.sameRangeTotals;
     settingsDlg.showModal();
   });
 
@@ -679,6 +682,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagMonthlyGlance) FLAGS.monthlyGlance = !!flagMonthlyGlance.checked;
     if (flagHolidayAdjust) FLAGS.holidayAdjustments = !!flagHolidayAdjust.checked;
     if (flagTrendPills) FLAGS.trendPills = !!flagTrendPills.checked;
+    if (flagSameRangeTotals) FLAGS.sameRangeTotals = !!flagSameRangeTotals.checked;
     saveFlags(FLAGS);
     settingsDlg.close();
     // Re-render visuals affected by flags
@@ -1379,9 +1383,9 @@ const setPill=(el,delta)=>{
         const totalDelta = (tLast === 0) ? null : ((tThis - tLast) / tLast) * 100;
         const { fg:totFg } = colorForDelta(totalDelta || 0);
         const totalRow = `<tr><th style=\"color:var(--brand)\">Total (this week vs last)</th><th class=\"right\">${tThis}</th><th class=\"right\">${tLast}</th><th class=\"right\" style=\"color:${totFg}\">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
-        const summary = `This week so far: ${tThis} parcels over ${dThis} day(s). Last week: ${tLast} parcels over ${dLast} day(s).`;
+        const summaryHtml = `<small><span>This week so far: </span><span style=\"color:var(--warn)\">${tThis} parcels over ${dThis} day(s). Last week: ${tLast} parcels over ${dLast} day(s).</span></small>`;
         panelBody.innerHTML = `
-          <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\"><small>${summary}</small></div>
+          <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\">${summaryHtml}</div>
           <table style=\"width:100%;border-collapse:collapse\">
             <thead><tr><th>Day</th><th class=\"right\">This week</th><th class=\"right\">Last week</th><th class=\"right\">Δ%</th></tr></thead>
             <tbody>${rowsHtml.join('')}</tbody>
@@ -1416,9 +1420,9 @@ const setPill=(el,delta)=>{
         const totalDelta = (tLast === 0) ? null : ((tThis - tLast) / tLast) * 100;
         const { fg:totFg } = colorForDelta(totalDelta || 0);
         const totalRow = `<tr><th style=\"color:var(--brand)\">Total (this week vs last)</th><th class=\"right\">${tThis}</th><th class=\"right\">${tLast}</th><th class=\"right\" style=\"color:${totFg}\">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
-        const summary = `This week so far: ${tThis} letters over ${dThis} day(s). Last week: ${tLast} letters over ${dLast} day(s).`;
+        const summaryHtml = `<small><span>This week so far: </span><span style=\"color:var(--warn)\">${tThis} letters over ${dThis} day(s). Last week: ${tLast} letters over ${dLast} day(s).</span></small>`;
         panelBody.innerHTML = `
-          <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\"><small>${summary}</small></div>
+          <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\">${summaryHtml}</div>
           <table style=\"width:100%;border-collapse:collapse\">
             <thead><tr><th>Day</th><th class=\"right\">This week</th><th class=\"right\">Last week</th><th class=\"right\">Δ%</th></tr></thead>
             <tbody>${rowsHtml.join('')}</tbody>

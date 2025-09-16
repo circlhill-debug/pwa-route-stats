@@ -1322,7 +1322,7 @@ const setPill=(el,delta)=>{
           let adjMark = '';
           if (holidayAdjEnabled && mondayOffThisWeek && i === 1) { base = (lastWeek[0]?.h||0) + (lastWeek[1]?.h||0); adjMark = ' (adj)'; }
           if (cur != null) tThis += cur;
-          tLast += base;
+          if (i <= dayIndexToday) tLast += base;
           const delta = (cur == null || base === 0) ? null : ((cur - base) / base) * 100;
           const curTxt = (cur == null) ? 'Off' : cur.toFixed(2);
           const baseTxt = (base === 0) ? 'Off' : base.toFixed(2);
@@ -1378,7 +1378,7 @@ const setPill=(el,delta)=>{
         }
         const totalDelta = (tLast === 0) ? null : ((tThis - tLast) / tLast) * 100;
         const { fg:totFg } = colorForDelta(totalDelta || 0);
-        const totalRow = `<tr><th>Total</th><th class=\"right\">${tThis}</th><th class=\"right\">${tLast}</th><th class=\"right\" style=\"color:${totFg}\">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
+        const totalRow = `<tr><th>Total (Mon..today)</th><th class=\"right\">${tThis}</th><th class=\"right\">${tLast}</th><th class=\"right\" style=\"color:${totFg}\">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
         const summary = `This week so far: ${tThis} parcels over ${dThis} day(s). Last week: ${tLast} parcels over ${dLast} day(s).`;
         panelBody.innerHTML = `
           <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\"><small>${summary}</small></div>
@@ -1405,7 +1405,7 @@ const setPill=(el,delta)=>{
           let adjMark = '';
           if (holidayAdjEnabled && mondayOffThisWeek && i === 1) { base = (lastWeek[0]?.l||0) + (lastWeek[1]?.l||0); adjMark=' (adj)'; }
           if (cur != null) tThis += cur;
-          tLast += base;
+          if (i <= dayIndexToday) tLast += base;
           const delta = (cur == null || base === 0) ? null : ((cur - base) / base) * 100;
           const curTxt = (cur == null) ? '—' : String(cur);
           const baseTxt = String(base); // show 0 explicitly
@@ -1415,7 +1415,7 @@ const setPill=(el,delta)=>{
         }
         const totalDelta = (tLast === 0) ? null : ((tThis - tLast) / tLast) * 100;
         const { fg:totFg } = colorForDelta(totalDelta || 0);
-        const totalRow = `<tr><th>Total</th><th class=\"right\">${tThis}</th><th class=\"right\">${tLast}</th><th class=\"right\" style=\"color:${totFg}\">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
+        const totalRow = `<tr><th>Total (Mon..today)</th><th class=\"right\">${tThis}</th><th class=\"right\">${tLast}</th><th class=\"right\" style=\"color:${totFg}\">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
         const summary = `This week so far: ${tThis} letters over ${dThis} day(s). Last week: ${tLast} letters over ${dLast} day(s).`;
         panelBody.innerHTML = `
           <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\"><small>${summary}</small></div>

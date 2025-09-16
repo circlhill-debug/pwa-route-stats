@@ -127,11 +127,13 @@
           <small>Volume</small>
           <strong id="badgeVolume" style="font-size:20px">—</strong>
           <small class="muted">parcels + 0.33×letters</small>
+          <small id="volSub" class="muted">—</small>
         </div>
         <div class="stat">
           <small>Route Eff.</small>
           <strong id="badgeRouteEff" style="font-size:20px">—</strong>
           <small class="muted">vs weekday baseline</small>
+          <small id="effSub" class="muted">—</small>
         </div>
         <div class="stat">
           <small>Overall</small>
@@ -1122,6 +1124,9 @@ function moonPhaseEmoji(dateStr) {
 
     const hThis=sum(thisW,r=>+r.hours||0), pThis=sum(thisW,r=>+r.parcels||0), lThis=sum(thisW,r=>+r.letters||0);
     const hLast=sum(lastW,r=>+r.hours||0), pLast=sum(lastW,r=>+r.parcels||0), lLast=sum(lastW,r=>+r.letters||0);
+    // Weekly volume (parcels + 0.33*letters)
+    const vThis=sum(thisW,r=>(+r.parcels||0)+0.33*(+r.letters||0));
+    const vLast=sum(lastW,r=>(+r.parcels||0)+0.33*(+r.letters||0));
 
     // Show live totals as "thisWeek / lastWeek"
     $('wkHours').textContent   = `${(hThis||0).toFixed(2)} / ${(hLast||0).toFixed(2)}`;
@@ -1150,10 +1155,10 @@ function moonPhaseEmoji(dateStr) {
     const dl = blend(lCarry, lTarget);
 
     const fmt = p => {
-  if (p == null) return '—';
-  const rounded = Math.round(p);
-  return rounded >= 0 ? `↑ ${rounded}%` : `↓ ${Math.abs(rounded)}%`;
-};
+      if (p == null) return '—';
+      const rounded = Math.round(p);
+      return rounded >= 0 ? `↑ ${rounded}%` : `↓ ${Math.abs(rounded)}%`;
+    };
 
 // Progressive color scale for deltas (±60% window), with simple green/red fallback
 function colorForDelta(pct){
@@ -1187,6 +1192,37 @@ const setPill=(el,delta)=>{
     setPill($('wkHoursDelta'),   dh);
     setPill($('wkParcelsDelta'), dp);
     setPill($('wkLettersDelta'), dl);
+
+    // === New: Compact sublabels under badges ===
+    try{
+      // Volume weekly avg/day vs last week (same-count if possible)
+      const nThis = dThis || 0, nLast = dLast || 0;
+      const nUse = (nThis && nLast) ? Math.min(nThis, nLast) : (nThis || nLast);
+      const avgThis = nThis ? (vThis / nThis) : null;
+      const avgLast = nLast ? (vLast / nLast) : null;
+      const volDelta = (avgThis!=null && avgLast!=null && avgLast>0) ? ((avgThis-avgLast)/avgLast*100) : null;
+      const volSub = document.getElementById('volSub');
+      if (volSub){
+        if (avgThis==null && avgLast==null) volSub.textContent = '—';
+        else volSub.textContent = `Week avg/day: ${avgThis?.toFixed(1) ?? '—'} vs ${avgLast?.toFixed(1) ?? '—'} (${fmt(volDelta)})`;
+      }
+
+      // Route efficiency today vs last same weekday: minutes per volume unit
+      const effSub = document.getElementById('effSub');
+      const todayIso2 = today.toISODate();
+      const todayRow = rows.find(r=> r.status!=='off' && r.work_date===todayIso2) || null;
+      const lastSame = rows.find(r=> r.status!=='off' && r.work_date!==todayIso2 && (dowIndex(r.work_date)===dow));
+      function minsPerVol(r){
+        if (!r) return null; const rm = +r.route_minutes||0; const vol = (+r.parcels||0)+0.33*(+r.letters||0); if (!rm || !vol) return null; return rm/vol; }
+      const effToday = minsPerVol(todayRow);
+      const effLast  = minsPerVol(lastSame);
+      const effDelta = (effToday!=null && effLast!=null && effLast>0)? ((effLast-effToday)/effLast*100) : null; // improvement downwards is good
+      if (effSub){
+        const dname = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dow];
+        if (effToday==null && effLast==null) effSub.textContent = '—';
+        else effSub.textContent = `Today: ${effToday?.toFixed(2) ?? '—'} min/vol vs last ${dname}: ${effLast?.toFixed(2) ?? '—'} (${effDelta==null?'—': (effDelta>=0? '↑ '+Math.round(effDelta)+'%':'↓ '+Math.abs(Math.round(effDelta))+'%')})`;
+      }
+    }catch(_){ }
 
     // ===== Advanced Weekly Metrics (Phase 1) =====
     // Day-by-day comparison Mon..today vs same weekday last week,

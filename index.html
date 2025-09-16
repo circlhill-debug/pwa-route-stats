@@ -184,7 +184,7 @@
         <h4 style="margin:0">Weekly Hours Breakdown</h4>
         <button id="closeWkHoursDetails" class="ghost">Close</button>
       </div>
-      <small class="muted" style="color:var(--warn)">Shows this week (Mon..today) vs last week (Mon..Sun). Δ% compares each weekday and the totals.</small>
+      <small class="muted" style="color:#FFC107">Shows this week (Mon..today) vs last week (Mon..Sun). Δ% compares each weekday and the totals.</small>
       <div id="wkHoursDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px">
         <!-- populated by script -->
       </div>
@@ -1334,10 +1334,10 @@ const setPill=(el,delta)=>{
         const { fg:totFg } = colorForDelta(totalDelta || 0);
         const totalRow = `<tr><th>Total</th><th class="right">${tThis.toFixed(2)}</th><th class="right">${tLast.toFixed(2)}</th><th class="right" style="color:${totFg}">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
 
-        const summary = `This week so far: ${tThis.toFixed(2)}h over ${dThis} day(s). Last week: ${tLast.toFixed(2)}h over ${dLast} day(s). Tile shows a blended % from last week’s per-worked-day baseline toward this week’s progress.`;
+        const summary = `Shows a blended % from last week’s per-worked-day baseline toward this week’s progress.`;
 
         panelBody.innerHTML = `
-          <div style="padding:8px 10px;border-bottom:1px solid var(--border)"><small>${summary}</small></div>
+          <div style="padding:8px 10px;border-bottom:1px solid var(--border)"><small style="color:#FFC107">${summary}</small></div>
           <table style="width:100%;border-collapse:collapse">
             <thead>
               <tr><th>Day</th><th class="right">This week</th><th class="right">Last week</th><th class="right">Δ%</th></tr>

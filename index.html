@@ -193,24 +193,7 @@
         <!-- populated by script -->
       </div>
     </div>
-    <!-- Volume details (preview) -->
-    <div id="volDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
-      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <h4 style="margin:0">Volume — This week vs Last week</h4>
-        <button id="closeVolDetails" class="ghost">Close</button>
-      </div>
-      <small class="muted">Volume per worked day = parcels + 0.33×letters</small>
-      <div id="volDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
-    </div>
-    <!-- Route Efficiency details (preview) -->
-    <div id="effDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
-      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <h4 style="margin:0">Route Efficiency — This week vs Last week</h4>
-        <button id="closeEffDetails" class="ghost">Close</button>
-      </div>
-      <small class="muted">Lower route minutes is better for a given volume</small>
-      <div id="effDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
-    </div>
+    
     <!-- Inline details panel for weekly parcels breakdown -->
     <div id="wkParcelsDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
       <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
@@ -430,8 +413,7 @@
     <label class="pill"><input id="flagHolidayAdjust" type="checkbox"> Holiday adjustments (carry Monday into Tuesday)
     </label>
     <label class="pill"><input id="flagTrendPills" type="checkbox"> Show Weekly Trend pills (power users)</label>
-    <label class="pill"><input id="flagVolEffDetails" type="checkbox"> Volume/Efficiency click-through panels (preview)</label>
-    <label class="pill"><input id="flagVolEffUseSelectedDate" type="checkbox"> Use selected Date for Vol/Eff panels</label>
+    
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="ghost" value="cancel">Close</button>
       <button id="saveSettings">Save</button>
@@ -495,8 +477,8 @@
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, volEffDetails:false, volEffUseSelectedDate:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, volEffDetails:false, volEffUseSelectedDate:true }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false }; }
   }
   function saveFlags(f){ localStorage.setItem(FLAG_KEY, JSON.stringify(f)); }
   let FLAGS = loadFlags();
@@ -677,8 +659,6 @@ function moonPhaseEmoji(dateStr) {
   const flagMonthlyGlance = document.getElementById('flagMonthlyGlance');
   const flagHolidayAdjust = document.getElementById('flagHolidayAdjust');
   const flagTrendPills = document.getElementById('flagTrendPills');
-  const flagVolEffDetails = document.getElementById('flagVolEffDetails');
-  const flagVolEffUseSelectedDate = document.getElementById('flagVolEffUseSelectedDate');
   const saveSettings = document.getElementById('saveSettings');
 
   btnSettings?.addEventListener('click', ()=>{
@@ -688,8 +668,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagMonthlyGlance) flagMonthlyGlance.checked = !!FLAGS.monthlyGlance;
     if (flagHolidayAdjust) flagHolidayAdjust.checked = !!FLAGS.holidayAdjustments;
     if (flagTrendPills) flagTrendPills.checked = !!FLAGS.trendPills;
-    if (flagVolEffDetails) flagVolEffDetails.checked = !!FLAGS.volEffDetails;
-    if (flagVolEffUseSelectedDate) flagVolEffUseSelectedDate.checked = !!FLAGS.volEffUseSelectedDate;
+    
     settingsDlg.showModal();
   });
 
@@ -700,8 +679,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagMonthlyGlance) FLAGS.monthlyGlance = !!flagMonthlyGlance.checked;
     if (flagHolidayAdjust) FLAGS.holidayAdjustments = !!flagHolidayAdjust.checked;
     if (flagTrendPills) FLAGS.trendPills = !!flagTrendPills.checked;
-    if (flagVolEffDetails) FLAGS.volEffDetails = !!flagVolEffDetails.checked;
-    if (flagVolEffUseSelectedDate) FLAGS.volEffUseSelectedDate = !!flagVolEffUseSelectedDate.checked;
+    
     saveFlags(FLAGS);
     settingsDlg.close();
     // Re-render visuals affected by flags
@@ -709,21 +687,9 @@ function moonPhaseEmoji(dateStr) {
     buildSnapshot(allRows||[]);
     buildMonthlyGlance(allRows||[]);
     applyTrendPillsVisibility();
-    applyVolEffVisibility();
+    
   });
-
-    function applyVolEffVisibility(){
-      const enable = !!(FLAGS && FLAGS.volEffDetails);
-      const v = document.getElementById('volDetails');
-      const r = document.getElementById('effDetails');
-      if (v) v.style.display = 'none';
-      if (r) r.style.display = 'none';
-    // Only affect clickability; panels remain hidden until clicked
-    const vol = document.getElementById('badgeVolume');
-    const eff = document.getElementById('badgeRouteEff');
-    if (vol) vol.style.cursor = enable ? 'pointer' : '';
-    if (eff) eff.style.cursor = enable ? 'pointer' : '';
-  }
+  
 
   function applyTrendPillsVisibility(){
     const ids = ['tileAdvHours','tileAdvParcels','tileAdvLetters'];
@@ -1502,16 +1468,17 @@ const setPill=(el,delta)=>{
     const todayIso = today.toISODate();
     const todaysRow = workRows.find(r => r.work_date === todayIso);
     const sameDow = workRows.filter(r => r.work_date !== todayIso && (dowIndex(r.work_date) === dow));
-    const meanOf=(arr,fn)=> arr.length? arr.reduce((t,x)=>t+(fn(x)||0),0)/arr.length : null;
-    const baseParcels = meanOf(sameDow, r=> +r.parcels||0);
-    const baseLetters = meanOf(sameDow, r=> +r.letters||0);
+    // Use last same-weekday (most recent prior) as baseline instead of multi-week average
+    const lastSame = sameDow.length ? sameDow[0] : null;
+    const baseParcels = lastSame ? (+lastSame.parcels||0) : null;
+    const baseLetters = lastSame ? (+lastSame.letters||0) : null;
     const todayParcels = todaysRow? (+todaysRow.parcels||0): null;
     const todayLetters = todaysRow? (+todaysRow.letters||0): null;
     const dayPct=(val,base)=> (val==null || !base)? null : ((val-base)/base)*100;
     const tdp=dayPct(todayParcels, baseParcels), tdl=dayPct(todayLetters, baseLetters);
     const wkNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    document.querySelector('#todayParcelsDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs past ${wkNames[dow]}s (worked)`));
-    document.querySelector('#todayLettersDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs past ${wkNames[dow]}s (worked)`));
+    document.querySelector('#todayParcelsDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    document.querySelector('#todayLettersDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
     const fmtTiny=p=> p==null? '—' : (p>=0? `↑ ${p.toFixed(0)}%` : `↓ ${Math.abs(p).toFixed(0)}%`);
     $('todayParcelsDelta').textContent = fmtTiny(tdp);
     $('todayLettersDelta').textContent = fmtTiny(tdl);
@@ -1830,7 +1797,7 @@ const setPill=(el,delta)=>{
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyVolEffVisibility();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); computeBreakdown(); applyTrendPillsVisibility();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);

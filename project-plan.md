@@ -136,3 +136,74 @@ Ship plan
 - Implement on `feature/monthly-glance` behind flag.
 - Bump service worker cache version.
 - Manual test, PR → merge to `main`, tag v2.0.2.
+
+### 2025-09-14 — v2.0.3 UI polish + weekly totals fix
+
+What we shipped (main)
+- Weekly totals compare same range: Mon..today vs last Mon..today in Hours/Parcels/Letters panels.
+- Totals row label simplified to “Total (this week vs last)” and highlighted for emphasis.
+- Hours/Parcels/Letters panel headers: concise explainer lines; numeric summaries highlighted in the same amber tone as Monthly Glance.
+- Settings: added toggle “Compare weekly totals: Mon..today vs last Mon..today” (ON by default).
+- Multiple SW cache bumps to ensure rollout.
+
+Repo state
+- Tag: v2.0.3 (pending GitHub Release)
+- Branch for upcoming work: `feature/phase-3-quick-filters`
+
+Verification checklist (manual)
+- Weekly panels: totals row is “this week vs last” and reflects Mon..today ranges.
+- Hours panel: explainer in normal color; numeric summary in amber; no redundant lines.
+- Parcels/Letters: numeric summary in amber; no duplicate explainer lines.
+- Settings toggle flips totals behavior as expected.
+
+---
+
+### Phase 3: Quick Filters + Digest + Mix Visualization
+
+Goals
+- Add fast, lightweight insights without heavy visuals or extra network calls.
+- Keep numbers-first with optional charts that degrade to text.
+
+Scope
+1) Quick Filter card (weekday parsing)
+   - Selector: All, Mon, Tue, Wed, Thu, Fri, Sat, Sun.
+   - Stats (computed client-side from fetched rows):
+     - Count (worked days), Avg hours, Avg parcels, Avg letters, Avg route minutes.
+   - Optional tiny sparkline (if Chart.js present); otherwise text fallback (e.g., comma list or mini table).
+   - Performance: zero additional DB calls; O(n) over loaded rows.
+
+2) Headline digest (under app title)
+   - One-sentence summary comparing this week (Mon..today) vs last (Mon..today).
+   - Uses the already-computed blended % (carry-forward → today) to bucket tone:
+     - ≤−15%: “much lighter”
+     - −15..−5%: “a bit lighter”
+     - −5..+5%: “similar to last week”
+     - +5..+15%: “a bit heavier”
+     - ≥+15%: “much more intense”
+   - Copy is calm, encouraging, and brief (Weds-ready but visible any day).
+   - Feature flag (ON by default) to show/hide.
+
+3) Parcels vs Letters mix (at a glance)
+   - Two 100% stacked bars (text fallback): W-1 vs W0 composition by parcels/letters share of total volume.
+   - Text fallback example: “W-1: parcels 41% / letters 59% • W0: parcels 46% / letters 54%”.
+   - Optional: small efficiency index (minutes per vol vs last same range) as a sublabel; keep subtle.
+
+Technical notes
+- Charts are optional. If Chart.js is absent, show clean text summaries.
+- Color-only emphasis, no heavy backgrounds; reuse existing brand/warn tones.
+- All computations reuse loaded data; no new API endpoints.
+
+Acceptance criteria
+- Quick Filter shows correct stats per weekday selection; sparkline appears only when Chart.js is present.
+- Headline sentence appears under title and reflects blended % bucket; can be toggled off in Settings.
+- Mix visualization displays composition (stacked bars or clean text) for W-1 and W0.
+- No noticeable performance regressions; initial render remains snappy.
+
+Out of scope (Phase 3)
+- Deep drilldowns, large interactive charts, or server-side filters.
+- Persisted user preferences beyond localStorage flags.
+
+Ship plan
+- Implement on `feature/phase-3-quick-filters` behind flags.
+- Bump SW cache version.
+- Manual test → PR → merge to `main`, tag v2.0.4.

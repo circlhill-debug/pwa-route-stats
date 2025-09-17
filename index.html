@@ -1338,7 +1338,7 @@ const setPill=(el,delta)=>{
         const { fg:totFg } = colorForDelta(totalDelta || 0);
         const totalRow = `<tr><th>Total</th><th class="right">${tThis.toFixed(2)}</th><th class="right">${tLast.toFixed(2)}</th><th class="right" style="color:${totFg}">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
 
-        const summaryHtml = `<small><span>This week so far: </span><span style=\"color:var(--warn)\">${tThis.toFixed(2)}h over ${dThis} day(s). Last week: ${tLast.toFixed(2)}h over ${dLast} day(s).</span></small>`;
+        const summaryHtml = `<small><span style=\"color:var(--brand)\">This week so far: </span><span style=\"color:var(--warn)\">${tThis.toFixed(2)}h over ${dThis} day(s). Last week: ${tLast.toFixed(2)}h over ${dLast} day(s).</span></small>`;
 
         panelBody.innerHTML = `
           <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\">${summaryHtml}</div>
@@ -1383,7 +1383,7 @@ const setPill=(el,delta)=>{
         const totalDelta = (tLast === 0) ? null : ((tThis - tLast) / tLast) * 100;
         const { fg:totFg } = colorForDelta(totalDelta || 0);
         const totalRow = `<tr><th style=\"color:var(--brand)\">Total (this week vs last)</th><th class=\"right\">${tThis}</th><th class=\"right\">${tLast}</th><th class=\"right\" style=\"color:${totFg}\">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
-        const summaryHtml = `<small><span>This week so far: </span><span style=\"color:var(--warn)\">${tThis} parcels over ${dThis} day(s). Last week: ${tLast} parcels over ${dLast} day(s).</span></small>`;
+        const summaryHtml = `<small><span style=\"color:var(--brand)\">This week so far: </span><span style=\"color:var(--warn)\">${tThis} parcels over ${dThis} day(s). Last week: ${tLast} parcels over ${dLast} day(s).</span></small>`;
         panelBody.innerHTML = `
           <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\">${summaryHtml}</div>
           <table style=\"width:100%;border-collapse:collapse\">
@@ -1420,7 +1420,7 @@ const setPill=(el,delta)=>{
         const totalDelta = (tLast === 0) ? null : ((tThis - tLast) / tLast) * 100;
         const { fg:totFg } = colorForDelta(totalDelta || 0);
         const totalRow = `<tr><th style=\"color:var(--brand)\">Total (this week vs last)</th><th class=\"right\">${tThis}</th><th class=\"right\">${tLast}</th><th class=\"right\" style=\"color:${totFg}\">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
-        const summaryHtml = `<small><span>This week so far: </span><span style=\"color:var(--warn)\">${tThis} letters over ${dThis} day(s). Last week: ${tLast} letters over ${dLast} day(s).</span></small>`;
+        const summaryHtml = `<small><span style=\"color:var(--brand)\">This week so far: </span><span style=\"color:var(--warn)\">${tThis} letters over ${dThis} day(s). Last week: ${tLast} letters over ${dLast} day(s).</span></small>`;
         panelBody.innerHTML = `
           <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\">${summaryHtml}</div>
           <table style=\"width:100%;border-collapse:collapse\">

@@ -318,6 +318,30 @@
   <section class="card"><h3 style="margin:0 0 8px 0">Parcels Over Time (worked days)</h3><canvas id="parcelsChart" height="180"></canvas></section>
   <section class="card"><h3 style="margin:0 0 8px 0">Letters Over Time (worked days)</h3><canvas id="lettersChart" height="180"></canvas></section>
 
+  <!-- Quick Filter (Phase 3) -->
+  <section class="card" id="quickFilterCard" style="display:none">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">Quick Filter</h3>
+      <select id="qfSelect" style="min-width:140px">
+        <option value="all">All days</option>
+        <option value="1">Monday</option>
+        <option value="2">Tuesday</option>
+        <option value="3">Wednesday</option>
+        <option value="4">Thursday</option>
+        <option value="5">Friday</option>
+        <option value="6">Saturday</option>
+        <option value="0">Sunday</option>
+      </select>
+    </div>
+    <div class="row" id="qfStats" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+      <!-- pills populated by script -->
+    </div>
+    <div id="qfViz" style="margin-top:8px">
+      <canvas id="qfSpark" class="sparkline"></canvas>
+      <div id="qfText" class="sparkline-labels">—</div>
+    </div>
+  </section>
+
   <!-- Monthly Glance (preview) — behind feature flag -->
   <section class="card" id="monthlyGlanceCard" style="grid-column:1/-1; display:none">
     <h3 style="margin:0 0 8px 0">Monthly Glance (preview)</h3>
@@ -479,8 +503,8 @@
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true }; }
   }
   function saveFlags(f){ localStorage.setItem(FLAG_KEY, JSON.stringify(f)); }
   let FLAGS = loadFlags();
@@ -689,6 +713,7 @@ function moonPhaseEmoji(dateStr) {
     buildCharts(allRows||[]);
     buildSnapshot(allRows||[]);
     buildMonthlyGlance(allRows||[]);
+    buildQuickFilter(allRows||[]);
     applyTrendPillsVisibility();
   });
 
@@ -1550,7 +1575,7 @@ const setPill=(el,delta)=>{
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); computeBreakdown(); applyTrendPillsVisibility();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); computeBreakdown(); applyTrendPillsVisibility();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);
@@ -1750,6 +1775,68 @@ const setPill=(el,delta)=>{
         document.head.appendChild(script);
       }catch(e){ console.warn('Error injecting Chart.js script', e); }
     }
+  }
+
+  // Quick Filter (Phase 3): weekday selector with stats + optional sparkline
+  function buildQuickFilter(rows){
+    const card = document.getElementById('quickFilterCard');
+    if (!card) return;
+    card.style.display = FLAGS.quickFilter ? 'block' : 'none';
+    if (!FLAGS.quickFilter) return;
+    const sel = document.getElementById('qfSelect');
+    const stats = document.getElementById('qfStats');
+    const spark = document.getElementById('qfSpark');
+    const text = document.getElementById('qfText');
+    if (!stats || !spark || !text) return;
+
+    const dayVal = (sel && sel.value) || 'all';
+    const worked = (rows||[]).filter(r=> r.status!=='off');
+    const filtered = worked.filter(r=> dayVal==='all' ? true : (DateTime.fromISO(r.work_date,{zone:ZONE}).weekday%7) == +dayVal);
+
+    const count = filtered.length;
+    const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
+    const avg = (arr,fn)=> arr.length? sum(arr,fn)/arr.length : null;
+    const avgH = avg(filtered, r=> +r.hours||0);
+    const avgP = avg(filtered, r=> +r.parcels||0);
+    const avgL = avg(filtered, r=> +r.letters||0);
+    const avgR = avg(filtered, r=> +r.route_minutes||0);
+
+    // Pills
+    const pill = (label,val,fmt)=> `<span class="pill"><small>${label}:</small> <b>${fmt(val)}</b></span>`;
+    const nf = (v)=> v==null? '—' : (typeof v==='number'? (Math.round(v*100)/100).toString() : String(v));
+    stats.innerHTML = [
+      pill('Days', count, nf),
+      pill('Avg hours', avgH, v=> v==null?'—':(Math.round(v*100)/100).toFixed(2)),
+      pill('Avg parcels', avgP, v=> v==null?'—':Math.round(v)),
+      pill('Avg letters', avgL, v=> v==null?'—':Math.round(v)),
+      pill('Avg route min', avgR, v=> v==null?'—':Math.round(v))
+    ].join('');
+
+    // Viz: tiny line over last up to 12 filtered entries (hours)
+    const lastN = filtered
+      .slice()
+      .sort((a,b)=> (a.work_date < b.work_date ? -1 : 1))
+      .slice(-12);
+    const labels = lastN.map(r=> DateTime.fromISO(r.work_date,{zone:ZONE}).toFormat('LLL d'));
+    const series = lastN.map(r=> +r.hours||0);
+    text.textContent = series.length? `Hours (last ${series.length}): ${series.map(n=> (Math.round(n*10)/10).toFixed(1)).join(', ')}` : '—';
+
+    if (window.Chart && spark.getContext){
+      try{
+        const ctx = spark.getContext('2d');
+        if (spark._chart) { try{ spark._chart.destroy(); }catch(_){} }
+        spark._chart = new Chart(ctx, {
+          type:'line',
+          data:{ labels, datasets:[{ label:'Hours', data: series, borderColor:getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff', backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1 }]},
+          options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip:{ enabled:false } }, scales:{ x:{ display:false }, y:{ display:false } } }
+        });
+      }catch(_){ /* fallback already set in text */ }
+    }
+
+    // Hook change
+    sel?.removeEventListener('change', buildQuickFilter._handler || (()=>{}));
+    buildQuickFilter._handler = ()=> buildQuickFilter(rows);
+    sel?.addEventListener('change', buildQuickFilter._handler);
   }
 </script>
 </body>

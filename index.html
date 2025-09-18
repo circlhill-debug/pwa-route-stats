@@ -350,7 +350,7 @@
     <h3 style="margin:0 0 8px 0">Normalized Volume (Parcels vs Letters×0.33)</h3>
     <div id="mixText" class="sparkline-labels">—</div>
     <div id="mixEff" class="sparkline-labels">—</div>
-    <div style="margin-top:6px"><canvas id="mixChart" height="120"></canvas></div>
+    <div style="margin-top:6px"><canvas id="mixChart" height="180"></canvas></div>
     <div class="sparkline-labels" style="margin-top:6px">Impact (Δ% vs last)</div>
     <div style="margin-top:4px"><canvas id="mixImpact" height="100"></canvas></div>
     <div id="mixImpactText" class="sparkline-labels">—</div>
@@ -1903,13 +1903,13 @@ const setPill=(el,delta)=>{
         data:{
           labels:['W-1','W0'],
           datasets:[
-            { label:'Parcels', data:[p1,p0], backgroundColor: brand, categoryPercentage:0.6, barPercentage:0.9 },
-            { label:'Letters×0.33', data:[ln1,ln0], backgroundColor: warn, categoryPercentage:0.6, barPercentage:0.9 }
+            { label:'Parcels', data:[p1,p0], backgroundColor: brand, categoryPercentage:0.5, barPercentage:0.8 },
+            { label:'Letters×0.33', data:[ln1,ln0], backgroundColor: warn, categoryPercentage:0.5, barPercentage:0.8 }
           ]
         },
         options:{
           responsive:true, maintainAspectRatio:false,
-          plugins:{ legend:{ display:true }, tooltip:{ enabled:false } },
+          plugins:{ legend:{ display:false }, tooltip:{ enabled:false } },
           scales:{ x:{ stacked:false }, y:{ stacked:false, beginAtZero:true } }
         }
       });

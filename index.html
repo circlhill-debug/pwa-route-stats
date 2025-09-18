@@ -1876,7 +1876,7 @@ const setPill=(el,delta)=>{
     if (idx0!=null && idx1!=null && idx1>0){
       const imp = ((idx1 - idx0) / idx1) * 100; // positive = improvement (lower this week)
       const s = Math.round(imp);
-      const { fg } = colorForDelta(imp);
+      const fg = (imp >= 0) ? 'var(--good)' : 'var(--bad)';
       deltaStr = `${s>=0?'↑':'↓'} ${Math.abs(s)}%`;
       deltaStyle = `color:${fg}`;
     }

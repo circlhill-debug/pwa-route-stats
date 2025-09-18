@@ -351,6 +351,9 @@
     <div id="mixText" class="sparkline-labels">—</div>
     <div id="mixEff" class="sparkline-labels">—</div>
     <div style="margin-top:6px"><canvas id="mixChart" height="120"></canvas></div>
+    <div class="sparkline-labels" style="margin-top:6px">Impact (Δ% vs last)</div>
+    <div style="margin-top:4px"><canvas id="mixImpact" height="100"></canvas></div>
+    <div id="mixImpactText" class="sparkline-labels">—</div>
   </section>
 
   <!-- Monthly Glance (preview) — behind feature flag -->
@@ -1848,6 +1851,8 @@ const setPill=(el,delta)=>{
     const text = document.getElementById('mixText');
     const eff  = document.getElementById('mixEff');
     const canvas = document.getElementById('mixChart');
+    const impactCanvas = document.getElementById('mixImpact');
+    const impactText = document.getElementById('mixImpactText');
     const now = DateTime.now().setZone(ZONE);
     const startThis = startOfWeekMonday(now);
     const endThis   = now.endOf('day');
@@ -1909,6 +1914,27 @@ const setPill=(el,delta)=>{
         }
       });
     }catch(_){ /* text fallback already set */ }
+
+    // Impact chart: Δ% Hours vs Δ% Parcels vs Δ% Letters×0.33
+    try{
+      const H0 = sumH(W0), H1 = sumH(W1);
+      const dH = (H1>0)? Math.round(((H0-H1)/H1)*100) : null;
+      const dP = (p1>0)? Math.round(((p0-p1)/p1)*100) : null;
+      const dLx= (ln1>0)? Math.round(((ln0-ln1)/ln1)*100) : null;
+      impactText.textContent = `Δ% — Hours: ${dH??'—'} • Parcels: ${dP??'—'} • Letters×0.33: ${dLx??'—'}`;
+      if (impactCanvas && impactCanvas.getContext){
+        const ctx2 = impactCanvas.getContext('2d');
+        if (impactCanvas._chart) { try{ impactCanvas._chart.destroy(); }catch(_){} }
+        const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
+        const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
+        const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim()||'#9aa0aa';
+        impactCanvas._chart = new Chart(ctx2, {
+          type:'bar',
+          data:{ labels:['Hours','Parcels','Letters×0.33'], datasets:[{ label:'Δ% vs last', data:[dH,dP,dLx], backgroundColor:[muted, brand, warn] }]},
+          options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip:{ enabled:false } }, scales:{ y:{ beginAtZero:true } } }
+        });
+      }
+    }catch(_){ /* ignore */ }
   }
 
   // Quick Filter (Phase 3): weekday selector with stats + optional sparkline

@@ -345,6 +345,13 @@
     </div>
   </section>
 
+  <!-- Volume Mix (Parcels vs Letters) -->
+  <section class="card" id="mixVizCard" style="display:none">
+    <h3 style="margin:0 0 8px 0">Volume Mix (Parcels vs Letters)</h3>
+    <div id="mixText" class="sparkline-labels">—</div>
+    <div style="margin-top:6px"><canvas id="mixChart" height="120"></canvas></div>
+  </section>
+
   <!-- Monthly Glance (preview) — behind feature flag -->
   <section class="card" id="monthlyGlanceCard" style="grid-column:1/-1; display:none">
     <h3 style="margin:0 0 8px 0">Monthly Glance (preview)</h3>
@@ -437,6 +444,7 @@
     <label class="pill"><input id="flagTrendPills" type="checkbox"> Show Weekly Trend pills (power users)</label>
     <label class="pill"><input id="flagSameRangeTotals" type="checkbox"> Compare weekly totals: Mon..today vs last Mon..today</label>
     <label class="pill"><input id="flagHeadlineDigest" type="checkbox"> Show headline digest (Wed evenings)</label>
+    <label class="pill"><input id="flagMixViz" type="checkbox"> Show Volume Mix (Parcels vs Letters)</label>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="ghost" value="cancel">Close</button>
       <button id="saveSettings">Save</button>
@@ -507,8 +515,8 @@
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true }; }
   }
   function saveFlags(f){ localStorage.setItem(FLAG_KEY, JSON.stringify(f)); }
   let FLAGS = loadFlags();
@@ -691,6 +699,7 @@ function moonPhaseEmoji(dateStr) {
   const flagTrendPills = document.getElementById('flagTrendPills');
   const flagSameRangeTotals = document.getElementById('flagSameRangeTotals');
   const flagHeadlineDigest = document.getElementById('flagHeadlineDigest');
+  const flagMixViz = document.getElementById('flagMixViz');
   const saveSettings = document.getElementById('saveSettings');
 
   btnSettings?.addEventListener('click', ()=>{
@@ -702,6 +711,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagTrendPills) flagTrendPills.checked = !!FLAGS.trendPills;
     if (flagSameRangeTotals) flagSameRangeTotals.checked = !!FLAGS.sameRangeTotals;
     if (flagHeadlineDigest) flagHeadlineDigest.checked = !!FLAGS.headlineDigest;
+    if (flagMixViz) flagMixViz.checked = !!FLAGS.mixViz;
     settingsDlg.showModal();
   });
 
@@ -714,6 +724,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagTrendPills) FLAGS.trendPills = !!flagTrendPills.checked;
     if (flagSameRangeTotals) FLAGS.sameRangeTotals = !!flagSameRangeTotals.checked;
     if (flagHeadlineDigest) FLAGS.headlineDigest = !!flagHeadlineDigest.checked;
+    if (flagMixViz) FLAGS.mixViz = !!flagMixViz.checked;
     saveFlags(FLAGS);
     settingsDlg.close();
     // Re-render visuals affected by flags
@@ -722,6 +733,7 @@ function moonPhaseEmoji(dateStr) {
     buildMonthlyGlance(allRows||[]);
     buildQuickFilter(allRows||[]);
     buildHeadlineDigest(allRows||[]);
+    buildMixViz(allRows||[]);
     applyTrendPillsVisibility();
   });
 
@@ -1583,7 +1595,7 @@ const setPill=(el,delta)=>{
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildHeadlineDigest(allRows); computeBreakdown(); applyTrendPillsVisibility();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildHeadlineDigest(allRows); buildMixViz(allRows); computeBreakdown(); applyTrendPillsVisibility();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);
@@ -1826,6 +1838,56 @@ const setPill=(el,delta)=>{
       el.textContent = msg;
       el.style.display='block';
     }catch(_){ /* no-op */ }
+  }
+
+  // Volume Mix: 100% stacked bars for W-1 vs W0 composition (Parcels/Letters)
+  function buildMixViz(rows){
+    const card = document.getElementById('mixVizCard'); if(!card) return;
+    if (!FLAGS.mixViz) { card.style.display='none'; return; }
+    const text = document.getElementById('mixText');
+    const canvas = document.getElementById('mixChart');
+    const now = DateTime.now().setZone(ZONE);
+    const startThis = startOfWeekMonday(now);
+    const endThis   = now.endOf('day');
+    const startLast = startOfWeekMonday(now.minus({weeks:1}));
+    const endLast   = endOfWeekSunday(now.minus({weeks:1}));
+    const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
+    const worked = rows.filter(r=> r.status!=='off');
+    // Same-range comparison: Mon..today vs last Mon..today
+    const lastEndSame = startOfWeekMonday(now.minus({weeks:1})).plus({days: now.weekday-1}).endOf('day');
+    const W0 = worked.filter(r=> inRange(r,startThis,endThis));
+    const W1 = worked.filter(r=> inRange(r,startLast,lastEndSame));
+    const sumP = arr=> arr.reduce((t,r)=> t + (+r.parcels||0), 0);
+    const sumL = arr=> arr.reduce((t,r)=> t + (+r.letters||0), 0);
+    const p0=sumP(W0), l0=sumL(W0), t0=p0+l0;
+    const p1=sumP(W1), l1=sumL(W1), t1=p1+l1;
+    const pct = (n, d)=> d>0? Math.round((n/d)*100) : 0;
+    const p0p=pct(p0,t0), l0p=100-p0p; const p1p=pct(p1,t1), l1p=100-p1p;
+    text.textContent = `W-1: parcels ${p1p}% / letters ${l1p}% • W0: parcels ${p0p}% / letters ${l0p}%`;
+    card.style.display='block';
+
+    if (!window.Chart || !canvas.getContext) return;
+    try{
+      const ctx = canvas.getContext('2d');
+      if (canvas._chart) { try{ canvas._chart.destroy(); }catch(_){} }
+      const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
+      const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
+      canvas._chart = new Chart(ctx, {
+        type:'bar',
+        data:{
+          labels:['W-1','W0'],
+          datasets:[
+            { label:'Parcels %', data:[p1p,p0p], backgroundColor: brand, stack:'mix' },
+            { label:'Letters %', data:[l1p,l0p], backgroundColor: warn,  stack:'mix' }
+          ]
+        },
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          plugins:{ legend:{ display:true }, tooltip:{ enabled:false } },
+          scales:{ x:{ stacked:true }, y:{ stacked:true, min:0, max:100, ticks:{ display:false } } }
+        }
+      });
+    }catch(_){ /* text fallback already set */ }
   }
 
   // Quick Filter (Phase 3): weekday selector with stats + optional sparkline

@@ -96,9 +96,12 @@
 <!-- Version tag -->
 <div id="verTag" style="position:fixed;top:6px;right:12px;color:#9aa0aa;font-size:11px;z-index:9999;">v—</div>
 <header>
-  <div class="wrap row" style="justify-content:space-between">
+  <div class="wrap row" style="justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
     <!-- CHANGED: dynamic date -->
-    <h1>📈 ROUTE STATS — Live Dashboard — <span id="headerDate">—</span></h1>
+    <div>
+      <h1 style="margin-bottom:4px">📈 ROUTE STATS — Live Dashboard — <span id="headerDate">—</span></h1>
+      <div id="headlineDigest" style="display:none;font-size:13px;color:var(--text)">—</div>
+    </div>
     <div class="row">
       <button id="signInBtn" class="ghost">Sign in</button>
       <button id="setPwBtn" class="ghost" title="Set/Change password for the current account">Set password</button>
@@ -433,6 +436,7 @@
     </label>
     <label class="pill"><input id="flagTrendPills" type="checkbox"> Show Weekly Trend pills (power users)</label>
     <label class="pill"><input id="flagSameRangeTotals" type="checkbox"> Compare weekly totals: Mon..today vs last Mon..today</label>
+    <label class="pill"><input id="flagHeadlineDigest" type="checkbox"> Show headline digest (Wed evenings)</label>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="ghost" value="cancel">Close</button>
       <button id="saveSettings">Save</button>
@@ -503,8 +507,8 @@
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true }; }
   }
   function saveFlags(f){ localStorage.setItem(FLAG_KEY, JSON.stringify(f)); }
   let FLAGS = loadFlags();
@@ -686,6 +690,7 @@ function moonPhaseEmoji(dateStr) {
   const flagHolidayAdjust = document.getElementById('flagHolidayAdjust');
   const flagTrendPills = document.getElementById('flagTrendPills');
   const flagSameRangeTotals = document.getElementById('flagSameRangeTotals');
+  const flagHeadlineDigest = document.getElementById('flagHeadlineDigest');
   const saveSettings = document.getElementById('saveSettings');
 
   btnSettings?.addEventListener('click', ()=>{
@@ -696,6 +701,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagHolidayAdjust) flagHolidayAdjust.checked = !!FLAGS.holidayAdjustments;
     if (flagTrendPills) flagTrendPills.checked = !!FLAGS.trendPills;
     if (flagSameRangeTotals) flagSameRangeTotals.checked = !!FLAGS.sameRangeTotals;
+    if (flagHeadlineDigest) flagHeadlineDigest.checked = !!FLAGS.headlineDigest;
     settingsDlg.showModal();
   });
 
@@ -707,6 +713,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagHolidayAdjust) FLAGS.holidayAdjustments = !!flagHolidayAdjust.checked;
     if (flagTrendPills) FLAGS.trendPills = !!flagTrendPills.checked;
     if (flagSameRangeTotals) FLAGS.sameRangeTotals = !!flagSameRangeTotals.checked;
+    if (flagHeadlineDigest) FLAGS.headlineDigest = !!flagHeadlineDigest.checked;
     saveFlags(FLAGS);
     settingsDlg.close();
     // Re-render visuals affected by flags
@@ -714,6 +721,7 @@ function moonPhaseEmoji(dateStr) {
     buildSnapshot(allRows||[]);
     buildMonthlyGlance(allRows||[]);
     buildQuickFilter(allRows||[]);
+    buildHeadlineDigest(allRows||[]);
     applyTrendPillsVisibility();
   });
 
@@ -1575,7 +1583,7 @@ const setPill=(el,delta)=>{
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); computeBreakdown(); applyTrendPillsVisibility();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildHeadlineDigest(allRows); computeBreakdown(); applyTrendPillsVisibility();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);
@@ -1775,6 +1783,49 @@ const setPill=(el,delta)=>{
         document.head.appendChild(script);
       }catch(e){ console.warn('Error injecting Chart.js script', e); }
     }
+  }
+
+  // Headline digest (Wed evening only): soft summary under title
+  function buildHeadlineDigest(rows){
+    try{
+      const el = document.getElementById('headlineDigest'); if(!el) return;
+      const now = DateTime.now().setZone(ZONE);
+      const isWed = (now.weekday === 3); // Mon=1..Sun=7
+      const isEvening = now.hour >= 17; // 5pm local
+      const show = !!FLAGS.headlineDigest && isWed && isEvening;
+      if (!show){ el.style.display='none'; return; }
+
+      // Blended % for Hours (carry-forward toward today's per-day avg)
+      const startOfWeek = startOfWeekMonday(now);
+      const endToday    = now.endOf('day');
+      const prevStart   = startOfWeekMonday(now.minus({weeks:1}));
+      const prevEnd     = endOfWeekSunday(now.minus({weeks:1}));
+      const priorStart  = startOfWeekMonday(now.minus({weeks:2}));
+      const priorEnd    = endOfWeekSunday(now.minus({weeks:2}));
+      const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
+      const worked = rows.filter(r=> r.status!=='off');
+      const thisW = worked.filter(r=> inRange(r,startOfWeek,endToday));
+      const lastW = worked.filter(r=> inRange(r,prevStart,prevEnd));
+      const priorW= worked.filter(r=> inRange(r,priorStart,priorEnd));
+      const daysWorked = arr=> arr.filter(r=> (+r.hours||0)>0).length;
+      const dThis=daysWorked(thisW), dLast=daysWorked(lastW), dPrior=daysWorked(priorW);
+      const sumH = (arr)=> arr.reduce((t,r)=> t + (+r.hours||0), 0);
+      const avgOrNull=(tot,days)=> days? tot/days : null;
+      const pct=(a,b)=> (a==null||b==null||b===0)? null : ((a-b)/b)*100;
+      const hCarry = pct(avgOrNull(sumH(lastW),dLast), avgOrNull(sumH(priorW),dPrior));
+      const hTarget= pct(avgOrNull(sumH(thisW),dThis), avgOrNull(sumH(lastW),dLast));
+      const progress=Math.min(1, dThis/5);
+      const blended = (hCarry==null && hTarget==null)? null : (hCarry==null? hTarget : hTarget==null? hCarry : (hCarry*(1-progress) + hTarget*progress));
+      const val = blended==null? 0 : Math.round(blended);
+      let msg;
+      if (val <= -15) msg = 'Much lighter than last week.';
+      else if (val < -5) msg = 'A bit lighter than last week.';
+      else if (val <= 5) msg = 'Similar to last week — average days.';
+      else if (val < 15) msg = 'A bit heavier than last week.';
+      else msg = 'Much more intense than last week. Deep breath.';
+      el.textContent = msg;
+      el.style.display='block';
+    }catch(_){ /* no-op */ }
   }
 
   // Quick Filter (Phase 3): weekday selector with stats + optional sparkline

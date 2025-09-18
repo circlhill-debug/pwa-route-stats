@@ -449,6 +449,7 @@
     <label class="pill"><input id="flagSameRangeTotals" type="checkbox"> Compare weekly totals: Mon..today vs last Mon..today</label>
     <label class="pill"><input id="flagHeadlineDigest" type="checkbox"> Show headline digest (Wed evenings)</label>
     <label class="pill"><input id="flagMixViz" type="checkbox"> Show Volume Mix (Parcels vs Letters)</label>
+    <label class="pill"><input id="flagBaselineCompare" type="checkbox"> Use baseline-normalized compare (2-week weekday avg)</label>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="ghost" value="cancel">Close</button>
       <button id="saveSettings">Save</button>
@@ -519,8 +520,8 @@
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true, baselineCompare:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true, baselineCompare:true }; }
   }
   function saveFlags(f){ localStorage.setItem(FLAG_KEY, JSON.stringify(f)); }
   let FLAGS = loadFlags();
@@ -704,6 +705,7 @@ function moonPhaseEmoji(dateStr) {
   const flagSameRangeTotals = document.getElementById('flagSameRangeTotals');
   const flagHeadlineDigest = document.getElementById('flagHeadlineDigest');
   const flagMixViz = document.getElementById('flagMixViz');
+  const flagBaselineCompare = document.getElementById('flagBaselineCompare');
   const saveSettings = document.getElementById('saveSettings');
 
   btnSettings?.addEventListener('click', ()=>{
@@ -716,6 +718,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagSameRangeTotals) flagSameRangeTotals.checked = !!FLAGS.sameRangeTotals;
     if (flagHeadlineDigest) flagHeadlineDigest.checked = !!FLAGS.headlineDigest;
     if (flagMixViz) flagMixViz.checked = !!FLAGS.mixViz;
+    if (flagBaselineCompare) flagBaselineCompare.checked = !!FLAGS.baselineCompare;
     settingsDlg.showModal();
   });
 
@@ -729,6 +732,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagSameRangeTotals) FLAGS.sameRangeTotals = !!flagSameRangeTotals.checked;
     if (flagHeadlineDigest) FLAGS.headlineDigest = !!flagHeadlineDigest.checked;
     if (flagMixViz) FLAGS.mixViz = !!flagMixViz.checked;
+    if (flagBaselineCompare) FLAGS.baselineCompare = !!flagBaselineCompare.checked;
     saveFlags(FLAGS);
     settingsDlg.close();
     // Re-render visuals affected by flags
@@ -1887,8 +1891,38 @@ const setPill=(el,delta)=>{
     }
     const d = (a,b)=> (b>0)? Math.round(((a-b)/b)*100) : null;
     const dH = d(sum(W0,r=>+r.hours||0), sum(W1,r=>+r.hours||0));
-    const dP = d(p0,p1);
-    const dLx= d(ln0,ln1);
+    let dP, dLx, lineLabelP='Parcels', lineLabelL='Letters';
+    if (FLAGS.baselineCompare){
+      // Baseline-normalized: compare this week's Mon..today vs weekday baselines from previous 2 weeks
+      const dayIdxToday = (now.weekday + 6) % 7; // Mon=0..Sun=6
+      const prev2Start = startOfWeekMonday(now.minus({weeks:2}));
+      const prev2End   = endOfWeekSunday(now.minus({weeks:2}));
+      const W2 = worked.filter(r=> inRange(r,prev2Start,prev2End));
+      const byW = (arr,fn)=>{
+        const out = Array.from({length:7},()=>[]);
+        arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; out[idx].push(fn(r)||0); });
+        return out;
+      };
+      const pW1 = byW(W1, r=> +r.parcels||0), pW2 = byW(W2, r=> +r.parcels||0);
+      const lW1 = byW(W1, r=> +r.letters||0), lW2 = byW(W2, r=> +r.letters||0);
+      const pThisW = byW(W0, r=> +r.parcels||0);
+      const lThisW = byW(W0, r=> +r.letters||0);
+      const mean = arr=> arr.length? (arr.reduce((a,b)=>a+b,0)/arr.length) : null;
+      const mins = 5; // guardrail: require baseline >= 5 units
+      const deltas = (thisArr, baseArr)=>{
+        const vals=[]; for(let i=0;i<=dayIdxToday;i++){ const cur = mean(thisArr[i]); const base = mean([...(baseArr[0][i]||[]), ...(baseArr[1][i]||[])]);
+          if (cur==null || base==null || base<mins) continue; vals.push(((cur-base)/base)*100); }
+        return vals.length? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
+      };
+      dP = deltas(pThisW, [pW1,pW2]);
+      dLx= deltas(lThisW, [lW1,lW2]);
+      lineLabelP = 'Parcels (vs baseline)';
+      lineLabelL = 'Letters (vs baseline)';
+    } else {
+      // Simple week-over-week (Mon..today vs last Mon..today)
+      dP = d(p0,p1);
+      dLx= d(l0,l1);
+    }
     const dEff = ( (p0+ln0)>0 && (p1+ln1)>0 )
       ? Math.round((( (rm1/(p1+ln1)) - (rm0/(p0+ln0)) ) / (rm1/(p1+ln1)) )*100)
       : null;
@@ -1898,9 +1932,9 @@ const setPill=(el,delta)=>{
     if (details){
       details.innerHTML = [
         line('Efficiency', dEff, `(min/vol ${ ( (rm0/(p0+ln0))||0 ).toFixed(2) } vs ${ ( (rm1/(p1+ln1))||0 ).toFixed(2) })`),
-        line('Parcels', dP, `(${p0} vs ${p1})`),
-        line('Letters×0.33', dLx, `(${ln0} vs ${ln1})`),
-        line('Hours', dH, `(${(sum(W0,r=>+r.hours||0)).toFixed(1)}h vs ${(sum(W1,r=>+r.hours||0)).toFixed(1)}h)`)
+        line(lineLabelP, dP, `(${p0} vs ${p1})`),
+        line(lineLabelL, dLx, `(${l0} vs ${l1})`),
+        line('Hours', dH, `(${(sum(W0,r=>+r.hours||0)).toFixed(1)}h vs ${(sum(W1,r=>+r.hours||0)).toFixed(1)}h)`) 
       ].join('');
     }
     btn?.addEventListener('click', ()=>{

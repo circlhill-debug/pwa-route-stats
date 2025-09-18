@@ -1850,43 +1850,31 @@ const setPill=(el,delta)=>{
     if (!FLAGS.mixViz) { card.style.display='none'; return; }
     const text = document.getElementById('mixText');
     const eff  = document.getElementById('mixEff');
-    const canvas = document.getElementById('mixChart');
-    const impactCanvas = document.getElementById('mixImpact');
-    const impactText = document.getElementById('mixImpactText');
+    const details = document.getElementById('mixCompareDetails');
+    const btn = document.getElementById('mixCompareBtn');
     const now = DateTime.now().setZone(ZONE);
     const startThis = startOfWeekMonday(now);
     const endThis   = now.endOf('day');
     const startLast = startOfWeekMonday(now.minus({weeks:1}));
-    const endLast   = endOfWeekSunday(now.minus({weeks:1}));
+    const lastEndSame = startOfWeekMonday(now.minus({weeks:1})).plus({days: now.weekday-1}).endOf('day');
     const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
     const worked = rows.filter(r=> r.status!=='off');
-    // Same-range comparison: Mon..today vs last Mon..today
-    const lastEndSame = startOfWeekMonday(now.minus({weeks:1})).plus({days: now.weekday-1}).endOf('day');
     const W0 = worked.filter(r=> inRange(r,startThis,endThis));
     const W1 = worked.filter(r=> inRange(r,startLast,lastEndSame));
-    const sumP = arr=> arr.reduce((t,r)=> t + (+r.parcels||0), 0);
-    const sumL = arr=> arr.reduce((t,r)=> t + (+r.letters||0), 0);
-    const p0=sumP(W0), l0=sumL(W0);
-    const p1=sumP(W1), l1=sumL(W1);
+    const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
+    const p0=sum(W0,r=>+r.parcels||0), p1=sum(W1,r=>+r.parcels||0);
+    const l0=sum(W0,r=>+r.letters||0), l1=sum(W1,r=>+r.letters||0);
     const ln0 = +(0.33*l0).toFixed(1);
     const ln1 = +(0.33*l1).toFixed(1);
     text.textContent = `W-1: Parcels ${p1}, Letters×0.33 ${ln1} • W0: Parcels ${p0}, Letters×0.33 ${ln0}`;
-
-    // Compute normalized change values (50 baseline) for bar display
-    const dP_main = (p1>0)? Math.round(((p0-p1)/p1)*100) : null;
-    const dLx_main= (ln1>0)? Math.round(((ln0-ln1)/ln1)*100) : null;
-    const clamp=(n)=> Math.max(0, Math.min(100, n));
-    const nP_main = (dP_main==null)? null : clamp(50 + dP_main);
-    const nL_main = (dLx_main==null)? null : clamp(50 + dLx_main);
-    // Efficiency index: minutes per volume (lower is better)
     const vol0 = p0 + 0.33*l0; const vol1 = p1 + 0.33*l1;
-    const rm0  = W0.reduce((t,r)=> t + (+r.route_minutes||0), 0);
-    const rm1  = W1.reduce((t,r)=> t + (+r.route_minutes||0), 0);
+    const rm0  = sum(W0,r=>+r.route_minutes||0);
+    const rm1  = sum(W1,r=>+r.route_minutes||0);
     const idx0 = (vol0>0 && rm0>0) ? (rm0/vol0) : null;
     const idx1 = (vol1>0 && rm1>0) ? (rm1/vol1) : null;
     let deltaStr = '—', deltaStyle='';
     if (idx0!=null && idx1!=null && idx1>0){
-      const imp = ((idx1 - idx0) / idx1) * 100; // positive = improvement (lower this week)
+      const imp = ((idx1 - idx0) / idx1) * 100;
       const s = Math.round(imp);
       const fg = (imp >= 0) ? 'var(--good)' : 'var(--bad)';
       deltaStr = `${s>=0?'↑':'↓'} ${Math.abs(s)}%`;
@@ -1897,60 +1885,30 @@ const setPill=(el,delta)=>{
       const b = idx1==null? '—' : (Math.round(idx1*100)/100).toFixed(2);
       eff.innerHTML = `Efficiency index (min/vol): ${a} vs ${b} <span style="${deltaStyle}">${deltaStr}</span>`;
     }
+    const d = (a,b)=> (b>0)? Math.round(((a-b)/b)*100) : null;
+    const dH = d(sum(W0,r=>+r.hours||0), sum(W1,r=>+r.hours||0));
+    const dP = d(p0,p1);
+    const dLx= d(ln0,ln1);
+    const dEff = ( (p0+ln0)>0 && (p1+ln1)>0 )
+      ? Math.round((( (rm1/(p1+ln1)) - (rm0/(p0+ln0)) ) / (rm1/(p1+ln1)) )*100)
+      : null;
+    const arrow=(v)=> v==null?'—':(v>=0?'↑ '+v+'%':'↓ '+Math.abs(v)+'%');
+    const color=(v)=> v==null?'var(--text)':(v>=0?'var(--good)':'var(--bad)');
+    const line=(label,v,ctx)=> `<div>${label}: <span style="color:${color(v)}">${arrow(v)}</span> ${ctx||''}</div>`;
+    if (details){
+      details.innerHTML = [
+        line('Efficiency', dEff, `(min/vol ${ ( (rm0/(p0+ln0))||0 ).toFixed(2) } vs ${ ( (rm1/(p1+ln1))||0 ).toFixed(2) })`),
+        line('Parcels', dP, `(${p0} vs ${p1})`),
+        line('Letters×0.33', dLx, `(${ln0} vs ${ln1})`),
+        line('Hours', dH, `(${(sum(W0,r=>+r.hours||0)).toFixed(1)}h vs ${(sum(W1,r=>+r.hours||0)).toFixed(1)}h)`)
+      ].join('');
+    }
+    btn?.addEventListener('click', ()=>{
+      if (!details) return;
+      const show = details.style.display==='none';
+      details.style.display = show ? 'block' : 'none';
+    });
     card.style.display='block';
-
-    if (!window.Chart || !canvas.getContext) return;
-    try{
-      const ctx = canvas.getContext('2d');
-      if (canvas._chart) { try{ canvas._chart.destroy(); }catch(_){} }
-      const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
-      const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
-      canvas._chart = new Chart(ctx, {
-        type:'bar',
-        data:{
-          labels:['W-1','W0'],
-          datasets:[
-            { label:'Parcels (50+Δ%)', data:[50, nP_main], backgroundColor: brand, categoryPercentage:0.5, barPercentage:0.8 },
-            { label:'Letters×0.33 (50+Δ%)', data:[50, nL_main], backgroundColor: warn, categoryPercentage:0.5, barPercentage:0.8 }
-          ]
-        },
-        options:{
-          responsive:true, maintainAspectRatio:false,
-          plugins:{ legend:{ display:false }, tooltip:{ enabled:false } },
-          scales:{ x:{ stacked:false }, y:{ stacked:false, min:0, max:100 } }
-        }
-      });
-    }catch(_){ /* text fallback already set */ }
-
-    // Impact chart (normalized 50 baseline): Parcels vs Letters×0.33
-    try{
-      const H0 = W0.reduce((t,r)=> t + (+r.hours||0), 0);
-      const H1 = W1.reduce((t,r)=> t + (+r.hours||0), 0);
-      const dH = (H1>0)? Math.round(((H0-H1)/H1)*100) : null;
-      const dP = (p1>0)? Math.round(((p0-p1)/p1)*100) : null;
-      const dLx= (ln1>0)? Math.round(((ln0-ln1)/ln1)*100) : null;
-      // Map to 50+Δ (clamped 0..100)
-      const clamp=(n)=> Math.max(0, Math.min(100, n));
-      const nP = (dP==null)? null : clamp(50 + dP);
-      const nL = (dLx==null)? null : clamp(50 + dLx);
-      if (impactText) impactText.textContent = `Normalized (50 baseline) — Parcels: ${nP??'—'} • Letters×0.33: ${nL??'—'}  (Δ% — Hours: ${dH??'—'} • P: ${dP??'—'} • L×0.33: ${dLx??'—'})`;
-      if (impactCanvas && impactCanvas.getContext){
-        const ctx2 = impactCanvas.getContext('2d');
-        if (impactCanvas._chart) { try{ impactCanvas._chart.destroy(); }catch(_){} }
-        const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
-        const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
-        const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim()||'#9aa0aa';
-        const baseLine = [50,50];
-        impactCanvas._chart = new Chart(ctx2, {
-          type:'bar',
-          data:{ labels:['Parcels','Letters×0.33'], datasets:[
-            { label:'Normalized (50+Δ%)', data:[nP, nL], backgroundColor:[brand, warn] },
-            { label:'baseline', type:'line', data:baseLine, borderColor:muted, borderDash:[4,2], pointRadius:0, fill:false }
-          ]},
-          options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip:{ enabled:false } }, scales:{ y:{ min:0, max:100 } } }
-        });
-      }
-    }catch(_){ /* ignore */ }
   }
 
   // Quick Filter (Phase 3): weekday selector with stats + optional sparkline

@@ -347,7 +347,7 @@
 
   <!-- Volume Mix (Parcels vs Letters) -->
   <section class="card" id="mixVizCard" style="display:none">
-    <h3 style="margin:0 0 8px 0">Volume Mix (Parcels vs Letters)</h3>
+    <h3 style="margin:0 0 8px 0">Normalized Volume (Parcels vs Letters×0.33)</h3>
     <div id="mixText" class="sparkline-labels">—</div>
     <div id="mixEff" class="sparkline-labels">—</div>
     <div style="margin-top:6px"><canvas id="mixChart" height="120"></canvas></div>
@@ -1841,7 +1841,7 @@ const setPill=(el,delta)=>{
     }catch(_){ /* no-op */ }
   }
 
-  // Volume Mix: 100% stacked bars for W-1 vs W0 composition (Parcels/Letters)
+  // Volume Mix: normalized side-by-side bars (Parcels vs Letters×0.33)
   function buildMixViz(rows){
     const card = document.getElementById('mixVizCard'); if(!card) return;
     if (!FLAGS.mixViz) { card.style.display='none'; return; }
@@ -1861,11 +1861,11 @@ const setPill=(el,delta)=>{
     const W1 = worked.filter(r=> inRange(r,startLast,lastEndSame));
     const sumP = arr=> arr.reduce((t,r)=> t + (+r.parcels||0), 0);
     const sumL = arr=> arr.reduce((t,r)=> t + (+r.letters||0), 0);
-    const p0=sumP(W0), l0=sumL(W0), t0=p0+l0;
-    const p1=sumP(W1), l1=sumL(W1), t1=p1+l1;
-    const pct = (n, d)=> d>0? Math.round((n/d)*100) : 0;
-    const p0p=pct(p0,t0), l0p=100-p0p; const p1p=pct(p1,t1), l1p=100-p1p;
-    text.textContent = `W-1: parcels ${p1p}% / letters ${l1p}% • W0: parcels ${p0p}% / letters ${l0p}%`;
+    const p0=sumP(W0), l0=sumL(W0);
+    const p1=sumP(W1), l1=sumL(W1);
+    const ln0 = +(0.33*l0).toFixed(1);
+    const ln1 = +(0.33*l1).toFixed(1);
+    text.textContent = `W-1: Parcels ${p1}, Letters×0.33 ${ln1} • W0: Parcels ${p0}, Letters×0.33 ${ln0}`;
     // Efficiency index: minutes per volume (lower is better)
     const vol0 = p0 + 0.33*l0; const vol1 = p1 + 0.33*l1;
     const rm0  = W0.reduce((t,r)=> t + (+r.route_minutes||0), 0);
@@ -1898,14 +1898,14 @@ const setPill=(el,delta)=>{
         data:{
           labels:['W-1','W0'],
           datasets:[
-            { label:'Parcels %', data:[p1p,p0p], backgroundColor: brand, stack:'mix' },
-            { label:'Letters %', data:[l1p,l0p], backgroundColor: warn,  stack:'mix' }
+            { label:'Parcels', data:[p1,p0], backgroundColor: brand, categoryPercentage:0.6, barPercentage:0.9 },
+            { label:'Letters×0.33', data:[ln1,ln0], backgroundColor: warn, categoryPercentage:0.6, barPercentage:0.9 }
           ]
         },
         options:{
           responsive:true, maintainAspectRatio:false,
           plugins:{ legend:{ display:true }, tooltip:{ enabled:false } },
-          scales:{ x:{ stacked:true }, y:{ stacked:true, min:0, max:100, ticks:{ display:false } } }
+          scales:{ x:{ stacked:false }, y:{ stacked:false, beginAtZero:true } }
         }
       });
     }catch(_){ /* text fallback already set */ }

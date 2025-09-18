@@ -1917,11 +1917,12 @@ const setPill=(el,delta)=>{
 
     // Impact chart: Δ% Hours vs Δ% Parcels vs Δ% Letters×0.33
     try{
-      const H0 = sumH(W0), H1 = sumH(W1);
+      const H0 = W0.reduce((t,r)=> t + (+r.hours||0), 0);
+      const H1 = W1.reduce((t,r)=> t + (+r.hours||0), 0);
       const dH = (H1>0)? Math.round(((H0-H1)/H1)*100) : null;
       const dP = (p1>0)? Math.round(((p0-p1)/p1)*100) : null;
       const dLx= (ln1>0)? Math.round(((ln0-ln1)/ln1)*100) : null;
-      impactText.textContent = `Δ% — Hours: ${dH??'—'} • Parcels: ${dP??'—'} • Letters×0.33: ${dLx??'—'}`;
+      if (impactText) impactText.textContent = `Δ% — Hours: ${dH??'—'} • Parcels: ${dP??'—'} • Letters×0.33: ${dLx??'—'}`;
       if (impactCanvas && impactCanvas.getContext){
         const ctx2 = impactCanvas.getContext('2d');
         if (impactCanvas._chart) { try{ impactCanvas._chart.destroy(); }catch(_){} }

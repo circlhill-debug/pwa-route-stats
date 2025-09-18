@@ -347,13 +347,13 @@
 
   <!-- Volume Mix (Parcels vs Letters) -->
   <section class="card" id="mixVizCard" style="display:none">
-    <h3 style="margin:0 0 8px 0">Normalized Volume (Parcels vs Letters×0.33)</h3>
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">Normalized Volume (Parcels vs Letters×0.33)</h3>
+      <button id="mixCompareBtn" class="ghost">Compare</button>
+    </div>
     <div id="mixText" class="sparkline-labels">—</div>
     <div id="mixEff" class="sparkline-labels">—</div>
-    <div style="margin-top:6px"><canvas id="mixChart" height="180"></canvas></div>
-    <div class="sparkline-labels" style="margin-top:6px">Impact (Δ% vs last)</div>
-    <div style="margin-top:4px"><canvas id="mixImpact" height="100"></canvas></div>
-    <div id="mixImpactText" class="sparkline-labels">—</div>
+    <div id="mixCompareDetails" class="sparkline-labels" style="display:none;margin-top:4px">—</div>
   </section>
 
   <!-- Monthly Glance (preview) — behind feature flag -->

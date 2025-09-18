@@ -1915,24 +1915,32 @@ const setPill=(el,delta)=>{
       });
     }catch(_){ /* text fallback already set */ }
 
-    // Impact chart: Δ% Hours vs Δ% Parcels vs Δ% Letters×0.33
+    // Impact chart (normalized 50 baseline): Parcels vs Letters×0.33
     try{
       const H0 = W0.reduce((t,r)=> t + (+r.hours||0), 0);
       const H1 = W1.reduce((t,r)=> t + (+r.hours||0), 0);
       const dH = (H1>0)? Math.round(((H0-H1)/H1)*100) : null;
       const dP = (p1>0)? Math.round(((p0-p1)/p1)*100) : null;
       const dLx= (ln1>0)? Math.round(((ln0-ln1)/ln1)*100) : null;
-      if (impactText) impactText.textContent = `Δ% — Hours: ${dH??'—'} • Parcels: ${dP??'—'} • Letters×0.33: ${dLx??'—'}`;
+      // Map to 50+Δ (clamped 0..100)
+      const clamp=(n)=> Math.max(0, Math.min(100, n));
+      const nP = (dP==null)? null : clamp(50 + dP);
+      const nL = (dLx==null)? null : clamp(50 + dLx);
+      if (impactText) impactText.textContent = `Normalized (50 baseline) — Parcels: ${nP??'—'} • Letters×0.33: ${nL??'—'}  (Δ% — Hours: ${dH??'—'} • P: ${dP??'—'} • L×0.33: ${dLx??'—'})`;
       if (impactCanvas && impactCanvas.getContext){
         const ctx2 = impactCanvas.getContext('2d');
         if (impactCanvas._chart) { try{ impactCanvas._chart.destroy(); }catch(_){} }
         const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
         const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
         const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim()||'#9aa0aa';
+        const baseLine = [50,50];
         impactCanvas._chart = new Chart(ctx2, {
           type:'bar',
-          data:{ labels:['Hours','Parcels','Letters×0.33'], datasets:[{ label:'Δ% vs last', data:[dH,dP,dLx], backgroundColor:[muted, brand, warn] }]},
-          options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip:{ enabled:false } }, scales:{ y:{ beginAtZero:true } } }
+          data:{ labels:['Parcels','Letters×0.33'], datasets:[
+            { label:'Normalized (50+Δ%)', data:[nP, nL], backgroundColor:[brand, warn] },
+            { label:'baseline', type:'line', data:baseLine, borderColor:muted, borderDash:[4,2], pointRadius:0, fill:false }
+          ]},
+          options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip:{ enabled:false } }, scales:{ y:{ min:0, max:100 } } }
         });
       }
     }catch(_){ /* ignore */ }

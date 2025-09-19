@@ -2010,8 +2010,12 @@ const setPill=(el,delta)=>{
       if (anchor && anchor.parcels && anchor.letters){
         const ap = sumRange(anchor.parcels, dayIdxToday);
         const al = sumRange(anchor.letters, dayIdxToday);
-        const driftP = (ap>0 && bpSum!=null)? Math.round(((bpSum - ap)/ap)*100) : null;
-        const driftL = (al>0 && blSum!=null)? Math.round(((blSum - al)/al)*100) : null;
+        // aligned baseline sums over weekdays we have baselines for
+        const sumAligned=(arr,upto,min)=>{ let s=0; let used=0; for(let i=0;i<=upto;i++){ const v=arr?arr[i]:null; if (v!=null && v>=min){ s+=v; used++; } } return used? s: null; };
+        const bpAligned = sumAligned(bp, dayIdxToday, mins);
+        const blAligned = sumAligned(bl, dayIdxToday, mins);
+        const driftP = (ap>0 && bpAligned!=null)? Math.round(((bpAligned - ap)/ap)*100) : null;
+        const driftL = (al>0 && blAligned!=null)? Math.round(((blAligned - al)/al)*100) : null;
         driftLine = `Baseline drift vs anchor — Parcels: ${driftP==null?'—':(driftP>=0?('↑ '+driftP+'%'):('↓ '+Math.abs(driftP)+'%'))} • Letters: ${driftL==null?'—':(driftL>=0?('↑ '+driftL+'%'):('↓ '+Math.abs(driftL)+'%'))}`;
         // Prepend drift line on first render
         if (details && !details._driftInjected){

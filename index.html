@@ -353,6 +353,9 @@
     </div>
     <div id="mixText" class="sparkline-labels">—</div>
     <div id="mixEff" class="sparkline-labels">—</div>
+    <div class="sparkline-labels" style="margin-top:6px">Baseline drift (last 8 weeks)</div>
+    <div style="margin-top:4px"><canvas id="mixDrift" class="sparkline"></canvas></div>
+    <div id="mixDriftText" class="sparkline-labels">—</div>
     <div id="mixCompareDetails" class="sparkline-labels" style="display:none;margin-top:4px">—</div>
   </section>
 
@@ -2019,9 +2022,36 @@ const setPill=(el,delta)=>{
         line('Efficiency', dEff, `(min/vol ${ ( (rm0/(p0+ln0))||0 ).toFixed(2) } vs ${ ( (rm1/(p1+ln1))||0 ).toFixed(2) })`),
         line(lineLabelP, dP, `(${p0} vs ${p1})`),
         line(lineLabelL, dLx, `(${l0} vs ${l1})`),
-        line('Hours', dH, `(${(sum(W0,r=>+r.hours||0)).toFixed(1)}h vs ${(sum(W1,r=>+r.hours||0)).toFixed(1)}h)`) 
+        line('Hours', dH, `(${(sum(W0,r=>+r.hours||0)).toFixed(1)}h vs ${(sum(W1,r=>+r.hours||0)).toFixed(1)}h)`)
       ].join('');
     }
+    // Baseline drift sparkline (last 8 full weeks, Mon..Sun totals)
+    try{
+      const driftCanvas = document.getElementById('mixDrift');
+      const driftText = document.getElementById('mixDriftText');
+      if (driftCanvas && driftText){
+        const weeksArr=[]; for(let w=8; w>=1; w--){ const s=startOfWeekMonday(now.minus({weeks:w})); const e=endOfWeekSunday(now.minus({weeks:w})); weeksArr.push({s,e}); }
+        const weekSum=(wk,fn)=> worked.filter(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=wk.s && d<=wk.e; }).reduce((t,r)=> t+(fn(r)||0),0);
+        const pSer=weeksArr.map(wk=> weekSum(wk, r=>+r.parcels||0));
+        const lSer=weeksArr.map(wk=> weekSum(wk, r=>+r.letters||0));
+        driftText.textContent = `Parcels: ${pSer.join(', ')} • Letters: ${lSer.join(', ')}`;
+        if (window.Chart && driftCanvas.getContext){
+          const ctx = driftCanvas.getContext('2d');
+          if (driftCanvas._chart) { try{ driftCanvas._chart.destroy(); }catch(_){} }
+          const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
+          const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
+          const labels = weeksArr.map((wk,i)=> `W-${8-i}`);
+          driftCanvas._chart = new Chart(ctx, {
+            type:'line',
+            data:{ labels, datasets:[
+              { label:'Parcels', data:pSer, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1 },
+              { label:'Letters', data:lSer, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1 }
+            ]},
+            options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip:{ enabled:false } }, scales:{ x:{ display:false }, y:{ display:false } } }
+          });
+        }
+      }
+    }catch(_){ /* ignore */ }
     btn?.addEventListener('click', ()=>{
       if (!details) return;
       const show = details.style.display==='none';

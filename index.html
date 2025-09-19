@@ -348,7 +348,7 @@
   <!-- Volume Mix (Parcels vs Letters) -->
   <section class="card" id="mixVizCard" style="display:none">
     <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-      <h3 style="margin:0">Normalized Volume (Parcels vs Letters×0.33)</h3>
+      <h3 style="margin:0">Baseline Compare (Parcels, Letters)</h3>
       <button id="mixCompareBtn" class="ghost">Compare</button>
     </div>
     <div id="mixText" class="sparkline-labels">—</div>
@@ -519,9 +519,47 @@
 
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
+  const BASELINE_KEY = 'routeStats.baseline.v1';
   function loadFlags(){
     try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true, baselineCompare:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
     catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true, baselineCompare:true }; }
+  }
+
+  // Weekly baselines (frozen per week): average of previous 2 completed weeks per weekday
+  function ensureWeeklyBaselines(rows){
+    try{
+      const now = DateTime.now().setZone(ZONE);
+      const weekStartIso = startOfWeekMonday(now).toISODate();
+      const savedRaw = localStorage.getItem(BASELINE_KEY);
+      if (savedRaw){
+        const saved = JSON.parse(savedRaw);
+        if (saved && saved.weekStart === weekStartIso) return saved;
+      }
+      const startLast = startOfWeekMonday(now.minus({weeks:1}));
+      const endLast   = endOfWeekSunday(now.minus({weeks:1}));
+      const startPrev = startOfWeekMonday(now.minus({weeks:2}));
+      const endPrev   = endOfWeekSunday(now.minus({weeks:2}));
+      const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
+      const worked = rows.filter(r=> r.status!=='off');
+      const W1 = worked.filter(r=> inRange(r,startLast,endLast));
+      const W2 = worked.filter(r=> inRange(r,startPrev,endPrev));
+      const byW = (arr,fn)=>{
+        const out = Array.from({length:7},()=>[]);
+        arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; out[idx].push(fn(r)||0); });
+        return out;
+      };
+      const pW1 = byW(W1, r=> +r.parcels||0), pW2 = byW(W2, r=> +r.parcels||0);
+      const lW1 = byW(W1, r=> +r.letters||0), lW2 = byW(W2, r=> +r.letters||0);
+      const mean = arr=> arr.length? (arr.reduce((a,b)=>a+b,0)/arr.length) : null;
+      const parcels = Array.from({length:7},(_,i)=> mean([...(pW1[i]||[]), ...(pW2[i]||[])]));
+      const letters = Array.from({length:7},(_,i)=> mean([...(lW1[i]||[]), ...(lW2[i]||[])]));
+      const snap = { weekStart: weekStartIso, parcels, letters };
+      localStorage.setItem(BASELINE_KEY, JSON.stringify(snap));
+      return snap;
+    }catch(_){ return null; }
+  }
+  function getWeeklyBaselines(){
+    try{ return JSON.parse(localStorage.getItem(BASELINE_KEY)||'null'); }catch(_){ return null; }
   }
   function saveFlags(f){ localStorage.setItem(FLAG_KEY, JSON.stringify(f)); }
   let FLAGS = loadFlags();
@@ -1870,7 +1908,7 @@ const setPill=(el,delta)=>{
     const l0=sum(W0,r=>+r.letters||0), l1=sum(W1,r=>+r.letters||0);
     const ln0 = +(0.33*l0).toFixed(1);
     const ln1 = +(0.33*l1).toFixed(1);
-    text.textContent = `W-1: Parcels ${p1}, Letters×0.33 ${ln1} • W0: Parcels ${p0}, Letters×0.33 ${ln0}`;
+    text.textContent = `W-1: Parcels ${p1}, Letters ${l1} • W0: Parcels ${p0}, Letters ${l0}`;
     const vol0 = p0 + 0.33*l0; const vol1 = p1 + 0.33*l1;
     const rm0  = sum(W0,r=>+r.route_minutes||0);
     const rm1  = sum(W1,r=>+r.route_minutes||0);
@@ -1892,30 +1930,27 @@ const setPill=(el,delta)=>{
     const d = (a,b)=> (b>0)? Math.round(((a-b)/b)*100) : null;
     const dH = d(sum(W0,r=>+r.hours||0), sum(W1,r=>+r.hours||0));
     let dP, dLx, lineLabelP='Parcels', lineLabelL='Letters';
+    const baselines = ensureWeeklyBaselines(rows) || getWeeklyBaselines();
     if (FLAGS.baselineCompare){
       // Baseline-normalized: compare this week's Mon..today vs weekday baselines from previous 2 weeks
       const dayIdxToday = (now.weekday + 6) % 7; // Mon=0..Sun=6
-      const prev2Start = startOfWeekMonday(now.minus({weeks:2}));
-      const prev2End   = endOfWeekSunday(now.minus({weeks:2}));
-      const W2 = worked.filter(r=> inRange(r,prev2Start,prev2End));
+      const mins = 5; // guardrail: require baseline >= 5 units
       const byW = (arr,fn)=>{
-        const out = Array.from({length:7},()=>[]);
-        arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; out[idx].push(fn(r)||0); });
+        const out = Array.from({length:7},()=>null);
+        arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; out[idx] = (out[idx]||0) + (fn(r)||0); });
         return out;
       };
-      const pW1 = byW(W1, r=> +r.parcels||0), pW2 = byW(W2, r=> +r.parcels||0);
-      const lW1 = byW(W1, r=> +r.letters||0), lW2 = byW(W2, r=> +r.letters||0);
       const pThisW = byW(W0, r=> +r.parcels||0);
       const lThisW = byW(W0, r=> +r.letters||0);
-      const mean = arr=> arr.length? (arr.reduce((a,b)=>a+b,0)/arr.length) : null;
-      const mins = 5; // guardrail: require baseline >= 5 units
-      const deltas = (thisArr, baseArr)=>{
-        const vals=[]; for(let i=0;i<=dayIdxToday;i++){ const cur = mean(thisArr[i]); const base = mean([...(baseArr[0][i]||[]), ...(baseArr[1][i]||[])]);
+      const avgDelta = (curArr, baseArr)=>{
+        const vals=[]; for(let i=0;i<=dayIdxToday;i++){ const cur = curArr[i]; const base = (baseArr && baseArr[i]);
           if (cur==null || base==null || base<mins) continue; vals.push(((cur-base)/base)*100); }
         return vals.length? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
       };
-      dP = deltas(pThisW, [pW1,pW2]);
-      dLx= deltas(lThisW, [lW1,lW2]);
+      const bp = baselines ? baselines.parcels : null;
+      const bl = baselines ? baselines.letters : null;
+      dP = avgDelta(pThisW, bp);
+      dLx= avgDelta(lThisW, bl);
       lineLabelP = 'Parcels (vs baseline)';
       lineLabelL = 'Letters (vs baseline)';
     } else {

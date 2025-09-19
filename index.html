@@ -1972,24 +1972,37 @@ const setPill=(el,delta)=>{
     if (FLAGS.baselineCompare){
       // Baseline-normalized: compare this week's Mon..today vs weekday baselines from previous 2 weeks
       const dayIdxToday = (now.weekday + 6) % 7; // Mon=0..Sun=6
-      const mins = 5; // guardrail: require baseline >= 5 units
-      // Range-level Δ% (Mon..today): (sum_this - sum_baseline) / sum_baseline
-      const sumRange = (arr, upto)=>{ let s=0; for(let i=0;i<=upto;i++){ s+= (arr[i]||0); } return s; };
+      const mins = 5; // guardrail: require baseline >= 5 units per weekday
+      // Helpers
+      const sumRange = (arr, upto)=>{ let s=0; for(let i=0;i<=upto;i++){ const v=arr[i]; s+= (v!=null? v:0); } return s; };
       const byW = (arr,fn)=>{
         const out = Array.from({length:7},()=>0);
         arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; out[idx] += (fn(r)||0); });
         return out;
       };
+      const alignedDelta = (curArr, baseArr, upto, min)=>{
+        let curSum=0, baseSum=0, used=0;
+        for (let i=0;i<=upto;i++){
+          const base = baseArr ? baseArr[i] : null;
+          if (base!=null && base>=min){
+            curSum += (curArr[i]||0);
+            baseSum += base;
+            used++;
+          }
+        }
+        if (!used || baseSum<=0) return { delta:null, used:0 };
+        let d = Math.round(((curSum - baseSum)/baseSum)*100);
+        if (d>100) d=100; if (d<-100) d=-100;
+        return { delta:d, used };
+      };
       const pThisW = byW(W0, r=> +r.parcels||0);
       const lThisW = byW(W0, r=> +r.letters||0);
       const bp = baselines ? baselines.parcels : null;
       const bl = baselines ? baselines.letters : null;
-      const pSum = sumRange(pThisW, dayIdxToday);
-      const lSum = sumRange(lThisW, dayIdxToday);
-      const bpSum = bp ? sumRange(bp, dayIdxToday) : null;
-      const blSum = bl ? sumRange(bl, dayIdxToday) : null;
-      dP = (bpSum && bpSum>=mins) ? Math.round(((pSum - bpSum)/bpSum)*100) : null;
-      dLx= (blSum && blSum>=mins) ? Math.round(((lSum - blSum)/blSum)*100) : null;
+      const resP = alignedDelta(pThisW, bp, dayIdxToday, mins);
+      const resL = alignedDelta(lThisW, bl, dayIdxToday, mins);
+      dP = resP.delta;
+      dLx= resL.delta;
       lineLabelP = 'Parcels (vs baseline)';
       lineLabelL = 'Letters (vs baseline)';
       // Anchor drift (optional, show as part of details header)
@@ -2020,8 +2033,8 @@ const setPill=(el,delta)=>{
     if (details){
       details.innerHTML = [
         line('Efficiency', dEff, `(min/vol ${ ( (rm0/(p0+ln0))||0 ).toFixed(2) } vs ${ ( (rm1/(p1+ln1))||0 ).toFixed(2) })`),
-        line(lineLabelP, dP, `(${p0} vs ${p1})`),
-        line(lineLabelL, dLx, `(${l0} vs ${l1})`),
+        line(lineLabelP, dP, `(${p0} vs ${p1}${resP.used?`, ${resP.used} day(s) used`:''})`),
+        line(lineLabelL, dLx, `(${l0} vs ${l1}${resL.used?`, ${resL.used} day(s) used`:''})`),
         line('Hours', dH, `(${(sum(W0,r=>+r.hours||0)).toFixed(1)}h vs ${(sum(W1,r=>+r.hours||0)).toFixed(1)}h)`)
       ].join('');
     }

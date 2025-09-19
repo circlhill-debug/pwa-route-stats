@@ -2030,22 +2030,26 @@ const setPill=(el,delta)=>{
       const driftCanvas = document.getElementById('mixDrift');
       const driftText = document.getElementById('mixDriftText');
       if (driftCanvas && driftText){
-        const weeksArr=[]; for(let w=8; w>=1; w--){ const s=startOfWeekMonday(now.minus({weeks:w})); const e=endOfWeekSunday(now.minus({weeks:w})); weeksArr.push({s,e}); }
+        const weeksBack = 5; // use last 5 completed weeks
+        const weeksArr=[]; for(let w=weeksBack; w>=1; w--){ const s=startOfWeekMonday(now.minus({weeks:w})); const e=endOfWeekSunday(now.minus({weeks:w})); weeksArr.push({s,e}); }
         const weekSum=(wk,fn)=> worked.filter(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=wk.s && d<=wk.e; }).reduce((t,r)=> t+(fn(r)||0),0);
-        const pSer=weeksArr.map(wk=> weekSum(wk, r=>+r.parcels||0));
-        const lSer=weeksArr.map(wk=> weekSum(wk, r=>+r.letters||0));
-        driftText.textContent = `Parcels: ${pSer.join(', ')} • Letters: ${lSer.join(', ')}`;
+        const combSer = weeksArr.map(wk=>{
+          const p=weekSum(wk, r=>+r.parcels||0); const l=weekSum(wk, r=>+r.letters||0); return +(p + 0.33*l).toFixed(1);
+        }).filter(v=> v>0);
+        const labels = weeksArr.slice(-combSer.length).map((wk,i)=> `W-${combSer.length-i}`);
+        // Anchor = median of combined series (non-zero)
+        const sorted=[...combSer].sort((a,b)=>a-b); const n=sorted.length; const anchorVal = n? (n%2? sorted[Math.floor(n/2)] : (sorted[n/2-1]+sorted[n/2])/2) : 0;
+        driftText.textContent = `Combined vol (P + 0.33×L): ${combSer.join(', ')} • Anchor: ${anchorVal}`;
         if (window.Chart && driftCanvas.getContext){
           const ctx = driftCanvas.getContext('2d');
           if (driftCanvas._chart) { try{ driftCanvas._chart.destroy(); }catch(_){} }
           const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
           const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
-          const labels = weeksArr.map((wk,i)=> `W-${8-i}`);
           driftCanvas._chart = new Chart(ctx, {
             type:'line',
             data:{ labels, datasets:[
-              { label:'Parcels', data:pSer, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1 },
-              { label:'Letters', data:lSer, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1 }
+              { label:'Combined', data:combSer, borderColor:warn, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1 },
+              { label:'Anchor', type:'line', data:combSer.map(()=>anchorVal), borderColor:brand, backgroundColor:'transparent', borderDash:[4,2], pointRadius:0, tension:0 }
             ]},
             options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip:{ enabled:false } }, scales:{ x:{ display:false }, y:{ display:false } } }
           });

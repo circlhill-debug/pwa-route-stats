@@ -561,6 +561,40 @@
   function getWeeklyBaselines(){
     try{ return JSON.parse(localStorage.getItem(BASELINE_KEY)||'null'); }catch(_){ return null; }
   }
+
+  // Anchor baselines (on the fly): median of last N completed weeks per weekday (default 8)
+  function computeAnchorBaselines(rows, weeks=8){
+    try{
+      const now = DateTime.now().setZone(ZONE);
+      const worked = rows.filter(r=> r.status!=='off');
+      // Collect per-week per-weekday values for parcels/letters across last N completed weeks
+      const weeksArr = [];
+      for (let w=1; w<=weeks; w++){
+        const s = startOfWeekMonday(now.minus({weeks:w}));
+        const e = endOfWeekSunday(now.minus({weeks:w}));
+        weeksArr.push({s,e});
+      }
+      const perW = (fn)=>{
+        const arrs = Array.from({length:7},()=>[]);
+        for (const wk of weeksArr){
+          const set = worked.filter(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=wk.s && d<=wk.e; });
+          const tmp = Array.from({length:7},()=>0);
+          set.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; tmp[idx]+= (fn(r)||0); });
+          for (let i=0;i<7;i++) arrs[i].push(tmp[i]);
+        }
+        // median per weekday
+        const med = arrs.map(a=>{
+          const b=[...a].sort((x,y)=>x-y); const n=b.length; if(!n) return null; const mid=Math.floor(n/2);
+          return n%2? b[mid] : (b[mid-1]+b[mid])/2;
+        });
+        return med;
+      };
+      return {
+        parcels: perW(r=> +r.parcels||0),
+        letters: perW(r=> +r.letters||0)
+      };
+    }catch(_){ return null; }
+  }
   function saveFlags(f){ localStorage.setItem(FLAG_KEY, JSON.stringify(f)); }
   let FLAGS = loadFlags();
 
@@ -1931,28 +1965,44 @@ const setPill=(el,delta)=>{
     const dH = d(sum(W0,r=>+r.hours||0), sum(W1,r=>+r.hours||0));
     let dP, dLx, lineLabelP='Parcels', lineLabelL='Letters';
     const baselines = ensureWeeklyBaselines(rows) || getWeeklyBaselines();
+    const anchor = computeAnchorBaselines(rows, 8);
     if (FLAGS.baselineCompare){
       // Baseline-normalized: compare this week's Mon..today vs weekday baselines from previous 2 weeks
       const dayIdxToday = (now.weekday + 6) % 7; // Mon=0..Sun=6
       const mins = 5; // guardrail: require baseline >= 5 units
+      // Range-level Δ% (Mon..today): (sum_this - sum_baseline) / sum_baseline
+      const sumRange = (arr, upto)=>{ let s=0; for(let i=0;i<=upto;i++){ s+= (arr[i]||0); } return s; };
       const byW = (arr,fn)=>{
-        const out = Array.from({length:7},()=>null);
-        arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; out[idx] = (out[idx]||0) + (fn(r)||0); });
+        const out = Array.from({length:7},()=>0);
+        arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; out[idx] += (fn(r)||0); });
         return out;
       };
       const pThisW = byW(W0, r=> +r.parcels||0);
       const lThisW = byW(W0, r=> +r.letters||0);
-      const avgDelta = (curArr, baseArr)=>{
-        const vals=[]; for(let i=0;i<=dayIdxToday;i++){ const cur = curArr[i]; const base = (baseArr && baseArr[i]);
-          if (cur==null || base==null || base<mins) continue; vals.push(((cur-base)/base)*100); }
-        return vals.length? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
-      };
       const bp = baselines ? baselines.parcels : null;
       const bl = baselines ? baselines.letters : null;
-      dP = avgDelta(pThisW, bp);
-      dLx= avgDelta(lThisW, bl);
+      const pSum = sumRange(pThisW, dayIdxToday);
+      const lSum = sumRange(lThisW, dayIdxToday);
+      const bpSum = bp ? sumRange(bp, dayIdxToday) : null;
+      const blSum = bl ? sumRange(bl, dayIdxToday) : null;
+      dP = (bpSum && bpSum>=mins) ? Math.round(((pSum - bpSum)/bpSum)*100) : null;
+      dLx= (blSum && blSum>=mins) ? Math.round(((lSum - blSum)/blSum)*100) : null;
       lineLabelP = 'Parcels (vs baseline)';
       lineLabelL = 'Letters (vs baseline)';
+      // Anchor drift (optional, show as part of details header)
+      let driftLine = '';
+      if (anchor && anchor.parcels && anchor.letters){
+        const ap = sumRange(anchor.parcels, dayIdxToday);
+        const al = sumRange(anchor.letters, dayIdxToday);
+        const driftP = (ap>0 && bpSum!=null)? Math.round(((bpSum - ap)/ap)*100) : null;
+        const driftL = (al>0 && blSum!=null)? Math.round(((blSum - al)/al)*100) : null;
+        driftLine = `Baseline drift vs anchor — Parcels: ${driftP==null?'—':(driftP>=0?('↑ '+driftP+'%'):('↓ '+Math.abs(driftP)+'%'))} • Letters: ${driftL==null?'—':(driftL>=0?('↑ '+driftL+'%'):('↓ '+Math.abs(driftL)+'%'))}`;
+        // Prepend drift line on first render
+        if (details && !details._driftInjected){
+          const div=document.createElement('div'); div.className='sparkline-labels'; div.textContent=driftLine; details.parentNode.insertBefore(div, details);
+          details._driftInjected = true;
+        }
+      }
     } else {
       // Simple week-over-week (Mon..today vs last Mon..today)
       dP = d(p0,p1);

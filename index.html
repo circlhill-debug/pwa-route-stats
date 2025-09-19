@@ -348,12 +348,12 @@
   <!-- Volume Mix (Parcels vs Letters) -->
   <section class="card" id="mixVizCard" style="display:none">
     <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-      <h3 style="margin:0">Baseline Compare (Parcels, Letters)</h3>
+      <h3 style="margin:0">Parcels vs Letters — Compare</h3>
       <button id="mixCompareBtn" class="ghost">Compare</button>
     </div>
     <div id="mixText" class="sparkline-labels">—</div>
     <div id="mixEff" class="sparkline-labels">—</div>
-    <div class="sparkline-labels" style="margin-top:6px">Baseline drift (last 8 weeks)</div>
+    <div class="sparkline-labels" style="margin-top:6px">Baseline drift (anchor vs last 5 weeks)</div>
     <div style="margin-top:4px"><canvas id="mixDrift" class="sparkline"></canvas></div>
     <div id="mixDriftText" class="sparkline-labels">—</div>
     <div id="mixCompareDetails" class="sparkline-labels" style="display:none;margin-top:4px">—</div>
@@ -1927,6 +1927,8 @@ const setPill=(el,delta)=>{
   function buildMixViz(rows){
     const card = document.getElementById('mixVizCard'); if(!card) return;
     if (!FLAGS.mixViz) { card.style.display='none'; return; }
+    // Show card early so header is visible even if later logic fails
+    card.style.display='block';
     const text = document.getElementById('mixText');
     const eff  = document.getElementById('mixEff');
     const details = document.getElementById('mixCompareDetails');
@@ -1945,7 +1947,9 @@ const setPill=(el,delta)=>{
     const l0=sum(W0,r=>+r.letters||0), l1=sum(W1,r=>+r.letters||0);
     const ln0 = +(0.33*l0).toFixed(1);
     const ln1 = +(0.33*l1).toFixed(1);
-    text.textContent = `W-1: Parcels ${p1}, Letters ${l1} • W0: Parcels ${p0}, Letters ${l0}`;
+    try{
+      // Labeling: W1 = current (Mon..today), W2 = last (same range)
+      if (text) text.textContent = `W1: Parcels ${p0}, Letters ${l0} • W2: Parcels ${p1}, Letters ${l1}`;
     const vol0 = p0 + 0.33*l0; const vol1 = p1 + 0.33*l1;
     const rm0  = sum(W0,r=>+r.route_minutes||0);
     const rm1  = sum(W1,r=>+r.route_minutes||0);
@@ -1967,6 +1971,9 @@ const setPill=(el,delta)=>{
     const d = (a,b)=> (b>0)? Math.round(((a-b)/b)*100) : null;
     const dH = d(sum(W0,r=>+r.hours||0), sum(W1,r=>+r.hours||0));
     let dP, dLx, lineLabelP='Parcels', lineLabelL='Letters';
+    // Ensure scoped defaults so details rendering doesn't break when baselineCompare is off
+    let resP = { used: 0 };
+    let resL = { used: 0 };
     const baselines = ensureWeeklyBaselines(rows) || getWeeklyBaselines();
     const anchor = computeAnchorBaselines(rows, 8);
     if (FLAGS.baselineCompare){
@@ -1999,8 +2006,8 @@ const setPill=(el,delta)=>{
       const lThisW = byW(W0, r=> +r.letters||0);
       const bp = baselines ? baselines.parcels : null;
       const bl = baselines ? baselines.letters : null;
-      const resP = alignedDelta(pThisW, bp, dayIdxToday, mins);
-      const resL = alignedDelta(lThisW, bl, dayIdxToday, mins);
+      resP = alignedDelta(pThisW, bp, dayIdxToday, mins);
+      resL = alignedDelta(lThisW, bl, dayIdxToday, mins);
       dP = resP.delta;
       dLx= resL.delta;
       lineLabelP = 'Parcels (vs baseline)';
@@ -2035,12 +2042,18 @@ const setPill=(el,delta)=>{
     const color=(v)=> v==null?'var(--text)':(v>=0?'var(--good)':'var(--bad)');
     const line=(label,v,ctx)=> `<div>${label}: <span style="color:${color(v)}">${arrow(v)}</span> ${ctx||''}</div>`;
     if (details){
+      const usedP = (typeof resP!== 'undefined' && resP && resP.used) ? `, ${resP.used} day(s) used` : '';
+      const usedL = (typeof resL!== 'undefined' && resL && resL.used) ? `, ${resL.used} day(s) used` : '';
       details.innerHTML = [
         line('Efficiency', dEff, `(min/vol ${ ( (rm0/(p0+ln0))||0 ).toFixed(2) } vs ${ ( (rm1/(p1+ln1))||0 ).toFixed(2) })`),
-        line(lineLabelP, dP, `(${p0} vs ${p1}${resP.used?`, ${resP.used} day(s) used`:''})`),
-        line(lineLabelL, dLx, `(${l0} vs ${l1}${resL.used?`, ${resL.used} day(s) used`:''})`),
+        line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`),
+        line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`),
         line('Hours', dH, `(${(sum(W0,r=>+r.hours||0)).toFixed(1)}h vs ${(sum(W1,r=>+r.hours||0)).toFixed(1)}h)`)
       ].join('');
+    }
+    } catch (e) {
+      console.error('[MixViz] render error', e);
+      if (details) details.innerHTML = '<div>Compare unavailable — data not ready.</div>';
     }
     // Baseline drift sparkline (last 8 full weeks, Mon..Sun totals)
     try{
@@ -2053,7 +2066,8 @@ const setPill=(el,delta)=>{
         const combSer = weeksArr.map(wk=>{
           const p=weekSum(wk, r=>+r.parcels||0); const l=weekSum(wk, r=>+r.letters||0); return +(p + 0.33*l).toFixed(1);
         }).filter(v=> v>0);
-        const labels = weeksArr.slice(-combSer.length).map((wk,i)=> `W-${combSer.length-i}`);
+        // Drift labels: W1 = most recent completed week, W{n} older
+        const labels = weeksArr.slice(-combSer.length).map((wk,i)=> `W${combSer.length-i}`);
         // Anchor = median of combined series (non-zero)
         const sorted=[...combSer].sort((a,b)=>a-b); const n=sorted.length; const anchorVal = n? (n%2? sorted[Math.floor(n/2)] : (sorted[n/2-1]+sorted[n/2])/2) : 0;
         driftText.textContent = `Combined vol (P + 0.33×L): ${combSer.join(', ')} • Anchor: ${anchorVal}`;
@@ -2078,7 +2092,7 @@ const setPill=(el,delta)=>{
       const show = details.style.display==='none';
       details.style.display = show ? 'block' : 'none';
     });
-    card.style.display='block';
+    // Already shown early; keep behavior consistent
   }
 
   // Quick Filter (Phase 3): weekday selector with stats + optional sparkline

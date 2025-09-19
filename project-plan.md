@@ -72,6 +72,19 @@ This plan outlines a comprehensive approach to delivering these advanced feature
 
 ## Working Notes / Dev Log
 
+### 2025-09-19 — Mix Viz stability + baseline compare fix (v2.0.4)
+
+What we fixed/added
+- Baseline Compare (Parcels, Letters) card now renders even if downstream logic fails; header and placeholders always visible.
+- Resolved ReferenceError when baseline-normalized compare is disabled by defining safe defaults for `resP`/`resL` and avoiding variable shadowing.
+- Defensive guards for text/eff/details elements; fallbacks render cleanly when Chart.js is unavailable.
+- Service worker cache version bumped to force clients to pick up latest code.
+
+Verification checklist (manual)
+- Toggle “Show Volume Mix (Parcels vs Letters)” ON in Settings → Save → card appears with header immediately.
+- Toggle “Use baseline-normalized compare” ON/OFF → details update without errors and drift sparkline remains stable.
+- Force Refresh updates the SW and clears caches; subsequent reload shows updated card reliably.
+
 ### 2025-09-07 — Phase 2 (part 1) shipped (tag: v2.0.1)
 
 What we implemented
@@ -206,4 +219,11 @@ Out of scope (Phase 3)
 Ship plan
 - Implement on `feature/phase-3-quick-filters` behind flags.
 - Bump SW cache version.
-- Manual test → PR → merge to `main`, tag v2.0.4.
+- Manual test → PR → merge to `main`, tag v2.0.5.
+
+### Phase 3 — Focus Points (next)
+- Mix Viz composition bars: show W-1 vs W0 stacked composition (parcels vs letters×0.33) with text fallback.
+- Headline digest polish: ensure copy buckets match blended % thresholds; add gentle iconography if space allows.
+- Quick Filter UX: add keyboard focus styles and small “days count” badge; keep charts optional.
+- Baseline drift sparkline: add anchor label toggle; ensure labels degrade to text if Chart.js missing.
+- Reliability: keep header/text visible first, chart render second; no feature can block page load.

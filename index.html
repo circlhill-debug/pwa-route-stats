@@ -340,27 +340,17 @@
       <!-- pills populated by script -->
     </div>
     <div id="qfViz" style="margin-top:8px">
+      <div class="row" id="qfMetrics" style="gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <label class="pill"><input id="qfShowParcels" type="checkbox" checked> Parcels</label>
+        <label class="pill"><input id="qfShowLetters" type="checkbox" checked> Letters</label>
+        <label class="pill"><input id="qfShowHours"   type="checkbox" checked> Hours</label>
+      </div>
       <canvas id="qfSpark" class="sparkline"></canvas>
       <div id="qfText" class="sparkline-labels">—</div>
     </div>
   </section>
 
-  <!-- Volume Mix (Parcels vs Letters) -->
-  <section class="card" id="mixVizCard" style="display:none">
-    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-      <h3 style="margin:0">Parcels vs Letters — Compare</h3>
-      <div class="row" style="gap:6px;flex-wrap:wrap">
-        <button id="mixCompareBtn" class="ghost">Compare</button>
-      </div>
-    </div>
-    <div id="mixText" class="sparkline-labels">—</div>
-    <div id="mixEff" class="sparkline-labels">—</div>
-    <div class="sparkline-labels" style="margin-top:6px">Baseline drift (anchor vs last 5 weeks)</div>
-    <div style="margin-top:4px"><canvas id="mixDrift" class="sparkline"></canvas></div>
-    <div id="mixDriftText" class="sparkline-labels">—</div>
-    <div id="mixCompareDetails" class="sparkline-labels" style="display:none;margin-top:4px">—</div>
-    
-  </section>
+  
 
   <!-- Monthly Glance (preview) — behind feature flag -->
   <section class="card" id="monthlyGlanceCard" style="grid-column:1/-1; display:none">
@@ -454,7 +444,7 @@
     <label class="pill"><input id="flagTrendPills" type="checkbox"> Show Weekly Trend pills (power users)</label>
     <label class="pill"><input id="flagSameRangeTotals" type="checkbox"> Compare weekly totals: Mon..today vs last Mon..today</label>
     <label class="pill"><input id="flagHeadlineDigest" type="checkbox"> Show headline digest (Wed evenings)</label>
-    <label class="pill"><input id="flagMixViz" type="checkbox"> Show Volume Mix (Parcels vs Letters)</label>
+    
     <label class="pill"><input id="flagBaselineCompare" type="checkbox"> Use baseline-normalized compare (2-week weekday avg)</label>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="ghost" value="cancel">Close</button>
@@ -819,7 +809,7 @@ function moonPhaseEmoji(dateStr) {
     buildMonthlyGlance(allRows||[]);
     buildQuickFilter(allRows||[]);
     buildHeadlineDigest(allRows||[]);
-    buildMixViz(allRows||[]);
+    
     applyTrendPillsVisibility();
   });
 
@@ -1681,7 +1671,7 @@ const setPill=(el,delta)=>{
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildHeadlineDigest(allRows); buildMixViz(allRows); computeBreakdown(); applyTrendPillsVisibility();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildHeadlineDigest(allRows); computeBreakdown(); applyTrendPillsVisibility();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);
@@ -2110,6 +2100,9 @@ const setPill=(el,delta)=>{
     const stats = document.getElementById('qfStats');
     const spark = document.getElementById('qfSpark');
     const text = document.getElementById('qfText');
+    const cbP = document.getElementById('qfShowParcels');
+    const cbL = document.getElementById('qfShowLetters');
+    const cbH = document.getElementById('qfShowHours');
     if (!stats || !spark || !text) return;
 
     const dayVal = (sel && sel.value) || 'all';
@@ -2135,14 +2128,31 @@ const setPill=(el,delta)=>{
       pill('Avg route min', avgR, v=> v==null?'—':Math.round(v))
     ].join('');
 
-    // Viz: tiny line over last up to 12 filtered entries (hours)
+    // Viz: tiny line(s) over last up to 12 filtered entries
     const lastN = filtered
       .slice()
       .sort((a,b)=> (a.work_date < b.work_date ? -1 : 1))
       .slice(-12);
     const labels = lastN.map(r=> DateTime.fromISO(r.work_date,{zone:ZONE}).toFormat('LLL d'));
-    const series = lastN.map(r=> +r.hours||0);
-    text.textContent = series.length? `Hours (last ${series.length}): ${series.map(n=> (Math.round(n*10)/10).toFixed(1)).join(', ')}` : '—';
+    const showP = cbP ? !!cbP.checked : true;
+    const showL = cbL ? !!cbL.checked : true;
+    const showH = cbH ? !!cbH.checked : true;
+    const serP = lastN.map(r=> +r.parcels||0);
+    const serL = lastN.map(r=> +r.letters||0);
+    const serH = lastN.map(r=> +r.hours||0);
+    const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
+    const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
+    const good  = getComputedStyle(document.documentElement).getPropertyValue('--good').trim() || '#2E7D32';
+    const datasets = [];
+    if (showP) datasets.push({ label:'Parcels', data: serP, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1 });
+    if (showL) datasets.push({ label:'Letters', data: serL, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1 });
+    if (showH) datasets.push({ label:'Hours',   data: serH, borderColor:good,  backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1 });
+    const summary = [];
+    const fmtNum = (n)=> (Math.round(n*10)/10).toFixed(1);
+    if (showP) summary.push(`P: ${serP.slice(-labels.length).map(fmtNum).join(', ')}`);
+    if (showL) summary.push(`L: ${serL.slice(-labels.length).map(fmtNum).join(', ')}`);
+    if (showH) summary.push(`H: ${serH.slice(-labels.length).map(fmtNum).join(', ')}`);
+    text.textContent = datasets.length ? summary.join(' • ') : '—';
 
     if (window.Chart && spark.getContext){
       try{
@@ -2150,16 +2160,27 @@ const setPill=(el,delta)=>{
         if (spark._chart) { try{ spark._chart.destroy(); }catch(_){} }
         spark._chart = new Chart(ctx, {
           type:'line',
-          data:{ labels, datasets:[{ label:'Hours', data: series, borderColor:getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff', backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1 }]},
+          data:{ labels, datasets },
           options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip:{ enabled:false } }, scales:{ x:{ display:false }, y:{ display:false } } }
         });
       }catch(_){ /* fallback already set in text */ }
     }
 
     // Hook change
-    sel?.removeEventListener('change', buildQuickFilter._handler || (()=>{}));
-    buildQuickFilter._handler = ()=> buildQuickFilter(rows);
-    sel?.addEventListener('change', buildQuickFilter._handler);
+    const handler = ()=> buildQuickFilter(rows);
+    // Rebind events
+    sel?.removeEventListener('change', buildQuickFilter._handlerSel || (()=>{}));
+    cbP?.removeEventListener('change', buildQuickFilter._handlerP || (()=>{}));
+    cbL?.removeEventListener('change', buildQuickFilter._handlerL || (()=>{}));
+    cbH?.removeEventListener('change', buildQuickFilter._handlerH || (()=>{}));
+    buildQuickFilter._handlerSel = handler;
+    buildQuickFilter._handlerP = handler;
+    buildQuickFilter._handlerL = handler;
+    buildQuickFilter._handlerH = handler;
+    sel?.addEventListener('change', handler);
+    cbP?.addEventListener('change', handler);
+    cbL?.addEventListener('change', handler);
+    cbH?.addEventListener('change', handler);
   }
 </script>
 </body>

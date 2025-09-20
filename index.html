@@ -34,6 +34,9 @@
   th{ color:var(--muted); font-weight:600 }
   .right{ text-align:right }
   .pill{ display:inline-flex; gap:8px; align-items:center; border:1px solid var(--border); padding:6px 8px; border-radius:999px; background:transparent }
+  /* Ensure checkboxes render visibly inside pill labels */
+  input[type="checkbox"]{ width:auto; height:auto; padding:0; margin:0 4px 0 0; accent-color: var(--brand); }
+  .legend-swatch{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px }
   .stat{ display:flex; flex-direction:column; gap:4px; padding:10px; border:1px solid var(--border); border-radius:12px; min-width:140px }
   .up{ color:var(--good) } .down{ color:var(--bad) } .warn{ color:var(--warn) }
   canvas{ background:transparent; border:1px solid var(--border); border-radius:10px; padding:8px }
@@ -340,10 +343,17 @@
       <!-- pills populated by script -->
     </div>
     <div id="qfViz" style="margin-top:8px">
-      <div class="row" id="qfMetrics" style="gap:8px;flex-wrap:wrap;margin-bottom:6px">
-        <label class="pill"><input id="qfShowParcels" type="checkbox" checked> Parcels</label>
-        <label class="pill"><input id="qfShowLetters" type="checkbox" checked> Letters</label>
-        <label class="pill"><input id="qfShowHours"   type="checkbox" checked> Hours</label>
+      <div class="row" id="qfMetrics" style="gap:8px;flex-wrap:wrap;margin-bottom:6px;align-items:center">
+        <label class="pill"><span class="legend-swatch" style="background: var(--brand)"></span><input id="qfShowParcels" type="checkbox" checked> Parcels</label>
+        <label class="pill"><span class="legend-swatch" style="background: var(--warn)"></span><input id="qfShowLetters" type="checkbox" checked> Letters</label>
+        <label class="pill"><span class="legend-swatch" style="background: var(--good)"></span><input id="qfShowHours"   type="checkbox" checked> Hours</label>
+        <span class="pill" style="gap:6px"><small>Last</small>
+          <select id="qfLastN" style="min-width:80px">
+            <option value="8">8</option>
+            <option value="12" selected>12</option>
+            <option value="20">20</option>
+          </select>
+        </span>
       </div>
       <canvas id="qfSpark" class="sparkline"></canvas>
       <div id="qfText" class="sparkline-labels">—</div>
@@ -2103,6 +2113,7 @@ const setPill=(el,delta)=>{
     const cbP = document.getElementById('qfShowParcels');
     const cbL = document.getElementById('qfShowLetters');
     const cbH = document.getElementById('qfShowHours');
+    const selN = document.getElementById('qfLastN');
     if (!stats || !spark || !text) return;
 
     const dayVal = (sel && sel.value) || 'all';
@@ -2129,10 +2140,12 @@ const setPill=(el,delta)=>{
     ].join('');
 
     // Viz: tiny line(s) over last up to 12 filtered entries
+    const lastCount = (selN && +selN.value) || +(localStorage.getItem('routeStats.qf.lastN')||12) || 12;
+    if (selN) selN.value = String(lastCount);
     const lastN = filtered
       .slice()
       .sort((a,b)=> (a.work_date < b.work_date ? -1 : 1))
-      .slice(-12);
+      .slice(-lastCount);
     const labels = lastN.map(r=> DateTime.fromISO(r.work_date,{zone:ZONE}).toFormat('LLL d'));
     const showP = cbP ? !!cbP.checked : true;
     const showL = cbL ? !!cbL.checked : true;
@@ -2160,7 +2173,7 @@ const setPill=(el,delta)=>{
         if (spark._chart) { try{ spark._chart.destroy(); }catch(_){} }
         spark._chart = new Chart(ctx, {
           type:'line',
-          data:{ labels, datasets },
+          data:{ labels, datasets: datasets.map(d => Object.assign({ tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true, fill:false }, d)) },
           options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip:{ enabled:false } }, scales:{ x:{ display:false }, y:{ display:false } } }
         });
       }catch(_){ /* fallback already set in text */ }
@@ -2173,14 +2186,17 @@ const setPill=(el,delta)=>{
     cbP?.removeEventListener('change', buildQuickFilter._handlerP || (()=>{}));
     cbL?.removeEventListener('change', buildQuickFilter._handlerL || (()=>{}));
     cbH?.removeEventListener('change', buildQuickFilter._handlerH || (()=>{}));
+    selN?.removeEventListener('change', buildQuickFilter._handlerN || (()=>{}));
     buildQuickFilter._handlerSel = handler;
     buildQuickFilter._handlerP = handler;
     buildQuickFilter._handlerL = handler;
     buildQuickFilter._handlerH = handler;
+    buildQuickFilter._handlerN = (e)=>{ try{ localStorage.setItem('routeStats.qf.lastN', String(e.target.value)); }catch(_){} handler(); };
     sel?.addEventListener('change', handler);
     cbP?.addEventListener('change', handler);
     cbL?.addEventListener('change', handler);
     cbH?.addEventListener('change', handler);
+    selN?.addEventListener('change', buildQuickFilter._handlerN);
   }
 </script>
 </body>

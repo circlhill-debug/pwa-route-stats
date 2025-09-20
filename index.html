@@ -349,7 +349,10 @@
   <section class="card" id="mixVizCard" style="display:none">
     <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <h3 style="margin:0">Parcels vs Letters — Compare</h3>
-      <button id="mixCompareBtn" class="ghost">Compare</button>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button id="histBaselineBtn" class="ghost" title="Show historical baseline comparison (indexes)">Historical Baseline</button>
+        <button id="mixCompareBtn" class="ghost">Compare</button>
+      </div>
     </div>
     <div id="mixText" class="sparkline-labels">—</div>
     <div id="mixEff" class="sparkline-labels">—</div>
@@ -357,6 +360,12 @@
     <div style="margin-top:4px"><canvas id="mixDrift" class="sparkline"></canvas></div>
     <div id="mixDriftText" class="sparkline-labels">—</div>
     <div id="mixCompareDetails" class="sparkline-labels" style="display:none;margin-top:4px">—</div>
+    <!-- Historical baseline comparison (indexes vs fixed anchor=100) -->
+    <div id="histBaselinePanel" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="sparkline-labels" id="histBaselineLabel">Historical baseline (anchor = median of last 5 completed weeks)</div>
+      <div style="margin-top:4px"><canvas id="histBaselineSpark" class="sparkline" height="60"></canvas></div>
+      <div id="histBaselineText" class="sparkline-labels">—</div>
+    </div>
   </section>
 
   <!-- Monthly Glance (preview) — behind feature flag -->
@@ -2087,6 +2096,55 @@ const setPill=(el,delta)=>{
         }
       }
     }catch(_){ /* ignore */ }
+
+    // Historical baseline comparison: index vs fixed anchor per metric (Parcels/Letters/Hours)
+    try{
+      const panel = document.getElementById('histBaselinePanel');
+      const btnHist = document.getElementById('histBaselineBtn');
+      const spark = document.getElementById('histBaselineSpark');
+      const text  = document.getElementById('histBaselineText');
+      if (btnHist) {
+        btnHist.onclick = ()=>{ if(panel){ const show = panel.style.display==='none'; panel.style.display = show? 'block' : 'none'; if (show && spark && !spark._renderedOnce) { /* render on first open */ } } };
+      }
+      if (panel && spark && text){
+        const weeksBack = 8; // last 8 completed weeks
+        const weeksArr=[]; for(let w=weeksBack; w>=1; w--){ const s=startOfWeekMonday(now.minus({weeks:w})); const e=endOfWeekSunday(now.minus({weeks:w})); weeksArr.push({s,e}); }
+        const weekSum=(wk,fn)=> worked.filter(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=wk.s && d<=wk.e; }).reduce((t,r)=> t+(fn(r)||0),0);
+        const serP = weeksArr.map(wk=> weekSum(wk, r=> +r.parcels||0));
+        const serL = weeksArr.map(wk=> weekSum(wk, r=> +r.letters||0));
+        const serH = weeksArr.map(wk=> weekSum(wk, r=> +r.hours||0));
+        // Anchors: median of last 5 completed weeks (non-zero) per metric
+        const median = (arr)=>{ const a=arr.filter(v=> v>0).slice(-5).sort((x,y)=>x-y); const n=a.length; if(!n) return 0; return n%2? a[Math.floor(n/2)] : (a[n/2-1]+a[n/2])/2; };
+        const ancP = median(serP);
+        const ancL = median(serL);
+        const ancH = median(serH);
+        const idx = (v,a,min)=> (a && a>=min) ? +( (v/a)*100 ).toFixed(0) : null;
+        const seriesP = serP.map(v=> idx(v, ancP, 5));
+        const seriesL = serL.map(v=> idx(v, ancL, 5));
+        const seriesH = serH.map(v=> idx(v, ancH, 1));
+        const labels = weeksArr.map((wk,i)=> `W${weeksArr.length-i}`);
+        text.textContent = `P idx: ${seriesP.map(v=> v==null?'—':v).join(', ')} • L idx: ${seriesL.map(v=> v==null?'—':v).join(', ')} • H idx: ${seriesH.map(v=> v==null?'—':v).join(', ')}`;
+        if (window.Chart && spark.getContext){
+          const ctx = spark.getContext('2d');
+          if (spark._chart) { try{ spark._chart.destroy(); }catch(_){} }
+          const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
+          const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
+          const good  = getComputedStyle(document.documentElement).getPropertyValue('--good').trim() || '#2E7D32';
+          const anchorLine = Array.from({length:labels.length}, ()=>100);
+          spark._chart = new Chart(ctx, {
+            type:'line',
+            data:{ labels, datasets:[
+              { label:'Parcels idx', data:seriesP, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1, spanGaps:true },
+              { label:'Letters idx', data:seriesL, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1, spanGaps:true },
+              { label:'Hours idx',   data:seriesH, borderColor:good,  backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1, spanGaps:true },
+              { label:'Anchor 100',  data:anchorLine, borderColor:'#999', backgroundColor:'transparent', borderDash:[4,2], pointRadius:0, tension:0 }
+            ]},
+            options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip:{ enabled:false } }, scales:{ x:{ display:false }, y:{ display:false } } }
+          });
+          spark._renderedOnce = true;
+        }
+      }
+    }catch(_){ /* ignore hist baseline errors */ }
     btn?.addEventListener('click', ()=>{
       if (!details) return;
       const show = details.style.display==='none';

@@ -2140,8 +2140,15 @@ const setPill=(el,delta)=>{
     ].join('');
 
     // Viz: tiny line(s) over last up to 12 filtered entries
+    const available = filtered.length;
     const lastCount = (selN && +selN.value) || +(localStorage.getItem('routeStats.qf.lastN')||12) || 12;
     if (selN) selN.value = String(lastCount);
+    // Disable Last N options that exceed available points (per current filter)
+    if (selN && selN.options) {
+      try{
+        Array.from(selN.options).forEach(o=>{ o.disabled = (+o.value) > available; });
+      }catch(_){ /* no-op */ }
+    }
     const lastN = filtered
       .slice()
       .sort((a,b)=> (a.work_date < b.work_date ? -1 : 1))
@@ -2157,15 +2164,32 @@ const setPill=(el,delta)=>{
     const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
     const good  = getComputedStyle(document.documentElement).getPropertyValue('--good').trim() || '#2E7D32';
     const datasets = [];
-    if (showP) datasets.push({ label:'Parcels', data: serP, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1 });
-    if (showL) datasets.push({ label:'Letters', data: serL, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1 });
-    if (showH) datasets.push({ label:'Hours',   data: serH, borderColor:good,  backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:1 });
+    // Normalize if plotting multiple metrics to make lines comparable on the same sparkline
+    const needNormalize = [showP, showL, showH].filter(Boolean).length > 1;
+    const norm = (arr)=>{
+      const vals = arr || [];
+      let min = Infinity, max = -Infinity;
+      for (const v of vals){ if (v==null) continue; if (v<min) min=v; if (v>max) max=v; }
+      if (!isFinite(min) || !isFinite(max)) return vals.map(_=> null);
+      if (max === min) return vals.map(_=> 50); // flat line mid if no variance
+      return vals.map(v=> v==null? null : Math.round( ( (v - min) / (max - min) ) * 100 ));
+    };
+    const dataP = needNormalize ? norm(serP) : serP;
+    const dataL = needNormalize ? norm(serL) : serL;
+    const dataH = needNormalize ? norm(serH) : serH;
+    if (showP) datasets.push({ label:'Parcels', data: dataP, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true });
+    if (showL) datasets.push({ label:'Letters', data: dataL, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true });
+    if (showH) datasets.push({ label:'Hours',   data: dataH, borderColor:good,  backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true });
     const summary = [];
     const fmtNum = (n)=> (Math.round(n*10)/10).toFixed(1);
     if (showP) summary.push(`P: ${serP.slice(-labels.length).map(fmtNum).join(', ')}`);
     if (showL) summary.push(`L: ${serL.slice(-labels.length).map(fmtNum).join(', ')}`);
     if (showH) summary.push(`H: ${serH.slice(-labels.length).map(fmtNum).join(', ')}`);
-    text.textContent = datasets.length ? summary.join(' • ') : '—';
+    const showing = labels.length;
+    const requested = lastCount;
+    const note = needNormalize ? ' (normalized)' : '';
+    const coverage = `Showing ${showing} of ${requested} requested${available?`, available ${available}`:''}`;
+    text.textContent = datasets.length ? `${summary.join(' • ')} — ${coverage}${note}` : '—';
 
     if (window.Chart && spark.getContext){
       try{

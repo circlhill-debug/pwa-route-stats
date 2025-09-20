@@ -1858,8 +1858,8 @@ const setPill=(el,delta)=>{
         }
         const starts = [weekStart3, weekStart2, weekStart1, weekStart0];
         const ends   = [weekEnd3,   weekEnd2,   weekEnd1,   weekEnd0];
-        renderSpark(hoursDiv,   [W3.h, W2.h, W1.h, W0.h].map(n=> +(n||0).toFixed(1)), getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#2b7fff', 'Hours',   starts, ends);
-        renderSpark(parcelsDiv, [W3.p, W2.p, W1.p, W0.p],                        getComputedStyle(document.documentElement).getPropertyValue('--good').trim()  || '#7CE38B', 'Parcels', starts, ends);
+        renderSpark(hoursDiv,   [W3.h, W2.h, W1.h, W0.h].map(n=> +(n||0).toFixed(1)), getComputedStyle(document.documentElement).getPropertyValue('--good').trim()  || '#7CE38B', 'Hours',   starts, ends);
+        renderSpark(parcelsDiv, [W3.p, W2.p, W1.p, W0.p],                        getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#2b7fff', 'Parcels', starts, ends);
         renderSpark(lettersDiv, [W3.l, W2.l, W1.l, W0.l],                        getComputedStyle(document.documentElement).getPropertyValue('--warn').trim()  || '#FFD27A', 'Letters', starts, ends);
       }catch(e){
         console.warn('Monthly Glance charts failed; showing text fallback', e);

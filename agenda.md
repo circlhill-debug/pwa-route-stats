@@ -2,25 +2,15 @@
 
 Updated: 2025-09-19
 
-Focus
-- Fix percentages: align ranges (W1 Mon..today vs W2 same range), baseline-normalized deltas, and clear labels.
-- Keep today/weekly tiles simple: raw vs last same weekday; cumulative Mon..today vs last Mon..today.
-- Restore Mix Viz reliability (done): header always shows, errors guarded.
+Phase 3 (stay the course)
+- Today tiles: raw vs last same weekday (worked). Keep simple and reliable.
+- Weekly day-by-day: cumulative Mon..today vs last Mon..today in the Hours/Parcels/Letters panels.
+- Mix Viz: keep current compare + baseline drift sparkline; no extra baseline charts.
 
-New Work — Historical Baseline Comparison
-- Add a button near Mix Viz header to toggle a compact chart.
-- Show three index lines (Parcels, Letters, Hours) vs a fixed anchor (= median of last 5 completed weeks).
-- Index(t) = 100 × weekly_total(t) / anchor.
-- X-axis: last 8 completed weeks (W8…W1). W1 = most recent completed week.
-- Fallback: text summary if Chart.js is unavailable.
+Immediate tasks
+- Percentages: align W1=W0 (Mon..today) vs W2 (last same range) across all compares; ensure labels are consistent.
+- Baseline compare: keep weekday alignment and min guards; surface “days used”.
+- Reliability: continue guarding UI sections so settings toggles cannot hide entire cards due to a minor error.
 
-Decisions
-- No rolling/resampled baselines; anchor is fixed per metric across the sparkline.
-- Use guards: min baseline (P/L ≥5 units, H ≥1h) or skip points.
-- Efficiency remains separate (min/vol), not forced into the index view.
-
-Next Steps
-- Validate index series against sample data; spot-check a few weeks.
-- Consider a small debug toggle to print aligned totals and anchor values in details.
-- Iterate copy/labels for clarity once numbers are verified.
-
+Stretch (after Phase 3)
+- Optional volatility (z-scores) view — separate toggle; only if needed.

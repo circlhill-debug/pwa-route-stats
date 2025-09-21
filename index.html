@@ -89,6 +89,8 @@
   /* Clickable results */
   #tbl tbody tr.rowLink{ cursor:pointer }
   #tbl tbody tr.rowLink:hover td{ background:rgba(43,127,255,.06) }
+  /* Compact header buttons (e.g., Quick Entry) */
+  button.btn-compact{ padding:4px 8px; font-size:12px; border-radius:999px }
 </style>
 </head>
 <body>
@@ -359,6 +361,7 @@
         </span>
         <label class="pill" title="Show faint 0/50/100 guide when normalized"><input id="qfShowRuler" type="checkbox"> Ruler</label>
         <span id="qfNormBadge" class="pill" style="display:none;border-color:var(--brand);color:var(--brand)" title="Values are normalized (0–100) for comparability">Normalized</span>
+        <span id="qfDaysBadge" class="pill" title="Number of filtered days" style="display:none"></span>
       </div>
       <canvas id="qfSpark" class="sparkline" style="height:64px;max-height:64px"></canvas>
       <div id="qfText" class="sparkline-labels">—</div>
@@ -1822,8 +1825,8 @@ const setPill=(el,delta)=>{
       bar.id = 'quickEntryBar';
       bar.style.cssText = 'float:right; display:none; gap:8px; align-items:center; font-size:12px';
       bar.className = 'row';
-      const hitBtn = document.createElement('button'); hitBtn.id='quickHitBtn'; hitBtn.className='ghost'; hitBtn.type='button'; hitBtn.textContent='Hit Street (now)';
-      const retBtn = document.createElement('button'); retBtn.id='quickReturnBtn'; retBtn.className='ghost'; retBtn.type='button'; retBtn.textContent='Return (now)';
+      const hitBtn = document.createElement('button'); hitBtn.id='quickHitBtn'; hitBtn.className='ghost btn-compact'; hitBtn.type='button'; hitBtn.textContent='Hit Street (now)';
+      const retBtn = document.createElement('button'); retBtn.id='quickReturnBtn'; retBtn.className='ghost btn-compact'; retBtn.type='button'; retBtn.textContent='Return (now)';
       bar.appendChild(hitBtn); bar.appendChild(retBtn);
       try{ headerEl.appendChild(bar); }catch(_){ /* no-op */ }
       hitBtn.onclick = ()=>{ try{ $('departTime').value = hhmmNow(); computeBreakdown(); }catch(_){ } };
@@ -2435,6 +2438,9 @@ const setPill=(el,delta)=>{
     if (normBadge) normBadge.style.display = needNormalize ? 'inline-flex' : 'none';
     const coverage = `Showing ${showing} of ${requested} requested${available?`, available ${available}`:''}`;
     text.textContent = datasets.length ? `${summary.join(' • ')} — ${coverage}${note}` : '—';
+    // Days badge near legend
+    const daysBadge = document.getElementById('qfDaysBadge');
+    if (daysBadge){ daysBadge.style.display='inline-flex'; daysBadge.innerHTML = `<small>Days</small> <b>${count}</b>`; }
 
     if (window.Chart && spark.getContext){
       try{

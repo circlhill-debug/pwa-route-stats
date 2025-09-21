@@ -548,8 +548,8 @@
   const FLAG_KEY = 'routeStats.flags.v1';
   const BASELINE_KEY = 'routeStats.baseline.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, quickEntry:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, quickEntry:false }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, quickEntry:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, quickEntry:false }; }
   }
 
   // Weekly baselines (frozen per week): average of previous 2 completed weeks per weekday

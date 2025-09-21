@@ -112,7 +112,6 @@
       <button id="linkBtn" class="ghost">Link devices (magic link)</button>
       <button id="signOut" class="ghost">Sign out</button>
       <button id="btnSettings" class="ghost" title="Toggle feature flags">Settings</button>
-      <button id="btnCollapseAll" class="ghost" title="Collapse/Expand all sections" style="display:none">Collapse All</button>
       <button id="btnFocusMode" class="ghost" title="Show only snapshot tiles (collapse the rest)" style="display:none">Focus Mode: Off</button>
     </div>
   </div>
@@ -361,7 +360,7 @@
         <label class="pill" title="Show faint 0/50/100 guide when normalized"><input id="qfShowRuler" type="checkbox"> Ruler</label>
         <span id="qfNormBadge" class="pill" style="display:none;border-color:var(--brand);color:var(--brand)" title="Values are normalized (0–100) for comparability">Normalized</span>
       </div>
-      <canvas id="qfSpark" class="sparkline"></canvas>
+      <canvas id="qfSpark" class="sparkline" style="height:64px;max-height:64px"></canvas>
       <div id="qfText" class="sparkline-labels">—</div>
     </div>
   </section>
@@ -549,8 +548,8 @@
   const FLAG_KEY = 'routeStats.flags.v1';
   const BASELINE_KEY = 'routeStats.baseline.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false }; }
   }
 
   // Weekly baselines (frozen per week): average of previous 2 completed weeks per weekday
@@ -1719,19 +1718,6 @@ const setPill=(el,delta)=>{
       if (id==='addEntryCard') updateQuickEntryVisibility(collapsed);
     }
 
-    function refreshCollapseAllButton(){
-      const ctrl = document.getElementById('btnCollapseAll');
-      if (!ctrl) return;
-      if (!enabled) { ctrl.style.display='none'; return; }
-      const anyExpanded = targets.some(t=> ($body(t.id)?.style.display !== 'none'));
-      ctrl.style.display = '';
-      ctrl.textContent = anyExpanded ? 'Collapse All' : 'Expand All';
-      ctrl.onclick = ()=>{
-        const collapse = targets.some(t=> ($body(t.id)?.style.display !== 'none'));
-        targets.forEach(t=> setSectionCollapsed(t.id, collapse));
-        refreshCollapseAllButton();
-      };
-    }
     for (const t of targets){
       const sec = document.getElementById(t.id);
       if (!sec) continue;
@@ -1787,11 +1773,10 @@ const setPill=(el,delta)=>{
       btn.onclick = ()=>{
         const nowCollapsed = btn.getAttribute('aria-expanded') === 'true';
         setCollapsed(nowCollapsed);
-        refreshCollapseAllButton();
       };
       if (t.id==='addEntryCard') ensureQuickEntryControls(headerEl);
     }
-    refreshCollapseAllButton();
+    // removed global Collapse All in favor of Focus Mode
     // expose helpers for Focus Mode
     window.__collapse_targets = targets.map(t=> t.id);
     window.__collapse_set = setSectionCollapsed;
@@ -2453,6 +2438,7 @@ const setPill=(el,delta)=>{
       try{
         const ctx = spark.getContext('2d');
         if (spark._chart) { try{ spark._chart.destroy(); }catch(_){} }
+        try{ spark.height = 64; }catch(_){ }
         const wantRuler = (cbRuler ? !!cbRuler.checked : false) && needNormalize;
         spark._chart = new Chart(ctx, {
           type:'line',
@@ -2460,6 +2446,7 @@ const setPill=(el,delta)=>{
           options:{
             responsive:true,
             maintainAspectRatio:false,
+            layout:{ padding:{ top:8, right:6, bottom:6, left:6 } },
             plugins:{ legend:{ display:false }, tooltip:{ enabled:false } },
             scales:{
               x:{ display:false, grid:{ display:false } },

@@ -2287,17 +2287,20 @@ const setPill=(el,delta)=>{
       const rm0 = sum(W0, r=> +r.route_minutes||0), rm1 = sum(W1, r=> +r.route_minutes||0);
       const idx = (rm, vv)=> (rm>0 && vv>0) ? (rm/vv) : null; // minutes per combined volume
       const i0 = idx(rm0, v0), i1 = idx(rm1, v1);
-      const pct = (a,b)=> (b>0) ? Math.round(((a-b)/b)*100) : null;
+      const pct = (a,b)=> (b>0) ? Math.round(((a-b)/b)*100) : null; // nearest 1%
       const dh = pct(h0, h1);
       const dv = pct(v0, v1);
       const di = (i0!=null && i1!=null && i1>0) ? Math.round(((i1 - i0)/i1)*100) : null; // improvement positive
-      function dir(v){ if (v==null) return '—'; return v>=0 ? `↑ ${v}%` : `↓ ${Math.abs(v)}%`; }
-      const parts = [];
-      if (dh!=null) parts.push(`Hours ${dir(dh)}`);
-      if (dv!=null) parts.push(`Volume ${dir(dv)}`);
-      if (di!=null) parts.push(`Efficiency ${dir(di)}`);
+      const items = [];
+      if (dh!=null && Math.abs(dh) >= 5) items.push({ k:'Hours', v:dh });
+      if (dv!=null && Math.abs(dv) >= 5) items.push({ k:'Volume', v:dv });
+      if (di!=null && Math.abs(di) >= 5) items.push({ k:'Efficiency', v:di });
+      // sort by absolute magnitude, descending, and pick top 2 movers
+      items.sort((a,b)=> Math.abs(b.v) - Math.abs(a.v));
+      const top = items.slice(0,2);
+      const parts = top.map(it => `${it.k} ${it.v>=0?`↑ ${it.v}%`:`↓ ${Math.abs(it.v)}%`}`);
       const days = [...new Set(W0.map(r=> r.work_date))].length;
-      const line = parts.length ? parts.join(' • ') : 'Not enough data yet';
+      const line = parts.length ? parts.join(' • ') : 'Similar to last week';
       el.textContent = `${line} — ${days} day(s) this week.`;
       el.style.display='block';
     }catch(_){ /* no-op */ }

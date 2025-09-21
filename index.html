@@ -113,6 +113,7 @@
       <button id="signOut" class="ghost">Sign out</button>
       <button id="btnSettings" class="ghost" title="Toggle feature flags">Settings</button>
       <button id="btnCollapseAll" class="ghost" title="Collapse/Expand all sections" style="display:none">Collapse All</button>
+      <button id="btnFocusMode" class="ghost" title="Show only snapshot tiles (collapse the rest)" style="display:none">Focus Mode: Off</button>
     </div>
   </div>
 </header>
@@ -548,8 +549,8 @@
   const FLAG_KEY = 'routeStats.flags.v1';
   const BASELINE_KEY = 'routeStats.baseline.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, quickEntry:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, quickEntry:false }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false }; }
   }
 
   // Weekly baselines (frozen per week): average of previous 2 completed weeks per weekday
@@ -1711,6 +1712,8 @@ const setPill=(el,delta)=>{
       if (btn){
         btn.textContent = collapsed ? 'Expand' : 'Collapse';
         btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        const ctrl = btn.getAttribute('aria-controls');
+        if (!ctrl && body && body.id) btn.setAttribute('aria-controls', body.id);
       }
       try{ localStorage.setItem(storeKey(id), collapsed ? '1' : '0'); }catch(_){ }
       if (id==='addEntryCard') updateQuickEntryVisibility(collapsed);
@@ -1744,6 +1747,8 @@ const setPill=(el,delta)=>{
         const toMove = [];
         for (let i = 1; i < sec.children.length; i++) toMove.push(sec.children[i]);
         toMove.forEach(node => body.appendChild(node));
+        // Assign a unique id for aria-controls linkage
+        try{ if (!body.id) body.id = `__cb_${t.id}`; }catch(_){ }
         sec.appendChild(body);
       }
       // Cleanup any stray toggles created previously in the wrong place
@@ -1764,6 +1769,7 @@ const setPill=(el,delta)=>{
         btn.style.fontSize = '12px';
         btn.textContent = 'Collapse';
         btn.setAttribute('aria-expanded', 'true');
+        if (body && body.id) btn.setAttribute('aria-controls', body.id);
         // Append to header (h3 or row)
         try{ headerEl.appendChild(btn); }catch(_){ sec.insertBefore(btn, sec.firstChild); }
       }
@@ -1786,6 +1792,38 @@ const setPill=(el,delta)=>{
       if (t.id==='addEntryCard') ensureQuickEntryControls(headerEl);
     }
     refreshCollapseAllButton();
+    // expose helpers for Focus Mode
+    window.__collapse_targets = targets.map(t=> t.id);
+    window.__collapse_set = setSectionCollapsed;
+  }
+
+  // Focus Mode: collapse everything except snapshot tiles
+  function applyFocusMode(){
+    try{
+      const btn = document.getElementById('btnFocusMode');
+      const enabled = !!(FLAGS && FLAGS.collapsedUi);
+      if (!btn) return;
+      if (!enabled){ btn.style.display='none'; return; }
+      btn.style.display='';
+      const on = !!(FLAGS && FLAGS.focusMode);
+      btn.textContent = `Focus Mode: ${on?'On':'Off'}`;
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.onclick = ()=>{
+        FLAGS.focusMode = !FLAGS.focusMode; saveFlags(FLAGS);
+        applyFocusMode();
+      };
+      const targets = window.__collapse_targets || [];
+      if (!targets.length) return;
+      if (on){
+        targets.forEach(id=>{
+          if (id==='snapshotCard') return;
+          try{ (window.__collapse_set||(()=>{}))(id, true); }catch(_){ }
+        });
+      } else {
+        // restore saved states
+        applyCollapsedUi();
+      }
+    }catch(_){ /* no-op */ }
   }
 
   // Quick Entry (experimental): show Hit Street / Return buttons when Add Entry is collapsed
@@ -1840,7 +1878,7 @@ const setPill=(el,delta)=>{
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); buildSmartSummary(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); buildSmartSummary(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi(); applyFocusMode();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);

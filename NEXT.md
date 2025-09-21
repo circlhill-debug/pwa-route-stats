@@ -29,6 +29,7 @@ Scope (initial)
 - Smart Summary v1 (rule-based), under headline; 1–2 sentences, always degrades to text. Flag: `headlineDigest` or separate `smartSummary`.
   - Implemented: `smartSummary` flag, text-only summary with Hours/Volume/Efficiency vs last same range; renders any day.
 - Collapsible Dashboard (experimental) behind `collapsedUi` — scaffolding merged; add polish (styles, accessibility attributes) and global Expand/Collapse control (added; test and refine).
+  - Focus Mode: header toggle collapses all non-snapshot sections; persists; includes aria attributes.
 - Quick Entry (experimental): compact Hit Street/Return buttons when Add Entry is collapsed (no stopwatch), behind `quickEntry` flag.
 - W labels: keep W1..Wn with most recent as W1 across views.
 

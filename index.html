@@ -111,13 +111,14 @@
       <button id="linkBtn" class="ghost">Link devices (magic link)</button>
       <button id="signOut" class="ghost">Sign out</button>
       <button id="btnSettings" class="ghost" title="Toggle feature flags">Settings</button>
+      <button id="btnCollapseAll" class="ghost" title="Collapse/Expand all sections" style="display:none">Collapse All</button>
     </div>
   </div>
 </header>
 
 <main class="wrap grid grid-2">
   <!-- SNAPSHOT -->
-  <section class="card">
+  <section class="card" id="snapshotCard">
     <div class="row" style="justify-content:space-between;align-items:flex-start;flex-wrap:wrap">
       <div class="row" style="gap:8px;align-items:stretch">
         <div class="stat">
@@ -243,7 +244,7 @@
   </section>
 
   <!-- FORM -->
-  <section class="card">
+  <section class="card" id="addEntryCard">
     <h3 style="margin:0 0 8px 0">Add Entry</h3>
 
     <div class="row" style="margin:6px 0 10px 0; gap:8px; flex-wrap:wrap">
@@ -320,12 +321,12 @@
   </section>
 
   <!-- CHARTS -->
-  <section class="card"><h3 style="margin:0 0 8px 0">Averages by Day of Week</h3><canvas id="dowChart" height="180"></canvas></section>
-  <section class="card"><h3 style="margin:0 0 8px 0">Parcels Over Time (worked days)</h3><canvas id="parcelsChart" height="180"></canvas></section>
-  <section class="card"><h3 style="margin:0 0 8px 0">Letters Over Time (worked days)</h3><canvas id="lettersChart" height="180"></canvas></section>
+  <section class="card" id="dowCard"><h3 style="margin:0 0 8px 0">Averages by Day of Week</h3><canvas id="dowChart" height="180"></canvas></section>
+  <section class="card" id="parcelsOverTimeCard"><h3 style="margin:0 0 8px 0">Parcels Over Time (worked days)</h3><canvas id="parcelsChart" height="180"></canvas></section>
+  <section class="card" id="lettersOverTimeCard"><h3 style="margin:0 0 8px 0">Letters Over Time (worked days)</h3><canvas id="lettersChart" height="180"></canvas></section>
 
   <!-- Quick Filter (Phase 3) -->
-  <section class="card" id="quickFilterCard" style="display:none">
+  <section class="card" id="quickFilterCard">
     <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <h3 style="margin:0">Quick Filter</h3>
       <select id="qfSelect" style="min-width:140px">
@@ -342,8 +343,9 @@
     <div class="row" id="qfStats" style="gap:8px;flex-wrap:wrap;margin-top:8px">
       <!-- pills populated by script -->
     </div>
-    <div id="qfViz" style="margin-top:8px">
+      <div id="qfViz" style="margin-top:8px">
       <div class="row" id="qfMetrics" style="gap:8px;flex-wrap:wrap;margin-bottom:6px;align-items:center">
+        <label class="pill" title="Toggle all metrics on/off"><input id="qfAllMetrics" type="checkbox" checked> All</label>
         <label class="pill"><span class="legend-swatch" style="background: var(--brand)"></span><input id="qfShowParcels" type="checkbox" checked> Parcels</label>
         <label class="pill"><span class="legend-swatch" style="background: var(--warn)"></span><input id="qfShowLetters" type="checkbox" checked> Letters</label>
         <label class="pill"><span class="legend-swatch" style="background: var(--good)"></span><input id="qfShowHours"   type="checkbox" checked> Hours</label>
@@ -354,10 +356,25 @@
             <option value="20">20</option>
           </select>
         </span>
+        <label class="pill" title="Show faint 0/50/100 guide when normalized"><input id="qfShowRuler" type="checkbox"> Ruler</label>
+        <span id="qfNormBadge" class="pill" style="display:none;border-color:var(--brand);color:var(--brand)" title="Values are normalized (0–100) for comparability">Normalized</span>
       </div>
       <canvas id="qfSpark" class="sparkline"></canvas>
       <div id="qfText" class="sparkline-labels">—</div>
     </div>
+  </section>
+
+  <!-- Mix Compare (Baseline-aware) -->
+  <section class="card" id="mixVizCard" style="display:none">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">Weekly Compare</h3>
+      <button id="mixCompareBtn" class="ghost" type="button">Details</button>
+    </div>
+    <div id="mixText" class="sparkline-labels">—</div>
+    <div id="mixEff" class="sparkline-labels">—</div>
+    <div id="mixCompareDetails" class="sparkline-summary" style="display:none; margin-top:6px">—</div>
+    <canvas id="mixDrift" class="sparkline" style="margin-top:8px"></canvas>
+    <div id="mixDriftText" class="sparkline-labels">—</div>
   </section>
 
   
@@ -383,7 +400,7 @@
   </section>
 
   <!-- TABLE -->
-  <section class="card" style="grid-column:1/-1">
+  <section class="card" id="recentEntriesCard" style="grid-column:1/-1">
     <div class="row" style="justify-content:space-between;gap:10px;flex-wrap:wrap">
       <h3 style="margin:0">Recent Entries</h3>
       <div class="row" style="gap:8px">
@@ -456,6 +473,8 @@
     <label class="pill"><input id="flagHeadlineDigest" type="checkbox"> Show headline digest (Wed evenings)</label>
     
     <label class="pill"><input id="flagBaselineCompare" type="checkbox"> Use baseline-normalized compare (2-week weekday avg)</label>
+    <label class="pill"><input id="flagCollapsedUi" type="checkbox"> Collapsed dashboard (experimental)</label>
+    <label class="pill"><input id="flagQuickEntry" type="checkbox"> Quick Entry (experimental)</label>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="ghost" value="cancel">Close</button>
       <button id="saveSettings">Save</button>
@@ -527,8 +546,8 @@
   const FLAG_KEY = 'routeStats.flags.v1';
   const BASELINE_KEY = 'routeStats.baseline.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true, baselineCompare:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true, baselineCompare:true }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true, baselineCompare:true, collapsedUi:false, quickEntry:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true, baselineCompare:true, collapsedUi:false, quickEntry:false }; }
   }
 
   // Weekly baselines (frozen per week): average of previous 2 completed weeks per weekday
@@ -730,7 +749,7 @@ function moonPhaseEmoji(dateStr) {
     }
     authMsg.textContent = 'Signed in!';
     pwDlg.close();
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows);
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows);
   });
 
   doSignup?.addEventListener('click', async ()=>{
@@ -784,6 +803,8 @@ function moonPhaseEmoji(dateStr) {
   const flagHeadlineDigest = document.getElementById('flagHeadlineDigest');
   const flagMixViz = document.getElementById('flagMixViz');
   const flagBaselineCompare = document.getElementById('flagBaselineCompare');
+  const flagCollapsedUi = document.getElementById('flagCollapsedUi');
+  const flagQuickEntry = document.getElementById('flagQuickEntry');
   const saveSettings = document.getElementById('saveSettings');
 
   btnSettings?.addEventListener('click', ()=>{
@@ -797,6 +818,8 @@ function moonPhaseEmoji(dateStr) {
     if (flagHeadlineDigest) flagHeadlineDigest.checked = !!FLAGS.headlineDigest;
     if (flagMixViz) flagMixViz.checked = !!FLAGS.mixViz;
     if (flagBaselineCompare) flagBaselineCompare.checked = !!FLAGS.baselineCompare;
+    if (flagCollapsedUi) flagCollapsedUi.checked = !!FLAGS.collapsedUi;
+    if (flagQuickEntry) flagQuickEntry.checked = !!FLAGS.quickEntry;
     settingsDlg.showModal();
   });
 
@@ -811,6 +834,8 @@ function moonPhaseEmoji(dateStr) {
     if (flagHeadlineDigest) FLAGS.headlineDigest = !!flagHeadlineDigest.checked;
     if (flagMixViz) FLAGS.mixViz = !!flagMixViz.checked;
     if (flagBaselineCompare) FLAGS.baselineCompare = !!flagBaselineCompare.checked;
+    if (flagCollapsedUi) FLAGS.collapsedUi = !!flagCollapsedUi.checked;
+    if (flagQuickEntry) FLAGS.quickEntry = !!flagQuickEntry.checked;
     saveFlags(FLAGS);
     settingsDlg.close();
     // Re-render visuals affected by flags
@@ -818,9 +843,11 @@ function moonPhaseEmoji(dateStr) {
     buildSnapshot(allRows||[]);
     buildMonthlyGlance(allRows||[]);
     buildQuickFilter(allRows||[]);
+    buildMixViz(allRows||[]);
     buildHeadlineDigest(allRows||[]);
     
     applyTrendPillsVisibility();
+    applyCollapsedUi();
   });
 
   // Force Refresh: update SW, clear caches, reload
@@ -1127,7 +1154,7 @@ function moonPhaseEmoji(dateStr) {
     const rows=[]; for(let i=1;i<lines.length;i++){ const cols=splitCsv(lines[i]); const get=(name)=> unq(cols[idx(name)] ?? ''); const r={ user_id:user.id, work_date:get('work_date'), route:'R1', status:get('status')||'worked', start_time:get('start_time')||null, depart_time:get('depart_time')||null, return_time:get('return_time')||null, end_time:get('end_time')||null, hours:+(get('hours')||0)||null, office_minutes:get('office_minutes')||null, route_minutes:get('route_minutes')||null, parcels:+(get('parcels')||0)||0, letters:+(get('letters')||0)||0, miles:+(get('miles')||0)||0, mood:get('mood')||null, notes:get('notes')||null, weather_json:get('weather_json')||null }; if(r.work_date) rows.push(r); }
     if(!rows.length){ alert('No rows detected'); return; }
     const chunk=200; for(let i=0;i<rows.length;i+=chunk){ const slice=rows.slice(i,i+chunk); const { error } = await sb.from('entries').insert(slice); if(error){ alert('Import failed: '+error.message); return; } }
-    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); alert(`Imported ${rows.length} rows into this account.`);
+    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); alert(`Imported ${rows.length} rows into this account.`);
   });
 
   let dowChart, parcelsChart, lettersChart; function destroyCharts(){ [dowChart,parcelsChart,lettersChart].forEach(c=>c&&c.destroy()); }
@@ -1641,7 +1668,7 @@ const setPill=(el,delta)=>{
 
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{
-      const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows);
+      const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows);
     }).subscribe();
   }catch(e){ console.warn('Realtime not enabled:', e?.message||e); }
 
@@ -1653,6 +1680,131 @@ const setPill=(el,delta)=>{
     tbody.addEventListener('click', activate);
     tbody.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ if(e.target.closest('tr.rowLink')){ e.preventDefault(); activate(e); } } });
   })();
+
+  // Collapsed UI scaffolding (experimental): add toggle buttons to collapse sections
+  function applyCollapsedUi(){
+    const enabled = !!(FLAGS && FLAGS.collapsedUi);
+    const targets = [
+      { id:'addEntryCard' },
+      { id:'dowCard' },
+      { id:'parcelsOverTimeCard' },
+      { id:'lettersOverTimeCard' },
+      { id:'monthlyGlanceCard' },
+      { id:'quickFilterCard' },
+      { id:'recentEntriesCard' },
+    ];
+    const storeKey = (id)=> `routeStats.collapse.${id}`;
+    const $body = (id)=> document.querySelector('#'+id+' > .__collapseBody');
+    const $btn  = (id)=> document.querySelector('#'+id+' .__collapseToggle');
+
+    function setSectionCollapsed(id, collapsed){
+      const body = $body(id);
+      const btn = $btn(id);
+      if (body) body.style.display = collapsed ? 'none' : '';
+      if (btn){
+        btn.textContent = collapsed ? 'Expand' : 'Collapse';
+        btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      }
+      try{ localStorage.setItem(storeKey(id), collapsed ? '1' : '0'); }catch(_){ }
+      if (id==='addEntryCard') updateQuickEntryVisibility(collapsed);
+    }
+
+    function refreshCollapseAllButton(){
+      const ctrl = document.getElementById('btnCollapseAll');
+      if (!ctrl) return;
+      if (!enabled) { ctrl.style.display='none'; return; }
+      const anyExpanded = targets.some(t=> ($body(t.id)?.style.display !== 'none'));
+      ctrl.style.display = '';
+      ctrl.textContent = anyExpanded ? 'Collapse All' : 'Expand All';
+      ctrl.onclick = ()=>{
+        const collapse = targets.some(t=> ($body(t.id)?.style.display !== 'none'));
+        targets.forEach(t=> setSectionCollapsed(t.id, collapse));
+        refreshCollapseAllButton();
+      };
+    }
+    for (const t of targets){
+      const sec = document.getElementById(t.id);
+      if (!sec) continue;
+      // Ensure a header element to host the toggle
+      const headerEl = sec.firstElementChild; // usually h3 or header row
+      if (!headerEl) continue;
+      // Ensure a body wrapper containing all non-header children for reliable show/hide
+      let body = sec.querySelector(':scope > .__collapseBody');
+      if (!body){
+        body = document.createElement('div');
+        body.className = '__collapseBody';
+        // Move all non-header children into body
+        const toMove = [];
+        for (let i = 1; i < sec.children.length; i++) toMove.push(sec.children[i]);
+        toMove.forEach(node => body.appendChild(node));
+        sec.appendChild(body);
+      }
+      // Cleanup any stray toggles created previously in the wrong place
+      try{
+        const toggles = sec.querySelectorAll('.__collapseToggle');
+        if (toggles && toggles.length > 1){
+          toggles.forEach((b, idx)=>{ if (!headerEl.contains(b) || idx>0) b.remove(); });
+        }
+      }catch(_){ /* ignore */ }
+      // Find or create toggle button (inside header only)
+      let btn = headerEl.querySelector('.__collapseToggle');
+      if (!btn){
+        btn = document.createElement('button');
+        btn.className = 'ghost __collapseToggle';
+        btn.type = 'button';
+        btn.style.marginLeft = 'auto';
+        btn.style.float = 'right';
+        btn.style.fontSize = '12px';
+        btn.textContent = 'Collapse';
+        btn.setAttribute('aria-expanded', 'true');
+        // Append to header (h3 or row)
+        try{ headerEl.appendChild(btn); }catch(_){ sec.insertBefore(btn, sec.firstChild); }
+      }
+      // Handler
+      const setCollapsed = (collapsed)=> setSectionCollapsed(t.id, collapsed);
+      const saved = (localStorage.getItem(storeKey(t.id)) === '1');
+      // Enable/disable per flag
+      btn.style.display = enabled ? '' : 'none';
+      if (!enabled){
+        // Ensure everything is visible in normal mode
+        setCollapsed(false);
+        continue;
+      }
+      setCollapsed(saved);
+      btn.onclick = ()=>{
+        const nowCollapsed = btn.getAttribute('aria-expanded') === 'true';
+        setCollapsed(nowCollapsed);
+        refreshCollapseAllButton();
+      };
+      if (t.id==='addEntryCard') ensureQuickEntryControls(headerEl);
+    }
+    refreshCollapseAllButton();
+  }
+
+  // Quick Entry (experimental): show Hit Street / Return buttons when Add Entry is collapsed
+  function ensureQuickEntryControls(headerEl){
+    if (!FLAGS.quickEntry) return;
+    let bar = document.getElementById('quickEntryBar');
+    if (!bar){
+      bar = document.createElement('span');
+      bar.id = 'quickEntryBar';
+      bar.style.cssText = 'float:right; display:none; gap:8px; align-items:center; font-size:12px';
+      bar.className = 'row';
+      const hitBtn = document.createElement('button'); hitBtn.id='quickHitBtn'; hitBtn.className='ghost'; hitBtn.type='button'; hitBtn.textContent='Hit Street (now)';
+      const retBtn = document.createElement('button'); retBtn.id='quickReturnBtn'; retBtn.className='ghost'; retBtn.type='button'; retBtn.textContent='Return (now)';
+      bar.appendChild(hitBtn); bar.appendChild(retBtn);
+      try{ headerEl.appendChild(bar); }catch(_){ /* no-op */ }
+      hitBtn.onclick = ()=>{ try{ $('departTime').value = hhmmNow(); computeBreakdown(); }catch(_){ } };
+      retBtn.onclick = ()=>{ try{ $('returnTime').value = hhmmNow(); computeBreakdown(); }catch(_){ } };
+    }
+    updateQuickEntryVisibility(localStorage.getItem('routeStats.collapse.addEntryCard') === '1');
+  }
+  function updateQuickEntryVisibility(isCollapsed){
+    const bar = document.getElementById('quickEntryBar');
+    if (!bar){ return; }
+    const show = !!FLAGS.quickEntry && !!isCollapsed;
+    bar.style.display = show ? 'inline-flex' : 'none';
+  }
 
   // Toggle Weekly details panels (hours, parcels, letters)
   (function enableWeeklyPanels(){
@@ -1681,7 +1833,7 @@ const setPill=(el,delta)=>{
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildHeadlineDigest(allRows); computeBreakdown(); applyTrendPillsVisibility();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);
@@ -1734,9 +1886,10 @@ const setPill=(el,delta)=>{
     const hoursDiv   = document.getElementById('mgHours');
     const parcelsDiv = document.getElementById('mgParcels');
     const lettersDiv = document.getElementById('mgLetters');
-    hoursDiv.textContent   = `W-3 ${fmtH(W3.h)} • W-2 ${fmtH(W2.h)} • W-1 ${fmtH(W1.h)} • W0 ${fmtH(W0.h)}`;
-    parcelsDiv.textContent = `W-3 ${W3.p} • W-2 ${W2.p} • W-1 ${W1.p} • W0 ${W0.p}`;
-    lettersDiv.textContent = `W-3 ${W3.l} • W-2 ${W2.l} • W-1 ${W1.l} • W0 ${W0.l}`;
+    // Label most recent as W1 (no week zero), older as W2..W4
+    hoursDiv.textContent   = `W4 ${fmtH(W3.h)} • W3 ${fmtH(W2.h)} • W2 ${fmtH(W1.h)} • W1 ${fmtH(W0.h)}`;
+    parcelsDiv.textContent = `W4 ${W3.p} • W3 ${W2.p} • W2 ${W1.p} • W1 ${W0.p}`;
+    lettersDiv.textContent = `W4 ${W3.l} • W3 ${W2.l} • W2 ${W1.l} • W1 ${W0.l}`;
 
     // Render sparklines if Chart.js is present
     if (window.Chart){
@@ -1805,6 +1958,10 @@ const setPill=(el,delta)=>{
             options: {
               responsive: true,
               maintainAspectRatio: false,
+              layout: {
+                // Add a bit of breathing room so value labels don't get clipped
+                padding: { top: 8, right: 6, bottom: 6, left: 6 }
+              },
               scales: {
                 x: { display: false },
                 y: { display: false }
@@ -2110,10 +2267,13 @@ const setPill=(el,delta)=>{
     const stats = document.getElementById('qfStats');
     const spark = document.getElementById('qfSpark');
     const text = document.getElementById('qfText');
+    const cbAll = document.getElementById('qfAllMetrics');
     const cbP = document.getElementById('qfShowParcels');
     const cbL = document.getElementById('qfShowLetters');
     const cbH = document.getElementById('qfShowHours');
     const selN = document.getElementById('qfLastN');
+    const cbRuler = document.getElementById('qfShowRuler');
+    const normBadge = document.getElementById('qfNormBadge');
     if (!stats || !spark || !text) return;
 
     const dayVal = (sel && sel.value) || 'all';
@@ -2154,9 +2314,19 @@ const setPill=(el,delta)=>{
       .sort((a,b)=> (a.work_date < b.work_date ? -1 : 1))
       .slice(-lastCount);
     const labels = lastN.map(r=> DateTime.fromISO(r.work_date,{zone:ZONE}).toFormat('LLL d'));
+    // Restore persisted ruler preference once
+    try{
+      if (cbRuler && typeof buildQuickFilter._rulerInit === 'undefined'){
+        const pref = localStorage.getItem('routeStats.qf.ruler');
+        if (pref != null) cbRuler.checked = pref === '1';
+        buildQuickFilter._rulerInit = true;
+      }
+    }catch(_){ /* ignore */ }
+
     const showP = cbP ? !!cbP.checked : true;
     const showL = cbL ? !!cbL.checked : true;
     const showH = cbH ? !!cbH.checked : true;
+    if (cbAll) cbAll.checked = !!(showP && showL && showH);
     const serP = lastN.map(r=> +r.parcels||0);
     const serL = lastN.map(r=> +r.letters||0);
     const serH = lastN.map(r=> +r.hours||0);
@@ -2188,6 +2358,7 @@ const setPill=(el,delta)=>{
     const showing = labels.length;
     const requested = lastCount;
     const note = needNormalize ? ' (normalized)' : '';
+    if (normBadge) normBadge.style.display = needNormalize ? 'inline-flex' : 'none';
     const coverage = `Showing ${showing} of ${requested} requested${available?`, available ${available}`:''}`;
     text.textContent = datasets.length ? `${summary.join(' • ')} — ${coverage}${note}` : '—';
 
@@ -2195,10 +2366,25 @@ const setPill=(el,delta)=>{
       try{
         const ctx = spark.getContext('2d');
         if (spark._chart) { try{ spark._chart.destroy(); }catch(_){} }
+        const wantRuler = (cbRuler ? !!cbRuler.checked : false) && needNormalize;
         spark._chart = new Chart(ctx, {
           type:'line',
           data:{ labels, datasets: datasets.map(d => Object.assign({ tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true, fill:false }, d)) },
-          options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false }, tooltip:{ enabled:false } }, scales:{ x:{ display:false }, y:{ display:false } } }
+          options:{
+            responsive:true,
+            maintainAspectRatio:false,
+            plugins:{ legend:{ display:false }, tooltip:{ enabled:false } },
+            scales:{
+              x:{ display:false, grid:{ display:false } },
+              y:{
+                display: wantRuler,
+                min: needNormalize ? 0 : undefined,
+                max: needNormalize ? 100 : undefined,
+                ticks:{ display:false, stepSize:50 },
+                grid:{ display: wantRuler, color:'rgba(255,255,255,0.08)' }
+              }
+            }
+          }
         });
       }catch(_){ /* fallback already set in text */ }
     }
@@ -2211,16 +2397,28 @@ const setPill=(el,delta)=>{
     cbL?.removeEventListener('change', buildQuickFilter._handlerL || (()=>{}));
     cbH?.removeEventListener('change', buildQuickFilter._handlerH || (()=>{}));
     selN?.removeEventListener('change', buildQuickFilter._handlerN || (()=>{}));
+    cbAll?.removeEventListener('change', buildQuickFilter._handlerAll || (()=>{}));
+    cbRuler?.removeEventListener('change', buildQuickFilter._handlerRuler || (()=>{}));
     buildQuickFilter._handlerSel = handler;
     buildQuickFilter._handlerP = handler;
     buildQuickFilter._handlerL = handler;
     buildQuickFilter._handlerH = handler;
     buildQuickFilter._handlerN = (e)=>{ try{ localStorage.setItem('routeStats.qf.lastN', String(e.target.value)); }catch(_){} handler(); };
+    buildQuickFilter._handlerAll = ()=>{
+      const on = !!cbAll.checked;
+      if (cbP) cbP.checked = on;
+      if (cbL) cbL.checked = on;
+      if (cbH) cbH.checked = on;
+      handler();
+    };
+    buildQuickFilter._handlerRuler = (e)=>{ try{ localStorage.setItem('routeStats.qf.ruler', e.target.checked ? '1' : '0'); }catch(_){} handler(); };
     sel?.addEventListener('change', handler);
     cbP?.addEventListener('change', handler);
     cbL?.addEventListener('change', handler);
     cbH?.addEventListener('change', handler);
     selN?.addEventListener('change', buildQuickFilter._handlerN);
+    cbAll?.addEventListener('change', buildQuickFilter._handlerAll);
+    cbRuler?.addEventListener('change', buildQuickFilter._handlerRuler);
   }
 </script>
 </body>

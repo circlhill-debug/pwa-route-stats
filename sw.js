@@ -1,5 +1,5 @@
 // Route Stats PWA Service Worker (safe)
-const CACHE_VERSION = 'rs-pwa-v2025-09-20-10';
+const CACHE_VERSION = 'rs-pwa-v2025-09-20-11';
 const STATIC_CACHE = CACHE_VERSION + '-static';
 
 const SAME_ORIGIN = self.location.origin;

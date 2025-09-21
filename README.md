@@ -36,6 +36,15 @@ Phase 4 (planned)
 - Week labels: use W1 for most recent, then W2, W3, W4 consistently (no week zero). Monthly Glance updated already.
 - Optional AI summary: pluggable provider behind a flag; falls back to rule‑based. No blocking on API availability; key stays local.
 
+Latest features (main)
+- Smart Summary (rule‑based): concise Hours/Volume/Efficiency deltas; shows daily under the title.
+- Collapsible dashboard (experimental): per‑section Collapse/Expand with persisted state.
+- Focus Mode: one‑tap collapse of all non‑snapshot sections; tap again to expand all.
+- Quick Entry (experimental): compact “Hit Street (now)” and “Return (now)” buttons in Add Entry header when collapsed.
+- Monthly Glance: always visible card with text fallback; sparklines render if Chart.js is available.
+- Quick Filter: Normalized badge, optional Ruler (0/50/100) when 2+ metrics selected, All toggle, and a Days badge.
+- Copy: “Average Hours by Weekday” label clarifies the DOW chart.
+
 Where to look / edit
 - index.html: Main app, feature flags UI and logic. Quick Filter and summaries live here.
 - NEXT.md: Near‑term tasks and acceptance criteria (kept up‑to‑date as we ship).

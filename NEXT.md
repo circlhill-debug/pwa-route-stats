@@ -30,6 +30,12 @@ Scope (initial)
   - Implemented: `smartSummary` flag, text-only summary with Hours/Volume/Efficiency vs last same range; renders any day.
 - Collapsible Dashboard (experimental) behind `collapsedUi` — scaffolding merged; add polish (styles, accessibility attributes) and global Expand/Collapse control (added; test and refine).
   - Focus Mode: header toggle collapses all non-snapshot sections; persists; includes aria attributes.
+  - Replace global Collapse All with Focus Mode (resolved button conflict). Focus Mode OFF now expands all sections.
+- Quick polish
+  - Quick Entry buttons compact style.
+  - Quick Filter: Days badge next to legend; sparkline taller with padding.
+  - DOW header copy: “Average Hours by Weekday”.
+  - Monthly Glance card always visible; chart optional.
 - Quick Entry (experimental): compact Hit Street/Return buttons when Add Entry is collapsed (no stopwatch), behind `quickEntry` flag.
 - W labels: keep W1..Wn with most recent as W1 across views.
 

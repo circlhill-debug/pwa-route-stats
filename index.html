@@ -104,6 +104,7 @@
     <div>
       <h1 style="margin-bottom:4px">📈 ROUTE STATS — Live Dashboard — <span id="headerDate">—</span></h1>
       <div id="headlineDigest" style="display:none;font-size:13px;color:var(--text);text-align:center;margin-top:6px">—</div>
+      <div id="smartSummary" style="display:none;font-size:13px;color:var(--text);text-align:center;margin-top:6px">—</div>
     </div>
     <div class="row">
       <button id="signInBtn" class="ghost">Sign in</button>
@@ -471,6 +472,7 @@
     <label class="pill"><input id="flagTrendPills" type="checkbox"> Show Weekly Trend pills (power users)</label>
     <label class="pill"><input id="flagSameRangeTotals" type="checkbox"> Compare weekly totals: Mon..today vs last Mon..today</label>
     <label class="pill"><input id="flagHeadlineDigest" type="checkbox"> Show headline digest (Wed evenings)</label>
+    <label class="pill"><input id="flagSmartSummary" type="checkbox"> Smart summary (rule-based)</label>
     
     <label class="pill"><input id="flagBaselineCompare" type="checkbox"> Use baseline-normalized compare (2-week weekday avg)</label>
     <label class="pill"><input id="flagCollapsedUi" type="checkbox"> Collapsed dashboard (experimental)</label>
@@ -546,8 +548,8 @@
   const FLAG_KEY = 'routeStats.flags.v1';
   const BASELINE_KEY = 'routeStats.baseline.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true, baselineCompare:true, collapsedUi:false, quickEntry:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, mixViz:true, baselineCompare:true, collapsedUi:false, quickEntry:false }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, quickEntry:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:false, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:true, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, quickEntry:false }; }
   }
 
   // Weekly baselines (frozen per week): average of previous 2 completed weeks per weekday
@@ -749,7 +751,7 @@ function moonPhaseEmoji(dateStr) {
     }
     authMsg.textContent = 'Signed in!';
     pwDlg.close();
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows);
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows);
   });
 
   doSignup?.addEventListener('click', async ()=>{
@@ -805,6 +807,7 @@ function moonPhaseEmoji(dateStr) {
   const flagBaselineCompare = document.getElementById('flagBaselineCompare');
   const flagCollapsedUi = document.getElementById('flagCollapsedUi');
   const flagQuickEntry = document.getElementById('flagQuickEntry');
+  const flagSmartSummary = document.getElementById('flagSmartSummary');
   const saveSettings = document.getElementById('saveSettings');
 
   btnSettings?.addEventListener('click', ()=>{
@@ -820,6 +823,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagBaselineCompare) flagBaselineCompare.checked = !!FLAGS.baselineCompare;
     if (flagCollapsedUi) flagCollapsedUi.checked = !!FLAGS.collapsedUi;
     if (flagQuickEntry) flagQuickEntry.checked = !!FLAGS.quickEntry;
+    if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
     settingsDlg.showModal();
   });
 
@@ -836,6 +840,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagBaselineCompare) FLAGS.baselineCompare = !!flagBaselineCompare.checked;
     if (flagCollapsedUi) FLAGS.collapsedUi = !!flagCollapsedUi.checked;
     if (flagQuickEntry) FLAGS.quickEntry = !!flagQuickEntry.checked;
+    if (flagSmartSummary) FLAGS.smartSummary = !!flagSmartSummary.checked;
     saveFlags(FLAGS);
     settingsDlg.close();
     // Re-render visuals affected by flags
@@ -845,6 +850,8 @@ function moonPhaseEmoji(dateStr) {
     buildQuickFilter(allRows||[]);
     buildMixViz(allRows||[]);
     buildHeadlineDigest(allRows||[]);
+    buildSmartSummary(allRows||[]);
+    buildSmartSummary(allRows||[]);
     
     applyTrendPillsVisibility();
     applyCollapsedUi();
@@ -1668,7 +1675,7 @@ const setPill=(el,delta)=>{
 
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{
-      const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows);
+      const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows);
     }).subscribe();
   }catch(e){ console.warn('Realtime not enabled:', e?.message||e); }
 
@@ -1833,7 +1840,7 @@ const setPill=(el,delta)=>{
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); buildSmartSummary(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);
@@ -2255,6 +2262,45 @@ const setPill=(el,delta)=>{
       details.style.display = show ? 'block' : 'none';
     });
     // Already shown early; keep behavior consistent
+  }
+
+  // Smart Summary (rule-based, text-only): concise 1–2 lines under the title
+  function buildSmartSummary(rows){
+    try{
+      const el = document.getElementById('smartSummary'); if (!el) return;
+      if (!FLAGS.smartSummary) { el.style.display='none'; return; }
+      const now = DateTime.now().setZone(ZONE);
+      const startThis = startOfWeekMonday(now);
+      const endThis   = now.endOf('day');
+      const startLast = startOfWeekMonday(now.minus({weeks:1}));
+      const lastEndSame = startOfWeekMonday(now.minus({weeks:1})).plus({days: now.weekday-1}).endOf('day');
+      const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
+      const worked = (rows||[]).filter(r=> r.status!=='off');
+      const W0 = worked.filter(r=> inRange(r,startThis,endThis));
+      const W1 = worked.filter(r=> inRange(r,startLast,lastEndSame));
+      const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
+      const h0 = sum(W0, r=> +r.hours||0), h1 = sum(W1, r=> +r.hours||0);
+      const p0 = sum(W0, r=> +r.parcels||0), p1 = sum(W1, r=> +r.parcels||0);
+      const l0 = sum(W0, r=> +r.letters||0), l1 = sum(W1, r=> +r.letters||0);
+      const vol = (p,l)=> p + 0.33*l;
+      const v0 = vol(p0,l0), v1 = vol(p1,l1);
+      const rm0 = sum(W0, r=> +r.route_minutes||0), rm1 = sum(W1, r=> +r.route_minutes||0);
+      const idx = (rm, vv)=> (rm>0 && vv>0) ? (rm/vv) : null; // minutes per combined volume
+      const i0 = idx(rm0, v0), i1 = idx(rm1, v1);
+      const pct = (a,b)=> (b>0) ? Math.round(((a-b)/b)*100) : null;
+      const dh = pct(h0, h1);
+      const dv = pct(v0, v1);
+      const di = (i0!=null && i1!=null && i1>0) ? Math.round(((i1 - i0)/i1)*100) : null; // improvement positive
+      function dir(v){ if (v==null) return '—'; return v>=0 ? `↑ ${v}%` : `↓ ${Math.abs(v)}%`; }
+      const parts = [];
+      if (dh!=null) parts.push(`Hours ${dir(dh)}`);
+      if (dv!=null) parts.push(`Volume ${dir(dv)}`);
+      if (di!=null) parts.push(`Efficiency ${dir(di)}`);
+      const days = [...new Set(W0.map(r=> r.work_date))].length;
+      const line = parts.length ? parts.join(' • ') : 'Not enough data yet';
+      el.textContent = `${line} — ${days} day(s) this week.`;
+      el.style.display='block';
+    }catch(_){ /* no-op */ }
   }
 
   // Quick Filter (Phase 3): weekday selector with stats + optional sparkline

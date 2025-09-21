@@ -1805,8 +1805,10 @@ const setPill=(el,delta)=>{
           try{ (window.__collapse_set||(()=>{}))(id, true); }catch(_){ }
         });
       } else {
-        // restore saved states
-        applyCollapsedUi();
+        // Expand everything when Focus Mode turns off
+        targets.forEach(id=>{
+          try{ (window.__collapse_set||(()=>{}))(id, false); }catch(_){ }
+        });
       }
     }catch(_){ /* no-op */ }
   }
@@ -1882,7 +1884,7 @@ const setPill=(el,delta)=>{
   function buildMonthlyGlance(rows){
     const card = document.getElementById('monthlyGlanceCard');
     if (!card) return;
-    if (!FLAGS.monthlyGlance) { card.style.display='none'; return; }
+    // Always render Monthly Glance card; flag only controls charts below
     card.style.display='block';
     const today = DateTime.now().setZone(ZONE);
     const weekStart0 = startOfWeekMonday(today);

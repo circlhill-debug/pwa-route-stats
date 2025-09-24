@@ -1292,9 +1292,19 @@ function moonPhaseEmoji(dateStr) {
     // Badges (volume, route eff, overall) using last 30 worked rows
     const lastN = workRows.slice(0,30);
     const volMetric = (r)=> (+r.parcels||0) + 0.33*(+r.letters||0);
-    const vols = lastN.map(volMetric); const v = vols.length? volMetric(workRows[0]||{}):0;
+    const vols = lastN.map(volMetric);
+    const v = vols.length? volMetric(workRows[0]||{}):0;
     const rank = (arr,x)=>{ const s=[...arr].sort((a,b)=>a-b); let i=s.findIndex(n=>x<=n); if(i<0) i=s.length; return i/s.length; };
-    badgeVolume.textContent = vols.length? Math.round(rank(vols,v)*10)+"/10" : '—';
+    const volScore10 = vols.length? Math.round(rank(vols,v)*10) : null;
+    if (volScore10==null) badgeVolume.textContent = '—'; else badgeVolume.textContent = `${volScore10}/10`;
+    try{
+      if (vols.length){
+        const s=[...vols].sort((a,b)=>a-b); const min=s[0], max=s[s.length-1];
+        const mid = Math.floor(s.length/2); const med = s.length%2? s[mid] : (s[mid-1]+s[mid])/2;
+        const pct = Math.round(rank(vols,v)*100);
+        badgeVolume.title = `Volume today: ${v.toFixed(1)} (parcels + 0.33×letters)\nPercentile: ${pct}% of last ${vols.length} worked days\nRange: min ${min.toFixed(1)} • median ${med.toFixed(1)} • max ${max.toFixed(1)}`;
+      }
+    }catch(_){ }
     const rhs = workRows
       .filter(r=> dowIndex(r.work_date)===dow)
       .map(r=> Math.max(0, (+r.route_minutes||0) - boxholderAdjMinutes(r)))
@@ -1303,7 +1313,16 @@ function moonPhaseEmoji(dateStr) {
     const todayRoute = workRows[0]? Math.max(0, (+workRows[0].route_minutes||0) - boxholderAdjMinutes(workRows[0])) : null;
     const rteScore = (rteAvg && todayRoute!=null && rteAvg>0)? Math.max(0, Math.min(10, Math.round((1 - (todayRoute - rteAvg)/Math.max(1,rteAvg))*10))) : 0;
     badgeRouteEff.textContent = `${rteScore}/10`;
+    try{
+      const deltaPct = (rteAvg && todayRoute!=null && rteAvg>0)? Math.round(((todayRoute - rteAvg)/rteAvg)*100) : null;
+      const adjNote = `adjusted −${boxholderAdjMinutes(workRows[0])||0}m for boxholders`;
+      badgeRouteEff.title = `Route minutes (adjusted): ${todayRoute!=null?Math.round(todayRoute):'—'} vs weekday avg ${rteAvg!=null?Math.round(rteAvg):'—'}\nΔ vs avg: ${deltaPct==null?'—':(deltaPct>=0?('+'+deltaPct):('−'+Math.abs(deltaPct)))}%\nScore: ${rteScore}/10 (higher is better)\nNote: ${adjNote}`;
+    }catch(_){ }
     const totToday = workRows[0]? (+workRows[0].hours||0) : 0; const exp = todayAvgH || 0; const overallScore = exp>0? Math.max(0, Math.min(10, Math.round((1 - (totToday - exp)/Math.max(1,exp))*10))) : 0; badgeOverall.textContent = `${overallScore}/10`;
+    try{
+      const deltaPctTot = exp>0? Math.round(((totToday - exp)/exp)*100) : null;
+      badgeOverall.title = `Total hours: ${totToday.toFixed(2)} vs expected ${exp?exp.toFixed(2):'—'} (weekday avg)\nΔ vs expected: ${deltaPctTot==null?'—':(deltaPctTot>=0?('+'+deltaPctTot):('−'+Math.abs(deltaPctTot)))}%\nScore: ${overallScore}/10 (higher is better)`;
+    }catch(_){ }
 
     // ===== Weekly tiles (Monday-based) =====
     const weekStart = startOfWeekMonday(today);

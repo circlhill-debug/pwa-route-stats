@@ -2002,38 +2002,13 @@ const setPill=(el,delta)=>{
           target.appendChild(summary);
 
           const ctx = canvas.getContext('2d');
-          // Simple value label plugin (shows numbers above points)
-          const valueLabelPlugin = {
-            id: 'sparkValueLabels',
-            afterDatasetsDraw(chart){
-              const {ctx, chartArea} = chart;
-              const meta = chart.getDatasetMeta(0);
-              const vals = chart.data.datasets[0].data || [];
-              ctx.save();
-              ctx.fillStyle = color;
-              ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'bottom';
-              meta.data.forEach((pt, i) => {
-                const v = vals[i];
-                if (v == null) return;
-                const isInt = Number.isInteger(v);
-                const text = isInt ? String(v) : (Math.round(v * 10) / 10).toFixed(1);
-                // Clamp label position inside chart area so first/last don't clip
-                const x = Math.max((chartArea?.left||0)+10, Math.min(pt.x, (chartArea?.right||0)-10));
-                const y = Math.max((chartArea?.top||0)+12, pt.y - 4);
-                ctx.fillText(text, x, y);
-              });
-              ctx.restore();
-            }
-          };
           // Create a minimal line chart with points only + subtle line
           const chart = new Chart(ctx, {
             type: 'line',
             data: {
               labels,
               datasets: [{
-                label: '',
+                label: metricName,
                 data: dataArr,
                 borderColor: color,
                 backgroundColor: color,
@@ -2057,13 +2032,25 @@ const setPill=(el,delta)=>{
               },
               plugins: {
                 legend: { display: false },
-                tooltip: { enabled: false }
+                tooltip: {
+                  enabled: true,
+                  callbacks: {
+                    title: (items)=> {
+                      try{ return fmtRange(items[0].dataIndex); }catch(_){ return ''; }
+                    },
+                    label: (item)=> {
+                      const v = item.parsed.y;
+                      if (metricName === 'Hours') return `Hours: ${(+v).toFixed(1)}h`;
+                      return `${metricName}: ${Math.round(+v)}`;
+                    }
+                  }
+                }
               },
               elements: {
                 point: { pointStyle: 'circle' }
               }
             },
-            plugins: [valueLabelPlugin]
+            plugins: []
           });
 
           function fmtVal(v){
@@ -2458,9 +2445,12 @@ const setPill=(el,delta)=>{
       pushIf('Volume', pct(v0, v1));
       items.sort((a,b)=> Math.abs(b.v) - Math.abs(a.v));
       const top = items.slice(0,2);
-      if (!top.length){ el.style.display='none'; return; }
       el.style.display = 'flex';
-      el.innerHTML = top.map(it=> `<span class="pill"><small>${it.k}</small> <b style="color:${colorForDelta(it.v).fg}">${it.v>=0?'↑ '+it.v+'%':'↓ '+Math.abs(it.v)+'%'}</b></span>`).join('');
+      if (!top.length){
+        el.innerHTML = `<span class="pill"><small>Factors</small> <b style="color:var(--muted)">Similar</b></span>`;
+      } else {
+        el.innerHTML = top.map(it=> `<span class="pill"><small>${it.k}</small> <b style="color:${colorForDelta(it.v).fg}">${it.v>=0?'↑ '+it.v+'%':'↓ '+Math.abs(it.v)+'%'}</b></span>`).join('');
+      }
     }catch(_){ /* no-op */ }
   }
 

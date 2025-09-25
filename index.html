@@ -1201,6 +1201,27 @@ function moonPhaseEmoji(dateStr) {
   });
 
   let dowChart, parcelsChart, lettersChart; function destroyCharts(){ [dowChart,parcelsChart,lettersChart].forEach(c=>c&&c.destroy()); }
+  // Helper: make tapping the canvas set the nearest tooltip (mobile-friendly)
+  function enableChartTap(chart, canvas){
+    if (!chart || !canvas) return;
+    const handler = (ev)=>{
+      try{
+        const rect = canvas.getBoundingClientRect();
+        const cx = (ev.touches && ev.touches[0] ? ev.touches[0].clientX : ev.clientX);
+        const cy = (ev.touches && ev.touches[0] ? ev.touches[0].clientY : ev.clientY);
+        const x = cx - rect.left, y = cy - rect.top;
+        const points = chart.getElementsAtEventForMode(ev, 'nearest', { intersect:false }, true);
+        if (points && points.length){
+          const a = [{ datasetIndex: points[0].datasetIndex, index: points[0].index }];
+          if (chart.setActiveElements) chart.setActiveElements(a);
+          if (chart.tooltip && chart.tooltip.setActiveElements) chart.tooltip.setActiveElements(a, { x, y });
+          chart.update();
+        }
+      }catch(_){ /* ignore */ }
+    };
+    ['click','touchstart','pointerdown'].forEach(t => canvas.addEventListener(t, handler, { passive: true }));
+  }
+
   function buildCharts(rows){
     // If Chart.js isn't available, skip chart rendering so the rest of the app works
     if (!window.Chart) { console.warn('Chart.js missing — skipping charts'); return; }
@@ -1218,7 +1239,8 @@ function moonPhaseEmoji(dateStr) {
       options:{ responsive:true, plugins:{ legend:{ display:false } } }
     });
     const sortedWork=[...workRows].sort((a,b)=> a.work_date.localeCompare(b.work_date)); const labels=sortedWork.map(r=> r.work_date);
-    parcelsChart=new Chart(document.getElementById('parcelsChart'),{
+    const parcelsCanvas = document.getElementById('parcelsChart');
+    parcelsChart=new Chart(parcelsCanvas,{
       type:'line',
       data:{
         labels,
@@ -1228,9 +1250,11 @@ function moonPhaseEmoji(dateStr) {
         responsive: true,
         interaction: { mode: 'nearest', intersect: false },
         events: ['mousemove','mouseout','click','touchstart','touchmove','touchend'],
+        animation: { duration: 0 },
         plugins: {
           legend: { display: false },
           tooltip: {
+            animation: { duration: 0 },
             callbacks: {
               title: (items) => {
                 const iso = items?.[0]?.label;
@@ -1256,7 +1280,8 @@ function moonPhaseEmoji(dateStr) {
         }
       }
     });
-    lettersChart=new Chart(document.getElementById('lettersChart'),{
+    const lettersCanvas = document.getElementById('lettersChart');
+    lettersChart=new Chart(lettersCanvas,{
       type:'line',
       data:{
         labels,
@@ -1266,9 +1291,11 @@ function moonPhaseEmoji(dateStr) {
         responsive: true,
         interaction: { mode: 'nearest', intersect: false },
         events: ['mousemove','mouseout','click','touchstart','touchmove','touchend'],
+        animation: { duration: 0 },
         plugins: {
           legend: { display: false },
           tooltip: {
+            animation: { duration: 0 },
             callbacks: {
               title: (items) => {
                 const iso = items?.[0]?.label;
@@ -1294,6 +1321,9 @@ function moonPhaseEmoji(dateStr) {
         }
       }
     });
+    // Improve tap responsiveness on mobile
+    enableChartTap(parcelsChart, parcelsCanvas);
+    enableChartTap(lettersChart, lettersCanvas);
   }
 
   function hhmmFrom(baseDateStr, hours){ if(hours==null) return '—'; const d=DateTime.fromISO(baseDateStr,{zone:ZONE}).set({hour:8,minute:0}); return d.plus({hours}).toFormat('h:mm a'); }

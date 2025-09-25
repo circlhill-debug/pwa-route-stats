@@ -1986,25 +1986,46 @@ const setPill=(el,delta)=>{
     if (window.Chart){
       try{
         function renderSpark(target, dataArr, color, metricName, starts, ends){
-          // Clear target and rebuild with canvas + labels
+          // Clear target and rebuild with left-side average + canvas + labels
           target.innerHTML = '';
+          const row = document.createElement('div');
+          row.style.display = 'flex';
+          row.style.alignItems = 'center';
+          row.style.gap = '8px';
+          // Compute simple average of the 4 week values
+          const nums = (dataArr||[]).filter(v=> v!=null && isFinite(v));
+          const avg = nums.length ? nums.reduce((a,b)=>a+Number(b),0)/nums.length : null;
+          const fmtAvg = (v)=>{
+            if (v==null) return '—';
+            return metricName === 'Hours' ? (Math.round(v*10)/10).toFixed(1)+'h' : String(Math.round(v));
+          };
+          const avgEl = document.createElement('span');
+          avgEl.className = 'pill';
+          avgEl.innerHTML = `<small>Avg</small> <b>${fmtAvg(avg)}</b>`;
+          // Chart wrapper
+          const wrap = document.createElement('div');
+          wrap.style.flex = '1';
+          // Create canvas + labels inside wrapper
           const canvas = document.createElement('canvas');
           canvas.className = 'sparkline';
-          // Slightly taller for clearer end labels
           try{ canvas.height = 56; }catch(_){}
           canvas.style.height = '56px';
           canvas.style.maxHeight = '56px';
           canvas.style.width = '100%';
           canvas.style.cursor = 'pointer';
-          target.appendChild(canvas);
+          wrap.appendChild(canvas);
           const lbl = document.createElement('div');
           lbl.className = 'sparkline-labels';
           lbl.textContent = labels.join(' • ');
-          target.appendChild(lbl);
+          wrap.appendChild(lbl);
           const summary = document.createElement('div');
           summary.className = 'sparkline-summary';
           summary.textContent = 'Click a dot for details';
-          target.appendChild(summary);
+          wrap.appendChild(summary);
+          // Assemble row
+          row.appendChild(avgEl);
+          row.appendChild(wrap);
+          target.appendChild(row);
 
           const ctx = canvas.getContext('2d');
           // Create a minimal line chart with points only + subtle line

@@ -108,6 +108,7 @@
       <div id="headlineDigest" style="display:none;font-size:13px;color:var(--text);text-align:center;margin-top:6px">—</div>
       <div id="smartSummary" style="display:none;font-size:13px;color:var(--text);text-align:center;margin-top:6px">—</div>
       <div id="trendFactors" class="row" style="display:none;justify-content:center;gap:8px;margin-top:4px"></div>
+      <div id="weekHeaviness" class="row" style="display:none;justify-content:center;gap:8px;margin-top:2px"></div>
     </div>
     <div class="row">
       <button id="signInBtn" class="ghost">Sign in</button>
@@ -189,6 +190,8 @@
         <small class="muted">vs past same weekday (worked)</small>
       </div>
       </div>
+      <!-- Heaviness (today) attribution -->
+      <div id="todayHeaviness" class="row" style="display:none;gap:8px;flex-wrap:wrap;margin-top:6px"></div>
     <!-- Inline details panel for weekly hours breakdown (toggled on click) -->
     <div id="wkHoursDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
       <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
@@ -764,7 +767,7 @@ function moonPhaseEmoji(dateStr) {
     }
     authMsg.textContent = 'Signed in!';
     pwDlg.close();
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows);
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildHeavinessToday(allRows); buildWeekHeaviness(allRows);
   });
 
   doSignup?.addEventListener('click', async ()=>{
@@ -866,6 +869,8 @@ function moonPhaseEmoji(dateStr) {
     buildSmartSummary(allRows||[]);
     buildTrendingFactors(allRows||[]);
     buildOfficeCompare(allRows||[]);
+    buildHeavinessToday(allRows||[]);
+    buildWeekHeaviness(allRows||[]);
     
     applyTrendPillsVisibility();
     applyCollapsedUi();
@@ -2451,6 +2456,76 @@ const setPill=(el,delta)=>{
       } else {
         el.innerHTML = top.map(it=> `<span class="pill"><small>${it.k}</small> <b style="color:${colorForDelta(it.v).fg}">${it.v>=0?'↑ '+it.v+'%':'↓ '+Math.abs(it.v)+'%'}</b></span>`).join('');
       }
+    }catch(_){ /* no-op */ }
+  }
+
+  // Heaviness (today): attribute total-hours delta into Office vs Route (adjusted).
+  function buildHeavinessToday(rows){
+    try{
+      const el = document.getElementById('todayHeaviness'); if (!el) return;
+      const now = DateTime.now().setZone(ZONE);
+      const dow = now.weekday % 7;
+      const worked = (rows||[]).filter(r=> r.status!=='off');
+      const todayIso = now.toISODate();
+      const todayRow = worked.find(r=> r.work_date === todayIso);
+      if (!todayRow){ el.style.display='none'; return; }
+      const offTodayH = (+todayRow.office_minutes||0)/60;
+      const rteTodayH = Math.max(0, ((+todayRow.route_minutes||0) - boxholderAdjMinutes(todayRow)))/60;
+      const totTodayH = (+todayRow.hours||0) || (offTodayH + rteTodayH);
+      // Baselines by DOW
+      const sameDow = worked.filter(r=> r.work_date !== todayIso && (dowIndex(r.work_date)===dow));
+      const avg = (arr,fn)=>{ const v = arr.map(fn).filter(x=> x>0); return v.length? (v.reduce((a,b)=>a+b,0)/v.length) : null; };
+      const offAvgH = avg(sameDow, r=> (+r.office_minutes||0)/60);
+      const rteAvgH = avg(sameDow, r=> Math.max(0, ((+r.route_minutes||0)-boxholderAdjMinutes(r)))/60);
+      const totAvgH = avg(sameDow, r=> (+r.hours||0));
+      if (offAvgH==null && rteAvgH==null && totAvgH==null){ el.style.display='none'; return; }
+      const dOff = (offAvgH==null)? null : (offTodayH - offAvgH);
+      const dRte = (rteAvgH==null)? null : (rteTodayH - rteAvgH);
+      const dTot = (totAvgH==null)? null : (totTodayH - totAvgH);
+      const baseTot = (totAvgH && totAvgH>0)? totAvgH : ((offAvgH||0)+(rteAvgH||0))||null;
+      const pct = (x)=> (x==null || !baseTot)? null : Math.round((x/baseTot)*100);
+      const pill = (label,dh)=>{
+        const p = pct(dh);
+        const txt = (dh==null)? '—' : `${dh>=0?'+':''}${(Math.round(dh*10)/10).toFixed(1)}h`;
+        const pTxt = (p==null)? '' : ` (${p>=0?'+':''}${p}%)`;
+        const col = colorForDelta(p||0).fg;
+        return `<span class="pill"><small>${label}</small> <b style="color:${col}">${txt}${pTxt}</b></span>`;
+      };
+      el.style.display='flex';
+      el.innerHTML = [pill('Office', dOff), pill('Route', dRte), pill('Total', dTot)].join(' ');
+    }catch(_){ /* no-op */ }
+  }
+
+  // Week Heaviness: attribution Mon..today vs last Mon..today (Office vs Route adjusted vs Total)
+  function buildWeekHeaviness(rows){
+    try{
+      const el = document.getElementById('weekHeaviness'); if (!el) return;
+      const now = DateTime.now().setZone(ZONE);
+      const startThis = startOfWeekMonday(now);
+      const endThis   = now.endOf('day');
+      const startLast = startOfWeekMonday(now.minus({weeks:1}));
+      const lastEndSame = startOfWeekMonday(now.minus({weeks:1})).plus({days: now.weekday-1}).endOf('day');
+      const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
+      const worked = (rows||[]).filter(r=> r.status!=='off');
+      const W0 = worked.filter(r=> inRange(r,startThis,endThis));
+      const W1 = worked.filter(r=> inRange(r,startLast,lastEndSame));
+      const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
+      const off0 = sum(W0, r=> +r.office_minutes||0)/60, off1 = sum(W1, r=> +r.office_minutes||0)/60;
+      const rte0 = sum(W0, r=> Math.max(0, (+r.route_minutes||0) - boxholderAdjMinutes(r)))/60;
+      const rte1 = sum(W1, r=> Math.max(0, (+r.route_minutes||0) - boxholderAdjMinutes(r)))/60;
+      const tot0 = sum(W0, r=> +r.hours||0), tot1 = sum(W1, r=> +r.hours||0);
+      const dOff = off0 - off1, dRte = rte0 - rte1, dTot = tot0 - tot1;
+      const baseTot = (tot1>0)? tot1 : null;
+      const pct = (x)=> (x==null || !baseTot)? null : Math.round((x/baseTot)*100);
+      const pill = (label,dh)=>{
+        const p = pct(dh);
+        const txt = `${dh>=0?'+':''}${(Math.round(dh*10)/10).toFixed(1)}h`;
+        const pTxt = (p==null)? '' : ` (${p>=0?'+':''}${p}%)`;
+        const col = colorForDelta(p||0).fg;
+        return `<span class="pill"><small>${label}</small> <b style="color:${col}">${txt}${pTxt}</b></span>`;
+      };
+      el.style.display='flex';
+      el.innerHTML = [pill('Office', dOff), pill('Route', dRte), pill('Total', dTot)].join(' ');
     }catch(_){ /* no-op */ }
   }
 

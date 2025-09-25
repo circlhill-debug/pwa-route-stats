@@ -1975,10 +1975,10 @@ const setPill=(el,delta)=>{
           target.innerHTML = '';
           const canvas = document.createElement('canvas');
           canvas.className = 'sparkline';
-          // Force a sane size regardless of layout
-          try{ canvas.height = 48; }catch(_){}
-          canvas.style.height = '48px';
-          canvas.style.maxHeight = '48px';
+          // Slightly taller for clearer end labels
+          try{ canvas.height = 56; }catch(_){}
+          canvas.style.height = '56px';
+          canvas.style.maxHeight = '56px';
           canvas.style.width = '100%';
           canvas.style.cursor = 'pointer';
           target.appendChild(canvas);
@@ -1996,7 +1996,7 @@ const setPill=(el,delta)=>{
           const valueLabelPlugin = {
             id: 'sparkValueLabels',
             afterDatasetsDraw(chart){
-              const {ctx} = chart;
+              const {ctx, chartArea} = chart;
               const meta = chart.getDatasetMeta(0);
               const vals = chart.data.datasets[0].data || [];
               ctx.save();
@@ -2009,7 +2009,10 @@ const setPill=(el,delta)=>{
                 if (v == null) return;
                 const isInt = Number.isInteger(v);
                 const text = isInt ? String(v) : (Math.round(v * 10) / 10).toFixed(1);
-                ctx.fillText(text, pt.x, pt.y - 4);
+                // Clamp label position inside chart area so first/last don't clip
+                const x = Math.max((chartArea?.left||0)+10, Math.min(pt.x, (chartArea?.right||0)-10));
+                const y = Math.max((chartArea?.top||0)+12, pt.y - 4);
+                ctx.fillText(text, x, y);
               });
               ctx.restore();
             }
@@ -2035,8 +2038,8 @@ const setPill=(el,delta)=>{
               responsive: true,
               maintainAspectRatio: false,
               layout: {
-                // Add more breathing room so end dots/labels do not clip
-                padding: { top: 12, right: 16, bottom: 10, left: 16 }
+                // Extra breathing room so end dots/labels do not clip
+                padding: { top: 14, right: 24, bottom: 12, left: 24 }
               },
               scales: {
                 x: { display: false },

@@ -39,7 +39,7 @@
   .legend-swatch{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px }
   .stat{ display:flex; flex-direction:column; gap:4px; padding:10px; border:1px solid var(--border); border-radius:12px; min-width:140px }
   .up{ color:var(--good) } .down{ color:var(--bad) } .warn{ color:var(--warn) }
-  canvas{ background:transparent; border:1px solid var(--border); border-radius:10px; padding:8px }
+  canvas{ background:transparent; border:1px solid var(--border); border-radius:10px; padding:8px; touch-action: manipulation; -webkit-tap-highlight-color: transparent }
   /* Slim sparkline override: no border/padding, minimal height */
   canvas.sparkline{ display:block; width:100%; border:none; padding:0; height:48px; max-height:48px; touch-action: manipulation; -webkit-tap-highlight-color: transparent }
   .sparkline-labels{ color:var(--muted); font-size:12px; margin-top:4px }
@@ -1222,10 +1222,12 @@ function moonPhaseEmoji(dateStr) {
       type:'line',
       data:{
         labels,
-        datasets:[{ label:'Parcels', data: sortedWork.map(r=> +r.parcels||0) }]
+        datasets:[{ label:'Parcels', data: sortedWork.map(r=> +r.parcels||0), pointRadius:3, pointHoverRadius:8, pointHitRadius:16 }]
       },
       options: {
         responsive: true,
+        interaction: { mode: 'nearest', intersect: false },
+        events: ['mousemove','mouseout','click','touchstart','touchmove','touchend'],
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -1258,10 +1260,12 @@ function moonPhaseEmoji(dateStr) {
       type:'line',
       data:{
         labels,
-        datasets:[{ label:'Letters', data: sortedWork.map(r=> +r.letters||0) }]
+        datasets:[{ label:'Letters', data: sortedWork.map(r=> +r.letters||0), pointRadius:3, pointHoverRadius:8, pointHitRadius:16 }]
       },
       options: {
         responsive: true,
+        interaction: { mode: 'nearest', intersect: false },
+        events: ['mousemove','mouseout','click','touchstart','touchmove','touchend'],
         plugins: {
           legend: { display: false },
           tooltip: {

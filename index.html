@@ -1596,7 +1596,7 @@ const setPill=(el,delta)=>{
           let adjMark = '';
           if (holidayAdjEnabled && mondayOffThisWeek && i === 1) { base = (lastWeek[0]?.p||0) + (lastWeek[1]?.p||0); adjMark=' (adj)'; }
           if (cur != null) tThis += cur;
-          tLast += base;
+          if (i <= dayIndexToday) tLast += base;
           const delta = (cur == null || base === 0) ? null : ((cur - base) / base) * 100;
           const curTxt = (cur == null) ? '—' : String(cur);
           const baseTxt = String(base); // show 0 explicitly
@@ -2136,7 +2136,14 @@ const setPill=(el,delta)=>{
         script.async = true;
         script.onload = ()=>{
           try{
-            if (window.Chart){ buildMonthlyGlance(rows); }
+            if (window.Chart){
+              // Rebuild all charted views now that Chart.js is available
+              try{ buildMonthlyGlance(allRows||rows||[]); }catch(_){}
+              try{ buildCharts(allRows||rows||[]); }catch(_){}
+              try{ buildMixViz(allRows||rows||[]); }catch(_){}
+              try{ buildOfficeCompare(allRows||rows||[]); }catch(_){}
+              try{ buildQuickFilter(allRows||rows||[]); }catch(_){}
+            }
           }catch(_){ /* ignore */ }
         };
         script.onerror = ()=> console.warn('Failed to load vendor/chart.umd.js; keeping text fallback');
@@ -2204,6 +2211,7 @@ const setPill=(el,delta)=>{
     const endThis   = now.endOf('day');
     const startLast = startOfWeekMonday(now.minus({weeks:1}));
     const lastEndSame = startOfWeekMonday(now.minus({weeks:1})).plus({days: now.weekday-1}).endOf('day');
+    const endLastFull = endOfWeekSunday(now.minus({weeks:1}));
     const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
     const worked = rows.filter(r=> r.status!=='off');
     const W0 = worked.filter(r=> inRange(r,startThis,endThis));
@@ -2336,7 +2344,9 @@ const setPill=(el,delta)=>{
           return a.map(n=> +(Math.round(n*10)/10).toFixed(1));
         };
         const thisBy = volByDow(W0);
-        const lastBy = volByDow(W1);
+        // Baseline uses LAST FULL WEEK (Mon..Sun) so the blue line is complete
+        const W1full = worked.filter(r=> inRange(r, startLast, endLastFull));
+        const lastBy = volByDow(W1full);
         const dayIdxToday = (now.weekday + 6) % 7;
         const thisMasked = thisBy.map((v,i)=> i<=dayIdxToday? v : null);
         overlay._chart = new Chart(ctx, {

@@ -373,6 +373,8 @@
       <h3 style="margin:0">Weekly Compare</h3>
       <button id="mixCompareBtn" class="ghost" type="button">Details</button>
     </div>
+    <div class="sparkline-labels">This week vs last (Mon..today vs last Mon..Sun)</div>
+    <canvas id="weekOverlay" class="sparkline" style="margin-top:4px;height:72px;max-height:72px"></canvas>
     <div id="mixText" class="sparkline-labels">—</div>
     <div id="mixEff" class="sparkline-labels">—</div>
     <div id="mixCompareDetails" class="sparkline-summary" style="display:none; margin-top:6px">—</div>
@@ -2033,8 +2035,8 @@ const setPill=(el,delta)=>{
               responsive: true,
               maintainAspectRatio: false,
               layout: {
-                // Add a bit of breathing room so value labels don't get clipped
-                padding: { top: 8, right: 6, bottom: 6, left: 6 }
+                // Add more breathing room so end dots/labels do not clip
+                padding: { top: 12, right: 16, bottom: 10, left: 16 }
               },
               scales: {
                 x: { display: false },
@@ -2165,6 +2167,7 @@ const setPill=(el,delta)=>{
     card.style.display='block';
     const text = document.getElementById('mixText');
     const eff  = document.getElementById('mixEff');
+    const overlay = document.getElementById('weekOverlay');
     const details = document.getElementById('mixCompareDetails');
     const btn = document.getElementById('mixCompareBtn');
     const now = DateTime.now().setZone(ZONE);
@@ -2289,6 +2292,47 @@ const setPill=(el,delta)=>{
       console.error('[MixViz] render error', e);
       if (details) details.innerHTML = '<div>Compare unavailable — data not ready.</div>';
     }
+    // Week overlay sparkline (this Mon..today vs last Mon..Sun)
+    try{
+      if (overlay && window.Chart && overlay.getContext){
+        const ctx = overlay.getContext('2d');
+        if (overlay._chart) { try{ overlay._chart.destroy(); }catch(_){ } }
+        const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+        const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
+        const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
+        // Build daily volume arrays
+        const volByDow = (arr)=>{
+          const a = Array.from({length:7},()=>0);
+          arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= (+r.parcels||0) + 0.33*(+r.letters||0); });
+          return a.map(n=> +(Math.round(n*10)/10).toFixed(1));
+        };
+        const thisBy = volByDow(W0);
+        const lastBy = volByDow(W1);
+        const dayIdxToday = (now.weekday + 6) % 7;
+        const thisMasked = thisBy.map((v,i)=> i<=dayIdxToday? v : null);
+        overlay._chart = new Chart(ctx, {
+          type:'line',
+          data:{ labels:days, datasets:[
+            { label:'Last week', data:lastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, borderWidth:2, spanGaps:true },
+            { label:'This week', data:thisMasked, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:3, borderWidth:2, spanGaps:true }
+          ]},
+          options:{ responsive:true, maintainAspectRatio:false,
+            layout:{ padding:{ top:12, right:16, bottom:10, left:16 } },
+            plugins:{ legend:{ display:false }, tooltip:{
+              callbacks:{
+                title:(items)=> items && items[0]? items[0].label : '',
+                label:(item)=>{
+                  const i=item.dataIndex; const lw=lastBy[i]; const tw=thisBy[i];
+                  const hasTw = i<=dayIdxToday && tw!=null;
+                  return hasTw? `This: ${tw} (Last: ${lw})` : `Last: ${lw}`;
+                }
+              }
+            }},
+            scales:{ x:{ display:true, grid:{ display:false } }, y:{ display:false } }
+          }
+        });
+      }
+    }catch(_){ /* no-op */ }
     // Baseline drift sparkline (last 8 full weeks, Mon..Sun totals)
     try{
       const driftCanvas = document.getElementById('mixDrift');

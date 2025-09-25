@@ -37,12 +37,16 @@ Phase 4 (planned)
 - Optional AI summary: pluggable provider behind a flag; falls back to rule‑based. No blocking on API availability; key stays local.
 
 Latest features (main)
-- Smart Summary (rule‑based): concise Hours/Volume/Efficiency deltas; shows daily under the title.
+- Smart Summary (rule‑based): concise Hours/Volume/Efficiency deltas; shows daily under the title (top‑movers ≥5%).
+- Trending Factors: quick culprit pills (Office / Route / Volume) for Mon..today vs last Mon..today.
+- Weekly Compare overlays: Volume and Office — blue baseline = last week (Mon..Sun), yellow overlay = this week (Mon..today) with tooltips.
+- Heaviness attribution: Today and Week pill rows (Office vs Route vs Total) with hours and % attribution.
 - Collapsible dashboard (experimental): per‑section Collapse/Expand with persisted state.
-- Focus Mode: one‑tap collapse of all non‑snapshot sections; tap again to expand all.
+- Focus Mode: one‑tap collapse of all non‑snapshot sections; Off expands all sections.
 - Quick Entry (experimental): compact “Hit Street (now)” and “Return (now)” buttons in Add Entry header when collapsed.
-- Monthly Glance: always visible card with text fallback; sparklines render if Chart.js is available.
+- Monthly Glance: full‑width sparklines with clean tooltips and a small Avg pill above each row; always visible with text fallback.
 - Quick Filter: Normalized badge, optional Ruler (0/50/100) when 2+ metrics selected, All toggle, and a Days badge.
+- Boxholders: x1/x2/x3 (maps from legacy Light/Medium/Heavy); route efficiency uses adjusted route minutes (−30/−45/−60m) but stored times remain unchanged.
 - Copy: “Average Hours by Weekday” label clarifies the DOW chart.
 
 Where to look / edit

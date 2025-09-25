@@ -41,7 +41,7 @@
   .up{ color:var(--good) } .down{ color:var(--bad) } .warn{ color:var(--warn) }
   canvas{ background:transparent; border:1px solid var(--border); border-radius:10px; padding:8px }
   /* Slim sparkline override: no border/padding, minimal height */
-  canvas.sparkline{ display:block; width:100%; border:none; padding:0; height:48px; max-height:48px }
+  canvas.sparkline{ display:block; width:100%; border:none; padding:0; height:48px; max-height:48px; touch-action: manipulation; -webkit-tap-highlight-color: transparent }
   .sparkline-labels{ color:var(--muted); font-size:12px; margin-top:4px }
   .sparkline-summary{ color:var(--muted); font-size:12px; margin-top:4px }
   .fab{ position:fixed; right:16px; bottom:16px; z-index:10 }
@@ -2043,7 +2043,8 @@ const setPill=(el,delta)=>{
                 fill: false,
                 borderWidth: 1,
                 pointRadius: 3,
-                pointHoverRadius: 4,
+                pointHoverRadius: 6,
+                pointHitRadius: 14,
               }]
             },
             options: {
@@ -2053,6 +2054,7 @@ const setPill=(el,delta)=>{
                 // Extra breathing room so end dots/labels do not clip
                 padding: { top: 14, right: 24, bottom: 12, left: 24 }
               },
+              interaction: { mode: 'nearest', intersect: false },
               scales: {
                 x: { display: false },
                 y: { display: false }
@@ -2340,11 +2342,12 @@ const setPill=(el,delta)=>{
         overlay._chart = new Chart(ctx, {
           type:'line',
           data:{ labels:days, datasets:[
-            { label:'Last week', data:lastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, borderWidth:2, spanGaps:true },
-            { label:'This week', data:thisMasked, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:3, borderWidth:2, spanGaps:true }
+            { label:'Last week', data:lastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true },
+            { label:'This week', data:thisMasked, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true }
           ]},
           options:{ responsive:true, maintainAspectRatio:false,
             layout:{ padding:{ top:12, right:16, bottom:10, left:16 } },
+            interaction:{ mode:'nearest', intersect:false },
             plugins:{ legend:{ display:false }, tooltip:{
               callbacks:{
                 title:(items)=> items && items[0]? items[0].label : '',
@@ -2588,11 +2591,12 @@ const setPill=(el,delta)=>{
         overlay._chart = new Chart(ctx, {
           type:'line',
           data:{ labels:days, datasets:[
-            { label:'Last week', data:lastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, borderWidth:2, spanGaps:true },
-            { label:'This week', data:thisMasked, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:3, borderWidth:2, spanGaps:true }
+            { label:'Last week', data:lastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true },
+            { label:'This week', data:thisMasked, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true }
           ]},
           options:{ responsive:true, maintainAspectRatio:false,
             layout:{ padding:{ top:12, right:16, bottom:10, left:16 } },
+            interaction:{ mode:'nearest', intersect:false },
             plugins:{ legend:{ display:false }, tooltip:{
               callbacks:{
                 title:(items)=> items && items[0]? items[0].label : '',
@@ -2731,7 +2735,8 @@ const setPill=(el,delta)=>{
             responsive:true,
             maintainAspectRatio:false,
             layout:{ padding:{ top:8, right:6, bottom:6, left:6 } },
-            plugins:{ legend:{ display:false }, tooltip:{ enabled:false } },
+            interaction:{ mode:'nearest', intersect:false },
+            plugins:{ legend:{ display:false }, tooltip:{ enabled:true } },
             scales:{
               x:{ display:false, grid:{ display:false } },
               y:{

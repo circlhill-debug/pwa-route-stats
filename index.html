@@ -107,6 +107,7 @@
       <h1 style="margin-bottom:4px">📈 ROUTE STATS — Live Dashboard — <span id="headerDate">—</span></h1>
       <div id="headlineDigest" style="display:none;font-size:13px;color:var(--text);text-align:center;margin-top:6px">—</div>
       <div id="smartSummary" style="display:none;font-size:13px;color:var(--text);text-align:center;margin-top:6px">—</div>
+      <div id="trendFactors" class="row" style="display:none;justify-content:center;gap:8px;margin-top:4px"></div>
     </div>
     <div class="row">
       <button id="signInBtn" class="ghost">Sign in</button>
@@ -380,6 +381,14 @@
     <div id="mixCompareDetails" class="sparkline-summary" style="display:none; margin-top:6px">—</div>
     <canvas id="mixDrift" class="sparkline" style="margin-top:8px"></canvas>
     <div id="mixDriftText" class="sparkline-labels">—</div>
+  </section>
+
+  <!-- Office Time Compare -->
+  <section class="card" id="officeCompareCard" style="grid-column:1/-1; display:none">
+    <h3 style="margin:0 0 6px 0">Office Time Compare</h3>
+    <div class="sparkline-labels">This week (Mon..today) vs last week (Mon..Sun)</div>
+    <canvas id="officeOverlay" class="sparkline" style="margin-top:4px;height:72px;max-height:72px"></canvas>
+    <div id="officeSummary" class="sparkline-labels">—</div>
   </section>
 
   
@@ -755,7 +764,7 @@ function moonPhaseEmoji(dateStr) {
     }
     authMsg.textContent = 'Signed in!';
     pwDlg.close();
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows);
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows);
   });
 
   doSignup?.addEventListener('click', async ()=>{
@@ -855,7 +864,8 @@ function moonPhaseEmoji(dateStr) {
     buildMixViz(allRows||[]);
     buildHeadlineDigest(allRows||[]);
     buildSmartSummary(allRows||[]);
-    buildSmartSummary(allRows||[]);
+    buildTrendingFactors(allRows||[]);
+    buildOfficeCompare(allRows||[]);
     
     applyTrendPillsVisibility();
     applyCollapsedUi();
@@ -1182,7 +1192,7 @@ function moonPhaseEmoji(dateStr) {
     const rows=[]; for(let i=1;i<lines.length;i++){ const cols=splitCsv(lines[i]); const get=(name)=> unq(cols[idx(name)] ?? ''); const r={ user_id:user.id, work_date:get('work_date'), route:'R1', status:get('status')||'worked', start_time:get('start_time')||null, depart_time:get('depart_time')||null, return_time:get('return_time')||null, end_time:get('end_time')||null, hours:+(get('hours')||0)||null, office_minutes:get('office_minutes')||null, route_minutes:get('route_minutes')||null, parcels:+(get('parcels')||0)||0, letters:+(get('letters')||0)||0, miles:+(get('miles')||0)||0, mood:get('mood')||null, notes:get('notes')||null, weather_json:get('weather_json')||null }; if(r.work_date) rows.push(r); }
     if(!rows.length){ alert('No rows detected'); return; }
     const chunk=200; for(let i=0;i<rows.length;i+=chunk){ const slice=rows.slice(i,i+chunk); const { error } = await sb.from('entries').insert(slice); if(error){ alert('Import failed: '+error.message); return; } }
-    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); alert(`Imported ${rows.length} rows into this account.`);
+    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); alert(`Imported ${rows.length} rows into this account.`);
   });
 
   let dowChart, parcelsChart, lettersChart; function destroyCharts(){ [dowChart,parcelsChart,lettersChart].forEach(c=>c&&c.destroy()); }
@@ -1719,7 +1729,7 @@ const setPill=(el,delta)=>{
 
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{
-      const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows);
+      const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows);
     }).subscribe();
   }catch(e){ console.warn('Realtime not enabled:', e?.message||e); }
 
@@ -1909,7 +1919,7 @@ const setPill=(el,delta)=>{
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); buildSmartSummary(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi(); applyFocusMode();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi(); applyFocusMode();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);
@@ -2418,6 +2428,98 @@ const setPill=(el,delta)=>{
       const line = parts.length ? parts.join(' • ') : 'Similar to last week';
       el.textContent = `${line} — ${days} day(s) this week.`;
       el.style.display='block';
+    }catch(_){ /* no-op */ }
+  }
+
+  // Trending Factors: top two movers this week vs last (Mon..today vs Mon..today).
+  function buildTrendingFactors(rows){
+    try{
+      const el = document.getElementById('trendFactors'); if(!el) return;
+      const now = DateTime.now().setZone(ZONE);
+      const startThis = startOfWeekMonday(now);
+      const endThis   = now.endOf('day');
+      const startLast = startOfWeekMonday(now.minus({weeks:1}));
+      const lastEndSame = startOfWeekMonday(now.minus({weeks:1})).plus({days: now.weekday-1}).endOf('day');
+      const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
+      const worked = (rows||[]).filter(r=> r.status!=='off');
+      const W0 = worked.filter(r=> inRange(r,startThis,endThis));
+      const W1 = worked.filter(r=> inRange(r,startLast,lastEndSame));
+      const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
+      const off0 = sum(W0, r=> +r.office_minutes||0), off1 = sum(W1, r=> +r.office_minutes||0);
+      const rm0  = sum(W0, r=> Math.max(0, (+r.route_minutes||0) - boxholderAdjMinutes(r)));
+      const rm1  = sum(W1, r=> Math.max(0, (+r.route_minutes||0) - boxholderAdjMinutes(r)));
+      const vol = (arr)=> sum(arr, r=> (+r.parcels||0) + 0.33*(+r.letters||0));
+      const v0 = vol(W0), v1 = vol(W1);
+      const pct = (a,b)=> (b>0)? Math.round(((a-b)/b)*100) : null;
+      const items = [];
+      const pushIf = (k, d)=>{ if (d!=null && Math.abs(d)>=5) items.push({k,v:d}); };
+      pushIf('Office', pct(off0, off1));
+      pushIf('Route',  pct(rm0, rm1));
+      pushIf('Volume', pct(v0, v1));
+      items.sort((a,b)=> Math.abs(b.v) - Math.abs(a.v));
+      const top = items.slice(0,2);
+      if (!top.length){ el.style.display='none'; return; }
+      el.style.display = 'flex';
+      el.innerHTML = top.map(it=> `<span class="pill"><small>${it.k}</small> <b style="color:${colorForDelta(it.v).fg}">${it.v>=0?'↑ '+it.v+'%':'↓ '+Math.abs(it.v)+'%'}</b></span>`).join('');
+    }catch(_){ /* no-op */ }
+  }
+
+  // Office Time Compare overlay (this week vs last)
+  function buildOfficeCompare(rows){
+    try{
+      const card = document.getElementById('officeCompareCard'); if (!card) return;
+      const overlay = document.getElementById('officeOverlay');
+      const summary = document.getElementById('officeSummary');
+      const now = DateTime.now().setZone(ZONE);
+      const startThis = startOfWeekMonday(now);
+      const endThis   = now.endOf('day');
+      const startLast = startOfWeekMonday(now.minus({weeks:1}));
+      const endLast   = endOfWeekSunday(now.minus({weeks:1}));
+      const lastEndSame = startOfWeekMonday(now.minus({weeks:1})).plus({days: now.weekday-1}).endOf('day');
+      const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
+      const worked = (rows||[]).filter(r=> r.status!=='off');
+      const W0 = worked.filter(r=> inRange(r,startThis,endThis));
+      const W1 = worked.filter(r=> inRange(r,startLast,endLast));
+      const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
+      const offByDow = (arr)=>{ const a=Array.from({length:7},()=>0); arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= (+r.office_minutes||0); }); return a.map(n=> +(Math.round(n*100)/100).toFixed(2)); };
+      const thisBy = offByDow(W0);
+      const lastBy = offByDow(W1);
+      const dayIdxToday = (now.weekday + 6) % 7;
+      const thisMasked = thisBy.map((v,i)=> i<=dayIdxToday? v : null);
+      const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      // Summary (Mon..today vs last Mon..today)
+      const off0 = sum(W0.filter(r=> inRange(r,startThis, endThis && DateTime.fromJSDate(new Date()).setZone(ZONE))), r=> +r.office_minutes||0); // already filtered
+      const off1same = sum(worked.filter(r=> inRange(r,startLast,lastEndSame)), r=> +r.office_minutes||0);
+      const dPct = (off1same>0)? Math.round(((off0 - off1same)/off1same)*100) : null;
+      if (summary) summary.textContent = `Office (so far): ${off0.toFixed(2)}h vs ${off1same.toFixed(2)}h (${dPct==null?'—':(dPct>=0?('↑ '+dPct+'%'):('↓ '+Math.abs(dPct)+'%'))})`;
+      card.style.display='block';
+      if (overlay && window.Chart && overlay.getContext){
+        const ctx = overlay.getContext('2d');
+        if (overlay._chart) { try{ overlay._chart.destroy(); }catch(_){ } }
+        const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
+        const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
+        overlay._chart = new Chart(ctx, {
+          type:'line',
+          data:{ labels:days, datasets:[
+            { label:'Last week', data:lastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, borderWidth:2, spanGaps:true },
+            { label:'This week', data:thisMasked, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:3, borderWidth:2, spanGaps:true }
+          ]},
+          options:{ responsive:true, maintainAspectRatio:false,
+            layout:{ padding:{ top:12, right:16, bottom:10, left:16 } },
+            plugins:{ legend:{ display:false }, tooltip:{
+              callbacks:{
+                title:(items)=> items && items[0]? items[0].label : '',
+                label:(item)=>{
+                  const i=item.dataIndex; const lw=lastBy[i]; const tw=thisBy[i];
+                  const hasTw = i<=dayIdxToday && tw!=null;
+                  return hasTw? `This: ${tw}h (Last: ${lw}h)` : `Last: ${lw}h`;
+                }
+              }
+            }},
+            scales:{ x:{ display:true, grid:{ display:false } }, y:{ display:false } }
+          }
+        });
+      }
     }catch(_){ /* no-op */ }
   }
 

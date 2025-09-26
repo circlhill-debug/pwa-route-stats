@@ -334,8 +334,11 @@
       <div><label>Mood</label><select id="mood"><option value="">—</option><option>🔥 dialed in</option><option>🙂 good</option><option>😐 meh</option><option>🥵 cooked</option><option>🌧️ soggy</option><option>🛑 off</option></select></div>
       <div style="grid-column:1/-1"><label>Notes</label><textarea id="notes" rows="2" placeholder="Anything notable…"></textarea></div>
 
-      <div class="row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
-        <label class="pill"><input id="offDay" type="checkbox"> Off day</label>
+      <div class="row" style="grid-column:1/-1;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <div class="row" style="gap:8px;align-items:center">
+          <label class="pill"><input id="offDay" type="checkbox"> Off day</label>
+          <label class="pill" title="If an off day is a holiday, the next day's baseline will include two days to avoid skew"><input id="holiday" type="checkbox"> Holiday (observed)</label>
+        </div>
         <div class="row"><span class="pill"><small>Office:</small> <b id="officeH">—</b></span><span class="pill"><small>Route:</small> <b id="routeH">—</b></span><span class="pill"><small>Total:</small> <b id="totalH">—</b></span></div>
         <div class="row"><button id="save">Save</button></div>
       </div>
@@ -1033,7 +1036,7 @@ function moonPhaseEmoji(dateStr) {
 
   const date=$('date'), route=$('route'), start=$('start'), end=$('end'), departTime=$('departTime'), returnTime=$('returnTime');
   const parcels=$('parcels'), letters=$('letters'), miles=$('miles'), mood=$('mood'), notes=$('notes');
-  const weather=$('weather'), temp=$('temp'), boxholders=$('boxholders');
+  const weather=$('weather'), temp=$('temp'), boxholders=$('boxholders'), holiday=$('holiday');
   const offDay=$('offDay');
   const officeH=$('officeH'), routeH=$('routeH'), totalH=$('totalH');
   const expEnd=$('expEnd'), expMeta=$('expMeta');
@@ -1102,7 +1105,7 @@ function moonPhaseEmoji(dateStr) {
   });
 
   function weatherString(){
-    const parts=[]; if(weather?.value) parts.push(weather.value); if(temp?.value) parts.push(`${temp.value}°F`); if(boxholders?.value) parts.push(`Box: ${boxholders.value}`);
+    const parts=[]; if(weather?.value) parts.push(weather.value); if(temp?.value) parts.push(`${temp.value}°F`); if(boxholders?.value) parts.push(`Box: ${boxholders.value}`); if (holiday?.checked) parts.push('Holiday');
     return parts.length? parts.join(' · ') : null;
   }
 
@@ -1152,18 +1155,20 @@ function moonPhaseEmoji(dateStr) {
     offDay.checked    = (r.status === 'off');
 
     const raw = r.weather_json || '';
-    if (!raw){ if(temp) temp.value=''; if(boxholders) boxholders.value=''; weather.value=''; }
+    if (!raw){ if(temp) temp.value=''; if(boxholders) boxholders.value=''; if(holiday) holiday.checked=false; weather.value=''; }
     else {
       const parts = String(raw).split('·').map(s=>s.trim());
-      let w='', t='', b='';
+      let w='', t='', b=''; let hol=false;
       for (const p of parts){
         if (/°F$/.test(p)) t = p.replace('°F','').trim();
         else if (/^Box:/i.test(p)) b = p.split(':').slice(1).join(':').trim();
+        else if (/^Holiday$/i.test(p)) hol = true;
         else w = p;
       }
       weather.value = w || '';
       if (temp) temp.value = t || '';
       if (boxholders) boxholders.value = b || '';
+      if (holiday) holiday.checked = !!hol;
     }
     try { computeBreakdown(); } catch(_){}
   }
@@ -1608,12 +1613,17 @@ const setPill=(el,delta)=>{
     // Holiday adjustment detection: if Monday of this week is an explicit off day,
     // treat Tuesday's baseline as (Mon+Tue of last week). Controlled by flag.
     const holidayAdjEnabled = !!(FLAGS && FLAGS.holidayAdjustments);
-    let mondayOffThisWeek = false;
-    try {
-      const mondayIso = startOfWeekMonday(today).toISODate();
-      const mondayRow = rows.find(r => r.work_date === mondayIso);
-      mondayOffThisWeek = !!(mondayRow && mondayRow.status === 'off');
-    } catch(_) { mondayOffThisWeek = false; }
+    // Detect holiday off-days within current week. If found, adjust the NEXT day's baseline
+    const carryNext = new Set();
+    if (holidayAdjEnabled) {
+      try{
+        const inWeek = (r)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=weekStart && d<=weekEnd; };
+        const isHolidayMarked = (r)=> /(^|\b)Holiday(\b|$)/i.test(String(r.weather_json||''));
+        rows.filter(r=> r.status==='off' && inWeek(r) && isHolidayMarked(r)).forEach(r=>{
+          const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; if (idx<6) carryNext.add(idx+1);
+        });
+      }catch(_){ /* ignore */ }
+    }
 
     // Off-day detection for current week (so we don't show -100% on off days)
     const offIdxThisWeek = new Set(rows
@@ -1625,9 +1635,9 @@ const setPill=(el,delta)=>{
       for (let i = 0; i <= dayIndexToday && i < 7; i++) {
         const cur = offIdxThisWeek.has(i) ? null : thisWeek[i][key];
         let base = lastWeek[i][key];
-        if (holidayAdjEnabled && mondayOffThisWeek && i === 1) {
-          // Tuesday baseline = last Monday + last Tuesday
-          base = (lastWeek[0][key] || 0) + (lastWeek[1][key] || 0);
+        if (holidayAdjEnabled && carryNext.has(i)) {
+          // Baseline for day after a holiday off-day = last week (prev day + this day)
+          base = ((lastWeek[i-1]?.[key] || 0) + (lastWeek[i]?.[key] || 0));
         }
         arr.push(cur == null ? null : pct(cur || 0, base || 0));
       }
@@ -1701,7 +1711,7 @@ const setPill=(el,delta)=>{
           const cur = (i <= dayIndexToday) ? (offIdxThisWeek.has(i) ? null : (thisWeek[i]?.h || 0)) : null; // only Mon..today for this week; off-day shows as null
           let base = lastWeek[i]?.h || 0;
           let adjMark = '';
-          if (holidayAdjEnabled && mondayOffThisWeek && i === 1) { base = (lastWeek[0]?.h||0) + (lastWeek[1]?.h||0); adjMark = ' (adj)'; }
+          if (holidayAdjEnabled && carryNext && carryNext.has(i)) { base = (lastWeek[i-1]?.h||0) + (lastWeek[i]?.h||0); adjMark = ' (adj)'; }
           if (cur != null) tThis += cur;
           if (i <= dayIndexToday) tLast += base;
           const delta = (cur == null || base === 0) ? null : ((cur - base) / base) * 100;
@@ -1747,7 +1757,7 @@ const setPill=(el,delta)=>{
           const cur = (i <= dayIndexToday) ? (offIdxThisWeek.has(i) ? null : (thisWeek[i]?.p || 0)) : null;
           let base = lastWeek[i]?.p || 0;
           let adjMark = '';
-          if (holidayAdjEnabled && mondayOffThisWeek && i === 1) { base = (lastWeek[0]?.p||0) + (lastWeek[1]?.p||0); adjMark=' (adj)'; }
+          if (holidayAdjEnabled && carryNext && carryNext.has(i)) { base = (lastWeek[i-1]?.p||0) + (lastWeek[i]?.p||0); adjMark=' (adj)'; }
           if (cur != null) tThis += cur;
           if (i <= dayIndexToday) tLast += base;
           const delta = (cur == null || base === 0) ? null : ((cur - base) / base) * 100;
@@ -1784,7 +1794,7 @@ const setPill=(el,delta)=>{
           const cur = (i <= dayIndexToday) ? (offIdxThisWeek.has(i) ? null : (thisWeek[i]?.l || 0)) : null;
           let base = lastWeek[i]?.l || 0;
           let adjMark = '';
-          if (holidayAdjEnabled && mondayOffThisWeek && i === 1) { base = (lastWeek[0]?.l||0) + (lastWeek[1]?.l||0); adjMark=' (adj)'; }
+          if (holidayAdjEnabled && carryNext && carryNext.has(i)) { base = (lastWeek[i-1]?.l||0) + (lastWeek[i]?.l||0); adjMark=' (adj)'; }
           if (cur != null) tThis += cur;
           if (i <= dayIndexToday) tLast += base;
           const delta = (cur == null || base === 0) ? null : ((cur - base) / base) * 100;
@@ -1821,7 +1831,7 @@ const setPill=(el,delta)=>{
         const cur = offIdxThisWeek.has(i) ? null : (thisWeek[i]?.[key] || 0);
         let base = lastWeek[i]?.[key] || 0;
         let adjMark = '';
-        if (holidayAdjEnabled && mondayOffThisWeek && i === 1) { base = (lastWeek[0]?.[key]||0) + (lastWeek[1]?.[key]||0); adjMark=' (adj)'; }
+        if (holidayAdjEnabled && carryNext && carryNext.has(i)) { base = (lastWeek[i-1]?.[key]||0) + (lastWeek[i]?.[key]||0); adjMark=' (adj)'; }
         const pctTxt = (v == null || !isFinite(v)) ? '—' : (v >= 0 ? `↑ ${Math.round(v)}%` : `↓ ${Math.abs(Math.round(v))}%`);
         const { fg } = colorForDelta(v || 0);
         const fmt = key === 'h' ? (n)=> n.toFixed(2) : (n)=> String(n);
@@ -2946,7 +2956,18 @@ const setPill=(el,delta)=>{
     selN?.removeEventListener('change', buildQuickFilter._handlerN || (()=>{}));
     cbAll?.removeEventListener('change', buildQuickFilter._handlerAll || (()=>{}));
     cbRuler?.removeEventListener('change', buildQuickFilter._handlerRuler || (()=>{}));
-    buildQuickFilter._handlerSel = handler;
+    buildQuickFilter._handlerSel = (e)=>{
+      // Auto-expand Quick Filter when a day is selected and the section is collapsed
+      try{
+        if (FLAGS && FLAGS.collapsedUi){
+          const body = document.querySelector('#quickFilterCard > .__collapseBody');
+          if (body && body.style.display === 'none'){
+            try{ (window.__collapse_set||(()=>{}))('quickFilterCard', false); }catch(_){ }
+          }
+        }
+      }catch(_){ }
+      handler();
+    };
     buildQuickFilter._handlerP = handler;
     buildQuickFilter._handlerL = handler;
     buildQuickFilter._handlerH = handler;
@@ -2959,7 +2980,7 @@ const setPill=(el,delta)=>{
       handler();
     };
     buildQuickFilter._handlerRuler = (e)=>{ try{ localStorage.setItem('routeStats.qf.ruler', e.target.checked ? '1' : '0'); }catch(_){} handler(); };
-    sel?.addEventListener('change', handler);
+    sel?.addEventListener('change', buildQuickFilter._handlerSel);
     cbP?.addEventListener('change', handler);
     cbL?.addEventListener('change', handler);
     cbH?.addEventListener('change', handler);

@@ -550,6 +550,17 @@
         </div>
       </div>
     </div>
+
+    <!-- Vacation Mode configuration -->
+    <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
+      <h4 style="margin:0 0 6px 0">Vacation Mode</h4>
+      <small class="muted">Exclude entries in a date range from all metrics.</small>
+      <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+        <label class="pill"><input id="vacEnabled" type="checkbox"> Enable</label>
+        <span class="pill" style="gap:6px"><small>From</small> <input id="vacFrom" type="date"></span>
+        <span class="pill" style="gap:6px"><small>To</small> <input id="vacTo" type="date"></span>
+      </div>
+    </div>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="ghost" value="cancel">Close</button>
       <button id="saveSettings">Save</button>
@@ -620,6 +631,7 @@
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
   const EVAL_KEY = 'routeStats.uspsEval.v1';
+  const VACAY_KEY = 'routeStats.vacation.v1';
   const BASELINE_KEY = 'routeStats.baseline.v1';
   function loadFlags(){
     try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false, uspsEval:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
@@ -634,6 +646,39 @@
   }
   function saveEval(cfg){ localStorage.setItem(EVAL_KEY, JSON.stringify(cfg||{})); }
   let USPS_EVAL = loadEval();
+
+  // Vacation Mode config
+  function loadVacation(){
+    try{
+      return Object.assign({ enabled:false, ranges:[] }, JSON.parse(localStorage.getItem(VACAY_KEY)||'{}'));
+    }catch(_){ return { enabled:false, ranges:[] }; }
+  }
+  function saveVacation(cfg){ try{ localStorage.setItem(VACAY_KEY, JSON.stringify(cfg||{enabled:false,ranges:[]})); }catch(_){ } }
+  let VACATION = loadVacation();
+
+  function dateInRangeISO(iso, fromIso, toIso){
+    try{
+      if (!iso || !fromIso || !toIso) return false;
+      const d = DateTime.fromISO(iso, {zone:ZONE}).startOf('day');
+      const a = DateTime.fromISO(fromIso, {zone:ZONE}).startOf('day');
+      const b = DateTime.fromISO(toIso, {zone:ZONE}).endOf('day');
+      return d >= a && d <= b;
+    }catch(_){ return false; }
+  }
+  function isVacationDate(iso){
+    try{
+      const cfg = VACATION || loadVacation();
+      if (!cfg || !cfg.enabled || !Array.isArray(cfg.ranges)) return false;
+      return cfg.ranges.some(r=> dateInRangeISO(iso, r.from, r.to));
+    }catch(_){ return false; }
+  }
+  function filterRowsForView(rows){
+    try{
+      const cfg = VACATION || loadVacation();
+      if (!cfg || !cfg.enabled || !Array.isArray(cfg.ranges) || cfg.ranges.length===0) return rows||[];
+      return (rows||[]).filter(r=> !isVacationDate(r.work_date));
+    }catch(_){ return rows||[]; }
+  }
 
   // Weekly baselines (frozen per week): average of previous 2 completed weeks per weekday
   function ensureWeeklyBaselines(rows){
@@ -919,6 +964,10 @@ function moonPhaseEmoji(dateStr) {
   const evalHoursIn = document.getElementById('evalHoursIn');
   const evalOfficeHoursIn = document.getElementById('evalOfficeHoursIn');
   const evalSalaryIn = document.getElementById('evalSalaryIn');
+  // Vacation mode inputs
+  const vacEnabled = document.getElementById('vacEnabled');
+  const vacFrom    = document.getElementById('vacFrom');
+  const vacTo      = document.getElementById('vacTo');
   const saveSettings = document.getElementById('saveSettings');
 
   btnSettings?.addEventListener('click', ()=>{
@@ -946,6 +995,13 @@ function moonPhaseEmoji(dateStr) {
       if (evalHoursIn) evalHoursIn.value = (cfg.hoursPerDay!=null? cfg.hoursPerDay : '');
       if (evalOfficeHoursIn) evalOfficeHoursIn.value = (cfg.officeHoursPerDay!=null? cfg.officeHoursPerDay : '');
       if (evalSalaryIn) evalSalaryIn.value = (cfg.annualSalary!=null? cfg.annualSalary : '');
+    }catch(_){ }
+    // populate Vacation Mode
+    try{
+      const v = VACATION || loadVacation();
+      if (vacEnabled) vacEnabled.checked = !!v.enabled;
+      if (vacFrom)    vacFrom.value = (v.ranges && v.ranges[0]?.from) || '';
+      if (vacTo)      vacTo.value   = (v.ranges && v.ranges[0]?.to)   || '';
     }catch(_){ }
     settingsDlg.showModal();
   });
@@ -977,6 +1033,14 @@ function moonPhaseEmoji(dateStr) {
         annualSalary: evalSalaryIn?.value!=='' ? +evalSalaryIn.value : null
       };
       saveEval(USPS_EVAL);
+    }catch(_){ }
+    // read Vacation Mode
+    try{
+      VACATION = {
+        enabled: !!(vacEnabled && vacEnabled.checked),
+        ranges: (vacFrom && vacFrom.value && vacTo && vacTo.value) ? [{ from: vacFrom.value, to: vacTo.value }] : []
+      };
+      saveVacation(VACATION);
     }catch(_){ }
     saveFlags(FLAGS);
     settingsDlg.close();
@@ -1347,6 +1411,7 @@ function moonPhaseEmoji(dateStr) {
   }
 
   function buildCharts(rows){
+    rows = filterRowsForView(rows||[]);
     // If Chart.js isn't available, skip chart rendering so the rest of the app works
     if (!window.Chart) { console.warn('Chart.js missing — skipping charts'); return; }
     destroyCharts(); const workRows=rows.filter(r=>r.status!=='off');
@@ -1453,6 +1518,7 @@ function moonPhaseEmoji(dateStr) {
   function hhmmFrom(baseDateStr, hours){ if(hours==null) return '—'; const d=DateTime.fromISO(baseDateStr,{zone:ZONE}).set({hour:8,minute:0}); return d.plus({hours}).toFormat('h:mm a'); }
 
   function buildSnapshot(rows){
+    rows = filterRowsForView(rows||[]);
     const today=DateTime.now().setZone(ZONE);
     const dow=today.weekday%7; // 0=Sun
     const workRows=rows.filter(r=>r.status!=='off');
@@ -2125,6 +2191,7 @@ const setPill=(el,delta)=>{
 
   // Monthly Glance (preview): compute last 4 weeks totals and show as text when enabled
   function buildMonthlyGlance(rows){
+    rows = filterRowsForView(rows||[]);
     const card = document.getElementById('monthlyGlanceCard');
     if (!card) return;
     // Always render Monthly Glance card; flag only controls charts below
@@ -2338,6 +2405,7 @@ const setPill=(el,delta)=>{
 
   // Headline digest (Wed evening only): soft summary under title
   function buildHeadlineDigest(rows){
+    rows = filterRowsForView(rows||[]);
     try{
       const el = document.getElementById('headlineDigest'); if(!el) return;
       const now = DateTime.now().setZone(ZONE);
@@ -2381,6 +2449,7 @@ const setPill=(el,delta)=>{
 
   // Volume Mix: normalized side-by-side bars (Parcels vs Letters×0.33)
   function buildMixViz(rows){
+    rows = filterRowsForView(rows||[]);
     const card = document.getElementById('mixVizCard'); if(!card) return;
     if (!FLAGS.mixViz) { card.style.display='none'; return; }
     // Show card early so header is visible even if later logic fails
@@ -2601,6 +2670,7 @@ const setPill=(el,delta)=>{
 
   // Smart Summary (rule-based, text-only): concise 1–2 lines under the title
   function buildSmartSummary(rows){
+    rows = filterRowsForView(rows||[]);
     try{
       const el = document.getElementById('smartSummary'); if (!el) return;
       if (!FLAGS.smartSummary) { el.style.display='none'; return; }
@@ -2644,6 +2714,7 @@ const setPill=(el,delta)=>{
 
   // Trending Factors: top two movers this week vs last (Mon..today vs Mon..today).
   function buildTrendingFactors(rows){
+    rows = filterRowsForView(rows||[]);
     try{
       const el = document.getElementById('trendFactors'); if(!el) return;
       const now = DateTime.now().setZone(ZONE);
@@ -2680,6 +2751,7 @@ const setPill=(el,delta)=>{
 
   // Heaviness (today): attribute total-hours delta into Office vs Route (adjusted).
   function buildHeavinessToday(rows){
+    rows = filterRowsForView(rows||[]);
     try{
       const el = document.getElementById('todayHeaviness'); if (!el) return;
       const now = DateTime.now().setZone(ZONE);
@@ -2717,6 +2789,7 @@ const setPill=(el,delta)=>{
 
   // Week Heaviness: attribution Mon..today vs last Mon..today (Office vs Route adjusted vs Total)
   function buildWeekHeaviness(rows){
+    rows = filterRowsForView(rows||[]);
     try{
       const el = document.getElementById('weekHeaviness'); if (!el) return;
       const now = DateTime.now().setZone(ZONE);
@@ -2750,6 +2823,7 @@ const setPill=(el,delta)=>{
 
   // Office Time Compare overlay (this week vs last)
   function buildOfficeCompare(rows){
+    rows = filterRowsForView(rows||[]);
     try{
       const card = document.getElementById('officeCompareCard'); if (!card) return;
       const overlay = document.getElementById('officeOverlay');
@@ -2810,6 +2884,7 @@ const setPill=(el,delta)=>{
 
   // Quick Filter (Phase 3): weekday selector with stats + optional sparkline
   function buildQuickFilter(rows){
+    rows = filterRowsForView(rows||[]);
     const card = document.getElementById('quickFilterCard');
     if (!card) return;
     card.style.display = FLAGS.quickFilter ? 'block' : 'none';

@@ -200,6 +200,11 @@
         <div><strong id="todayLettersDelta">—</strong></div>
         <small class="muted">vs past same weekday (worked)</small>
       </div>
+      <div class="stat">
+        <small>Today Office Δ</small>
+        <div><strong id="todayOfficeDelta">—</strong></div>
+        <small class="muted">vs past same weekday (worked)</small>
+      </div>
       </div>
       <!-- Heaviness (today) attribution -->
       <div id="todayHeaviness" class="row" style="display:none;gap:8px;flex-wrap:wrap;margin-top:6px"></div>
@@ -1866,17 +1871,25 @@ const setPill=(el,delta)=>{
     const wkNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     document.querySelector('#todayParcelsDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
     document.querySelector('#todayLettersDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    document.querySelector('#todayOfficeDelta')?.closest('.stat')?.querySelector('small.muted')?.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    const baseOffice = lastSame ? (+lastSame.office_minutes||0) : null;
+    const todayOffice = todaysRow ? (+todaysRow.office_minutes||0) : null;
     const fmtTiny=p=> p==null? '—' : (p>=0? `↑ ${p.toFixed(0)}%` : `↓ ${Math.abs(p).toFixed(0)}%`);
+    const tdo=dayPct(todayOffice, baseOffice);
     $('todayParcelsDelta').textContent = fmtTiny(tdp);
     $('todayLettersDelta').textContent = fmtTiny(tdl);
+    $('todayOfficeDelta').textContent = fmtTiny(tdo);
     // Minimal color-only styling for today's deltas
     (() => {
       const tp = document.getElementById('todayParcelsDelta');
       const tl = document.getElementById('todayLettersDelta');
+      const to = document.getElementById('todayOfficeDelta');
       const { fg:fgP } = colorForDelta(tdp);
       const { fg:fgL } = colorForDelta(tdl);
+      const { fg:fgO } = colorForDelta(tdo);
       if (tp) { tp.className='pill'; tp.style.color=fgP; tp.style.background='transparent'; tp.style.borderColor='transparent'; }
       if (tl) { tl.className='pill'; tl.style.color=fgL; tl.style.background='transparent'; tl.style.borderColor='transparent'; }
+      if (to) { to.className='pill'; to.style.color=fgO; to.style.background='transparent'; to.style.borderColor='transparent'; }
     })();
 }
 
@@ -1970,17 +1983,30 @@ const setPill=(el,delta)=>{
       const setCollapsed = (collapsed)=> setSectionCollapsed(t.id, collapsed);
       const saved = (localStorage.getItem(storeKey(t.id)) === '1');
       // Enable/disable per flag
-      btn.style.display = enabled ? '' : 'none';
+      btn.style.display = enabled ? 'none' : 'none'; // hide explicit button; use header click instead
       if (!enabled){
         // Ensure everything is visible in normal mode
         setCollapsed(false);
         continue;
       }
-      setCollapsed(saved);
-      btn.onclick = ()=>{
-        const nowCollapsed = btn.getAttribute('aria-expanded') === 'true';
+      // Default: collapse Add Entry the first time when feature enabled
+      if (t.id==='addEntryCard' && localStorage.getItem(storeKey(t.id)) == null){
+        try{ localStorage.setItem(storeKey(t.id), '1'); }catch(_){ }
+      }
+      const initialCollapsed = (localStorage.getItem(storeKey(t.id)) === '1');
+      setCollapsed(initialCollapsed);
+      // Header click toggles collapse (ignore clicks on interactive controls inside header)
+      const headerToggle = (ev)=>{
+        const trg = ev.target;
+        if (trg.closest && (trg.closest('#quickEntryBar') || trg.closest('button') || trg.closest('input') || trg.closest('a'))) return;
+        const bodyNow = $body(t.id);
+        const nowCollapsed = bodyNow && bodyNow.style.display !== 'none' ? true : false;
         setCollapsed(nowCollapsed);
       };
+      headerEl.style.cursor = 'pointer';
+      headerEl.title = 'Click to expand/collapse';
+      headerEl.addEventListener('click', headerToggle);
+      headerEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); headerToggle(e); } });
       if (t.id==='addEntryCard') ensureQuickEntryControls(headerEl);
     }
     // removed global Collapse All in favor of Focus Mode

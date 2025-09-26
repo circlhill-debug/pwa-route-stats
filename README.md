@@ -49,6 +49,22 @@ Latest features (main)
 - Boxholders: x1/x2/x3 (maps from legacy Light/Medium/Heavy); route efficiency uses adjusted route minutes (−30/−45/−60m) but stored times remain unchanged.
 - Copy: “Average Hours by Weekday” label clarifies the DOW chart.
 
+---
+
+Next Session — Pick Up Here
+
+- New data points: you’ll describe them; we’ll decide how to integrate (overlays, factors, summaries). Bring examples if possible.
+- Composition View: optional stacked composition (Parcels vs 0.33×Letters) for W1 vs last week; text fallback first.
+- Heaviness tuning: thresholds/copy for Today/Week pills; consider median baselines; optional “Similar” band widths.
+- Boxholder offsets: make x1/x2/x3 configurable (Settings) after a week of field data.
+- Small polish: Avg pill label (e.g., “Avg (4w)”), chart padding, and minor copy tweaks.
+
+Quick start next time
+1) Start `Start Server.command` → open the app.
+2) Settings → Force Refresh (update + clear cache).
+3) Verify charts/tooltips on phone if testing in the field.
+4) Share the new data points; we’ll sketch integration and ship behind flags.
+
 Where to look / edit
 - index.html: Main app, feature flags UI and logic. Quick Filter and summaries live here.
 - NEXT.md: Near‑term tasks and acceptance criteria (kept up‑to‑date as we ship).

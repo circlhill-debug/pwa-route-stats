@@ -100,6 +100,17 @@
 
 <!-- Version tag -->
 <div id="verTag" style="position:fixed;top:6px;right:12px;color:#9aa0aa;font-size:11px;z-index:9999;">v—</div>
+<!-- USPS Evaluation summary (fixed) -->
+<div id="uspsEvalTag" title="Click to edit USPS evaluation in Settings"
+     style="position:fixed;top:26px;right:12px;z-index:9999;display:none">
+  <span class="pill" style="font-size:11px;line-height:1.2;gap:6px;padding:6px 8px;cursor:pointer">
+    <span id="evalRouteLabel">—</span>
+    <span id="evalEvalCode" class="muted">—</span>
+    <span id="evalBoxes" class="muted">— boxes</span>
+    <span id="evalSalary" class="muted">—/yr</span>
+    <span id="evalHours" class="muted">—h (— office)</span>
+  </span>
+  </div>
 <header>
   <div class="wrap row" style="justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
     <!-- CHANGED: dynamic date -->
@@ -480,6 +491,7 @@
 <dialog id="settingsDlg">
   <form method="dialog" class="grid" style="min-width:320px;gap:10px">
     <h3 style="margin:0">Settings</h3>
+    <!-- Feature flags -->
     <label class="pill"><input id="flagWeekdayTicks" type="checkbox"> Show weekday + short date on line charts</label>
     <label class="pill"><input id="flagProgressivePills" type="checkbox"> Progressive color pills for deltas</label>
     <label class="pill"><input id="flagMonthlyGlance" type="checkbox"> Monthly Glance (preview): 4-week stacked sparklines</label>
@@ -493,6 +505,43 @@
     <label class="pill"><input id="flagBaselineCompare" type="checkbox"> Use baseline-normalized compare (2-week weekday avg)</label>
     <label class="pill"><input id="flagCollapsedUi" type="checkbox"> Collapsed dashboard (experimental)</label>
     <label class="pill"><input id="flagQuickEntry" type="checkbox"> Quick Entry (experimental)</label>
+    <label class="pill"><input id="flagUspsEval" type="checkbox"> Show USPS Evaluation summary (fixed tag)</label>
+
+    <!-- USPS Evaluation configuration -->
+    <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
+      <h4 style="margin:0 0 6px 0">USPS Evaluation</h4>
+      <small class="muted">Used for comparison metrics; stored locally.</small>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        <div>
+          <label>Route label</label>
+          <input id="evalRouteId" placeholder="e.g., R1" />
+        </div>
+        <div>
+          <label>Evaluation code</label>
+          <input id="evalCode" placeholder="e.g., 44K" />
+        </div>
+        <div>
+          <label>Boxes (deliveries)</label>
+          <input id="evalBoxesIn" type="number" min="0" step="1" placeholder="e.g., 670" />
+        </div>
+        <div>
+          <label>Stops</label>
+          <input id="evalStopsIn" type="number" min="0" step="1" placeholder="optional" />
+        </div>
+        <div>
+          <label>Expected hours/day</label>
+          <input id="evalHoursIn" type="number" min="0" step="0.1" placeholder="e.g., 9.4" />
+        </div>
+        <div>
+          <label>Expected office hours/day</label>
+          <input id="evalOfficeHoursIn" type="number" min="0" step="0.1" placeholder="e.g., 2.0" />
+        </div>
+        <div>
+          <label>Annual salary ($)</label>
+          <input id="evalSalaryIn" type="number" min="0" step="100" placeholder="e.g., 68000" />
+        </div>
+      </div>
+    </div>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="ghost" value="cancel">Close</button>
       <button id="saveSettings">Save</button>
@@ -562,11 +611,21 @@
 
   // === Feature Flags (localStorage) ===
   const FLAG_KEY = 'routeStats.flags.v1';
+  const EVAL_KEY = 'routeStats.uspsEval.v1';
   const BASELINE_KEY = 'routeStats.baseline.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false, uspsEval:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false, uspsEval:true }; }
   }
+  function loadEval(){
+    try{
+      return Object.assign({ routeId:'R1', evalCode:'44K', boxes:670, stops:null, hoursPerDay:9.4, officeHoursPerDay:2.0, annualSalary:68000 }, JSON.parse(localStorage.getItem(EVAL_KEY)||'{}'));
+    }catch(_){
+      return { routeId:'R1', evalCode:'44K', boxes:670, stops:null, hoursPerDay:9.4, officeHoursPerDay:2.0, annualSalary:68000 };
+    }
+  }
+  function saveEval(cfg){ localStorage.setItem(EVAL_KEY, JSON.stringify(cfg||{})); }
+  let USPS_EVAL = loadEval();
 
   // Weekly baselines (frozen per week): average of previous 2 completed weeks per weekday
   function ensureWeeklyBaselines(rows){
@@ -654,6 +713,25 @@
     const ver = document.getElementById('verTag');
     if (ver) ver.textContent = 'v' + d.toFormat('yyyy-MM-dd');
   })();
+
+  function renderUspsEvalTag(){
+    try{
+      const tag = document.getElementById('uspsEvalTag'); if (!tag) return;
+      if (!FLAGS.uspsEval){ tag.style.display='none'; return; }
+      const cfg = USPS_EVAL || loadEval();
+      $('evalRouteLabel').textContent = cfg.routeId || '—';
+      $('evalEvalCode').textContent = cfg.evalCode || '—';
+      $('evalBoxes').textContent = (cfg.boxes!=null? cfg.boxes : '—') + ' boxes';
+      $('evalSalary').textContent = (cfg.annualSalary!=null? ('$'+Number(cfg.annualSalary).toLocaleString()) : '—') + '/yr';
+      const hp = (cfg.hoursPerDay!=null? cfg.hoursPerDay : '—');
+      const oh = (cfg.officeHoursPerDay!=null? cfg.officeHoursPerDay : '—');
+      $('evalHours').textContent = `${hp}h (${oh} office)`;
+      tag.style.display='block';
+      tag.onclick = ()=> document.getElementById('btnSettings')?.click();
+    }catch(_){ /* ignore */ }
+  }
+  // initial render
+  renderUspsEvalTag();
 
   function todayStr(){ return DateTime.now().setZone(ZONE).toISODate(); }
   function hhmmNow(){ const d = DateTime.now().setZone(ZONE); return `${String(d.hour).padStart(2,'0')}:${String(d.minute).padStart(2,'0')}`; }
@@ -824,6 +902,15 @@ function moonPhaseEmoji(dateStr) {
   const flagCollapsedUi = document.getElementById('flagCollapsedUi');
   const flagQuickEntry = document.getElementById('flagQuickEntry');
   const flagSmartSummary = document.getElementById('flagSmartSummary');
+  const flagUspsEval = document.getElementById('flagUspsEval');
+  // USPS Eval inputs
+  const evalRouteId = document.getElementById('evalRouteId');
+  const evalCode    = document.getElementById('evalCode');
+  const evalBoxesIn = document.getElementById('evalBoxesIn');
+  const evalStopsIn = document.getElementById('evalStopsIn');
+  const evalHoursIn = document.getElementById('evalHoursIn');
+  const evalOfficeHoursIn = document.getElementById('evalOfficeHoursIn');
+  const evalSalaryIn = document.getElementById('evalSalaryIn');
   const saveSettings = document.getElementById('saveSettings');
 
   btnSettings?.addEventListener('click', ()=>{
@@ -840,6 +927,18 @@ function moonPhaseEmoji(dateStr) {
     if (flagCollapsedUi) flagCollapsedUi.checked = !!FLAGS.collapsedUi;
     if (flagQuickEntry) flagQuickEntry.checked = !!FLAGS.quickEntry;
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
+    if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
+    // populate USPS eval fields
+    try{
+      const cfg = USPS_EVAL || loadEval();
+      if (evalRouteId) evalRouteId.value = cfg.routeId || '';
+      if (evalCode)    evalCode.value    = cfg.evalCode || '';
+      if (evalBoxesIn) evalBoxesIn.value = (cfg.boxes!=null? cfg.boxes : '');
+      if (evalStopsIn) evalStopsIn.value = (cfg.stops!=null? cfg.stops : '');
+      if (evalHoursIn) evalHoursIn.value = (cfg.hoursPerDay!=null? cfg.hoursPerDay : '');
+      if (evalOfficeHoursIn) evalOfficeHoursIn.value = (cfg.officeHoursPerDay!=null? cfg.officeHoursPerDay : '');
+      if (evalSalaryIn) evalSalaryIn.value = (cfg.annualSalary!=null? cfg.annualSalary : '');
+    }catch(_){ }
     settingsDlg.showModal();
   });
 
@@ -857,6 +956,20 @@ function moonPhaseEmoji(dateStr) {
     if (flagCollapsedUi) FLAGS.collapsedUi = !!flagCollapsedUi.checked;
     if (flagQuickEntry) FLAGS.quickEntry = !!flagQuickEntry.checked;
     if (flagSmartSummary) FLAGS.smartSummary = !!flagSmartSummary.checked;
+    if (flagUspsEval) FLAGS.uspsEval = !!flagUspsEval.checked;
+    // read USPS eval fields
+    try{
+      USPS_EVAL = {
+        routeId: (evalRouteId?.value||'').trim() || 'R1',
+        evalCode: (evalCode?.value||'').trim() || '44K',
+        boxes:    evalBoxesIn?.value!=='' ? +evalBoxesIn.value : null,
+        stops:    evalStopsIn?.value!=='' ? +evalStopsIn.value : null,
+        hoursPerDay: evalHoursIn?.value!=='' ? +evalHoursIn.value : null,
+        officeHoursPerDay: evalOfficeHoursIn?.value!=='' ? +evalOfficeHoursIn.value : null,
+        annualSalary: evalSalaryIn?.value!=='' ? +evalSalaryIn.value : null
+      };
+      saveEval(USPS_EVAL);
+    }catch(_){ }
     saveFlags(FLAGS);
     settingsDlg.close();
     // Re-render visuals affected by flags
@@ -871,6 +984,7 @@ function moonPhaseEmoji(dateStr) {
     buildOfficeCompare(allRows||[]);
     buildHeavinessToday(allRows||[]);
     buildWeekHeaviness(allRows||[]);
+    renderUspsEvalTag();
     
     applyTrendPillsVisibility();
     applyCollapsedUi();

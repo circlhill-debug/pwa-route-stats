@@ -1640,7 +1640,14 @@ function moonPhaseEmoji(dateStr) {
       const adjNote = `adjusted −${boxholderAdjMinutes(workRows[0])||0}m for boxholders`;
       badgeRouteEff.title = `Route minutes (adjusted): ${todayRoute!=null?Math.round(todayRoute):'—'} vs weekday avg ${rteAvg!=null?Math.round(rteAvg):'—'}\nΔ vs avg: ${deltaPct==null?'—':(deltaPct>=0?('+'+deltaPct):('−'+Math.abs(deltaPct)))}%\nScore: ${rteScore}/10 (higher is better)\nNote: ${adjNote}`;
       const hr = document.getElementById('helpRouteEff');
-      if (hr) hr.textContent = `Adjusted route min vs weekday avg. Today ${todayRoute!=null?Math.round(todayRoute):'—'} vs avg ${rteAvg!=null?Math.round(rteAvg):'—'}. Score ${rteScore}/10.`;
+      if (hr){
+        hr.innerHTML = `Adjusted route min vs weekday avg.<br>Today ${todayRoute!=null?Math.round(todayRoute):'—'} vs avg ${rteAvg!=null?Math.round(rteAvg):'—'}. Score ${rteScore}/10.
+          <br><button id=\"linkRouteEffDetails\" class=\"ghost btn-compact\" type=\"button\">Open Weekly Compare</button>`;
+        setTimeout(()=>{
+          const btn = document.getElementById('linkRouteEffDetails');
+          if (btn){ btn.onclick = (e)=>{ e.preventDefault(); try{ document.getElementById('mixVizCard')?.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ } }; }
+        },0);
+      }
     }catch(_){ }
     const totToday = workRows[0]? (+workRows[0].hours||0) : 0; const exp = todayAvgH || 0; const overallScore = exp>0? Math.max(0, Math.min(10, Math.round((1 - (totToday - exp)/Math.max(1,exp))*10))) : 0; badgeOverall.textContent = `${overallScore}/10`;
     try{
@@ -2782,7 +2789,7 @@ const setPill=(el,delta)=>{
       const items = [];
       if (dh!=null && Math.abs(dh) >= 5) items.push({ k:'Hours', v:dh });
       if (dv!=null && Math.abs(dv) >= 5) items.push({ k:'Volume', v:dv });
-      if (di!=null && Math.abs(di) >= 5) items.push({ k:'Efficiency', v:di });
+      if (di!=null && Math.abs(di) >= 5) items.push({ k:'Eff. (min/vol)', v:di });
       // sort by absolute magnitude, descending, and pick top 2 movers
       items.sort((a,b)=> Math.abs(b.v) - Math.abs(a.v));
       const top = items.slice(0,2);

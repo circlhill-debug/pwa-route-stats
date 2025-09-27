@@ -1106,6 +1106,16 @@ function moonPhaseEmoji(dateStr) {
     try{
       const sec = document.getElementById('recentEntriesCard'); if (!sec) return;
       const headerEl = sec.firstElementChild; if (!headerEl) return;
+      const KEY = 'routeStats.collapse.recentEntriesCard';
+      const collapseBody = sec.querySelector(':scope > .__collapseBody');
+      const collapsedUiOn = !!(FLAGS && FLAGS.collapsedUi);
+      if (collapseBody || collapsedUiOn){
+        // Defer to Collapsed UI system: ensure default collapsed and let its handler manage toggling
+        if (localStorage.getItem(KEY) == null){ try{ localStorage.setItem(KEY, '1'); }catch(_){ } }
+        try{ (window.__collapse_set||(()=>{}))('recentEntriesCard', true); }catch(_){ }
+        return;
+      }
+      // Lightweight independent collapse for Recent Entries
       let body = sec.querySelector(':scope > .__rcBody');
       if (!body){
         body = document.createElement('div');
@@ -1114,7 +1124,6 @@ function moonPhaseEmoji(dateStr) {
         toMove.forEach(ch=> body.appendChild(ch));
         sec.appendChild(body);
       }
-      const KEY = 'routeStats.collapse.recentEntriesCard';
       function setCollapsed(c){ body.style.display = c ? 'none' : ''; try{ localStorage.setItem(KEY, c?'1':'0'); }catch(_){ } }
       const saved = localStorage.getItem(KEY);
       const initial = (saved==null) ? true : (saved==='1');

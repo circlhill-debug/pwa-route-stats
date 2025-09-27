@@ -146,16 +146,19 @@
           <small>Volume</small>
           <strong id="badgeVolume" style="font-size:20px">—</strong>
           <small class="muted">parcels + 0.33×letters</small>
+          <div id="helpVolume" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
         </div>
         <div class="stat">
           <small>Route Eff.</small>
           <strong id="badgeRouteEff" style="font-size:20px">—</strong>
           <small class="muted">vs weekday baseline</small>
+          <div id="helpRouteEff" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
         </div>
         <div class="stat">
           <small>Overall</small>
           <strong id="badgeOverall" style="font-size:20px">—</strong>
           <small class="muted">office + route vs expected</small>
+          <div id="helpOverall" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
         </div>
         <!-- USPS tiles (moved up into primary snapshot row) -->
         <div class="stat" id="tileUspsRouteEff">
@@ -1541,6 +1544,33 @@ function moonPhaseEmoji(dateStr) {
     const avgH=byDow.map(x=> x.c? x.h/x.c : null); const todayAvgH=avgH[dow];
     expEnd.textContent = todayAvgH? hhmmFrom(today.toISODate(), todayAvgH) : '—';
     expMeta.textContent = `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]} avg ${todayAvgH? todayAvgH.toFixed(2)+'h':'—'}`;
+    // Enable click-to-toggle help on snapshot tiles (once)
+    (function enableTileHelp(){
+      try{
+        const pairs = [
+          { id:'badgeVolume', help:'helpVolume' },
+          { id:'badgeRouteEff', help:'helpRouteEff' },
+          { id:'badgeOverall', help:'helpOverall' },
+        ];
+        pairs.forEach(p => {
+          const badge = document.getElementById(p.id);
+          const help = document.getElementById(p.help);
+          const tile = badge?.closest('.stat');
+          if (!badge || !help || !tile) return;
+          if (tile.dataset.helpReady) return; // attach once
+          tile.dataset.helpReady = '1';
+          tile.style.cursor = 'pointer';
+          tile.setAttribute('tabindex','0');
+          const toggle = ()=>{ help.style.display = (help.style.display==='none'||!help.style.display)? 'block':'none'; };
+          tile.addEventListener('click', (e)=>{
+            // ignore clicks on links/buttons inside
+            if (e.target.closest('button,a,input,select,textarea')) return;
+            toggle();
+          });
+          tile.addEventListener('keydown', (e)=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); toggle(); } });
+        });
+      }catch(_){ }
+    })();
 
     // Badges (volume, route eff, overall) using last 30 worked rows
     const lastN = workRows.slice(0,30);
@@ -1558,6 +1588,8 @@ function moonPhaseEmoji(dateStr) {
         const volTip = `Volume today: ${v.toFixed(1)} (parcels + 0.33×letters)\nScore: ${volScore10}/10 ≈ ${pct}th percentile of last ${vols.length} worked days\nNote: This is a rank vs recent days, not % of max.\nRange: min ${min.toFixed(1)} • median ${med.toFixed(1)} • max ${max.toFixed(1)}`;
         badgeVolume.title = volTip;
         try{ const tile = badgeVolume.closest('.stat'); if (tile) tile.title = volTip; }catch(_){ }
+        const hv = document.getElementById('helpVolume');
+        if (hv) hv.textContent = `Rank vs recent: ${volScore10}/10 (~${pct}th percentile). Today ${v.toFixed(1)}; min ${min.toFixed(1)}, median ${med.toFixed(1)}, max ${max.toFixed(1)}.`;
       }
     }catch(_){ }
     const rhs = workRows
@@ -1572,11 +1604,15 @@ function moonPhaseEmoji(dateStr) {
       const deltaPct = (rteAvg && todayRoute!=null && rteAvg>0)? Math.round(((todayRoute - rteAvg)/rteAvg)*100) : null;
       const adjNote = `adjusted −${boxholderAdjMinutes(workRows[0])||0}m for boxholders`;
       badgeRouteEff.title = `Route minutes (adjusted): ${todayRoute!=null?Math.round(todayRoute):'—'} vs weekday avg ${rteAvg!=null?Math.round(rteAvg):'—'}\nΔ vs avg: ${deltaPct==null?'—':(deltaPct>=0?('+'+deltaPct):('−'+Math.abs(deltaPct)))}%\nScore: ${rteScore}/10 (higher is better)\nNote: ${adjNote}`;
+      const hr = document.getElementById('helpRouteEff');
+      if (hr) hr.textContent = `Adjusted route min vs weekday avg. Today ${todayRoute!=null?Math.round(todayRoute):'—'} vs avg ${rteAvg!=null?Math.round(rteAvg):'—'}. Score ${rteScore}/10.`;
     }catch(_){ }
     const totToday = workRows[0]? (+workRows[0].hours||0) : 0; const exp = todayAvgH || 0; const overallScore = exp>0? Math.max(0, Math.min(10, Math.round((1 - (totToday - exp)/Math.max(1,exp))*10))) : 0; badgeOverall.textContent = `${overallScore}/10`;
     try{
       const deltaPctTot = exp>0? Math.round(((totToday - exp)/exp)*100) : null;
       badgeOverall.title = `Total hours: ${totToday.toFixed(2)} vs expected ${exp?exp.toFixed(2):'—'} (weekday avg)\nΔ vs expected: ${deltaPctTot==null?'—':(deltaPctTot>=0?('+'+deltaPctTot):('−'+Math.abs(deltaPctTot)))}%\nScore: ${overallScore}/10 (higher is better)`;
+      const ho = document.getElementById('helpOverall');
+      if (ho) ho.textContent = `Total hours vs weekday expected. Today ${totToday.toFixed(2)}h vs exp ${exp?exp.toFixed(2)+'h':'—'}. Score ${overallScore}/10.`;
     }catch(_){ }
 
     // ===== Weekly tiles (Monday-based) =====
@@ -2079,8 +2115,8 @@ const setPill=(el,delta)=>{
         setCollapsed(false);
         continue;
       }
-      // Default: collapse Add Entry the first time when feature enabled
-      if (t.id==='addEntryCard' && localStorage.getItem(storeKey(t.id)) == null){
+      // Default: collapse Add Entry and Recent Entries the first time when feature enabled
+      if ((t.id==='addEntryCard' || t.id==='recentEntriesCard') && localStorage.getItem(storeKey(t.id)) == null){
         try{ localStorage.setItem(storeKey(t.id), '1'); }catch(_){ }
       }
       const initialCollapsed = (localStorage.getItem(storeKey(t.id)) === '1');

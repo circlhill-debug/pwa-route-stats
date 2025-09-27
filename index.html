@@ -1075,6 +1075,7 @@ function moonPhaseEmoji(dateStr) {
     
     applyTrendPillsVisibility();
     applyCollapsedUi();
+    applyRecentEntriesAutoCollapse();
   });
 
   // Force Refresh: update SW, clear caches, reload
@@ -1098,6 +1099,31 @@ function moonPhaseEmoji(dateStr) {
     ids.forEach(id=>{ const el = document.getElementById(id); if (el) el.style.display = show ? '' : 'none'; });
     const row = document.getElementById('trendPillsRow');
     if (row) row.style.display = show ? '' : 'none';
+  }
+
+  // Always collapse Recent Entries by default; header click toggles open/close (independent of Collapsed UI flag)
+  function applyRecentEntriesAutoCollapse(){
+    try{
+      const sec = document.getElementById('recentEntriesCard'); if (!sec) return;
+      const headerEl = sec.firstElementChild; if (!headerEl) return;
+      let body = sec.querySelector(':scope > .__rcBody');
+      if (!body){
+        body = document.createElement('div');
+        body.className = '__rcBody';
+        const toMove=[]; for(let i=1;i<sec.children.length;i++){ toMove.push(sec.children[i]); }
+        toMove.forEach(ch=> body.appendChild(ch));
+        sec.appendChild(body);
+      }
+      const KEY = 'routeStats.collapse.recentEntriesCard';
+      function setCollapsed(c){ body.style.display = c ? 'none' : ''; try{ localStorage.setItem(KEY, c?'1':'0'); }catch(_){ } }
+      const saved = localStorage.getItem(KEY);
+      const initial = (saved==null) ? true : (saved==='1');
+      setCollapsed(initial);
+      const toggle = ()=> setCollapsed(body.style.display!=='none'? true : false);
+      headerEl.style.cursor='pointer';
+      headerEl.addEventListener('click', (e)=>{ if (e.target.closest('button,a,input,select,textarea')) return; toggle(); });
+      headerEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggle(); } });
+    }catch(_){ /* ignore */ }
   }
 
   sb.auth.onAuthStateChange((_evt, session) => {
@@ -2224,7 +2250,7 @@ const setPill=(el,delta)=>{
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildUspsTiles(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi(); applyFocusMode();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildUspsTiles(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi(); applyRecentEntriesAutoCollapse(); applyFocusMode();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);

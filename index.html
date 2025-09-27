@@ -1555,7 +1555,7 @@ function moonPhaseEmoji(dateStr) {
         const s=[...vols].sort((a,b)=>a-b); const min=s[0], max=s[s.length-1];
         const mid = Math.floor(s.length/2); const med = s.length%2? s[mid] : (s[mid-1]+s[mid])/2;
         const pct = Math.round(rank(vols,v)*100);
-        badgeVolume.title = `Volume today: ${v.toFixed(1)} (parcels + 0.33×letters)\nPercentile: ${pct}% of last ${vols.length} worked days\nRange: min ${min.toFixed(1)} • median ${med.toFixed(1)} • max ${max.toFixed(1)}`;
+        badgeVolume.title = `Volume today: ${v.toFixed(1)} (parcels + 0.33×letters)\nScore: ${volScore10}/10 ≈ ${pct}th percentile of last ${vols.length} worked days\nNote: This is a rank vs recent days, not % of max.\nRange: min ${min.toFixed(1)} • median ${med.toFixed(1)} • max ${max.toFixed(1)}`;
       }
     }catch(_){ }
     const rhs = workRows

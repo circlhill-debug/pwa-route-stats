@@ -345,6 +345,11 @@
         </select>
       </div>
 
+      <div>
+        <label>Reason (optional)</label>
+        <input id="reasonTag" type="text" placeholder="e.g., Boxholders, Detour, Weather" />
+      </div>
+
       <div><label>Mood</label><select id="mood"><option value="">—</option><option>🔥 dialed in</option><option>🙂 good</option><option>😐 meh</option><option>🥵 cooked</option><option>🌧️ soggy</option><option>🛑 off</option></select></div>
       <div style="grid-column:1/-1"><label>Notes</label><textarea id="notes" rows="2" placeholder="Anything notable…"></textarea></div>
 
@@ -414,6 +419,7 @@
     <canvas id="weekOverlay" class="sparkline" style="margin-top:4px;height:72px;max-height:72px"></canvas>
     <div id="mixText" class="sparkline-labels">—</div>
     <div id="mixEff" class="sparkline-labels">—</div>
+    <div id="mixCulprits" class="sparkline-labels">—</div>
     <div class="sparkline-labels">Efficiency (min/vol) — lower is better</div>
     <canvas id="effOverlay" class="sparkline" style="margin-top:4px;height:64px;max-height:64px"></canvas>
     <div id="mixCompareDetails" class="sparkline-summary" style="display:none; margin-top:6px">—</div>
@@ -1227,7 +1233,7 @@ function moonPhaseEmoji(dateStr) {
   });
 
   function weatherString(){
-    const parts=[]; if(weather?.value) parts.push(weather.value); if(temp?.value) parts.push(`${temp.value}°F`); if(boxholders?.value) parts.push(`Box: ${boxholders.value}`); if (holiday?.checked) parts.push('Holiday');
+    const parts=[]; if(weather?.value) parts.push(weather.value); if(temp?.value) parts.push(`${temp.value}°F`); if(boxholders?.value) parts.push(`Box: ${boxholders.value}`); if (holiday?.checked) parts.push('Holiday'); if (reasonTag?.value) parts.push(`Reason: ${reasonTag.value}`);
     return parts.length? parts.join(' · ') : null;
   }
 
@@ -1280,10 +1286,11 @@ function moonPhaseEmoji(dateStr) {
     if (!raw){ if(temp) temp.value=''; if(boxholders) boxholders.value=''; if(holiday) holiday.checked=false; weather.value=''; }
     else {
       const parts = String(raw).split('·').map(s=>s.trim());
-      let w='', t='', b=''; let hol=false;
+      let w='', t='', b=''; let hol=false; let rsn='';
       for (const p of parts){
         if (/°F$/.test(p)) t = p.replace('°F','').trim();
         else if (/^Box:/i.test(p)) b = p.split(':').slice(1).join(':').trim();
+        else if (/^Reason:/i.test(p)) rsn = p.split(':').slice(1).join(':').trim();
         else if (/^Holiday$/i.test(p)) hol = true;
         else w = p;
       }
@@ -1291,6 +1298,7 @@ function moonPhaseEmoji(dateStr) {
       if (temp) temp.value = t || '';
       if (boxholders) boxholders.value = b || '';
       if (holiday) holiday.checked = !!hol;
+      const reasonTag = document.getElementById('reasonTag'); if (reasonTag) reasonTag.value = rsn || '';
     }
     try { computeBreakdown(); } catch(_){}
   }
@@ -2554,6 +2562,7 @@ const setPill=(el,delta)=>{
     const text = document.getElementById('mixText');
     const eff  = document.getElementById('mixEff');
     const overlay = document.getElementById('weekOverlay');
+    const culprits = document.getElementById('mixCulprits');
     const details = document.getElementById('mixCompareDetails');
     const btn = document.getElementById('mixCompareBtn');
     const now = DateTime.now().setZone(ZONE);
@@ -2592,6 +2601,30 @@ const setPill=(el,delta)=>{
       const b = idx1==null? '—' : (Math.round(idx1*100)/100).toFixed(2);
       eff.innerHTML = `Efficiency index (min/vol): ${a} vs ${b} <span style="${deltaStyle}">${deltaStr}</span>`;
     }
+    // Outlier days: route hours vs last week (same weekday) > +10%
+    try{
+      if (culprits){
+        const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+        const routeByDow = (arr)=>{
+          const a = Array.from({length:7},()=>0);
+          arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= routeAdjustedHours(r); });
+          return a;
+        };
+        const thisRoute = routeByDow(W0);
+        const lastRoute = routeByDow(worked.filter(r=> inRange(r, startLast, endLastFull)));
+        const out = [];
+        for (let i=0;i<=dayIdxToday && i<7;i++){
+          const base = lastRoute[i]||0, cur = thisRoute[i]||0;
+          if (base>0){ const d = Math.round(((cur-base)/base)*100); if (d>=10){
+            // Try to find a reason tag for the day
+            const dayIso = W0.find(r=> (DateTime.fromISO(r.work_date,{zone:ZONE}).weekday+6)%7===i)?.weather_json || '';
+            let reason=''; try{ const m=/Reason:\s*([^·]+)/i.exec(dayIso); if(m) reason=m[1].trim(); }catch(_){ }
+            out.push(`${days[i]} (+${d}%)${reason? ' — '+reason:''}`);
+          } }
+        }
+        culprits.textContent = out.length ? ('Outliers: ' + out.join(' • ')) : 'Outliers: —';
+      }
+    }catch(_){ /* ignore */ }
     const d = (a,b)=> (b>0)? Math.round(((a-b)/b)*100) : null;
     const dH = d(sum(W0,r=>+r.hours||0), sum(W1,r=>+r.hours||0));
     let dP, dLx, lineLabelP='Parcels', lineLabelL='Letters';

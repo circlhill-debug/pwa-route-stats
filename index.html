@@ -414,6 +414,8 @@
     <canvas id="weekOverlay" class="sparkline" style="margin-top:4px;height:72px;max-height:72px"></canvas>
     <div id="mixText" class="sparkline-labels">—</div>
     <div id="mixEff" class="sparkline-labels">—</div>
+    <div class="sparkline-labels">Efficiency (min/vol) — lower is better</div>
+    <canvas id="effOverlay" class="sparkline" style="margin-top:4px;height:64px;max-height:64px"></canvas>
     <div id="mixCompareDetails" class="sparkline-summary" style="display:none; margin-top:6px">—</div>
     <canvas id="mixDrift" class="sparkline" style="margin-top:8px"></canvas>
     <div id="mixDriftText" class="sparkline-labels">—</div>
@@ -2707,6 +2709,60 @@ const setPill=(el,delta)=>{
                   const i=item.dataIndex; const lw=lastBy[i]; const tw=thisBy[i];
                   const hasTw = i<=dayIdxToday && tw!=null;
                   return hasTw? `This: ${tw} (Last: ${lw})` : `Last: ${lw}`;
+                }
+              }
+            }},
+            scales:{ x:{ display:true, grid:{ display:false } }, y:{ display:false } }
+          }
+        });
+      }
+    }catch(_){ /* no-op */ }
+    // Efficiency overlay sparkline (min/vol): last full week vs this Mon..today
+    try{
+      const effCanvas = document.getElementById('effOverlay');
+      if (effCanvas && window.Chart && effCanvas.getContext){
+        const ctx = effCanvas.getContext('2d');
+        if (effCanvas._chart) { try{ effCanvas._chart.destroy(); }catch(_){ } }
+        const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+        const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
+        const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
+        const routeByDow = (arr)=>{
+          const a = Array.from({length:7},()=>0);
+          arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= Math.max(0, (+r.route_minutes||0) - boxholderAdjMinutes(r)); });
+          return a.map(n=> +(Math.round(n*100)/100).toFixed(2));
+        };
+        const volByDow = (arr)=>{
+          const a = Array.from({length:7},()=>0);
+          arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= (+r.parcels||0) + 0.33*(+r.letters||0); });
+          return a.map(n=> +(Math.round(n*10)/10).toFixed(1));
+        };
+        const thisRoute = routeByDow(W0);
+        const thisVol   = volByDow(W0);
+        const lastRoute = routeByDow(W1full);
+        const lastVol   = volByDow(W1full);
+        const eff = (r,v)=> v>0? (r/v) : null;
+        const thisEff = thisRoute.map((r,i)=> eff(r, thisVol[i]||0));
+        const lastEff = lastRoute.map((r,i)=> eff(r, lastVol[i]||0));
+        const dayIdxToday = (now.weekday + 6) % 7;
+        const thisMasked = thisEff.map((v,i)=> i<=dayIdxToday? (v!=null? +(Math.round(v*100)/100).toFixed(2) : null) : null);
+        const lastVals   = lastEff.map(v=> v!=null? +(Math.round(v*100)/100).toFixed(2) : null);
+        effCanvas._chart = new Chart(ctx, {
+          type:'line',
+          data:{ labels:days, datasets:[
+            { label:'Last week', data:lastVals, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true },
+            { label:'This week', data:thisMasked, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true }
+          ]},
+          options:{ responsive:true, maintainAspectRatio:false,
+            layout:{ padding:{ top:8, right:16, bottom:6, left:16 } },
+            interaction:{ mode:'nearest', intersect:false },
+            plugins:{ legend:{ display:false }, tooltip:{
+              callbacks:{
+                title:(items)=> items && items[0]? items[0].label : '',
+                label:(item)=>{
+                  const i=item.dataIndex; const lw=lastVals[i]; const tw=thisEff[i];
+                  const hasTw = i<=dayIdxToday && tw!=null;
+                  const fmt = (n)=> n==null? '—' : (Math.round(n*100)/100).toFixed(2);
+                  return hasTw? `This: ${fmt(tw)} (Last: ${fmt(lw)})` : `Last: ${fmt(lw)}`;
                 }
               }
             }},

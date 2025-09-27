@@ -74,6 +74,7 @@ Where to look / edit
 - NEXT.md: Near‑term tasks and acceptance criteria (kept up‑to‑date as we ship).
 - project-plan.md: Broader roadmap, history notes, and accepted design decisions.
 - sw.js: Cache version string; bump when behavior or UI meaningfully changes.
+- docs/METRICS.md: Data sheet explaining what each metric means and how it’s computed.
 
 Flags (Settings dialog)
 - Weekday ticks, Progressive pills, Monthly Glance, Holiday adjustments, Trend pills

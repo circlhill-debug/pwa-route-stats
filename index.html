@@ -157,6 +157,17 @@
           <strong id="badgeOverall" style="font-size:20px">—</strong>
           <small class="muted">office + route vs expected</small>
         </div>
+        <!-- USPS tiles (moved up into primary snapshot row) -->
+        <div class="stat" id="tileUspsRouteEff">
+          <small>USPS Route Eff.</small>
+          <div><strong id="uspsRouteEffVal">—</strong></div>
+          <small class="muted">vs eval route</small>
+        </div>
+        <div class="stat" id="tileUspsHourly">
+          <small>Weekly $/h</small>
+          <div><strong id="uspsHourlyRateVal">—</strong></div>
+          <small class="muted">salary/52 ÷ hours (Mon..today)</small>
+        </div>
       </div>
       <div class="row" style="gap:8px;align-items:stretch">
         <div class="stat" id="tileWkHours" style="cursor:pointer" tabindex="0" title="Click for weekly hours breakdown">
@@ -204,17 +215,6 @@
         <small>Today Office Δ</small>
         <div><strong id="todayOfficeDelta">—</strong></div>
         <small class="muted">vs past same weekday (worked)</small>
-      </div>
-      <!-- USPS tiles -->
-      <div class="stat" id="tileUspsRouteEff">
-        <small>USPS Route Eff.</small>
-        <div><strong id="uspsRouteEffVal">—</strong></div>
-        <small class="muted">vs eval route</small>
-      </div>
-      <div class="stat" id="tileUspsHourly">
-        <small>Weekly $/h</small>
-        <div><strong id="uspsHourlyRateVal">—</strong></div>
-        <small class="muted">salary/52 ÷ hours (Mon..today)</small>
       </div>
       </div>
       <!-- Heaviness (today) attribution -->

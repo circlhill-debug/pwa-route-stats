@@ -205,6 +205,17 @@
         <div><strong id="todayOfficeDelta">—</strong></div>
         <small class="muted">vs past same weekday (worked)</small>
       </div>
+      <!-- USPS tiles -->
+      <div class="stat" id="tileUspsRouteEff">
+        <small>USPS Route Eff.</small>
+        <div><strong id="uspsRouteEffVal">—</strong></div>
+        <small class="muted">vs eval route</small>
+      </div>
+      <div class="stat" id="tileUspsHourly">
+        <small>Weekly $/h</small>
+        <div><strong id="uspsHourlyRateVal">—</strong></div>
+        <small class="muted">salary/52 ÷ hours (Mon..today)</small>
+      </div>
       </div>
       <!-- Heaviness (today) attribution -->
       <div id="todayHeaviness" class="row" style="display:none;gap:8px;flex-wrap:wrap;margin-top:6px"></div>
@@ -898,7 +909,7 @@ function moonPhaseEmoji(dateStr) {
     }
     authMsg.textContent = 'Signed in!';
     pwDlg.close();
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildHeavinessToday(allRows); buildWeekHeaviness(allRows);
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildHeavinessToday(allRows); buildWeekHeaviness(allRows); buildUspsTiles(allRows);
   });
 
   doSignup?.addEventListener('click', async ()=>{
@@ -1056,6 +1067,7 @@ function moonPhaseEmoji(dateStr) {
     buildOfficeCompare(allRows||[]);
     buildHeavinessToday(allRows||[]);
     buildWeekHeaviness(allRows||[]);
+    buildUspsTiles(allRows||[]);
     renderUspsEvalTag();
     
     applyTrendPillsVisibility();
@@ -1385,7 +1397,7 @@ function moonPhaseEmoji(dateStr) {
     const rows=[]; for(let i=1;i<lines.length;i++){ const cols=splitCsv(lines[i]); const get=(name)=> unq(cols[idx(name)] ?? ''); const r={ user_id:user.id, work_date:get('work_date'), route:'R1', status:get('status')||'worked', start_time:get('start_time')||null, depart_time:get('depart_time')||null, return_time:get('return_time')||null, end_time:get('end_time')||null, hours:+(get('hours')||0)||null, office_minutes:get('office_minutes')||null, route_minutes:get('route_minutes')||null, parcels:+(get('parcels')||0)||0, letters:+(get('letters')||0)||0, miles:+(get('miles')||0)||0, mood:get('mood')||null, notes:get('notes')||null, weather_json:get('weather_json')||null }; if(r.work_date) rows.push(r); }
     if(!rows.length){ alert('No rows detected'); return; }
     const chunk=200; for(let i=0;i<rows.length;i+=chunk){ const slice=rows.slice(i,i+chunk); const { error } = await sb.from('entries').insert(slice); if(error){ alert('Import failed: '+error.message); return; } }
-    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); alert(`Imported ${rows.length} rows into this account.`);
+    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildUspsTiles(allRows); alert(`Imported ${rows.length} rows into this account.`);
   });
 
   let dowChart, parcelsChart, lettersChart; function destroyCharts(){ [dowChart,parcelsChart,lettersChart].forEach(c=>c&&c.destroy()); }
@@ -1971,7 +1983,7 @@ const setPill=(el,delta)=>{
 
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{
-      const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows);
+    const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildUspsTiles(allRows);
     }).subscribe();
   }catch(e){ console.warn('Realtime not enabled:', e?.message||e); }
 
@@ -2174,7 +2186,7 @@ const setPill=(el,delta)=>{
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi(); applyFocusMode();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildUspsTiles(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi(); applyFocusMode();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);
@@ -2880,6 +2892,58 @@ const setPill=(el,delta)=>{
         });
       }
     }catch(_){ /* no-op */ }
+  }
+
+  // USPS tiles: Route Eff. vs eval, and Weekly $/h
+  function buildUspsTiles(rows){
+    try{
+      rows = filterRowsForView(rows||[]);
+      const routeTile = document.getElementById('tileUspsRouteEff');
+      const hourlyTile= document.getElementById('tileUspsHourly');
+      if (!routeTile || !hourlyTile) return;
+      const show = !!(FLAGS && FLAGS.uspsEval);
+      routeTile.style.display = show ? '' : 'none';
+      hourlyTile.style.display= show ? '' : 'none';
+      if (!show) return;
+      const cfg = USPS_EVAL || loadEval();
+      // Route Eff vs eval (today)
+      try{
+        const now = DateTime.now().setZone(ZONE);
+        const todayIso = now.toISODate();
+        const worked = (rows||[]).filter(r=> r.status!=='off');
+        const today = worked.find(r=> r.work_date === todayIso);
+        const valEl = document.getElementById('uspsRouteEffVal');
+        if (!today || cfg.hoursPerDay==null || cfg.officeHoursPerDay==null){ valEl.textContent='—'; valEl.style.color=''; }
+        else {
+          const expRouteMin = Math.max(0, (cfg.hoursPerDay - cfg.officeHoursPerDay)) * 60;
+          const todayRouteMin = Math.max(0, (+today.route_minutes||0) - boxholderAdjMinutes(today));
+          const delta = (expRouteMin>0) ? ((todayRouteMin - expRouteMin)/expRouteMin)*100 : null;
+          if (delta==null || !isFinite(delta)) { valEl.textContent='—'; valEl.style.color=''; }
+          else {
+            const s = Math.round(delta);
+            valEl.textContent = (s>=0? `↑ ${s}%` : `↓ ${Math.abs(s)}%`);
+            valEl.style.color = colorForDelta(delta).fg;
+          }
+        }
+      }catch(_){ /* ignore */ }
+      // Weekly hourly rate (Mon..today)
+      try{
+        const now = DateTime.now().setZone(ZONE);
+        const start = startOfWeekMonday(now);
+        const end   = now.endOf('day');
+        const inRange=(r)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=start && d<=end; };
+        const wk = (rows||[]).filter(r=> r.status!=='off' && inRange(r));
+        const hours = wk.reduce((t,r)=> t + (+r.hours||0), 0);
+        const val = document.getElementById('uspsHourlyRateVal');
+        if (!cfg || cfg.annualSalary==null || !hours){ val.textContent='—'; val.style.color=''; }
+        else {
+          const weeklyPay = cfg.annualSalary / 52;
+          const rate = weeklyPay / hours;
+          val.textContent = `$${(Math.round(rate*100)/100).toFixed(2)}`;
+          val.style.color='';
+        }
+      }catch(_){ /* ignore */ }
+    }catch(_){ /* ignore */ }
   }
 
   // Quick Filter (Phase 3): weekday selector with stats + optional sparkline

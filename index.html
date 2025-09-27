@@ -2199,10 +2199,7 @@ const setPill=(el,delta)=>{
           try{ (window.__collapse_set||(()=>{}))(id, true); }catch(_){ }
         });
       } else {
-        // Expand everything when Focus Mode turns off
-        targets.forEach(id=>{
-          try{ (window.__collapse_set||(()=>{}))(id, false); }catch(_){ }
-        });
+        // Leave sections as-is when Focus Mode is off to preserve user + default collapsed states
       }
     }catch(_){ /* no-op */ }
   }

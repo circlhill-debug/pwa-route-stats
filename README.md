@@ -37,17 +37,21 @@ Phase 4 (planned)
 - Optional AI summary: pluggable provider behind a flag; falls back to rule‑based. No blocking on API availability; key stays local.
 
 Latest features (main)
-- Smart Summary (rule‑based): concise Hours/Volume/Efficiency deltas; shows daily under the title (top‑movers ≥5%).
+- USPS Evaluation summary: fixed tag at top‑right with Route/Eval/Boxes/Salary/Hours per day; configurable in Settings.
+- USPS tiles:
+  - Hours vs Eval: weekly progress percent (Mon..today) vs eval hours/day (includes office). Tooltip shows “Xh of Yh over N day(s)”.
+  - Weekly $/h: 4‑week rolling average (completed weeks), derived from annual salary. Tooltip shows total hours used.
+- Vacation Mode: exclude a date range from analytics (Settings → Vacation Mode). Table remains unchanged.
+- Smart Summary (rule‑based): concise Hours/Volume/Efficiency deltas; daily under the title (top‑movers ≥5%).
+- Headline Digest (weekly): one‑line summary on Wednesdays after 5pm (flag‑controlled).
 - Trending Factors: quick culprit pills (Office / Route / Volume) for Mon..today vs last Mon..today.
-- Weekly Compare overlays: Volume and Office — blue baseline = last week (Mon..Sun), yellow overlay = this week (Mon..today) with tooltips.
+- Weekly Compare overlays: Volume and Office — blue baseline = last week (Mon..Sun), yellow overlay = this week (Mon..today).
 - Heaviness attribution: Today and Week pill rows (Office vs Route vs Total) with hours and % attribution.
-- Collapsible dashboard (experimental): per‑section Collapse/Expand with persisted state.
-- Focus Mode: one‑tap collapse of all non‑snapshot sections; Off expands all sections.
-- Quick Entry (experimental): compact “Hit Street (now)” and “Return (now)” buttons in Add Entry header when collapsed.
-- Monthly Glance: full‑width sparklines with clean tooltips and a small Avg pill above each row; always visible with text fallback.
-- Quick Filter: Normalized badge, optional Ruler (0/50/100) when 2+ metrics selected, All toggle, and a Days badge.
-- Boxholders: x1/x2/x3 (maps from legacy Light/Medium/Heavy); route efficiency uses adjusted route minutes (−30/−45/−60m) but stored times remain unchanged.
-- Copy: “Average Hours by Weekday” label clarifies the DOW chart.
+- Snapshot help: Volume/Route Eff/Overall tiles are clickable for a short, plain‑English explanation; hover tooltips remain.
+- Collapsible dashboard (experimental): per‑section collapse with persisted state; Recent Entries defaults to collapsed; headers toggle.
+- Quick Filter: auto‑expands when a day is selected (if collapsed), Normalized badge and optional Ruler (0/50/100), All toggle, Days badge.
+- Monthly Glance: 4‑week slim sparklines with Avg pill; text fallback when charts unavailable.
+- Boxholders: x1/x2/x3 (Light/Medium/Heavy); route efficiency uses adjusted route minutes (−30/−45/−60m) but stored times remain unchanged.
 
 ---
 
@@ -74,10 +78,20 @@ Where to look / edit
 Flags (Settings dialog)
 - Weekday ticks, Progressive pills, Monthly Glance, Holiday adjustments, Trend pills
 - Same range weekly totals, Headline digest, Quick Filter, Mix Viz, Baseline compare
+- Collapsed dashboard, Focus Mode, Quick Entry, USPS Evaluation, Vacation Mode
 
 Force Refresh (to pick up updates)
 1) Open Settings → click “Force Refresh (update + clear cache)”.
 2) The page reloads; confirm top‑right version tag shows today’s date (vYYYY‑MM‑DD).
+
+What the snapshot tiles mean (at a glance)
+- Volume (0–10): percentile rank vs your recent worked days for parcels + 0.33×letters. Not “percent of max”. Click tile for details.
+- Route Eff. (0–10): adjusted route minutes vs this weekday’s typical average (boxholder offsets applied). Click tile for details.
+- Overall (0–10): today’s total hours vs this weekday’s expected average. Click tile for details.
+
+Holiday handling
+- Mark a day “Off day” and check “Holiday (observed)” to carry that day into the next weekday’s baseline (prevents outlier comparisons).
+- Works for any weekday (e.g., Tue → Wed). Sunday holidays do not carry into Monday (new week).
 
 If chat/context resets
 - Open `NEXT.md` for the immediate TODO list and current tag.

@@ -166,7 +166,7 @@
         <div class="stat" id="tileUspsHourly">
           <small>Weekly $/h</small>
           <div><strong id="uspsHourlyRateVal">—</strong></div>
-          <small class="muted">salary/52 ÷ hours (Mon..today)</small>
+          <small class="muted">Mon..today</small>
         </div>
       </div>
       <div class="row" style="gap:8px;align-items:stretch">
@@ -2906,7 +2906,7 @@ const setPill=(el,delta)=>{
       hourlyTile.style.display= show ? '' : 'none';
       if (!show) return;
       const cfg = USPS_EVAL || loadEval();
-      // Route Eff vs eval (this week, running total Mon..today)
+      // Hours vs eval (this week, running total Mon..today) — includes office time
       try{
         const now = DateTime.now().setZone(ZONE);
         const start = startOfWeekMonday(now);
@@ -2915,18 +2915,17 @@ const setPill=(el,delta)=>{
         const worked = (rows||[]).filter(r=> r.status!=='off' && inRange(r));
         const days = Array.from(new Set(worked.map(r=> r.work_date))).length;
         const valEl = document.getElementById('uspsRouteEffVal');
-        if (!days || cfg.hoursPerDay==null || cfg.officeHoursPerDay==null){ valEl.textContent='—'; valEl.style.color=''; }
+        if (!days || cfg.hoursPerDay==null){ valEl.textContent='—'; valEl.style.color=''; }
         else {
-          const expRouteMinPerDay = Math.max(0, (cfg.hoursPerDay - cfg.officeHoursPerDay)) * 60;
-          const expRouteMinTotal = expRouteMinPerDay * days;
-          const routeMinTotal = worked.reduce((t,r)=> t + Math.max(0, (+r.route_minutes||0) - boxholderAdjMinutes(r)), 0);
-          const delta = (expRouteMinTotal>0) ? ((routeMinTotal - expRouteMinTotal)/expRouteMinTotal)*100 : null;
+          const expHoursTotal = Math.max(0, cfg.hoursPerDay) * days;
+          const hoursTotal = worked.reduce((t,r)=> t + (+r.hours||0), 0);
+          const delta = (expHoursTotal>0) ? ((hoursTotal - expHoursTotal)/expHoursTotal)*100 : null;
           if (delta==null || !isFinite(delta)) { valEl.textContent='—'; valEl.style.color=''; }
           else {
             const s = Math.round(delta);
             valEl.textContent = (s>=0? `↑ ${s}%` : `↓ ${Math.abs(s)}%`);
             valEl.style.color = colorForDelta(delta).fg;
-            valEl.title = `Adj route ${Math.round(routeMinTotal)} min vs eval ${Math.round(expRouteMinTotal)} min over ${days} day(s)`;
+            valEl.title = `${(Math.round(hoursTotal*100)/100).toFixed(2)}h vs eval ${(Math.round(expHoursTotal*100)/100).toFixed(2)}h over ${days} day(s)`;
           }
         }
       }catch(_){ /* ignore */ }

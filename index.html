@@ -161,7 +161,7 @@
         <div class="stat" id="tileUspsRouteEff">
           <small>USPS Route Eff.</small>
           <div><strong id="uspsRouteEffVal">—</strong></div>
-          <small class="muted">vs eval route</small>
+          <small class="muted">this week vs eval route</small>
         </div>
         <div class="stat" id="tileUspsHourly">
           <small>Weekly $/h</small>
@@ -2906,23 +2906,27 @@ const setPill=(el,delta)=>{
       hourlyTile.style.display= show ? '' : 'none';
       if (!show) return;
       const cfg = USPS_EVAL || loadEval();
-      // Route Eff vs eval (today)
+      // Route Eff vs eval (this week, running total Mon..today)
       try{
         const now = DateTime.now().setZone(ZONE);
-        const todayIso = now.toISODate();
-        const worked = (rows||[]).filter(r=> r.status!=='off');
-        const today = worked.find(r=> r.work_date === todayIso);
+        const start = startOfWeekMonday(now);
+        const end   = now.endOf('day');
+        const inRange=(r)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=start && d<=end; };
+        const worked = (rows||[]).filter(r=> r.status!=='off' && inRange(r));
+        const days = Array.from(new Set(worked.map(r=> r.work_date))).length;
         const valEl = document.getElementById('uspsRouteEffVal');
-        if (!today || cfg.hoursPerDay==null || cfg.officeHoursPerDay==null){ valEl.textContent='—'; valEl.style.color=''; }
+        if (!days || cfg.hoursPerDay==null || cfg.officeHoursPerDay==null){ valEl.textContent='—'; valEl.style.color=''; }
         else {
-          const expRouteMin = Math.max(0, (cfg.hoursPerDay - cfg.officeHoursPerDay)) * 60;
-          const todayRouteMin = Math.max(0, (+today.route_minutes||0) - boxholderAdjMinutes(today));
-          const delta = (expRouteMin>0) ? ((todayRouteMin - expRouteMin)/expRouteMin)*100 : null;
+          const expRouteMinPerDay = Math.max(0, (cfg.hoursPerDay - cfg.officeHoursPerDay)) * 60;
+          const expRouteMinTotal = expRouteMinPerDay * days;
+          const routeMinTotal = worked.reduce((t,r)=> t + Math.max(0, (+r.route_minutes||0) - boxholderAdjMinutes(r)), 0);
+          const delta = (expRouteMinTotal>0) ? ((routeMinTotal - expRouteMinTotal)/expRouteMinTotal)*100 : null;
           if (delta==null || !isFinite(delta)) { valEl.textContent='—'; valEl.style.color=''; }
           else {
             const s = Math.round(delta);
             valEl.textContent = (s>=0? `↑ ${s}%` : `↓ ${Math.abs(s)}%`);
             valEl.style.color = colorForDelta(delta).fg;
+            valEl.title = `Adj route ${Math.round(routeMinTotal)} min vs eval ${Math.round(expRouteMinTotal)} min over ${days} day(s)`;
           }
         }
       }catch(_){ /* ignore */ }

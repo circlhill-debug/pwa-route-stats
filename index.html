@@ -166,7 +166,7 @@
         <div class="stat" id="tileUspsHourly">
           <small>Weekly $/h</small>
           <div><strong id="uspsHourlyRateVal">—</strong></div>
-          <small class="muted">Mon..today</small>
+          <small class="muted">4w avg</small>
         </div>
       </div>
       <div class="row" style="gap:8px;align-items:stretch">
@@ -2929,21 +2929,33 @@ const setPill=(el,delta)=>{
           }
         }
       }catch(_){ /* ignore */ }
-      // Weekly hourly rate (Mon..today)
+      // Weekly hourly rate — 4-week rolling average of $/h
       try{
         const now = DateTime.now().setZone(ZONE);
-        const start = startOfWeekMonday(now);
-        const end   = now.endOf('day');
-        const inRange=(r)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=start && d<=end; };
-        const wk = (rows||[]).filter(r=> r.status!=='off' && inRange(r));
-        const hours = wk.reduce((t,r)=> t + (+r.hours||0), 0);
+        const weeksBack = 4;
+        const ranges = [];
+        for (let w=1; w<=weeksBack; w++){
+          ranges.push({ s: startOfWeekMonday(now.minus({weeks:w})), e: endOfWeekSunday(now.minus({weeks:w})) });
+        }
         const val = document.getElementById('uspsHourlyRateVal');
-        if (!cfg || cfg.annualSalary==null || !hours){ val.textContent='—'; val.style.color=''; }
+        if (!cfg || cfg.annualSalary==null){ val.textContent='—'; val.style.color=''; }
         else {
           const weeklyPay = cfg.annualSalary / 52;
-          const rate = weeklyPay / hours;
-          val.textContent = `$${(Math.round(rate*100)/100).toFixed(2)}`;
-          val.style.color='';
+          let totalHours = 0, usedWeeks = 0;
+          for (const rg of ranges){
+            const wk = (rows||[]).filter(r=> r.status!=='off' && (()=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=rg.s && d<=rg.e; })());
+            const h = wk.reduce((t,r)=> t + (+r.hours||0), 0);
+            if (h > 0){ totalHours += h; usedWeeks++; }
+          }
+          if (!usedWeeks || totalHours<=0){
+            val.textContent='—'; val.style.color='';
+          } else {
+            // Weighted average across weeks: (usedWeeks * weeklyPay) / totalHours
+            const rate = (usedWeeks * weeklyPay) / totalHours;
+            val.textContent = `$${(Math.round(rate*100)/100).toFixed(2)}`;
+            val.title = `${usedWeeks}wk avg: ${totalHours.toFixed(2)}h total`;
+            val.style.color='';
+          }
         }
       }catch(_){ /* ignore */ }
     }catch(_){ /* ignore */ }

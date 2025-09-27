@@ -2673,7 +2673,7 @@ const setPill=(el,delta)=>{
       console.error('[MixViz] render error', e);
       if (details) details.innerHTML = '<div>Compare unavailable — data not ready.</div>';
     }
-    // Week overlay sparkline (this Mon..today vs last Mon..Sun)
+    // Week overlay sparkline (this Mon..today vs last Mon..Sun) + efficiency line
     try{
       if (overlay && window.Chart && overlay.getContext){
         const ctx = overlay.getContext('2d');
@@ -2681,23 +2681,35 @@ const setPill=(el,delta)=>{
         const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
         const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
         const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
-        // Build daily volume arrays
+        // Build daily arrays
         const volByDow = (arr)=>{
           const a = Array.from({length:7},()=>0);
           arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= (+r.parcels||0) + 0.33*(+r.letters||0); });
           return a.map(n=> +(Math.round(n*10)/10).toFixed(1));
         };
+        const routeByDow = (arr)=>{
+          const a = Array.from({length:7},()=>0);
+          arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= Math.max(0, (+r.route_minutes||0) - boxholderAdjMinutes(r)); });
+          return a.map(n=> +(Math.round(n*100)/100).toFixed(2));
+        };
+        const effArr = (rArr,vArr)=> rArr.map((rv,i)=>{ const v=vArr[i]; return (v && v>0)? +(Math.round((rv/v)*100)/100).toFixed(2) : null; });
         const thisBy = volByDow(W0);
         // Baseline uses LAST FULL WEEK (Mon..Sun) so the blue line is complete
         const W1full = worked.filter(r=> inRange(r, startLast, endLastFull));
         const lastBy = volByDow(W1full);
+        const thisRoute = routeByDow(W0);
+        const lastRoute = routeByDow(W1full);
+        const thisEff = effArr(thisRoute, thisBy);
+        const lastEff = effArr(lastRoute, lastBy);
         const dayIdxToday = (now.weekday + 6) % 7;
         const thisMasked = thisBy.map((v,i)=> i<=dayIdxToday? v : null);
+        const thisEffMasked = thisEff.map((v,i)=> i<=dayIdxToday? v : null);
         overlay._chart = new Chart(ctx, {
           type:'line',
           data:{ labels:days, datasets:[
-            { label:'Last week', data:lastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true },
-            { label:'This week', data:thisMasked, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true }
+            { label:'Vol last', data:lastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Vol this', data:thisMasked, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Eff (min/vol)', data:thisEffMasked, borderColor:'#9aa0aa', backgroundColor:'transparent', borderDash:[4,3], tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true, yAxisID:'y2' }
           ]},
           options:{ responsive:true, maintainAspectRatio:false,
             layout:{ padding:{ top:12, right:16, bottom:10, left:16 } },
@@ -2708,11 +2720,15 @@ const setPill=(el,delta)=>{
                 label:(item)=>{
                   const i=item.dataIndex; const lw=lastBy[i]; const tw=thisBy[i];
                   const hasTw = i<=dayIdxToday && tw!=null;
-                  return hasTw? `This: ${tw} (Last: ${lw})` : `Last: ${lw}`;
+                  if (item.dataset?.label === 'Eff (min/vol)'){
+                    const ew=thisEff[i]; const el=lastEff[i]; const fmt=(n)=> n==null?'—':(Math.round(n*100)/100).toFixed(2);
+                    return hasTw? `This eff: ${fmt(ew)} (Last: ${fmt(el)})` : `Eff last: ${fmt(el)}`;
+                  }
+                  return hasTw? `This vol: ${tw} (Last: ${lw})` : `Last vol: ${lw}`;
                 }
               }
             }},
-            scales:{ x:{ display:true, grid:{ display:false } }, y:{ display:false } }
+            scales:{ x:{ display:true, grid:{ display:false } }, y:{ display:false }, y2:{ display:false, position:'right' } }
           }
         });
       }

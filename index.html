@@ -2919,13 +2919,13 @@ const setPill=(el,delta)=>{
         else {
           const expHoursTotal = Math.max(0, cfg.hoursPerDay) * days;
           const hoursTotal = worked.reduce((t,r)=> t + (+r.hours||0), 0);
-          const delta = (expHoursTotal>0) ? ((hoursTotal - expHoursTotal)/expHoursTotal)*100 : null;
-          if (delta==null || !isFinite(delta)) { valEl.textContent='—'; valEl.style.color=''; }
+          const progress = (expHoursTotal>0) ? (hoursTotal / expHoursTotal) * 100 : null;
+          if (progress==null || !isFinite(progress)) { valEl.textContent='—'; valEl.style.color=''; }
           else {
-            const s = Math.round(delta);
-            valEl.textContent = (s>=0? `↑ ${s}%` : `↓ ${Math.abs(s)}%`);
-            valEl.style.color = colorForDelta(delta).fg;
-            valEl.title = `${(Math.round(hoursTotal*100)/100).toFixed(2)}h vs eval ${(Math.round(expHoursTotal*100)/100).toFixed(2)}h over ${days} day(s)`;
+            const s = Math.round(progress);
+            valEl.textContent = `${s}%`;
+            valEl.style.color = '';
+            valEl.title = `${(Math.round(hoursTotal*100)/100).toFixed(2)}h of ${(Math.round(expHoursTotal*100)/100).toFixed(2)}h eval over ${days} day(s)`;
           }
         }
       }catch(_){ /* ignore */ }

@@ -2789,7 +2789,7 @@ const setPill=(el,delta)=>{
       const items = [];
       if (dh!=null && Math.abs(dh) >= 5) items.push({ k:'Hours', v:dh });
       if (dv!=null && Math.abs(dv) >= 5) items.push({ k:'Volume', v:dv });
-      if (di!=null && Math.abs(di) >= 5) items.push({ k:'Eff. (min/vol)', v:di });
+      if (di!=null && Math.abs(di) >= 5) items.push({ k:'Efficiency', v:di });
       // sort by absolute magnitude, descending, and pick top 2 movers
       items.sort((a,b)=> Math.abs(b.v) - Math.abs(a.v));
       const top = items.slice(0,2);

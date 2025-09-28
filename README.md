@@ -45,6 +45,7 @@ Latest features (main)
 - Smart Summary (rule‑based): concise Hours/Volume/Efficiency deltas; daily under the title (top‑movers ≥5%).
 - Headline Digest (weekly): one‑line summary on Wednesdays after 5pm (flag‑controlled).
 - Trending Factors: quick culprit pills (Office / Route / Volume) for Mon..today vs last Mon..today.
+- Day Compare (experimental): compare any worked day against last same weekday/baseline/manual pick; shows subject/reference pills, deltas, and drives the Daily Movers strip inside the card.
 - Weekly Compare overlays: Volume and Office — blue baseline = last week (Mon..Sun), yellow overlay = this week (Mon..today).
 - Heaviness attribution: Today and Week pill rows (Office vs Route vs Total) with hours and % attribution.
 - Snapshot help: Volume/Route Eff/Overall tiles are clickable for a short, plain‑English explanation; hover tooltips remain.

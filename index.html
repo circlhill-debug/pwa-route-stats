@@ -405,8 +405,75 @@
         <span id="qfNormBadge" class="pill" style="display:none;border-color:var(--brand);color:var(--brand)" title="Values are normalized (0–100) for comparability">Normalized</span>
         <span id="qfDaysBadge" class="pill" title="Number of filtered days" style="display:none"></span>
       </div>
-      <canvas id="qfSpark" class="sparkline" style="height:64px;max-height:64px"></canvas>
-      <div id="qfText" class="sparkline-labels">—</div>
+  <canvas id="qfSpark" class="sparkline" style="height:64px;max-height:64px"></canvas>
+  <div id="qfText" class="sparkline-labels">—</div>
+  </div>
+  </section>
+
+  <!-- Day Compare (experimental) -->
+  <section class="card" id="dayCompareCard" style="grid-column:1/-1; display:none">
+    <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+      <div>
+        <h3 style="margin:0 0 6px 0">Day Compare</h3>
+        <small class="muted">Pick a day, then compare against last same weekday, weekday baseline, or any prior entry.</small>
+      </div>
+      <button id="dcToggleRef" class="ghost" type="button" style="display:none">Cycle reference</button>
+    </div>
+    <div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:10px">
+      <div style="min-width:220px">
+        <label for="dcSubjectSelect">Subject day</label>
+        <select id="dcSubjectSelect"></select>
+      </div>
+      <div style="min-width:220px">
+        <label for="dcReferenceMode">Reference</label>
+        <select id="dcReferenceMode">
+          <option value="last">Last same weekday</option>
+          <option value="baseline">Weekday baseline (avg)</option>
+          <option value="manual">Pick another day…</option>
+        </select>
+      </div>
+      <div id="dcManualPicker" style="min-width:220px;display:none">
+        <label for="dcManualSelect">Reference day</label>
+        <select id="dcManualSelect"></select>
+      </div>
+    </div>
+    <div id="dcDailyMovers" class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px;display:none"></div>
+    <div id="dcContent" style="margin-top:16px">
+      <div id="dcEmpty" style="color:var(--muted);font-size:14px">Select a worked day to compare.</div>
+      <div id="dcCompare" style="display:none">
+        <div class="row" style="gap:12px;flex-wrap:wrap">
+          <div class="card" style="flex:1;min-width:260px;border:1px solid var(--border);background:rgba(16,20,28,0.6);padding:12px">
+            <small class="muted">Subject</small>
+            <h4 id="dcSubjectLabel" style="margin:4px 0 8px 0">—</h4>
+            <div class="row" style="gap:10px;flex-wrap:wrap" id="dcSubjectPills"></div>
+            <div id="dcSubjectNotes" style="margin-top:10px;font-size:13px;color:var(--muted)"></div>
+          </div>
+          <div class="card" style="flex:1;min-width:260px;border:1px solid var(--border);background:rgba(16,20,28,0.6);padding:12px">
+            <small class="muted">Reference</small>
+            <h4 id="dcReferenceLabel" style="margin:4px 0 8px 0">—</h4>
+            <div class="row" style="gap:10px;flex-wrap:wrap" id="dcReferencePills"></div>
+            <div id="dcReferenceNotes" style="margin-top:10px;font-size:13px;color:var(--muted)"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:12px;border:1px solid var(--border);background:rgba(16,20,28,0.45);padding:12px">
+          <small class="muted">Delta focus</small>
+          <div class="row" id="dcHighlights" style="gap:10px;flex-wrap:wrap;margin-top:6px"></div>
+          <div id="dcReasoning" style="margin-top:10px;color:var(--muted);font-size:13px"></div>
+        </div>
+        <div class="card" style="margin-top:12px;border:1px solid var(--border);background:transparent;padding:12px">
+          <table style="width:100%;border-collapse:collapse;font-size:14px">
+            <thead>
+              <tr style="color:var(--muted);text-transform:uppercase;font-size:12px">
+                <th style="padding:6px 4px;text-align:left">Metric</th>
+                <th style="padding:6px 4px;text-align:right">Subject</th>
+                <th style="padding:6px 4px;text-align:right">Reference</th>
+                <th style="padding:6px 4px;text-align:right">Δ</th>
+              </tr>
+            </thead>
+            <tbody id="dcTableBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -657,8 +724,8 @@
   const VACAY_KEY = 'routeStats.vacation.v1';
   const BASELINE_KEY = 'routeStats.baseline.v1';
   function loadFlags(){
-    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false, uspsEval:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
-    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false, uspsEval:true }; }
+    try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false, uspsEval:true, dayCompare:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
+    catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false, uspsEval:true, dayCompare:true }; }
   }
   function loadEval(){
     try{
@@ -921,7 +988,7 @@ function moonPhaseEmoji(dateStr) {
     }
     authMsg.textContent = 'Signed in!';
     pwDlg.close();
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildHeavinessToday(allRows); buildWeekHeaviness(allRows); buildUspsTiles(allRows);
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildHeavinessToday(allRows); buildWeekHeaviness(allRows); buildUspsTiles(allRows);
   });
 
   doSignup?.addEventListener('click', async ()=>{
@@ -978,6 +1045,7 @@ function moonPhaseEmoji(dateStr) {
   const flagCollapsedUi = document.getElementById('flagCollapsedUi');
   const flagQuickEntry = document.getElementById('flagQuickEntry');
   const flagSmartSummary = document.getElementById('flagSmartSummary');
+  const flagDayCompare = document.getElementById('flagDayCompare');
   const flagUspsEval = document.getElementById('flagUspsEval');
   // USPS Eval inputs
   const evalRouteId = document.getElementById('evalRouteId');
@@ -1007,6 +1075,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagCollapsedUi) flagCollapsedUi.checked = !!FLAGS.collapsedUi;
     if (flagQuickEntry) flagQuickEntry.checked = !!FLAGS.quickEntry;
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
+    if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
     // populate USPS eval fields
     try{
@@ -1043,6 +1112,7 @@ function moonPhaseEmoji(dateStr) {
     if (flagCollapsedUi) FLAGS.collapsedUi = !!flagCollapsedUi.checked;
     if (flagQuickEntry) FLAGS.quickEntry = !!flagQuickEntry.checked;
     if (flagSmartSummary) FLAGS.smartSummary = !!flagSmartSummary.checked;
+    if (flagDayCompare) FLAGS.dayCompare = !!flagDayCompare.checked;
     if (flagUspsEval) FLAGS.uspsEval = !!flagUspsEval.checked;
     // read USPS eval fields
     try{
@@ -1077,6 +1147,7 @@ function moonPhaseEmoji(dateStr) {
     buildSmartSummary(allRows||[]);
     buildTrendingFactors(allRows||[]);
     buildOfficeCompare(allRows||[]);
+    buildDayCompare(allRows||[]);
     buildHeavinessToday(allRows||[]);
     buildWeekHeaviness(allRows||[]);
     buildUspsTiles(allRows||[]);
@@ -1212,6 +1283,458 @@ function moonPhaseEmoji(dateStr) {
     const baseH = (+row.route_minutes||0);
     const adjH  = boxholderAdjMinutes(row) / 60;
     return Math.max(0, +(baseH - adjH).toFixed(2));
+  }
+
+  const WEEKDAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+  function roundVal(val, decimals=2){
+    const n = Number(val);
+    if (!Number.isFinite(n)) return null;
+    const factor = Math.pow(10, decimals);
+    return Math.round(n * factor) / factor;
+  }
+
+  function safeNumber(val){
+    const n = Number(val);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function computeVolume(parcels, letters){
+    return safeNumber(parcels) + 0.33 * safeNumber(letters);
+  }
+
+  function extractReasonTag(weatherStr){
+    if (!weatherStr) return null;
+    const match = /Reason:\s*([^·]+)/i.exec(String(weatherStr));
+    return match ? match[1].trim() : null;
+  }
+
+  function colorForDelta(pct){
+    if (pct == null) return { fg:'var(--muted)', bg:'transparent', bc:'var(--border)' };
+    if (!FLAGS || !FLAGS.progressivePills) {
+      return { fg: pct >= 0 ? 'var(--good)' : 'var(--bad)', bg:'transparent', bc:'transparent' };
+    }
+    const clamp = Math.max(-60, Math.min(60, pct));
+    const t = Math.abs(clamp)/60;
+    const green = ['#A8E6A3','#4CAF50','#087F23'];
+    const red   = ['#F7A6A6','#F44336','#B71C1C'];
+    const step = (t < 0.17) ? 0 : (t < 0.42 ? 1 : 2);
+    const fg = clamp >= 0 ? green[step] : red[step];
+    return { fg, bg:'transparent', bc:'transparent' };
+  }
+
+  function dayMetricsFromRow(row, opts){
+    if (!row || row.status === 'off') return null;
+    const iso = row.work_date;
+    const parcelsRaw = safeNumber(row.parcels);
+    const lettersRaw = safeNumber(row.letters);
+    const officeRaw = safeNumber(row.office_minutes);
+    const routeRaw = routeAdjustedHours(row);
+    const totalRaw = row.hours!=null ? safeNumber(row.hours) : roundVal(officeRaw + routeRaw, 2);
+    const milesRaw = safeNumber(row.miles);
+    const volumeRaw = computeVolume(parcelsRaw, lettersRaw);
+    const efficiencyMinutes = (routeRaw > 0 && volumeRaw > 0) ? roundVal((routeRaw * 60) / volumeRaw, 1) : null;
+
+    return {
+      type: opts?.type || 'day',
+      source: opts?.source || 'day',
+      iso,
+      dow: dowIndex(iso),
+      label: opts?.label || iso,
+      count: 1,
+      officeHours: roundVal(officeRaw, 2) ?? 0,
+      routeHours: roundVal(routeRaw, 2) ?? 0,
+      totalHours: roundVal(totalRaw, 2) ?? 0,
+      parcels: Math.round(parcelsRaw),
+      letters: Math.round(lettersRaw),
+      miles: roundVal(milesRaw, 1) ?? 0,
+      volume: roundVal(volumeRaw, 2) ?? 0,
+      efficiencyMinutes,
+      mood: row.mood || null,
+      notes: row.notes || null,
+      weather: row.weather_json || null,
+      reason: extractReasonTag(row.weather_json),
+      raw: row
+    };
+  }
+
+  function aggregateDayMetrics(rows, opts){
+    const valid = (rows || []).filter(r => r && r.status !== 'off');
+    if (!valid.length) return null;
+    const totals = valid.reduce((acc, row)=>{
+      const office = safeNumber(row.office_minutes);
+      const route = routeAdjustedHours(row);
+      const total = row.hours!=null ? safeNumber(row.hours) : (office + route);
+      const parcels = safeNumber(row.parcels);
+      const letters = safeNumber(row.letters);
+      const miles = safeNumber(row.miles);
+      const volume = computeVolume(parcels, letters);
+      acc.office += office;
+      acc.route += route;
+      acc.total += total;
+      acc.parcels += parcels;
+      acc.letters += letters;
+      acc.miles += miles;
+      acc.volume += volume;
+      return acc;
+    }, { office:0, route:0, total:0, parcels:0, letters:0, miles:0, volume:0 });
+    const count = valid.length;
+    const officeAvg = roundVal(totals.office / count, 2) ?? 0;
+    const routeAvg = roundVal(totals.route / count, 2) ?? 0;
+    const totalAvg = roundVal(totals.total / count, 2) ?? 0;
+    const parcelsAvg = Math.round(totals.parcels / count);
+    const lettersAvg = Math.round(totals.letters / count);
+    const milesAvg = roundVal(totals.miles / count, 1) ?? 0;
+    const volumeAvg = roundVal(totals.volume / count, 2) ?? 0;
+    const efficiencyMinutes = (routeAvg > 0 && volumeAvg > 0) ? roundVal((routeAvg * 60) / volumeAvg, 1) : null;
+
+    return {
+      type: opts?.type || 'average',
+      source: opts?.source || 'average',
+      iso: null,
+      dow: opts?.dow ?? null,
+      label: opts?.label || 'Average',
+      count,
+      officeHours: officeAvg,
+      routeHours: routeAvg,
+      totalHours: totalAvg,
+      parcels: parcelsAvg,
+      letters: lettersAvg,
+      miles: milesAvg,
+      volume: volumeAvg,
+      efficiencyMinutes,
+      mood: null,
+      notes: null,
+      weather: null,
+      reason: null,
+      raw: { rows: valid, totals }
+    };
+  }
+
+  function collectWorkedDays(rows, limit=365){
+    const all = filterRowsForView(rows || []).filter(r=> r && r.status !== 'off' && r.work_date);
+    const sorted = [...all].sort((a,b)=> a.work_date < b.work_date ? 1 : -1);
+    return (limit && sorted.length > limit) ? sorted.slice(0, limit) : sorted;
+  }
+
+  function buildDayCompareContext(rows, limit=365){
+    const worked = collectWorkedDays(rows, limit);
+    const byDate = new Map();
+    worked.forEach(r=> byDate.set(r.work_date, r));
+    return { worked, byDate };
+  }
+
+  function getSubjectMetrics(context, iso){
+    if (!context) return null;
+    const row = (iso && context.byDate.get(iso)) || context.worked[0];
+    return row ? dayMetricsFromRow(row, { source:'subject', label: row.work_date }) : null;
+  }
+
+  function getLastSameWeekdayMetrics(context, iso){
+    if (!context || !iso) return null;
+    const targetDow = dowIndex(iso);
+    for (const row of context.worked){
+      if (row.work_date === iso) continue;
+      if (row.work_date < iso && dowIndex(row.work_date) === targetDow){
+        const label = `Last ${WEEKDAY_NAMES[targetDow]} (${row.work_date})`;
+        return dayMetricsFromRow(row, { source:'lastSameWeekday', label });
+      }
+    }
+    return null;
+  }
+
+  function getWeekdayBaselineMetrics(context, iso){
+    if (!context || !iso) return null;
+    const targetDow = dowIndex(iso);
+    const candidates = context.worked.filter(r=> r.work_date !== iso && dowIndex(r.work_date) === targetDow);
+    if (!candidates.length) return null;
+    const label = `Typical ${WEEKDAY_NAMES[targetDow]}`;
+    return aggregateDayMetrics(candidates, { source:'weekdayAverage', type:'average', dow: targetDow, label });
+  }
+
+  function getCustomReferenceMetrics(context, iso){
+    if (!context || !iso) return null;
+   const row = context.byDate.get(iso);
+    return row ? dayMetricsFromRow(row, { source:'manualReference', label: row.work_date }) : null;
+  }
+
+  const DAY_COMPARE_STORE = {
+    subject: 'routeStats.dayCompare.subject',
+    mode: 'routeStats.dayCompare.mode',
+    manual: 'routeStats.dayCompare.manual'
+  };
+
+  function buildDayCompare(rows){
+    rows = filterRowsForView(rows||[]);
+    const card = document.getElementById('dayCompareCard');
+    const dailyMovers = document.getElementById('dcDailyMovers');
+    if (!card){ if (dailyMovers) dailyMovers.style.display='none'; return; }
+    if (!FLAGS || !FLAGS.dayCompare){
+      card.style.display = 'none';
+      if (dailyMovers) dailyMovers.style.display='none';
+      return;
+    }
+    card.style.display = 'block';
+
+    const subjectSelect   = document.getElementById('dcSubjectSelect');
+    const referenceSelect = document.getElementById('dcReferenceMode');
+    const manualPicker    = document.getElementById('dcManualPicker');
+    const manualSelect    = document.getElementById('dcManualSelect');
+    const emptyState      = document.getElementById('dcEmpty');
+    const compareState    = document.getElementById('dcCompare');
+    const subjectLabel    = document.getElementById('dcSubjectLabel');
+    const referenceLabel  = document.getElementById('dcReferenceLabel');
+    const subjectPills    = document.getElementById('dcSubjectPills');
+    const referencePills  = document.getElementById('dcReferencePills');
+    const subjectNotes    = document.getElementById('dcSubjectNotes');
+    const referenceNotes  = document.getElementById('dcReferenceNotes');
+    const highlightsRow   = document.getElementById('dcHighlights');
+    const reasoningEl     = document.getElementById('dcReasoning');
+    const tableBody       = document.getElementById('dcTableBody');
+    const toggleBtn       = document.getElementById('dcToggleRef');
+    if (!subjectSelect || !referenceSelect || !manualSelect || !emptyState || !compareState || !tableBody) return;
+
+    const context = buildDayCompareContext(rows, 365);
+    const worked = context.worked;
+    if (!worked.length){
+      emptyState.textContent = 'No worked days yet. Add an entry to compare.';
+      emptyState.style.display = 'block';
+      compareState.style.display = 'none';
+      if (toggleBtn) toggleBtn.style.display = 'none';
+      if (dailyMovers) dailyMovers.style.display='none';
+      return;
+    }
+
+    const storedSubject = localStorage.getItem(DAY_COMPARE_STORE.subject);
+    let storedMode = localStorage.getItem(DAY_COMPARE_STORE.mode) || 'last';
+    const storedManualInitial = localStorage.getItem(DAY_COMPARE_STORE.manual);
+
+    function formatOption(row){
+      try{
+        const dt = DateTime.fromISO(row.work_date, { zone: ZONE });
+        const day = dt.toFormat('ccc');
+        const date = dt.toFormat('LLL dd');
+        const total = row.hours != null ? row.hours : (safeNumber(row.office_minutes) + routeAdjustedHours(row));
+        const totalTxt = (total==null) ? '—' : `${roundVal(total,2)?.toFixed(2) || '—'}h`;
+        return `${row.work_date} · ${day} ${date} · ${totalTxt}`;
+      }catch(_){ return row.work_date; }
+    }
+
+    function formatNumber(val, opts){
+      const decimals = opts?.decimals ?? 2;
+      const suffix = opts?.suffix || '';
+      const n = val==null ? null : roundVal(val, decimals);
+      if (n==null || !Number.isFinite(n)) return '—';
+      return `${n.toFixed(decimals)}${suffix}`;
+    }
+
+    subjectSelect.innerHTML = worked.map(row => `<option value="${row.work_date}">${formatOption(row)}</option>`).join('');
+    subjectSelect.value = (storedSubject && subjectSelect.querySelector(`option[value="${storedSubject}"]`)) ? storedSubject : (worked[0]?.work_date || '');
+
+    const manualOption = referenceSelect.querySelector('option[value="manual"]');
+    const manualAvailable = worked.length > 1;
+    if (manualOption){
+      manualOption.disabled = !manualAvailable;
+      if (!manualAvailable && storedMode === 'manual') storedMode = 'last';
+    }
+    referenceSelect.value = storedMode;
+
+    function subjectIso(){ return subjectSelect.value || worked[0]?.work_date; }
+
+    function modeLabel(mode){
+      return mode === 'last' ? 'Last weekday' : mode === 'baseline' ? 'Baseline avg' : mode === 'manual' ? 'Picked day' : mode;
+    }
+
+    function populateManualOptions(){
+      const current = subjectIso();
+      const altRows = worked.filter(r=> r.work_date !== current);
+      manualSelect.innerHTML = altRows.map(row => `<option value="${row.work_date}">${formatOption(row)}</option>`).join('');
+      if (!altRows.length){ manualSelect.value=''; return; }
+      const latestStored = localStorage.getItem(DAY_COMPARE_STORE.manual) || storedManualInitial;
+      manualSelect.value = (latestStored && manualSelect.querySelector(`option[value="${latestStored}"]`)) ? latestStored : altRows[0].work_date;
+    }
+
+    populateManualOptions();
+    manualPicker.style.display = referenceSelect.value === 'manual' ? 'block' : 'none';
+
+    function formatLabel(metric){
+      if (!metric) return '—';
+      if (metric.source === 'weekdayAverage'){
+        const countTxt = metric.count ? `avg of ${metric.count} day${metric.count===1?'':'s'}` : 'avg';
+        return `${metric.label} (${countTxt})`;
+      }
+      if (metric.iso){
+        try{
+          const dt = DateTime.fromISO(metric.iso, { zone: ZONE });
+          return dt.toFormat('cccc, LLL dd');
+        }catch(_){ return metric.iso; }
+      }
+      return metric.label || '—';
+    }
+
+    function summarizeExtras(metric){
+      if (!metric) return '';
+      const parts = [];
+      if (metric.mood) parts.push(`Mood: ${metric.mood}`);
+      if (metric.weather) parts.push(`Weather: ${metric.weather}`);
+      if (metric.reason) parts.push(`Reason: ${metric.reason}`);
+      if (metric.notes) parts.push(`Notes: ${metric.notes}`);
+      return parts.join(' • ');
+    }
+
+    function pillHtml(label, value){
+      return `<span class="pill"><small>${label}</small> <b>${value}</b></span>`;
+    }
+
+    function deltaDetails(subject, reference){
+      if (!subject || !reference) return { rows: [], highlights: [], reasoning: '' };
+      const metricDefs = [
+        { key:'totalHours', label:'Total hours', decimals:2, suffix:'h' },
+        { key:'routeHours', label:'Route hours', decimals:2, suffix:'h' },
+        { key:'officeHours', label:'Office hours', decimals:2, suffix:'h' },
+        { key:'parcels', label:'Parcels', decimals:0 },
+        { key:'letters', label:'Letters', decimals:0 },
+        { key:'volume', label:'Volume (parcels + 0.33×letters)', decimals:2 },
+        { key:'miles', label:'Miles', decimals:1, suffix:'mi' },
+        { key:'efficiencyMinutes', label:'Route minutes per volume', decimals:1, suffix:'m/vol', invert:true }
+      ];
+
+      const rowsOut = [];
+      const highlights = [];
+
+      for (const def of metricDefs){
+        const subjVal = subject[def.key];
+        const refVal = reference[def.key];
+        const delta = (subjVal != null && refVal != null) ? subjVal - refVal : null;
+        const pct = (refVal != null && refVal !== 0 && delta != null) ? (delta / refVal) * 100 : null;
+        const colorDelta = def.invert && pct!=null ? -pct : pct;
+        const displayDelta = delta==null ? '—' : formatNumber(delta, { decimals: def.decimals ?? 2, suffix: def.suffix ? def.suffix : '' });
+        const pctTxt = pct==null || !Number.isFinite(pct) ? '' : ` (${pct>=0?'+':''}${Math.round(pct)}%)`;
+        const deltaTxt = delta==null ? '—' : `${displayDelta}${pctTxt}`;
+        const subjTxt = subjVal==null ? '—' : formatNumber(subjVal, { decimals: def.decimals ?? 2, suffix: def.suffix ? def.suffix : '' });
+        const refTxt = refVal==null ? '—' : formatNumber(refVal, { decimals: def.decimals ?? 2, suffix: def.suffix ? def.suffix : '' });
+        const color = colorForDelta(colorDelta ?? 0).fg;
+        rowsOut.push({ key:def.key, label:def.label, subjTxt, refTxt, deltaTxt, color, delta, score: Math.abs(pct ?? delta ?? 0) });
+        if (delta != null) highlights.push({ key:def.key, label:def.label, deltaText: deltaTxt, color, score: Math.abs(pct ?? delta ?? 0) });
+      }
+
+      highlights.sort((a,b)=> Math.abs(b.score) - Math.abs(a.score));
+      const reasoningBits = [];
+      if (subject.reason) reasoningBits.push(`Subject reason: ${subject.reason}`);
+      if (reference.reason) reasoningBits.push(`Reference reason: ${reference.reason}`);
+      const reasoning = reasoningBits.join(' • ');
+
+      return { rows: rowsOut, highlights, reasoning };
+    }
+
+    function render(){
+      const subjIso = subjectIso();
+      if (!subjIso){
+        emptyState.textContent = 'No worked day selected.';
+        emptyState.style.display = 'block';
+        compareState.style.display = 'none';
+        if (dailyMovers) dailyMovers.style.display='none';
+        return;
+      }
+
+      const subjectMetrics = getSubjectMetrics(context, subjIso);
+      const mode = referenceSelect.value;
+      let referenceMetrics = null;
+      if (mode === 'last') referenceMetrics = getLastSameWeekdayMetrics(context, subjIso);
+      else if (mode === 'baseline') referenceMetrics = getWeekdayBaselineMetrics(context, subjIso);
+      else if (mode === 'manual') referenceMetrics = getCustomReferenceMetrics(context, manualSelect.value);
+
+      if (toggleBtn) toggleBtn.textContent = `Cycle reference (${modeLabel(mode)})`;
+
+      emptyState.style.display = 'none';
+
+      if (!referenceMetrics){
+        compareState.style.display = 'none';
+        emptyState.textContent = 'Not enough history for that comparison yet. Try a different reference.';
+        emptyState.style.display = 'block';
+        if (dailyMovers) dailyMovers.style.display='none';
+        return;
+      }
+
+      compareState.style.display = 'block';
+      subjectLabel.textContent = formatLabel(subjectMetrics);
+      referenceLabel.textContent = formatLabel(referenceMetrics);
+
+      subjectPills.innerHTML = [
+        pillHtml('Total', formatNumber(subjectMetrics.totalHours, { decimals:2, suffix:'h' })),
+        pillHtml('Route', formatNumber(subjectMetrics.routeHours, { decimals:2, suffix:'h' })),
+        pillHtml('Office', formatNumber(subjectMetrics.officeHours, { decimals:2, suffix:'h' })),
+        pillHtml('Volume', formatNumber(subjectMetrics.volume, { decimals:2 })),
+        pillHtml('Eff.', formatNumber(subjectMetrics.efficiencyMinutes, { decimals:1, suffix:'m/vol' }))
+      ].join(' ');
+
+      referencePills.innerHTML = [
+        pillHtml('Total', formatNumber(referenceMetrics.totalHours, { decimals:2, suffix:'h' })),
+        pillHtml('Route', formatNumber(referenceMetrics.routeHours, { decimals:2, suffix:'h' })),
+        pillHtml('Office', formatNumber(referenceMetrics.officeHours, { decimals:2, suffix:'h' })),
+        pillHtml('Volume', formatNumber(referenceMetrics.volume, { decimals:2 })),
+        pillHtml('Eff.', formatNumber(referenceMetrics.efficiencyMinutes, { decimals:1, suffix:'m/vol' }))
+      ].join(' ');
+
+      subjectNotes.textContent = summarizeExtras(subjectMetrics) || '—';
+      referenceNotes.textContent = summarizeExtras(referenceMetrics) || '—';
+
+      const { rows: tableRows, highlights, reasoning } = deltaDetails(subjectMetrics, referenceMetrics);
+      tableBody.innerHTML = tableRows.map(r=> `<tr>
+        <td style="padding:6px 4px">${r.label}</td>
+        <td style="padding:6px 4px;text-align:right">${r.subjTxt}</td>
+        <td style="padding:6px 4px;text-align:right">${r.refTxt}</td>
+        <td style="padding:6px 4px;text-align:right;color:${r.color}">${r.deltaTxt}</td>
+      </tr>`).join('');
+
+      if (dailyMovers){
+        const moverKeys = ['totalHours','routeHours','officeHours'];
+        dailyMovers.innerHTML = moverKeys.map(key=>{
+          const row = tableRows.find(r=> r.key === key);
+          const hasDelta = row && row.delta != null;
+          const label = key === 'totalHours' ? 'Total' : key === 'routeHours' ? 'Route' : 'Office';
+          const text = hasDelta ? row.deltaTxt : '—';
+          const color = hasDelta ? row.color : 'var(--muted)';
+          return `<span class="pill" style="border-color:var(--border);color:${color}"><small>${label}</small> <b>${text}</b></span>`;
+        }).join(' ');
+        dailyMovers.style.display = 'flex';
+      }
+
+      const candidateHighlights = highlights.length
+        ? highlights
+        : tableRows.map(r=> ({ key:r.key, label:r.label, deltaText:r.deltaTxt, color:r.color }));
+      const highlightHtml = candidateHighlights
+        .slice(0,3)
+        .map(h=> `<span class="pill" style="border-color:var(--border);color:${h.color}"><small>${h.label}</small> <b>${h.deltaText}</b></span>`)
+        .join(' ');
+      highlightsRow.innerHTML = highlightHtml || '<span class="pill"><small>Δ</small> <b style="color:var(--muted)">Similar</b></span>';
+      reasoningEl.textContent = reasoning || '';
+
+      localStorage.setItem(DAY_COMPARE_STORE.subject, subjIso);
+      localStorage.setItem(DAY_COMPARE_STORE.mode, mode);
+      if (mode === 'manual' && manualSelect.value){
+        localStorage.setItem(DAY_COMPARE_STORE.manual, manualSelect.value);
+      }
+    }
+
+    subjectSelect.onchange = ()=>{ populateManualOptions(); render(); };
+    referenceSelect.onchange = ()=>{ manualPicker.style.display = referenceSelect.value === 'manual' ? 'block' : 'none'; render(); };
+    manualSelect.onchange = ()=>{ render(); };
+
+    if (toggleBtn){
+      const sequence = ['last','baseline','manual'];
+      const available = manualAvailable ? sequence : sequence.slice(0,2);
+      toggleBtn.style.display = available.length > 1 ? '' : 'none';
+      toggleBtn.onclick = ()=>{
+        const current = referenceSelect.value;
+        const idx = available.indexOf(current);
+        const next = available[(idx + 1) % available.length];
+        referenceSelect.value = next;
+        referenceSelect.dispatchEvent(new Event('change'));
+      };
+    }
+
+    render();
   }
 
   function setNow(el){ el.value=hhmmNow(); computeBreakdown(); }
@@ -1351,7 +1874,7 @@ function moonPhaseEmoji(dateStr) {
       dWrite.textContent = error ? 'Failed' : 'OK'; if (error){ alert(error.message); return; }
       clone.textContent = 'Update'; clone.disabled = true; clone.classList.add('saving','savedFlash');
       setTimeout(()=>{ clone.disabled=false; clone.classList.remove('saving'); }, 400); setTimeout(()=> clone.classList.remove('savedFlash'), 700);
-      const rows = await fetchEntries(); allRows = rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows);
+      const rows = await fetchEntries(); allRows = rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildDayCompare(allRows);
       editingKey = { user_id:user.id, work_date:date.value }; clone.classList.remove('ghost');
     });
   })();
@@ -1371,14 +1894,14 @@ function moonPhaseEmoji(dateStr) {
     const { error } = await sb.from('entries').delete().eq('user_id',user.id).eq('work_date',d); if(error){ alert(error.message); return; }
     lastDeleted = rowToDelete; showUndo(true);
     $('notes').value=''; parcels.value=0; letters.value=0; miles.value=53; offDay.checked=false; start.value='08:00'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; computeBreakdown();
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); alert(`Deleted ${d}. You can Undo now.`);
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildDayCompare(allRows); alert(`Deleted ${d}. You can Undo now.`);
   });
 
   btnUndoDelete?.addEventListener('click', async ()=>{
     if(!lastDeleted){ showUndo(false); return; }
     dWrite.textContent='—'; const { error } = await sb.from('entries').insert(lastDeleted);
     if(error){ alert('Undo failed: '+error.message); return; }
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows);
+    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildDayCompare(allRows);
     alert(`Restored ${lastDeleted.work_date}.`); $('date').value = lastDeleted.work_date; await loadByDate(); lastDeleted=null; showUndo(false);
   });
 
@@ -1452,7 +1975,7 @@ function moonPhaseEmoji(dateStr) {
     const rows=[]; for(let i=1;i<lines.length;i++){ const cols=splitCsv(lines[i]); const get=(name)=> unq(cols[idx(name)] ?? ''); const r={ user_id:user.id, work_date:get('work_date'), route:'R1', status:get('status')||'worked', start_time:get('start_time')||null, depart_time:get('depart_time')||null, return_time:get('return_time')||null, end_time:get('end_time')||null, hours:+(get('hours')||0)||null, office_minutes:get('office_minutes')||null, route_minutes:get('route_minutes')||null, parcels:+(get('parcels')||0)||0, letters:+(get('letters')||0)||0, miles:+(get('miles')||0)||0, mood:get('mood')||null, notes:get('notes')||null, weather_json:get('weather_json')||null }; if(r.work_date) rows.push(r); }
     if(!rows.length){ alert('No rows detected'); return; }
     const chunk=200; for(let i=0;i<rows.length;i+=chunk){ const slice=rows.slice(i,i+chunk); const { error } = await sb.from('entries').insert(slice); if(error){ alert('Import failed: '+error.message); return; } }
-    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildUspsTiles(allRows); alert(`Imported ${rows.length} rows into this account.`);
+    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildUspsTiles(allRows); alert(`Imported ${rows.length} rows into this account.`);
   });
 
   let dowChart, parcelsChart, lettersChart; function destroyCharts(){ [dowChart,parcelsChart,lettersChart].forEach(c=>c&&c.destroy()); }
@@ -1722,40 +2245,19 @@ function moonPhaseEmoji(dateStr) {
     const dl = blend(lCarry, lTarget);
 
     const fmt = p => {
-  if (p == null) return '—';
-  const rounded = Math.round(p);
-  return rounded >= 0 ? `↑ ${rounded}%` : `↓ ${Math.abs(rounded)}%`;
-};
+      if (p == null) return '—';
+      const rounded = Math.round(p);
+      return rounded >= 0 ? `↑ ${rounded}%` : `↓ ${Math.abs(rounded)}%`;
+    };
 
-// Progressive color scale for deltas (±60% window), with simple green/red fallback
-function colorForDelta(pct){
-  if (pct == null) return { fg:'var(--muted)', bg:'transparent', bc:'var(--border)' };
-  // If progressive pills are disabled, use simple green/red
-  if (!FLAGS || !FLAGS.progressivePills) {
-    return { fg: pct >= 0 ? 'var(--good)' : 'var(--bad)', bg:'transparent', bc:'transparent' };
-  }
-  const clamp = Math.max(-60, Math.min(60, pct));
-  const t = Math.abs(clamp)/60; // 0..1
-  // 3-step ramps
-  const green = ['#A8E6A3','#4CAF50','#087F23'];
-  const red   = ['#F7A6A6','#F44336','#B71C1C'];
-  const step = (t<0.17?0 : (t<0.42?1:2));
-  const fg = clamp >= 0 ? green[step] : red[step];
-  // subtle translucent backgrounds (unused in current UI)
-  const bg = 'transparent';
-  const bc = 'transparent';
-  return { fg, bg, bc };
-}
-
-const setPill=(el,delta)=>{
-  el.textContent = fmt(delta);
-  el.className = 'pill';
-  // Minimal style: color only, no background tile/border
-  const { fg } = colorForDelta(delta || 0);
-  el.style.color = fg || 'var(--text)';
-  el.style.background = 'transparent';
-  el.style.borderColor = 'transparent';
-};
+    const setPill=(el,delta)=>{
+      el.textContent = fmt(delta);
+      el.className = 'pill';
+      const { fg } = colorForDelta(delta || 0);
+      el.style.color = fg || 'var(--text)';
+      el.style.background = 'transparent';
+      el.style.borderColor = 'transparent';
+    };
     setPill($('wkHoursDelta'),   dh);
     setPill($('wkParcelsDelta'), dp);
     setPill($('wkLettersDelta'), dl);
@@ -2080,7 +2582,7 @@ const setPill=(el,delta)=>{
 
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{
-    const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildUspsTiles(allRows);
+    const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildUspsTiles(allRows);
     }).subscribe();
   }catch(e){ console.warn('Realtime not enabled:', e?.message||e); }
 
@@ -2103,6 +2605,7 @@ const setPill=(el,delta)=>{
       { id:'lettersOverTimeCard' },
       { id:'monthlyGlanceCard' },
       { id:'quickFilterCard' },
+      { id:'dayCompareCard' },
       { id:'recentEntriesCard' },
     ];
     const storeKey = (id)=> `routeStats.collapse.${id}`;
@@ -2280,7 +2783,7 @@ const setPill=(el,delta)=>{
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildUspsTiles(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi(); applyRecentEntriesAutoCollapse(); applyFocusMode();
+    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildUspsTiles(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi(); applyRecentEntriesAutoCollapse(); applyFocusMode();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);
@@ -2499,6 +3002,7 @@ const setPill=(el,delta)=>{
               try{ buildCharts(allRows||rows||[]); }catch(_){}
               try{ buildMixViz(allRows||rows||[]); }catch(_){}
               try{ buildOfficeCompare(allRows||rows||[]); }catch(_){}
+              try{ buildDayCompare(allRows||rows||[]); }catch(_){}
               try{ buildQuickFilter(allRows||rows||[]); }catch(_){}
             }
           }catch(_){ /* ignore */ }
@@ -2998,21 +3502,28 @@ const setPill=(el,delta)=>{
       const lastEndSame = startOfWeekMonday(now.minus({weeks:1})).plus({days: now.weekday-1}).endOf('day');
       const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
       const worked = (rows||[]).filter(r=> r.status!=='off');
-      const W0 = worked.filter(r=> inRange(r,startThis,endThis));
-      const W1 = worked.filter(r=> inRange(r,startLast,lastEndSame));
+      const thisWeek = worked.filter(r=> inRange(r,startThis,endThis));
+      const lastWeek = worked.filter(r=> inRange(r,startLast,lastEndSame));
+      if (!thisWeek.length || !lastWeek.length){ el.style.display='none'; return; }
+
       const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
-      const off0 = sum(W0, r=> +r.office_minutes||0), off1 = sum(W1, r=> +r.office_minutes||0);
-      const rte0 = sum(W0, r=> routeAdjustedHours(r));
-      const rte1 = sum(W1, r=> routeAdjustedHours(r));
-      const tot0 = sum(W0, r=> +r.hours||0), tot1 = sum(W1, r=> +r.hours||0);
-      const dOff = off0 - off1, dRte = rte0 - rte1, dTot = tot0 - tot1;
-      const baseTot = (tot1>0)? tot1 : null;
-      const pct = (x)=> (x==null || !baseTot)? null : Math.round((x/baseTot)*100);
-      const pill = (label,dh)=>{
-        const p = pct(dh);
-        const txt = `${dh>=0?'+':''}${(Math.round(dh*10)/10).toFixed(1)}h`;
+      const off0 = sum(thisWeek, r=> +r.office_minutes||0);
+      const off1 = sum(lastWeek, r=> +r.office_minutes||0);
+      const rte0 = sum(thisWeek, r=> routeAdjustedHours(r));
+      const rte1 = sum(lastWeek, r=> routeAdjustedHours(r));
+      const tot0 = sum(thisWeek, r=> +r.hours||0);
+      const tot1 = sum(lastWeek, r=> +r.hours||0);
+
+      const dOff = off0 - off1;
+      const dRte = rte0 - rte1;
+      const dTot = tot0 - tot1;
+      const baseTot = tot1 > 0 ? tot1 : null;
+      const pct = (delta)=> (baseTot && delta!=null) ? Math.round((delta/baseTot)*100) : null;
+      const pill = (label, delta)=>{
+        const p = pct(delta);
+        const txt = delta==null ? '—' : `${delta>=0?'+':''}${(Math.round(delta*10)/10).toFixed(1)}h`;
         const pTxt = (p==null)? '' : ` (${p>=0?'+':''}${p}%)`;
-        const col = colorForDelta(p||0).fg;
+        const col = colorForDelta(p || 0).fg;
         return `<span class="pill"><small>${label}</small> <b style="color:${col}">${txt}${pTxt}</b></span>`;
       };
       el.style.display='flex';

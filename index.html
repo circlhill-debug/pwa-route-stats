@@ -3057,9 +3057,88 @@ function moonPhaseEmoji(dateStr) {
     }catch(_){ /* no-op */ }
   }
 
-  // Volume Mix: normalized side-by-side bars (Parcels vs Letters×0.33)
+  // === Volume weighting via OLS (derive letter weight from data) ===
+  // We model: route_minutes_adj = a + b_parcel*parcels + b_letter*letters
+  // Then set LETTER_WEIGHT = b_letter / b_parcel (guarded), so
+  // Combined volume = parcels + LETTER_WEIGHT * letters
+
+  function __sum(arr, fn){ let s=0; for (const x of arr) s += +fn(x) || 0; return s; }
+  function __countPos(arr, fn){ let c=0; for (const x of arr){ const v=+fn(x); if (isFinite(v) && v>0) c++; } return c; }
+
+  function routeAdjustedMinutes(row){
+    // mirror routeAdjustedHours(row) but in minutes. If routeAdjustedHours exists, prefer it and convert.
+    try{ if (typeof routeAdjustedHours === 'function'){ const h = routeAdjustedHours(row); return isFinite(h) ? h*60 : (+row.route_minutes||0); } }catch(_){ }
+    return Math.max(0, (+row.route_minutes||0));
+  }
+
+  function computeLetterWeight(rows){
+    rows = (rows||[]).filter(r => r && r.status !== 'off');
+    // Build sums for normal equations with intercept
+    // X = [1, parcels, letters], y = routeAdjustedMinutes
+    const n = rows.length;
+    if (!n) return loadLetterWeightFallback();
+    const Sy  = __sum(rows, r=> routeAdjustedMinutes(r));
+    const Sp  = __sum(rows, r=> +r.parcels||0);
+    const Sl  = __sum(rows, r=> +r.letters||0);
+    const Spp = __sum(rows, r=> { const v=+r.parcels||0; return v*v; });
+    const Sll = __sum(rows, r=> { const v=+r.letters||0; return v*v; });
+    const Spl = __sum(rows, r=> { const p=+r.parcels||0, l=+r.letters||0; return p*l; });
+    const Spy = __sum(rows, r=> { const p=+r.parcels||0; return p*routeAdjustedMinutes(r); });
+    const Sly = __sum(rows, r=> { const l=+r.letters||0; return l*routeAdjustedMinutes(r); });
+
+    // Solve 3x3 via block elimination. Center variables to improve stability.
+    const mp = Sp/n, ml = Sl/n, my = Sy/n;
+    let Cpp=0, Cll=0, Cpl=0, Cpy=0, Cly=0;
+    for (const r of rows){
+      const p=(+r.parcels||0)-mp, l=(+r.letters||0)-ml, y=routeAdjustedMinutes(r)-my;
+      Cpp += p*p; Cll += l*l; Cpl += p*l; Cpy += p*y; Cly += l*y;
+    }
+    // Solve for [b_p, b_l] in centered system: [Cpp Cpl; Cpl Cll] * [bp bl]^T = [Cpy Cly]^T
+    const det = (Cpp*Cll - Cpl*Cpl);
+    if (!isFinite(det) || Math.abs(det) < 1e-6){ return loadLetterWeightFallback(); }
+    const bp = ( Cpy*Cll - Cpl*Cly ) / det; // minutes per parcel
+    const bl = ( Cpp*Cly - Cpl*Cpy ) / det; // minutes per letter
+
+    // Derive weight as ratio (letters impact relative to parcels)
+    let w = (isFinite(bp) && Math.abs(bp) > 1e-6) ? (bl / bp) : null;
+    // Guardrails: allow 0..1.5 typical; default to saved/fallback if out of range
+    if (!isFinite(w) || w < 0) w = 0; if (w > 1.5) w = 1.5;
+
+    // Smooth with previous value to avoid jitter (exponential moving average)
+    const prev = loadLetterWeightFallback();
+    const alpha = 0.3; // 30% new, 70% previous
+    const smoothed = (prev!=null && isFinite(prev)) ? (alpha*w + (1-alpha)*prev) : w;
+
+    try{ localStorage.setItem('routeStats.letterWeight', String(smoothed)); }catch(_){ }
+    return smoothed;
+  }
+
+  function loadLetterWeightFallback(){
+    const DEF = 0.33; // legacy default
+    try{ const v = parseFloat(localStorage.getItem('routeStats.letterWeight')); if (isFinite(v) && v>0) return v; }catch(_){ }
+    return DEF;
+  }
+
+  function getLetterWeight(rows){
+    // Use last ~60 worked days for fit to keep it recent
+    try{
+      const worked = (rows||[]).filter(r=> r && r.status !== 'off' && (+r.parcels||0) + (+r.letters||0) > 0);
+      const sorted = worked.slice().sort((a,b)=> (a.work_date < b.work_date ? -1 : 1));
+      const sample = sorted.slice(-60);
+      return computeLetterWeight(sample);
+    }catch(_){ return loadLetterWeightFallback(); }
+  }
+
+  function combinedVolume(p, l, w){
+    w = (w==null) ? loadLetterWeightFallback() : w;
+    const pp = +p||0, ll = +l||0;
+    return +(pp + w*ll).toFixed(2);
+  }
+
+  // Volume Mix: normalized side-by-side bars (Parcels vs Letters×weight)
   function buildMixViz(rows){
     rows = filterRowsForView(rows||[]);
+    const letterW = getLetterWeight(rows);
     const card = document.getElementById('mixVizCard'); if(!card) return;
     if (!FLAGS.mixViz) { card.style.display='none'; return; }
     // Show card early so header is visible even if later logic fails
@@ -3083,12 +3162,14 @@ function moonPhaseEmoji(dateStr) {
     const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
     const p0=sum(W0,r=>+r.parcels||0), p1=sum(W1,r=>+r.parcels||0);
     const l0=sum(W0,r=>+r.letters||0), l1=sum(W1,r=>+r.letters||0);
-    const ln0 = +(0.33*l0).toFixed(1);
-    const ln1 = +(0.33*l1).toFixed(1);
+    const ln0 = +( (letterW * l0) ).toFixed(1);
+    const ln1 = +( (letterW * l1) ).toFixed(1);
     try{
       // Labeling: W1 = current (Mon..today), W2 = last (same range)
       if (text) text.textContent = `W1: Parcels ${p0}, Letters ${l0} • W2: Parcels ${p1}, Letters ${l1}`;
-    const vol0 = p0 + 0.33*l0; const vol1 = p1 + 0.33*l1;
+      const wBadge = document.getElementById('mixWeight');
+      if (wBadge){ wBadge.style.display='inline-flex'; wBadge.innerHTML = `<small>Letter w</small> <b>${(Math.round(letterW*100)/100).toFixed(2)}</b>`; }
+    const vol0 = combinedVolume(p0, l0, letterW); const vol1 = combinedVolume(p1, l1, letterW);
     const rm0  = sum(W0,r=> routeAdjustedHours(r));
     const rm1  = sum(W1,r=> routeAdjustedHours(r));
     const idx0 = (vol0>0 && rm0>0) ? (rm0/vol0) : null;
@@ -3229,7 +3310,11 @@ function moonPhaseEmoji(dateStr) {
         // Build daily arrays
         const volByDow = (arr)=>{
           const a = Array.from({length:7},()=>0);
-          arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= (+r.parcels||0) + 0.33*(+r.letters||0); });
+          arr.forEach(r=>{
+            const d=DateTime.fromISO(r.work_date,{zone:ZONE});
+            const idx=(d.weekday+6)%7;
+            a[idx]+= combinedVolume((+r.parcels||0), (+r.letters||0), letterW);
+          });
           return a.map(n=> +(Math.round(n*10)/10).toFixed(1));
         };
         const routeByDow = (arr)=>{
@@ -3291,7 +3376,11 @@ function moonPhaseEmoji(dateStr) {
         };
         const volByDow = (arr)=>{
           const a = Array.from({length:7},()=>0);
-          arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= (+r.parcels||0) + 0.33*(+r.letters||0); });
+          arr.forEach(r=>{
+            const d=DateTime.fromISO(r.work_date,{zone:ZONE});
+            const idx=(d.weekday+6)%7;
+            a[idx]+= combinedVolume((+r.parcels||0), (+r.letters||0), letterW);
+          });
           return a.map(n=> +(Math.round(n*10)/10).toFixed(1));
         };
         const thisRoute = routeByDow(W0);
@@ -3338,13 +3427,13 @@ function moonPhaseEmoji(dateStr) {
         const weeksArr=[]; for(let w=weeksBack; w>=1; w--){ const s=startOfWeekMonday(now.minus({weeks:w})); const e=endOfWeekSunday(now.minus({weeks:w})); weeksArr.push({s,e}); }
         const weekSum=(wk,fn)=> worked.filter(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=wk.s && d<=wk.e; }).reduce((t,r)=> t+(fn(r)||0),0);
         const combSer = weeksArr.map(wk=>{
-          const p=weekSum(wk, r=>+r.parcels||0); const l=weekSum(wk, r=>+r.letters||0); return +(p + 0.33*l).toFixed(1);
+          const p=weekSum(wk, r=>+r.parcels||0); const l=weekSum(wk, r=>+r.letters||0); return +combinedVolume(p, l, letterW).toFixed(1);
         }).filter(v=> v>0);
         // Drift labels: W1 = most recent completed week, W{n} older
         const labels = weeksArr.slice(-combSer.length).map((wk,i)=> `W${combSer.length-i}`);
         // Anchor = median of combined series (non-zero)
         const sorted=[...combSer].sort((a,b)=>a-b); const n=sorted.length; const anchorVal = n? (n%2? sorted[Math.floor(n/2)] : (sorted[n/2-1]+sorted[n/2])/2) : 0;
-        driftText.textContent = `Combined vol (P + 0.33×L): ${combSer.join(', ')} • Anchor: ${anchorVal}`;
+        driftText.textContent = `Combined vol (P + ${letterW.toFixed(2)}×L): ${combSer.join(', ')} • Anchor: ${anchorVal}`;
         if (window.Chart && driftCanvas.getContext){
           const ctx = driftCanvas.getContext('2d');
           if (driftCanvas._chart) { try{ driftCanvas._chart.destroy(); }catch(_){} }
@@ -3390,10 +3479,11 @@ function moonPhaseEmoji(dateStr) {
       const h0 = sum(W0, r=> +r.hours||0), h1 = sum(W1, r=> +r.hours||0);
       const p0 = sum(W0, r=> +r.parcels||0), p1 = sum(W1, r=> +r.parcels||0);
       const l0 = sum(W0, r=> +r.letters||0), l1 = sum(W1, r=> +r.letters||0);
-      const vol = (p,l)=> p + 0.33*l;
+      const letterW = getLetterWeight(rows);
+      const vol = (p,l)=> p + letterW*l;
       const v0 = vol(p0,l0), v1 = vol(p1,l1);
-    const rm0 = sum(W0, r=> routeAdjustedHours(r)),
-          rm1 = sum(W1, r=> routeAdjustedHours(r));
+      const rm0 = sum(W0, r=> routeAdjustedHours(r)),
+            rm1 = sum(W1, r=> routeAdjustedHours(r));
       const idx = (rm, vv)=> (rm>0 && vv>0) ? (rm/vv) : null; // minutes per combined volume
       const i0 = idx(rm0, v0), i1 = idx(rm1, v1);
       const pct = (a,b)=> (b>0) ? Math.round(((a-b)/b)*100) : null; // nearest 1%

@@ -102,7 +102,6 @@ What changed
 - Added Diagnostics panel showing coefficients, R², and top residual days (unexplained ± minutes).
 - Added live model strip (bp, bl, w, R² pills) at the top for quick glance.
 - Residuals color-coded (green = faster than predicted, red = slower).
-- Vacation mode + USPS evaluation settings now sync with your Supabase account, so they follow you across devices.
 
 Why it matters
 - Letter volume has much less impact on route time than parcels. A fixed multiplier overstated letter effects, which made “efficiency drops” look worse than they really were.

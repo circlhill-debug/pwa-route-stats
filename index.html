@@ -793,19 +793,10 @@
     catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false, uspsEval:true, dayCompare:true }; }
   }
   function loadEval(){
-    const base = { routeId:'R1', evalCode:'44K', boxes:670, stops:null, hoursPerDay:9.4, officeHoursPerDay:2.0, annualSalary:68000 };
     try{
-      const meta = CURRENT_USER?.user_metadata?.uspsEval;
-      if (meta && typeof meta === 'object'){
-        const cfg = Object.assign({}, base, meta);
-        try{ localStorage.setItem(EVAL_KEY, JSON.stringify(cfg)); }catch(_){ }
-        return cfg;
-      }
-    }catch(_){ }
-    try{
-      return Object.assign({}, base, JSON.parse(localStorage.getItem(EVAL_KEY)||'{}'));
+      return Object.assign({ routeId:'R1', evalCode:'44K', boxes:670, stops:null, hoursPerDay:9.4, officeHoursPerDay:2.0, annualSalary:68000 }, JSON.parse(localStorage.getItem(EVAL_KEY)||'{}'));
     }catch(_){
-      return Object.assign({}, base);
+      return { routeId:'R1', evalCode:'44K', boxes:670, stops:null, hoursPerDay:9.4, officeHoursPerDay:2.0, annualSalary:68000 };
     }
   }
   function saveEval(cfg){ localStorage.setItem(EVAL_KEY, JSON.stringify(cfg||{})); }
@@ -813,59 +804,12 @@
 
   // Vacation Mode config
   function loadVacation(){
-    const base = { enabled:false, ranges:[] };
     try{
-      const meta = CURRENT_USER?.user_metadata?.vacationCfg;
-      if (meta && typeof meta === 'object'){
-        const cfg = Object.assign({}, base, meta);
-        try{ localStorage.setItem(VACAY_KEY, JSON.stringify(cfg)); }catch(_){ }
-        return cfg;
-      }
-    }catch(_){ }
-    try{
-      return Object.assign({}, base, JSON.parse(localStorage.getItem(VACAY_KEY)||'{}'));
-    }catch(_){ return Object.assign({}, base); }
+      return Object.assign({ enabled:false, ranges:[] }, JSON.parse(localStorage.getItem(VACAY_KEY)||'{}'));
+    }catch(_){ return { enabled:false, ranges:[] }; }
   }
   function saveVacation(cfg){ try{ localStorage.setItem(VACAY_KEY, JSON.stringify(cfg||{enabled:false,ranges:[]})); }catch(_){ } }
   let VACATION = loadVacation();
-
-  async function refreshUserMetadata(){
-    try{
-      const { data:{ user } } = await sb.auth.getUser();
-      CURRENT_USER = user;
-      USPS_EVAL = loadEval();
-      VACATION = loadVacation();
-      renderUspsEvalTag();
-      return user;
-    }catch(err){
-      CURRENT_USER = null;
-      return null;
-    }
-  }
-
-  async function persistUserSettings(){
-    try{
-      const user = CURRENT_USER || await refreshUserMetadata();
-      if (!user || user?.app_metadata?.provider === 'anon') return;
-      const payload = {};
-      if (USPS_EVAL) payload.uspsEval = USPS_EVAL;
-      if (VACATION) payload.vacationCfg = VACATION;
-      if (!Object.keys(payload).length) return;
-      const { data, error } = await sb.auth.updateUser({ data: payload });
-      if (error) throw error;
-      const updatedUser = data?.user;
-      if (updatedUser){
-        CURRENT_USER = updatedUser;
-      }else if (CURRENT_USER){
-        CURRENT_USER.user_metadata = Object.assign({}, CURRENT_USER.user_metadata || {}, payload);
-      }
-      USPS_EVAL = loadEval();
-      VACATION = loadVacation();
-      renderUspsEvalTag();
-    }catch(err){
-      console.warn('Failed to persist user settings', err);
-    }
-  }
 
   function dateInRangeISO(iso, fromIso, toIso){
     try{
@@ -1032,7 +976,6 @@ function moonPhaseEmoji(dateStr) {
 
   // Supabase
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth:{ persistSession:true }});
-  let CURRENT_USER = null;
 
   // === Supabase v2 auth callback (works for PKCE or token-in-hash) ===
   async function handleAuthCallback(sb) {
@@ -1103,8 +1046,8 @@ function moonPhaseEmoji(dateStr) {
   (async function ensureSession(){
     const { data:{ session } } = await sb.auth.getSession();
     if(!session){ await sb.auth.signInAnonymously().catch(()=>{}); } // you can remove this later if you like
-    await refreshUserMetadata();
-    dAuth.textContent = CURRENT_USER? 'Session' : 'No session';
+    const { data:{ user } } = await sb.auth.getUser();
+    dAuth.textContent = user? 'Session' : 'No session';
   })();
 
   // Magic link
@@ -1149,7 +1092,6 @@ function moonPhaseEmoji(dateStr) {
     }
     authMsg.textContent = 'Signed in!';
     pwDlg.close();
-    await refreshUserMetadata();
     const rows = await fetchEntries(); allRows=rows; updateCurrentLetterWeight(allRows); renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildHeavinessToday(allRows); buildWeekHeaviness(allRows); buildUspsTiles(allRows); buildDiagnostics(allRows);
   });
 
@@ -1260,7 +1202,7 @@ function moonPhaseEmoji(dateStr) {
     settingsDlg.showModal();
   });
 
-  saveSettings?.addEventListener('click', async (e)=>{
+  saveSettings?.addEventListener('click', (e)=>{
     e.preventDefault();
     FLAGS.weekdayTicks = !!flagWeekdayTicks.checked;
     FLAGS.progressivePills = !!flagProgressivePills.checked;
@@ -1298,7 +1240,6 @@ function moonPhaseEmoji(dateStr) {
       saveVacation(VACATION);
     }catch(_){ }
     saveFlags(FLAGS);
-    await persistUserSettings();
     settingsDlg.close();
     // Re-render visuals affected by flags
     buildCharts(allRows||[]);
@@ -1380,11 +1321,10 @@ function moonPhaseEmoji(dateStr) {
     }catch(_){ /* ignore */ }
   }
 
-  sb.auth.onAuthStateChange(async (_evt, session) => {
+  sb.auth.onAuthStateChange((_evt, session) => {
     const authed = !!session;
     const signOutBtn = $('signOut');
     if (signOutBtn) signOutBtn.style.display = authed ? 'inline-block' : 'none';
-    if (authed) await refreshUserMetadata(); else CURRENT_USER = null;
     dAuth.textContent = authed ? 'Session' : 'No session';
   });
 
@@ -3142,7 +3082,6 @@ function moonPhaseEmoji(dateStr) {
     await loadByDate();
 
     const sessionFromCallback = await authReadyPromise.catch(()=>null);
-    await refreshUserMetadata();
     const session = sessionFromCallback || await sb.auth.getSession().then(r=> r.data.session).catch(()=>null);
     let rows = [];
     if (session) {

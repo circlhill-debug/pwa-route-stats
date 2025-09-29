@@ -36,6 +36,24 @@
   .pill{ display:inline-flex; gap:8px; align-items:center; border:1px solid var(--border); padding:6px 8px; border-radius:999px; background:transparent }
   /* Ensure checkboxes render visibly inside pill labels */
   input[type="checkbox"]{ width:auto; height:auto; padding:0; margin:0 4px 0 0; accent-color: var(--brand); }
+  .modelMetric{ color:#fbbf24; font-weight:400; }
+  #liveModelStrip .pill b{ color:inherit; font-weight:400; }
+  #diagnosticsLegend{
+    margin-top:6px;
+    font-size:0.75em;
+    color:#6b7280;
+    display:flex;
+    gap:12px;
+  }
+  #diagnosticsLegend span{
+    display:flex;
+    align-items:center;
+    gap:4px;
+  }
+  #diagnosticsLegend .swatch{
+    width:14px; height:14px; border-radius:3px;
+    border:1px solid rgba(255,255,255,0.4);
+  }
   .legend-swatch{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px }
   .stat{ display:flex; flex-direction:column; gap:4px; padding:10px; border:1px solid var(--border); border-radius:12px; min-width:140px }
   .up{ color:var(--good) } .down{ color:var(--bad) } .warn{ color:var(--warn) }
@@ -110,7 +128,16 @@
     <span id="evalSalary" class="muted">—/yr</span>
     <span id="evalHours" class="muted">—h (— office)</span>
   </span>
-  </div>
+</div>
+
+<!-- Live model strip -->
+<div id="liveModelStrip" style="display:none;margin:8px 0;gap:8px;flex-wrap:wrap" class="row">
+  <span class="pill" title="bp: minutes per parcel predicted by the model"><span class="modelMetric">bp</span>: <span id="lm-bp">—</span> min/parcel</span>
+  <span class="pill" title="bl: minutes per letter predicted by the model"><span class="modelMetric">bl</span>: <span id="lm-bl">—</span> min/letter</span>
+  <span class="pill" title="Letter weight (bl ÷ bp) used for combined volume"><span class="modelMetric">w</span>: <span id="lm-w">—</span></span>
+  <span class="pill" title="Model fit (coefficient of determination)"><span class="modelMetric">R²</span>: <span id="lm-r2">—</span></span>
+</div>
+
 <header>
   <div class="wrap row" style="justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
     <!-- CHANGED: dynamic date -->
@@ -140,36 +167,36 @@
       <div class="row" style="gap:8px;align-items:stretch">
         <div class="stat">
           <small>Expected End (today)</small>
-          <strong id="expEnd" style="font-size:20px">—</strong>
+          <span id="expEnd" style="font-size:20px; font-weight:400">—</span>
           <small id="expMeta" style="color:var(--muted)">DOW avg —</small>
         </div>
         <div class="stat">
-          <small>Volume</small>
-          <strong id="badgeVolume" style="font-size:20px">—</strong>
-          <small class="muted">parcels + 0.33×letters</small>
+        <small>Volume</small>
+        <span id="badgeVolume" style="font-size:20px; font-weight:400">—</span>
+          <small class="muted">parcels + <span class="modelMetric">w×letters</span> (data-fit)</small>
           <div id="helpVolume" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
         </div>
         <div class="stat">
           <small>Route Eff.</small>
-          <strong id="badgeRouteEff" style="font-size:20px">—</strong>
+          <span id="badgeRouteEff" style="font-size:20px; font-weight:400">—</span>
           <small class="muted">vs weekday baseline</small>
           <div id="helpRouteEff" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
         </div>
         <div class="stat">
           <small>Overall</small>
-          <strong id="badgeOverall" style="font-size:20px">—</strong>
+          <span id="badgeOverall" style="font-size:20px; font-weight:400">—</span>
           <small class="muted">office + route vs expected</small>
           <div id="helpOverall" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
         </div>
         <!-- USPS tiles (moved up into primary snapshot row) -->
         <div class="stat" id="tileUspsRouteEff">
           <small>USPS Route Eff.</small>
-          <div><strong id="uspsRouteEffVal">—</strong></div>
+          <div><span id="uspsRouteEffVal" style="font-size:18px; font-weight:400">—</span></div>
           <small class="muted">this week vs eval</small>
         </div>
         <div class="stat" id="tileUspsHourly">
           <small>Weekly $/h</small>
-          <div><strong id="uspsHourlyRateVal">—</strong></div>
+          <div><span id="uspsHourlyRateVal" style="font-size:18px; font-weight:400">—</span></div>
           <small class="muted">4w avg</small>
         </div>
       </div>
@@ -505,6 +532,44 @@
 
   
 
+  <!-- Diagnostics: Volume→Time model & outliers -->
+  <section class="card" id="diagnosticsCard" style="grid-column:1/-1; display:none">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">Diagnostics — Volume→Time Model</h3>
+      <div class="row" style="gap:8px;align-items:center">
+        <span id="diagModelBadge" class="pill" title="Minutes per unit (fit from last ~120 worked days)">—</span>
+        <button id="toggleDiagDetails" class="ghost" type="button">Details</button>
+      </div>
+    </div>
+    <div class="sparkline-labels" id="diagSummary">—</div>
+    <div id="diagDetails" style="display:none;margin-top:8px">
+      <small class="muted">Top residual days (|actual − predicted|). Helps spot non-volume causes: detours, weather, boxholders, etc.</small>
+      <div style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px">
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          <thead>
+            <tr style="color:var(--muted);text-transform:uppercase;font-size:12px">
+              <th style="padding:6px 4px;text-align:left">Date</th>
+              <th style="padding:6px 4px;text-align:right">Parcels</th>
+              <th style="padding:6px 4px;text-align:right">Letters</th>
+              <th style="padding:6px 4px;text-align:right">Route h</th>
+              <th style="padding:6px 4px;text-align:right">Pred h</th>
+              <th style="padding:6px 4px;text-align:right">Resid (min)</th>
+              <th style="padding:6px 4px;text-align:left">Boxholders</th>
+              <th style="padding:6px 4px;text-align:left">Weather</th>
+              <th style="padding:6px 4px;text-align:left">Notes</th>
+            </tr>
+          </thead>
+          <tbody id="diagTableBody"></tbody>
+        </table>
+      </div>
+      <div id="diagnosticsLegend">
+        <span><span class="swatch" style="background:rgba(22,101,52,0.25)"></span> Faster than predicted</span>
+        <span><span class="swatch" style="background:rgba(153,27,27,0.25)"></span> Slower than predicted</span>
+        <span><span class="swatch" style="background:rgba(107,114,128,0.20)"></span> Near expected</span>
+      </div>
+    </div>
+  </section>
+
   <!-- Monthly Glance (preview) — behind feature flag -->
   <section class="card" id="monthlyGlanceCard" style="grid-column:1/-1; display:none">
     <h3 style="margin:0 0 8px 0">Monthly Glance (preview)</h3>
@@ -540,7 +605,7 @@
     </div>
     <div style="max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:10px">
       <table id="tbl"><thead><tr>
-        <th>Date</th><th>Route</th><th>Status</th><th class="right">Office (h)</th><th class="right">Route (h)</th><th class="right">Total (h)</th><th class="right">Parcels</th><th class="right">Letters</th><th class="right">Miles</th><th>Weather</th>
+        <th>Date</th><th>Route</th><th>Status</th><th class="right">Office (h)</th><th class="right">Route (h)</th><th class="right">Total (h)</th><th class="right">Parcels</th><th class="right">Letters</th><th class="right">Miles</th><th>Weather</th><th>Δ</th>
       </tr></thead><tbody></tbody></table>
     </div>
   </section>
@@ -912,25 +977,64 @@ function moonPhaseEmoji(dateStr) {
   // Supabase
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth:{ persistSession:true }});
 
+  // === Supabase v2 auth callback (works for PKCE or token-in-hash) ===
+  async function handleAuthCallback(sb) {
+    try {
+      const url = new URL(window.location.href);
+      const hasHashToken =
+        url.hash.includes('access_token=') || url.hash.includes('refresh_token=');
+      const code = url.searchParams.get('code');
+
+      let out = null;
+
+      if (hasHashToken) {
+        // Implicit/OIDC-style callback: tokens in location.hash
+        // v2: exchangeCodeForSession accepts the full hash string
+        const { data, error } = await sb.auth.exchangeCodeForSession(url.hash);
+        if (error) throw error;
+        out = data;
+      } else if (code) {
+        // PKCE callback: ?code=... in query
+        // v2: exchange using the code (verifier is handled internally for hosted sb.auth.signInWithOAuth)
+        const { data, error } = await sb.auth.exchangeCodeForSession(code);
+        if (error) throw error;
+        out = data;
+      } else {
+        // No callback params; just ensure we have a session (or anonymous)
+        const { data, error } = await sb.auth.getSession();
+        if (error) console.warn('[Auth] getSession warning:', error.message);
+        out = data;
+      }
+
+      // Clean up the URL so refreshes don’t re-run the callback
+      if (hasHashToken || code) {
+        window.history.replaceState({}, document.title, url.origin + url.pathname);
+      }
+
+      console.log('[Auth] session ready', out?.session ? '(signed in)' : '(no session)');
+      return out?.session || null;
+    } catch (err) {
+      console.warn('Auth callback error –', err);
+      return null;
+    }
+  }
+
+  const authReadyPromise = handleAuthCallback(sb);
+
   // === Handle auth callbacks (incl. password recovery links) ===
   (async () => {
+    const isRecoveryLink = /type=recovery/i.test(window.location.hash);
+    if (!isRecoveryLink) return;
+    const session = await authReadyPromise;
+    if (!session) return;
     try {
-      const { data, error } = await sb.auth.getSessionFromUrl();
-      // If this was a password recovery link, prompt to set a new password
-      if (!error && data?.session && /type=recovery/i.test(location.hash)) {
-        const p1 = prompt('Enter a new password (6+ characters)');
-        if (p1 && p1.length >= 6) {
-          const { error: uerr } = await sb.auth.updateUser({ password: p1 });
-          if (uerr) alert('Update failed: ' + uerr.message);
-          else alert('Password updated. You can now sign in normally.');
-        } else {
-          alert('Password must be at least 6 characters.');
-        }
-        // clean the URL
-        window.history.replaceState({}, document.title, window.location.pathname);
-      } else if (!error && data?.session) {
-        // generic callback: clean hash
-        window.history.replaceState({}, document.title, window.location.pathname);
+      const p1 = prompt('Enter a new password (6+ characters)');
+      if (p1 && p1.length >= 6) {
+        const { error: uerr } = await sb.auth.updateUser({ password: p1 });
+        if (uerr) alert('Update failed: ' + uerr.message);
+        else alert('Password updated. You can now sign in normally.');
+      } else {
+        alert('Password must be at least 6 characters.');
       }
     } catch (e) {
       console.warn('Auth callback error', e);
@@ -988,7 +1092,7 @@ function moonPhaseEmoji(dateStr) {
     }
     authMsg.textContent = 'Signed in!';
     pwDlg.close();
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildHeavinessToday(allRows); buildWeekHeaviness(allRows); buildUspsTiles(allRows);
+    const rows = await fetchEntries(); allRows=rows; updateCurrentLetterWeight(allRows); renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildHeavinessToday(allRows); buildWeekHeaviness(allRows); buildUspsTiles(allRows); buildDiagnostics(allRows);
   });
 
   doSignup?.addEventListener('click', async ()=>{
@@ -1151,6 +1255,8 @@ function moonPhaseEmoji(dateStr) {
     buildHeavinessToday(allRows||[]);
     buildWeekHeaviness(allRows||[]);
     buildUspsTiles(allRows||[]);
+    updateCurrentLetterWeight(allRows||[]);
+    buildDiagnostics(allRows||[]);
     renderUspsEvalTag();
     
     applyTrendPillsVisibility();
@@ -1237,7 +1343,7 @@ function moonPhaseEmoji(dateStr) {
   const badgeVolume=$('badgeVolume'), badgeRouteEff=$('badgeRouteEff'), badgeOverall=$('badgeOverall');
   const dConnEl=$('dConn'), dAuthEl=$('dAuth'), dWriteEl=$('dWrite');
 
-  badgeVolume.title   = 'Volume = parcels + 0.33×letters (rank vs recent, 0–10)';
+  badgeVolume.title   = 'Volume = parcels + w×letters (learned from data, rank vs recent, 0–10)';
   badgeRouteEff.title = 'Route Efficiency = today’s street hours vs typical for this weekday (0–10)';
   badgeOverall.title  = 'Overall = total hours vs expected (weekday avg)';
 
@@ -1299,8 +1405,54 @@ function moonPhaseEmoji(dateStr) {
     return Number.isFinite(n) ? n : 0;
   }
 
+  // === Learned letter weight (OLS) ===
+  let CURRENT_LETTER_WEIGHT = 0.33; // default; updated from data
+
+  function __sum(arr, fn){ let s=0; for (const x of arr) s += +fn(x) || 0; return s; }
+  function routeAdjustedMinutes(row){
+    try{ if (typeof routeAdjustedHours === 'function'){ const h = routeAdjustedHours(row); return isFinite(h) ? h*60 : (+row.route_minutes||0); } }catch(_){ }
+    return Math.max(0, (+row.route_minutes||0));
+  }
+  function computeLetterWeight(sampleRows){
+    const rows = (sampleRows||[]).filter(r=> r && r.status !== 'off');
+    const n = rows.length; if (!n) return null;
+    const mp = __sum(rows, r=> +r.parcels||0) / n;
+    const ml = __sum(rows, r=> +r.letters||0) / n;
+    const my = __sum(rows, r=> routeAdjustedMinutes(r)) / n;
+    let Cpp=0, Cll=0, Cpl=0, Cpy=0, Cly=0;
+    for (const r of rows){
+      const p=(+r.parcels||0)-mp, l=(+r.letters||0)-ml, y=routeAdjustedMinutes(r)-my;
+      Cpp+=p*p; Cll+=l*l; Cpl+=p*l; Cpy+=p*y; Cly+=l*y;
+    }
+    const det = (Cpp*Cll - Cpl*Cpl);
+    if (!isFinite(det) || Math.abs(det) < 1e-6) return null;
+    const bp = ( Cpy*Cll - Cpl*Cly ) / det; // minutes per parcel
+    const bl = ( Cpp*Cly - Cpl*Cpy ) / det; // minutes per letter
+    if (!isFinite(bp) || Math.abs(bp) < 1e-6) return null;
+    let w = bl / bp; if (!isFinite(w) || w < 0) w = 0; if (w > 1.5) w = 1.5; // guardrails
+    return w;
+  }
+  function updateCurrentLetterWeight(allRows){
+    try{
+      const worked = (allRows||[]).filter(r=> r && r.status !== 'off' && ((+r.parcels||0)+(+r.letters||0) > 0))
+                                   .sort((a,b)=> a.work_date < b.work_date ? -1 : 1)
+                                   .slice(-60);
+      const w = computeLetterWeight(worked);
+      if (w!=null) CURRENT_LETTER_WEIGHT = +(0.7*CURRENT_LETTER_WEIGHT + 0.3*w).toFixed(4);
+      try{ localStorage.setItem('routeStats.letterWeight', String(CURRENT_LETTER_WEIGHT)); }catch(_){ }
+    }catch(_){ /* keep default */ }
+  }
+  (function loadSavedLetterWeight(){
+    try{ const v = parseFloat(localStorage.getItem('routeStats.letterWeight')); if (isFinite(v) && v>0) CURRENT_LETTER_WEIGHT = v; }catch(_){ }
+  })();
+
+  function combinedVolume(p, l, w){
+    const W = (w==null) ? CURRENT_LETTER_WEIGHT : w; return safeNumber(p) + W * safeNumber(l);
+  }
+
   function computeVolume(parcels, letters){
-    return safeNumber(parcels) + 0.33 * safeNumber(letters);
+    // All volume uses the current learned weight
+    return combinedVolume(parcels, letters);
   }
 
   function extractReasonTag(weatherStr){
@@ -1454,8 +1606,146 @@ function moonPhaseEmoji(dateStr) {
 
   function getCustomReferenceMetrics(context, iso){
     if (!context || !iso) return null;
-   const row = context.byDate.get(iso);
+    const row = context.byDate.get(iso);
     return row ? dayMetricsFromRow(row, { source:'manualReference', label: row.work_date }) : null;
+  }
+
+  // === Diagnostics model & outliers ===
+  function fitVolumeTimeModel(rows){
+    rows = (rows||[]).filter(r=> r && r.status !== 'off');
+    const n = rows.length; if (!n) return null;
+    const mp = rows.reduce((s,r)=> s + (+r.parcels||0), 0) / n;
+    const ml = rows.reduce((s,r)=> s + (+r.letters||0), 0) / n;
+    const my = rows.reduce((s,r)=> s + routeAdjustedMinutes(r), 0) / n;
+    let Cpp=0, Cll=0, Cpl=0, Cpy=0, Cly=0, SST=0, SSR=0;
+    for (const r of rows){
+      const p=(+r.parcels||0)-mp, l=(+r.letters||0)-ml, y=routeAdjustedMinutes(r)-my;
+      Cpp += p*p; Cll += l*l; Cpl += p*l; Cpy += p*y; Cly += l*y; SST += y*y;
+    }
+    const det = (Cpp*Cll - Cpl*Cpl);
+    if (!isFinite(det) || Math.abs(det) < 1e-6) return null;
+    const bp = ( Cpy*Cll - Cpl*Cly ) / det; // minutes per parcel
+    const bl = ( Cpp*Cly - Cpl*Cpy ) / det; // minutes per letter
+    const a  = my - bp*mp - bl*ml;          // intercept in minutes
+    const residuals = [];
+    for (const r of rows){
+      const y  = routeAdjustedMinutes(r);
+      const p  = +r.parcels||0; const l = +r.letters||0;
+      const yhat = a + bp*p + bl*l;
+      residuals.push({ iso:r.work_date, parcels:p, letters:l, routeMin:y, predMin:yhat, residMin:(y - yhat), row:r });
+      SSR += (y - yhat)*(y - yhat);
+    }
+    const r2 = (SST>0) ? (1 - SSR/SST) : 0;
+    return { a, bp, bl, r2, n, residuals };
+  }
+  function learnedLetterWeight(model){
+    if (!model || !isFinite(model.bp) || Math.abs(model.bp) < 1e-6) return null;
+    const w = model.bl / model.bp; return (isFinite(w) && w>=0 && w<=1.5) ? w : null;
+  }
+  let __residModelCache = null;
+
+  function buildDiagnostics(rows){
+    rows = filterRowsForView(rows||[]);
+    const card = document.getElementById('diagnosticsCard'); if (!card) return;
+    card.style.display = 'block';
+    __residModelCache = null;
+    const worked = rows.filter(r=> r && r.status !== 'off' && ((+r.parcels||0)+(+r.letters||0)>0))
+                       .sort((a,b)=> a.work_date < b.work_date ? -1 : 1)
+                       .slice(-120);
+    const model = fitVolumeTimeModel(worked);
+    renderModelStrip(model);
+    const badge = document.getElementById('diagModelBadge');
+    const summaryEl = document.getElementById('diagSummary');
+    const tbody = document.getElementById('diagTableBody');
+    const toggleBtn = document.getElementById('toggleDiagDetails');
+    const details = document.getElementById('diagDetails');
+    if (!model){
+      renderModelStrip(null);
+      if (badge) badge.textContent = 'Insufficient data';
+      if (summaryEl) summaryEl.textContent = 'Need more worked days with parcels/letters to estimate impact.';
+      if (tbody) tbody.innerHTML = '';
+      return;
+    }
+    const w = learnedLetterWeight(model);
+    if (w!=null) {
+      CURRENT_LETTER_WEIGHT = +(0.7*CURRENT_LETTER_WEIGHT + 0.3*w).toFixed(4);
+      try{ localStorage.setItem('routeStats.letterWeight', String(CURRENT_LETTER_WEIGHT)); }catch(_){ }
+    }
+    if (badge){ badge.innerHTML = `<small class="modelMetric">bp</small> <span>${model.bp.toFixed(2)}</span> · <small class="modelMetric">bl</small> <span>${model.bl.toFixed(3)}</span> · <small class="modelMetric">w</small> <span>${(w!=null?w.toFixed(2):'—')}</span>`; }
+    if (summaryEl){ const pct = Math.round(Math.max(0,Math.min(1,model.r2))*100); summaryEl.textContent = `Fit on ${model.n} days · R² ${pct}% · Predicts route minutes from parcels & letters.`; }
+    if (tbody){
+      const ZONE = 'America/Detroit';
+      const top = [...model.residuals].sort((a,b)=> Math.abs(b.residMin) - Math.abs(a.residMin)).slice(0,10);
+      tbody.innerHTML = top.map(d=>{
+        const dt = luxon.DateTime.fromISO(d.iso,{zone:ZONE}).toFormat('ccc LLL dd');
+        return `<tr>
+        <td style="padding:6px 4px">${dt}</td>
+        <td class="right" style="padding:6px 4px">${(+d.parcels||0)}</td>
+        <td class="right" style="padding:6px 4px">${(+d.letters||0)}</td>
+        <td class="right" style="padding:6px 4px">${(d.routeMin/60).toFixed(2)}</td>
+        <td class="right" style="padding:6px 4px">${(d.predMin/60).toFixed(2)}</td>
+        <td class="right ${d.residMin>25?'down':(d.residMin<-25?'up':'')}" style="padding:6px 4px">${d.residMin.toFixed(0)}</td>
+        <td style="padding:6px 4px">${d.row.boxholders||'—'}</td>
+        <td style="padding:6px 4px">${(d.row.weather_json||'').replace(/Reason:\s*/i,'').slice(0,40)||'—'}</td>
+        <td style="padding:6px 4px">${(d.row.notes||'').slice(0,60)||'—'}</td>
+      </tr>`;
+      }).join('');
+    }
+    if (toggleBtn && details){
+      toggleBtn.onclick = ()=>{
+        const show = (details.style.display==='none' || !details.style.display);
+        details.style.display = show ? 'block' : 'none';
+        toggleBtn.textContent = show ? 'Hide' : 'Details';
+      };
+    }
+  }
+
+  // === Residual badges helpers ===
+  function computeResidualForRow(row, model){
+    if (!model) return null;
+    const y   = routeAdjustedMinutes(row);
+    const p   = +row.parcels || 0;
+    const l   = +row.letters || 0;
+    const yhat = model.a + model.bp*p + model.bl*l;
+    return y - yhat; // minutes (positive = slower than volume predicts)
+  }
+
+  function getResidualModel(rows){
+    if (__residModelCache) return __residModelCache;
+    const worked = (rows||[]).filter(r=> r && r.status!=='off' && ((+r.parcels||0)+(+r.letters||0)>0))
+                             .sort((a,b)=> a.work_date < b.work_date ? -1 : 1)
+                             .slice(-120);
+    __residModelCache = fitVolumeTimeModel(worked);
+    return __residModelCache;
+  }
+
+  function renderResidualBadge(row, model, threshold=25){
+    const resid = computeResidualForRow(row, model);
+    if (resid == null) return '';
+    const m = Math.round(resid);
+    if (Math.abs(m) < threshold) return '';
+    const cls = m > 0 ? 'down' : 'up';
+    const sign = m > 0 ? '+' : '';
+    const title = m > 0
+      ? 'Slower than volume predicts (unexplained minutes)'
+      : 'Faster than volume predicts (unexplained minutes)';
+    return `<span class="pill ${cls}" title="${title}">${sign}${m}m unexplained</span>`;
+  }
+
+  function renderModelStrip(model){
+    const el = document.getElementById('liveModelStrip');
+    if (!el) return;
+    if (!model){ el.style.display = 'none'; return; }
+    const bp = document.getElementById('lm-bp');
+    const bl = document.getElementById('lm-bl');
+    const wv = document.getElementById('lm-w');
+    const r2 = document.getElementById('lm-r2');
+    const w = (model.bp && isFinite(model.bp)) ? (model.bl / model.bp) : NaN;
+    if (bp) bp.textContent = model.bp.toFixed(2);
+    if (bl) bl.textContent = model.bl.toFixed(3);
+    if (wv) wv.textContent = isFinite(w) ? w.toFixed(2) : '—';
+    if (r2) r2.textContent = (Math.max(0, Math.min(1, model.r2)) * 100).toFixed(0) + '%';
+    el.style.display = 'flex';
   }
 
   const DAY_COMPARE_STORE = {
@@ -1594,9 +1884,9 @@ function moonPhaseEmoji(dateStr) {
         { key:'officeHours', label:'Office hours', decimals:2, suffix:'h' },
         { key:'parcels', label:'Parcels', decimals:0 },
         { key:'letters', label:'Letters', decimals:0 },
-        { key:'volume', label:'Volume (parcels + 0.33×letters)', decimals:2 },
+        { key:'volume', label:'Volume (parcels + w×letters)', decimals:2 },
         { key:'miles', label:'Miles', decimals:1, suffix:'mi' },
-        { key:'efficiencyMinutes', label:'Route minutes per volume', decimals:1, suffix:'m/vol', invert:true }
+        { key:'efficiencyMinutes', label:'Route minutes per volume', decimals:1, suffix:'m/vol' }
       ];
 
       const rowsOut = [];
@@ -1914,7 +2204,10 @@ function moonPhaseEmoji(dateStr) {
   function classifyRow(total, avg){ if(total==null||avg==null) return ''; const diff=(total-avg)/avg; if(diff<=-0.15) return 'light'; if(diff>=0.15) return 'heavy'; return 'typical'; }
 
   function renderTable(rows){
+    rows = rows || [];
     const tbody=document.querySelector('#tbl tbody'); tbody.innerHTML='';
+    __residModelCache = null;
+    const model = getResidualModel(rows);
     const byDow=Array.from({length:7},()=>[]);
     rows.forEach(r=>{ if(r.status==='off') return; const h=Number(r.hours||0); const d=dowIndex(r.work_date); if(h>0) byDow[d].push(h); });
     const avgByDow=byDow.map(list=> list.length? (list.reduce((a,b)=>a+b,0)/list.length) : null);
@@ -1939,10 +2232,12 @@ function moonPhaseEmoji(dateStr) {
       tr.dataset.date=r.work_date;
       tr.tabIndex=0;
 
+      const badge = renderResidualBadge(r, model, 25);
+
       tr.innerHTML = `<td>${r.work_date} (${dowShort}) ${moon}</td><td>R1</td><td>${r.status||'worked'}</td>
         <td class="right">${offH}</td><td class="right">${rteH}</td><td class="right">${tot!=null? tot.toFixed(2):''}</td>
         <td class="right">${r.parcels||0}</td><td class="right">${r.letters||0}</td><td class="right">${r.miles||0}</td>
-        <td>${r.weather_json||''}</td>`;
+        <td>${r.weather_json||''}</td><td>${badge}</td>`;
       tbody.appendChild(tr);
     }
   }
@@ -1975,7 +2270,7 @@ function moonPhaseEmoji(dateStr) {
     const rows=[]; for(let i=1;i<lines.length;i++){ const cols=splitCsv(lines[i]); const get=(name)=> unq(cols[idx(name)] ?? ''); const r={ user_id:user.id, work_date:get('work_date'), route:'R1', status:get('status')||'worked', start_time:get('start_time')||null, depart_time:get('depart_time')||null, return_time:get('return_time')||null, end_time:get('end_time')||null, hours:+(get('hours')||0)||null, office_minutes:get('office_minutes')||null, route_minutes:get('route_minutes')||null, parcels:+(get('parcels')||0)||0, letters:+(get('letters')||0)||0, miles:+(get('miles')||0)||0, mood:get('mood')||null, notes:get('notes')||null, weather_json:get('weather_json')||null }; if(r.work_date) rows.push(r); }
     if(!rows.length){ alert('No rows detected'); return; }
     const chunk=200; for(let i=0;i<rows.length;i+=chunk){ const slice=rows.slice(i,i+chunk); const { error } = await sb.from('entries').insert(slice); if(error){ alert('Import failed: '+error.message); return; } }
-    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildUspsTiles(allRows); alert(`Imported ${rows.length} rows into this account.`);
+    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildUspsTiles(allRows); buildDiagnostics(allRows); alert(`Imported ${rows.length} rows into this account.`);
   });
 
   let dowChart, parcelsChart, lettersChart; function destroyCharts(){ [dowChart,parcelsChart,lettersChart].forEach(c=>c&&c.destroy()); }
@@ -2582,7 +2877,7 @@ function moonPhaseEmoji(dateStr) {
 
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{
-    const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildUspsTiles(allRows);
+    const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildUspsTiles(allRows); buildDiagnostics(allRows);
     }).subscribe();
   }catch(e){ console.warn('Realtime not enabled:', e?.message||e); }
 
@@ -2699,9 +2994,9 @@ function moonPhaseEmoji(dateStr) {
     }
     // removed global Collapse All in favor of Focus Mode
     // expose helpers for Focus Mode
-    window.__collapse_targets = targets.map(t=> t.id);
-    window.__collapse_set = setSectionCollapsed;
-  }
+  window.__collapse_targets = targets.map(t=> t.id);
+  window.__collapse_set = setSectionCollapsed;
+}
 
   // Focus Mode: collapse everything except snapshot tiles
   function applyFocusMode(){
@@ -2783,10 +3078,73 @@ function moonPhaseEmoji(dateStr) {
   })();
 
   (async()=>{
-    $('date').value=todayStr(); await loadByDate(); const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildQuickFilter(allRows); buildMixViz(allRows); buildHeadlineDigest(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildUspsTiles(allRows); computeBreakdown(); applyTrendPillsVisibility(); applyCollapsedUi(); applyRecentEntriesAutoCollapse(); applyFocusMode();
+    $('date').value = todayStr();
+    await loadByDate();
+
+    const sessionFromCallback = await authReadyPromise.catch(()=>null);
+    const session = sessionFromCallback || await sb.auth.getSession().then(r=> r.data.session).catch(()=>null);
+    let rows = [];
+    if (session) {
+      try {
+        rows = await fetchEntries();
+      } catch (err) {
+        console.warn('Initial fetchEntries failed:', err);
+        rows = [];
+      }
+    }
+
+    allRows = rows;
+    window.allRows = rows;
+    updateCurrentLetterWeight(allRows);
+    renderTable(applySearch(allRows));
+    buildCharts(allRows);
+    buildSnapshot(allRows);
+    buildMonthlyGlance(allRows);
+    buildQuickFilter(allRows);
+    buildMixViz(allRows);
+    buildHeadlineDigest(allRows);
+    buildSmartSummary(allRows);
+    buildTrendingFactors(allRows);
+    buildOfficeCompare(allRows);
+    buildDayCompare(allRows);
+    buildHeavinessToday(allRows);
+    buildWeekHeaviness(allRows);
+    buildUspsTiles(allRows);
+    buildDiagnostics(allRows);
+    computeBreakdown();
+    applyTrendPillsVisibility();
+    applyCollapsedUi();
+    applyRecentEntriesAutoCollapse();
+    applyFocusMode();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);
+
+  // Developer helper: log diagnostics to the console on demand
+  window.showDiagnostics = function(){
+    try{
+      if (typeof fitVolumeTimeModel !== 'function'){ console.log('Model not loaded'); return; }
+      const rows = (window.allRows||[])
+        .filter(r=> r && r.status!=='off' && ((+r.parcels||0)+(+r.letters||0)>0))
+        .sort((a,b)=> a.work_date < b.work_date ? -1 : 1)
+        .slice(-120);
+      const m = fitVolumeTimeModel(rows);
+      if (!m){ console.log('Not enough data for diagnostics'); return; }
+      console.table(m.residuals
+        .map(d=>({
+          date:d.iso,
+          parcels:d.parcels,
+          letters:d.letters,
+          routeH:(d.routeMin/60).toFixed(2),
+          predH:(d.predMin/60).toFixed(2),
+          residMin:+d.residMin.toFixed(0)
+        }))
+        .sort((a,b)=> Math.abs(b.residMin) - Math.abs(a.residMin))
+        .slice(0,5));
+      console.log('bp=', m.bp.toFixed(2), 'bl=', m.bl.toFixed(3), 'w=', (m.bl/m.bp).toFixed(2), 'R^2=', (Math.max(0, Math.min(1, m.r2))*100).toFixed(0)+'%');
+      return m;
+    }catch(err){ console.warn('showDiagnostics error', err); return null; }
+  };
 </script>
 <!-- Register the service worker for offline support -->
 <script>
@@ -3168,7 +3526,7 @@ function moonPhaseEmoji(dateStr) {
       // Labeling: W1 = current (Mon..today), W2 = last (same range)
       if (text) text.textContent = `W1: Parcels ${p0}, Letters ${l0} • W2: Parcels ${p1}, Letters ${l1}`;
       const wBadge = document.getElementById('mixWeight');
-      if (wBadge){ wBadge.style.display='inline-flex'; wBadge.innerHTML = `<small>Letter w</small> <b>${(Math.round(letterW*100)/100).toFixed(2)}</b>`; }
+    if (wBadge){ wBadge.style.display='inline-flex'; wBadge.innerHTML = `<small class="modelMetric">Letter w</small> <span>${(Math.round(letterW*100)/100).toFixed(2)}</span>`; }
     const vol0 = combinedVolume(p0, l0, letterW); const vol1 = combinedVolume(p1, l1, letterW);
     const rm0  = sum(W0,r=> routeAdjustedHours(r));
     const rm1  = sum(W1,r=> routeAdjustedHours(r));

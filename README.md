@@ -87,9 +87,36 @@ Force Refresh (to pick up updates)
 2) The page reloads; confirm top‑right version tag shows today’s date (vYYYY‑MM‑DD).
 
 What the snapshot tiles mean (at a glance)
-- Volume (0–10): percentile rank vs your recent worked days for parcels + 0.33×letters. Not “percent of max”. Click tile for details.
+- Volume (0–10): percentile rank vs your recent worked days for parcels + w×letters (learned weight). Not “percent of max”. Click tile for details.
 - Route Eff. (0–10): adjusted route minutes vs this weekday’s typical average (boxholder offsets applied). Click tile for details.
 - Overall (0–10): today’s total hours vs this weekday’s expected average. Click tile for details.
+
+🚀 Update: Dynamic Volume Model + Diagnostics
+
+What changed
+- Replaced fixed letter weight (0.33) with a learned weight from your own history.
+- Model: route_minutes ≈ a + (bp × parcels) + (bl × letters)
+- bp = minutes per parcel
+- bl = minutes per letter
+- w = bl/bp → letters expressed as a fraction of a parcel
+- Added Diagnostics panel showing coefficients, R², and top residual days (unexplained ± minutes).
+- Added live model strip (bp, bl, w, R² pills) at the top for quick glance.
+- Residuals color-coded (green = faster than predicted, red = slower).
+
+Why it matters
+- Letter volume has much less impact on route time than parcels. A fixed multiplier overstated letter effects, which made “efficiency drops” look worse than they really were.
+- Now the multiplier updates dynamically with your data — your efficiency metric stays realistic.
+- Diagnostics expose the “other 25%” of variance: weather, boxholders, detours, scanner issues, etc. You can pinpoint anomalies at a glance.
+
+Results
+- Early fits show R² ≈ 75%, meaning ~¾ of your route-time variance is explained purely by letters + parcels.
+- Learned w ≈ 0.12, showing letters are ~12% the impact of a parcel on route time (vs. the old 0.33 assumption).
+- Efficiency gap dropped from ~18% to ~12%, reflecting improved accuracy.
+
+Next up
+- Toggle between rolling model (last 120 days) and all-time model.
+- Default = rolling (captures seasonality + recent changes).
+- Option = all-time (smooths over long periods for stability).
 
 Holiday handling
 - Mark a day “Off day” and check “Holiday (observed)” to carry that day into the next weekday’s baseline (prevents outlier comparisons).

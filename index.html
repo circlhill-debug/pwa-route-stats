@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <!-- Progressive Web App metadata -->
 <meta name="theme-color" content="#2b7fff" />
 <link rel="manifest" href="manifest.json">
@@ -14,10 +14,29 @@
 <style>
   :root{
     --bg:#0f1115; --card:#141821; --border:#22262e; --text:#e8e8ea; --muted:#9aa0aa; --brand:#2b7fff;
-    --good:#7CE38B; --warn:#FFD27A; --bad:#FF8FA1
+    --good:#7CE38B; --warn:#FFD27A; --bad:#FF8FA1;
+    --rs-neg:#17803d;   /* under time = green */
+    --rs-pos:#c0392b;   /* over time  = red   */
+    --rs-mute:#6b7280;  /* neutral/gray      */
+    --rs-cell:rgba(0,0,0,0.06);
+    --rs-cell-dark:rgba(255,255,255,0.10);
+    --rs-grid:rgba(154,160,170,0.45);
+    --rs-grid-dark:rgba(224,228,236,0.45);
+    --safe-top: env(safe-area-inset-top);
+    --safe-bottom: env(safe-area-inset-bottom);
+    --safe-left: env(safe-area-inset-left);
+    --safe-right: env(safe-area-inset-right);
   }
   *{box-sizing:border-box}
-  body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Inter,Segoe UI,Roboto,Arial,sans-serif }
+  html{ font-size: clamp(15px, 1.6vw + .4rem, 18px); }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:system-ui,-apple-system,Inter,Segoe UI,Roboto,Arial,sans-serif;
+    padding-bottom:max(12px, var(--safe-bottom));
+    padding-top:max(8px, var(--safe-top));
+  }
   header{ border-bottom:1px solid var(--border); padding:14px 16px }
   .wrap{ max-width:1120px; margin:0 auto; padding:16px }
   h1{ margin:0; font-size:20px; letter-spacing:.3px }
@@ -25,7 +44,7 @@
   @media(min-width:1000px){ .grid-2{ grid-template-columns:1.1fr .9fr } }
   .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px }
   label{ font-size:13px; color:var(--muted) }
-  input,select,textarea{ width:100%; padding:12px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:15px }
+  input,select,textarea{ width:100%; padding:12px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:16px }
   button{ background:var(--brand); color:#fff; border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer }
   button.ghost{ background:transparent; color:var(--text); border:1px solid var(--border) }
   small{ color:var(--muted) }
@@ -55,6 +74,117 @@
     border:1px solid rgba(255,255,255,0.4);
   }
   .legend-swatch{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px }
+  /* ==== Diagnostics table polish ==== */
+  .diag-table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    background:transparent;
+    font-variant-numeric:tabular-nums;
+    border-radius:12px;
+    overflow:hidden;
+    font-size:clamp(.95rem, 2.9vw, 1.05rem);
+  }
+  .diag-table th,
+  .diag-table td{
+    padding:10px 12px;
+    border-top:1px solid var(--rs-grid);
+    line-height:1.3;
+  }
+  .diag-table thead th{
+    background:color-mix(in srgb, var(--rs-cell) 60%, transparent);
+    border-top:none;
+    text-align:left;
+    font-weight:600;
+  }
+  .diag-table tbody tr:nth-child(odd){
+    background:color-mix(in srgb, var(--rs-cell) 40%, transparent);
+  }
+  @media(prefers-color-scheme:dark){
+    .diag-table thead th{ background:var(--rs-cell-dark); }
+    .diag-table tbody tr:nth-child(odd){ background:color-mix(in srgb, var(--rs-cell-dark) 55%, transparent); }
+    .diag-table th,
+    .diag-table td{ border-top:1px solid var(--rs-grid-dark); }
+    .diag-table td+td,
+    .diag-table th+th{ border-left:1px solid var(--rs-grid-dark); }
+  }
+  .diag-table td+td,
+  .diag-table th+th{
+    border-left:1px solid var(--rs-grid);
+  }
+  .diag-table td{ text-align:right; white-space:nowrap; }
+  .diag-table td:first-child,
+  .diag-table th:first-child{ text-align:left; }
+  .diag-table .text-left{ text-align:left; }
+  .notes-cell{
+    text-align:justify;
+    text-align-last:left;
+    text-justify:inter-word;
+    hyphens:auto;
+    line-height:1.4;
+    vertical-align:top;
+    white-space:normal;
+  }
+  .notes-cell p{ margin:0 0 6px 0; }
+  .notes-cell p:last-child{ margin-bottom:0; }
+  .diag-wrap{
+    overflow:auto;
+    border-radius:12px;
+    box-shadow:0 1px 0 rgba(0,0,0,.06);
+  }
+  .delta{
+    display:inline-block;
+    min-width:4.5ch;
+    text-align:right;
+    padding:2px 6px;
+    border-radius:999px;
+    background:color-mix(in srgb, currentColor 12%, transparent);
+    font-variant-numeric:tabular-nums;
+    font-size:clamp(1rem, 3.4vw, 1.15rem);
+  }
+  .delta.pos{ color:var(--rs-pos); }
+  .delta.neg{ color:var(--rs-neg); }
+  .delta.zero{ color:var(--rs-mute); }
+  .delta.outlier{ box-shadow:0 0 0 1.5px currentColor inset; }
+  .num, .delta{ font-variant-numeric:tabular-nums; font-size:clamp(1rem, 3.4vw, 1.15rem); }
+  .scope-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:.5ch;
+    margin-top:6px;
+    padding:4px 14px;
+    border-radius:999px;
+    font-weight:600;
+    font-size:.9rem;
+    letter-spacing:.02em;
+    background:rgba(37,99,235,.18);
+    border:1px solid rgba(37,99,235,.42);
+    color:#e8f1ff;
+    text-shadow:0 1px 1px rgba(0,0,0,.55);
+  }
+  @media(prefers-color-scheme:light){
+    .scope-badge{
+      background:rgba(37,99,235,.12);
+      border:1px solid rgba(37,99,235,.35);
+      color:#1d4ed8;
+      text-shadow:none;
+    }
+  }
+  .scope-badge .dot{
+    width:.55em;
+    height:.55em;
+    border-radius:50%;
+    background:#2563eb;
+  }
+  .scope-badge.all .dot{ background:#6b7280; }
+  @media (max-width:420px){
+    .diag-table th,
+    .diag-table td{ padding:12px 12px; }
+    .scope-badge{ font-size:.95rem; }
+  }
+  #diagnosticsLegend{ margin-top:6px; font-size:.75em; color:#6b7280; display:flex; gap:12px; flex-wrap:wrap }
+  #diagnosticsLegend span{ display:flex; align-items:center; gap:4px }
+  #diagnosticsLegend .swatch{ width:12px; height:12px; border-radius:3px }
   .stat{ display:flex; flex-direction:column; gap:4px; padding:10px; border:1px solid var(--border); border-radius:12px; min-width:140px }
   .up{ color:var(--good) } .down{ color:var(--bad) } .warn{ color:var(--warn) }
   canvas{ background:transparent; border:1px solid var(--border); border-radius:10px; padding:8px; touch-action: manipulation; -webkit-tap-highlight-color: transparent }
@@ -143,6 +273,7 @@
     <!-- CHANGED: dynamic date -->
     <div>
       <h1 style="margin-bottom:4px">📈 ROUTE STATS — Live Dashboard — <span id="headerDate">—</span></h1>
+      <div id="modelScopeBadge" class="scope-badge" aria-live="polite"></div>
       <div id="headlineDigest" style="display:none;font-size:13px;color:var(--text);text-align:center;margin-top:6px">—</div>
       <div id="smartSummary" style="display:none;font-size:13px;color:var(--text);text-align:center;margin-top:6px">—</div>
       <div id="trendFactors" class="row" style="display:none;justify-content:center;gap:8px;margin-top:4px"></div>
@@ -534,29 +665,31 @@
 
   <!-- Diagnostics: Volume→Time model & outliers -->
   <section class="card" id="diagnosticsCard" style="grid-column:1/-1; display:none">
-    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-      <h3 style="margin:0">Diagnostics — Volume→Time Model</h3>
-      <div class="row" style="gap:8px;align-items:center">
-        <span id="diagModelBadge" class="pill" title="Minutes per unit (fit from last ~120 worked days)">—</span>
-        <button id="toggleDiagDetails" class="ghost" type="button">Details</button>
+    <button id="toggleDiagDetails" class="ghost" type="button" style="all:unset; display:block; width:100%; cursor:pointer;">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <h3 style="margin:0">Diagnostics — Volume→Time Model</h3>
+        <div class="row" style="gap:8px;align-items:center">
+          <span id="diagModelBadge" class="pill" title="Minutes per unit (fit from last ~120 worked days)">—</span>
+          <span class="pill" aria-hidden="true" style="padding:4px 10px; font-size:0.85rem;">Details</span>
+        </div>
       </div>
-    </div>
+    </button>
     <div class="sparkline-labels" id="diagSummary">—</div>
     <div id="diagDetails" style="display:none;margin-top:8px">
       <small class="muted">Top residual days (|actual − predicted|). Helps spot non-volume causes: detours, weather, boxholders, etc.</small>
-      <div style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px">
-        <table style="width:100%;border-collapse:collapse;font-size:14px">
+      <div class="diag-wrap" style="margin-top:8px;border:1px solid var(--border);border-radius:12px">
+        <table class="diag-table" style="font-size:14px">
           <thead>
             <tr style="color:var(--muted);text-transform:uppercase;font-size:12px">
-              <th style="padding:6px 4px;text-align:left">Date</th>
-              <th style="padding:6px 4px;text-align:right">Parcels</th>
-              <th style="padding:6px 4px;text-align:right">Letters</th>
-              <th style="padding:6px 4px;text-align:right">Route h</th>
-              <th style="padding:6px 4px;text-align:right">Pred h</th>
-              <th style="padding:6px 4px;text-align:right">Resid (min)</th>
-              <th style="padding:6px 4px;text-align:left">Boxholders</th>
-              <th style="padding:6px 4px;text-align:left">Weather</th>
-              <th style="padding:6px 4px;text-align:left">Notes</th>
+              <th>Date</th>
+              <th>Parcels</th>
+              <th>Letters</th>
+              <th>Expected h</th>
+              <th>Actual h</th>
+              <th>Δ Route Time</th>
+              <th>Box H</th>
+              <th>Wx</th>
+              <th>Notes</th>
             </tr>
           </thead>
           <tbody id="diagTableBody"></tbody>
@@ -651,9 +784,16 @@
 </dialog>
 
 <!-- Settings / Feature Flags dialog -->
-<dialog id="settingsDlg">
+  <dialog id="settingsDlg">
   <form method="dialog" class="grid" style="min-width:320px;gap:10px">
     <h3 style="margin:0">Settings</h3>
+    <label class="row" style="justify-content:space-between;align-items:center;gap:12px">
+      <span>Model scope</span>
+      <select id="modelScope" style="min-width:160px">
+        <option value="rolling">Rolling (120 days)</option>
+        <option value="all">All-time</option>
+      </select>
+    </label>
     <!-- Feature flags -->
     <label class="pill"><input id="flagWeekdayTicks" type="checkbox"> Show weekday + short date on line charts</label>
     <label class="pill"><input id="flagProgressivePills" type="checkbox"> Progressive color pills for deltas</label>
@@ -788,6 +928,7 @@
   const EVAL_KEY = 'routeStats.uspsEval.v1';
   const VACAY_KEY = 'routeStats.vacation.v1';
   const BASELINE_KEY = 'routeStats.baseline.v1';
+  const MODEL_SCOPE_KEY = 'routeStats.modelScope';
   function loadFlags(){
     try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false, uspsEval:true, dayCompare:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
     catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false, uspsEval:true, dayCompare:true }; }
@@ -913,6 +1054,50 @@
   const DateTime = luxon.DateTime;
   const dConn=$('dConn'), dAuth=$('dAuth'), dWrite=$('dWrite');
 
+  function updateModelScopeBadge(){
+    const el = document.getElementById('modelScopeBadge');
+    if (!el) return;
+    const scope = getModelScope();
+    const isRolling = scope !== 'all';
+    el.classList.toggle('all', !isRolling);
+    el.innerHTML = `<span class="dot" aria-hidden="true"></span>${isRolling ? 'Rolling · 120d' : 'All-time'}`;
+  }
+
+  function getModelScope(){
+    try{
+      const v = localStorage.getItem(MODEL_SCOPE_KEY);
+      return (v === 'all' || v === 'rolling') ? v : 'rolling';
+    }catch(_){
+      return 'rolling';
+    }
+  }
+  function setModelScope(v){
+    try{ localStorage.setItem(MODEL_SCOPE_KEY, v); }catch(_){ }
+  }
+  function rowsForModelScope(allRows){
+    const rows = Array.isArray(allRows) ? allRows : [];
+    const scope = getModelScope();
+    if (scope !== 'rolling') return rows;
+    const cutoff = DateTime.now().setZone(ZONE).minus({ days:120 }).startOf('day');
+    return rows.filter(r=>{
+      try{
+        if (!r || !r.work_date) return false;
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        return d >= cutoff;
+      }catch(_){ return false; }
+    });
+  }
+  (function initModelScopeUI(){
+    const el = document.getElementById('modelScope');
+    if (!el) return;
+    el.value = getModelScope();
+    el.addEventListener('change', ()=>{
+      setModelScope(el.value);
+      updateModelScopeBadge();
+      rebuildAll();
+    });
+  })();
+
   // NEW: set live header date + version tag
   (function(){
     const d = DateTime.now().setZone(ZONE);
@@ -920,6 +1105,7 @@
     if (el) el.textContent = d.toFormat('MMM d, yyyy');
     const ver = document.getElementById('verTag');
     if (ver) ver.textContent = 'v' + d.toFormat('yyyy-MM-dd');
+    updateModelScopeBadge();
   })();
 
   function renderUspsEvalTag(){
@@ -1137,6 +1323,7 @@ function moonPhaseEmoji(dateStr) {
   // === Settings dialog (Feature Flags) ===
   const settingsDlg = document.getElementById('settingsDlg');
   const btnSettings = document.getElementById('btnSettings');
+  const modelScopeSelect = document.getElementById('modelScope');
   const flagWeekdayTicks = document.getElementById('flagWeekdayTicks');
   const flagProgressivePills = document.getElementById('flagProgressivePills');
   const flagMonthlyGlance = document.getElementById('flagMonthlyGlance');
@@ -1169,6 +1356,7 @@ function moonPhaseEmoji(dateStr) {
     // populate from FLAGS
     flagWeekdayTicks.checked = !!FLAGS.weekdayTicks;
     flagProgressivePills.checked = !!FLAGS.progressivePills;
+    if (modelScopeSelect) modelScopeSelect.value = getModelScope();
     if (flagMonthlyGlance) flagMonthlyGlance.checked = !!FLAGS.monthlyGlance;
     if (flagHolidayAdjust) flagHolidayAdjust.checked = !!FLAGS.holidayAdjustments;
     if (flagTrendPills) flagTrendPills.checked = !!FLAGS.trendPills;
@@ -1204,6 +1392,8 @@ function moonPhaseEmoji(dateStr) {
 
   saveSettings?.addEventListener('click', (e)=>{
     e.preventDefault();
+    if (modelScopeSelect) setModelScope(modelScopeSelect.value);
+    updateModelScopeBadge();
     FLAGS.weekdayTicks = !!flagWeekdayTicks.checked;
     FLAGS.progressivePills = !!flagProgressivePills.checked;
     if (flagMonthlyGlance) FLAGS.monthlyGlance = !!flagMonthlyGlance.checked;
@@ -1435,9 +1625,9 @@ function moonPhaseEmoji(dateStr) {
   function updateCurrentLetterWeight(allRows){
     try{
       const worked = (allRows||[]).filter(r=> r && r.status !== 'off' && ((+r.parcels||0)+(+r.letters||0) > 0))
-                                   .sort((a,b)=> a.work_date < b.work_date ? -1 : 1)
-                                   .slice(-60);
-      const w = computeLetterWeight(worked);
+                                   .sort((a,b)=> a.work_date < b.work_date ? -1 : 1);
+      const scoped = rowsForModelScope(worked);
+      const w = computeLetterWeight(scoped);
       if (w!=null) CURRENT_LETTER_WEIGHT = +(0.7*CURRENT_LETTER_WEIGHT + 0.3*w).toFixed(4);
       try{ localStorage.setItem('routeStats.letterWeight', String(CURRENT_LETTER_WEIGHT)); }catch(_){ }
     }catch(_){ /* keep default */ }
@@ -1644,15 +1834,44 @@ function moonPhaseEmoji(dateStr) {
   }
   let __residModelCache = null;
 
+  function escapeHtml(s=''){
+    return String(s)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  }
+
+  function minutesDelta(actualMinutes, expectedMinutes){
+    if (actualMinutes == null || expectedMinutes == null) return 0;
+    return actualMinutes - expectedMinutes;
+  }
+
+  function formatMinutesDelta(deltaMinutes, zScore){
+    const isZeroish = Math.abs(deltaMinutes) < 0.5;
+    let cls = 'delta zero';
+    let text = '0';
+    if (!isZeroish){
+      const sign = deltaMinutes > 0 ? '+' : '−';
+      cls = `delta ${deltaMinutes > 0 ? 'pos' : 'neg'}`;
+      text = `${sign}${Math.round(Math.abs(deltaMinutes))}m`;
+    }
+    if (typeof zScore === 'number' && Math.abs(zScore) >= 1.5){
+      cls += ' outlier';
+    }
+    return `<span class="${cls}">${text}</span>`;
+  }
+
   function buildDiagnostics(rows){
     rows = filterRowsForView(rows||[]);
     const card = document.getElementById('diagnosticsCard'); if (!card) return;
     card.style.display = 'block';
     __residModelCache = null;
     const worked = rows.filter(r=> r && r.status !== 'off' && ((+r.parcels||0)+(+r.letters||0)>0))
-                       .sort((a,b)=> a.work_date < b.work_date ? -1 : 1)
-                       .slice(-120);
-    const model = fitVolumeTimeModel(worked);
+                       .sort((a,b)=> a.work_date < b.work_date ? -1 : 1);
+    const scoped = rowsForModelScope(worked);
+    const model = fitVolumeTimeModel(scoped);
     renderModelStrip(model);
     const badge = document.getElementById('diagModelBadge');
     const summaryEl = document.getElementById('diagSummary');
@@ -1673,30 +1892,66 @@ function moonPhaseEmoji(dateStr) {
     }
     if (badge){ badge.innerHTML = `<small class="modelMetric">bp</small> <span>${model.bp.toFixed(2)}</span> · <small class="modelMetric">bl</small> <span>${model.bl.toFixed(3)}</span> · <small class="modelMetric">w</small> <span>${(w!=null?w.toFixed(2):'—')}</span>`; }
     if (summaryEl){ const pct = Math.round(Math.max(0,Math.min(1,model.r2))*100); summaryEl.textContent = `Fit on ${model.n} days · R² ${pct}% · Predicts route minutes from parcels & letters.`; }
+    if (toggleBtn && details && !toggleBtn.dataset.bound){
+      const labelPill = toggleBtn.querySelector('.pill[aria-hidden]');
+      const setLabel = ()=>{
+        if (!labelPill) return;
+        const expanded = toggleBtn.getAttribute('aria-expanded') === 'true';
+        labelPill.textContent = expanded ? 'Hide' : 'Details';
+      };
+      toggleBtn.dataset.bound = '1';
+      toggleBtn.addEventListener('click', ()=>{
+        const show = details.style.display==='none' || !details.style.display;
+        details.style.display = show ? 'block' : 'none';
+        toggleBtn.setAttribute('aria-expanded', show ? 'true' : 'false');
+        setLabel();
+      });
+      toggleBtn.setAttribute('aria-expanded', 'false');
+      setLabel();
+    }
     if (tbody){
       const ZONE = 'America/Detroit';
-      const top = [...model.residuals].sort((a,b)=> Math.abs(b.residMin) - Math.abs(a.residMin)).slice(0,10);
+      const residuals = model.residuals || [];
+      const stats = (()=>{
+        if (!residuals.length) return { mean:0, std:0 };
+        const mean = residuals.reduce((acc,r)=> acc + r.residMin, 0) / residuals.length;
+        if (residuals.length < 2) return { mean, std:0 };
+        const variance = residuals.reduce((acc,r)=>{
+          const diff = r.residMin - mean;
+          return acc + diff*diff;
+        },0) / (residuals.length - 1);
+        return { mean, std: Math.sqrt(Math.max(variance, 0)) };
+      })();
+      const top = [...residuals].sort((a,b)=> Math.abs(b.residMin) - Math.abs(a.residMin)).slice(0,10);
       tbody.innerHTML = top.map(d=>{
         const dt = luxon.DateTime.fromISO(d.iso,{zone:ZONE}).toFormat('ccc LLL dd');
+        const actualMinutes = d.routeMin;
+        const expectedMinutes = d.predMin;
+        const expectedHours = (expectedMinutes/60).toFixed(2);
+        const actualHours = (actualMinutes/60).toFixed(2);
+        const deltaMinutes = minutesDelta(actualMinutes, expectedMinutes);
+        const zScore = stats.std > 0 ? (d.residMin - stats.mean) / stats.std : null;
+        const deltaHtml = formatMinutesDelta(deltaMinutes, zScore);
+        const parcels = (+d.parcels || 0);
+        const letters = (+d.letters || 0);
+        const boxholders = d.row.boxholders ? escapeHtml(d.row.boxholders) : '—';
+        const weatherSnippet = (d.row.weather_json || '').replace(/Reason:\s*/i,'').slice(0,80).trim();
+        const weather = weatherSnippet ? escapeHtml(weatherSnippet) : '—';
+        const rawNotes = (d.row.notes || '').trim();
+        const noteParts = rawNotes ? rawNotes.split(/\n+/).filter(Boolean).slice(0,3) : [];
+        const notesHtml = noteParts.length ? noteParts.map(n=>`<p>${escapeHtml(n)}</p>`).join('') : '<p>—</p>';
         return `<tr>
-        <td style="padding:6px 4px">${dt}</td>
-        <td class="right" style="padding:6px 4px">${(+d.parcels||0)}</td>
-        <td class="right" style="padding:6px 4px">${(+d.letters||0)}</td>
-        <td class="right" style="padding:6px 4px">${(d.routeMin/60).toFixed(2)}</td>
-        <td class="right" style="padding:6px 4px">${(d.predMin/60).toFixed(2)}</td>
-        <td class="right ${d.residMin>25?'down':(d.residMin<-25?'up':'')}" style="padding:6px 4px">${d.residMin.toFixed(0)}</td>
-        <td style="padding:6px 4px">${d.row.boxholders||'—'}</td>
-        <td style="padding:6px 4px">${(d.row.weather_json||'').replace(/Reason:\s*/i,'').slice(0,40)||'—'}</td>
-        <td style="padding:6px 4px">${(d.row.notes||'').slice(0,60)||'—'}</td>
-      </tr>`;
+          <td class="text-left">${dt}</td>
+          <td>${parcels}</td>
+          <td>${letters}</td>
+          <td>${expectedHours}</td>
+          <td>${actualHours}</td>
+          <td>${deltaHtml}</td>
+          <td class="text-left">${boxholders}</td>
+          <td class="text-left">${weather}</td>
+          <td class="notes-cell">${notesHtml}</td>
+        </tr>`;
       }).join('');
-    }
-    if (toggleBtn && details){
-      toggleBtn.onclick = ()=>{
-        const show = (details.style.display==='none' || !details.style.display);
-        details.style.display = show ? 'block' : 'none';
-        toggleBtn.textContent = show ? 'Hide' : 'Details';
-      };
     }
   }
 
@@ -1713,9 +1968,9 @@ function moonPhaseEmoji(dateStr) {
   function getResidualModel(rows){
     if (__residModelCache) return __residModelCache;
     const worked = (rows||[]).filter(r=> r && r.status!=='off' && ((+r.parcels||0)+(+r.letters||0)>0))
-                             .sort((a,b)=> a.work_date < b.work_date ? -1 : 1)
-                             .slice(-120);
-    __residModelCache = fitVolumeTimeModel(worked);
+                             .sort((a,b)=> a.work_date < b.work_date ? -1 : 1);
+    const scoped = rowsForModelScope(worked);
+    __residModelCache = fitVolumeTimeModel(scoped);
     return __residModelCache;
   }
 
@@ -2129,6 +2384,26 @@ function moonPhaseEmoji(dateStr) {
     });
   }
 
+  function rebuildAll(){
+    const rows = allRows || [];
+    updateCurrentLetterWeight(rows);
+    renderTable(applySearch(rows));
+    buildCharts(rows);
+    buildSnapshot(rows);
+    buildMonthlyGlance(rows);
+    buildQuickFilter(rows);
+    buildMixViz(rows);
+    buildHeadlineDigest(rows);
+    buildSmartSummary(rows);
+    buildTrendingFactors(rows);
+    buildOfficeCompare(rows);
+    buildDayCompare(rows);
+    buildHeavinessToday(rows);
+    buildWeekHeaviness(rows);
+    buildUspsTiles(rows);
+    buildDiagnostics(rows);
+  }
+
   async function loadByDate(){
     editingKey = null; const { data:{ user } } = await sb.auth.getUser(); if(!user) return; const d=date.value; if(!d) return;
     const { data, error } = await sb.from('entries').select('*').eq('user_id', user.id).eq('work_date', d).limit(1).maybeSingle();
@@ -2232,12 +2507,10 @@ function moonPhaseEmoji(dateStr) {
       tr.dataset.date=r.work_date;
       tr.tabIndex=0;
 
-      const badge = renderResidualBadge(r, model, 25);
-
       tr.innerHTML = `<td>${r.work_date} (${dowShort}) ${moon}</td><td>R1</td><td>${r.status||'worked'}</td>
         <td class="right">${offH}</td><td class="right">${rteH}</td><td class="right">${tot!=null? tot.toFixed(2):''}</td>
         <td class="right">${r.parcels||0}</td><td class="right">${r.letters||0}</td><td class="right">${r.miles||0}</td>
-        <td>${r.weather_json||''}</td><td>${badge}</td>`;
+        <td>${r.weather_json||''}</td><td></td>`;
       tbody.appendChild(tr);
     }
   }
@@ -3124,10 +3397,9 @@ function moonPhaseEmoji(dateStr) {
   window.showDiagnostics = function(){
     try{
       if (typeof fitVolumeTimeModel !== 'function'){ console.log('Model not loaded'); return; }
-      const rows = (window.allRows||[])
+      const rows = rowsForModelScope((window.allRows||[])
         .filter(r=> r && r.status!=='off' && ((+r.parcels||0)+(+r.letters||0)>0))
-        .sort((a,b)=> a.work_date < b.work_date ? -1 : 1)
-        .slice(-120);
+        .sort((a,b)=> a.work_date < b.work_date ? -1 : 1));
       const m = fitVolumeTimeModel(rows);
       if (!m){ console.log('Not enough data for diagnostics'); return; }
       console.table(m.residuals

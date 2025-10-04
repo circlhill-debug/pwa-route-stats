@@ -70,6 +70,17 @@ Quick start next time
 3) Verify charts/tooltips on phone if testing in the field.
 4) Share the new data points; we’ll sketch integration and ship behind flags.
 
+Branch Recovery Checklist (Sept 26, 2025)
+- `problem-child`: full WIP (header tweaks, diagnostics experiments, boxholder retrofit).
+- `restore/stable-sept26`: clean baseline (commit `503186b`, pre iPhone PWA changes).
+- Plan: reapply only the useful fixes onto `restore/stable-sept26`, testing each addition.
+- Steps:
+  1) `git checkout restore/stable-sept26`;
+  2) Cherry-pick specific hunks from `problem-child` (diagnostics cell styling, boxholder logic, etc.);
+  3) Test locally, commit in small units;
+  4) Fast-forward `main` to `restore/stable-sept26` when ready;
+  5) Review notes to ensure no important fix is missed.
+
 Where to look / edit
 - index.html: Main app, feature flags UI and logic. Quick Filter and summaries live here.
 - NEXT.md: Near‑term tasks and acceptance criteria (kept up‑to‑date as we ship).

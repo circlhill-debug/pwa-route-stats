@@ -8,6 +8,14 @@ This sheet explains what each number means and how it’s computed so you can tr
 - Combined volume: `parcels + 0.33 × letters`.
 - “Mon..today”: This week-to-date (WTD). “Last” means last full week (Mon..Sun) unless noted.
 
+## Dynamic Volume Model
+- Model: `route_minutes ≈ a + (bp × parcels) + (bl × letters)`; coefficients update as new entries land.
+- `bp`: minutes per parcel; parcel slope from the fit.
+- `bl`: minutes per letter; letter slope from the fit.
+- `w`: learned letter weight (`bl ÷ bp`); letters expressed as parcel equivalents (volume mix).
+- `R²`: share of route-minute variance explained by parcels + letters (fit quality).
+- Pills at the top show the current values; Diagnostics lists residual outliers (fast/slow days).
+
 ## Snapshot Tiles (top row)
 - Volume (0–10): Percentile rank vs your recent worked days using combined volume. 3/10 ≈ 30th percentile (not “30% of max”).
 - Route Eff. (0–10): Today’s adjusted route hours vs the typical average for this weekday (historical). Higher is better.

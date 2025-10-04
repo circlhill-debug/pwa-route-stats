@@ -1560,12 +1560,22 @@ function moonPhaseEmoji(dateStr) {
 
   // Boxholder adjustment helpers (does not change stored times; used for efficiency metrics only)
   function parseBoxholdersValue(v){
-    if (!v) return 0;
-    const s = String(v).toLowerCase();
-    if (s==='x1' || /light/.test(s)) return 1;
-    if (s==='x2' || /medium/.test(s)) return 2;
-    if (s==='x3' || /heavy/.test(s)) return 3;
-    if (/none/.test(s)) return 0;
+    if (v == null || v === '') return 0;
+    const raw = String(v).trim().toLowerCase();
+    if (!raw) return 0;
+    if (/none/.test(raw)) return 0;
+    if (/light/.test(raw)) return 1;
+    if (/medium/.test(raw)) return 2;
+    if (/heavy/.test(raw)) return 3;
+    const normalized = raw.replace(/×/g,'x').replace(/\s+/g,'');
+    if (/^(x?1|1x)$/.test(normalized)) return 1;
+    if (/^(x?2|2x)$/.test(normalized)) return 2;
+    if (/^(x?3|3x)$/.test(normalized)) return 3;
+    const asNum = Number(raw);
+    if (Number.isFinite(asNum) && asNum > 0){
+      const rounded = Math.round(asNum);
+      if (rounded >= 1 && rounded <= 3) return rounded;
+    }
     return 0;
   }
   function boxholderAdjMinutes(valOrRow){
@@ -1579,6 +1589,41 @@ function moonPhaseEmoji(dateStr) {
     const baseH = (+row.route_minutes||0);
     const adjH  = boxholderAdjMinutes(row) / 60;
     return Math.max(0, +(baseH - adjH).toFixed(2));
+  }
+
+  function formatBoxholderLabel(val){
+    if (val == null || val === '') return '—';
+    const parsed = parseBoxholdersValue(val);
+    if (parsed > 0) return `${parsed}x`;
+    const raw = String(val).trim().toLowerCase();
+    if (/light/.test(raw)) return '1x';
+    if (/medium/.test(raw)) return '2x';
+    if (/heavy/.test(raw)) return '3x';
+    return raw ? raw : '—';
+  }
+
+  function inferBoxholderLabel(row){
+    if (!row) return '—';
+    const direct = formatBoxholderLabel(row.boxholders);
+    if (direct !== '—') return direct;
+    const weatherStr = row.weather_json ? String(row.weather_json) : '';
+    if (weatherStr){
+      const weatherMatch = weatherStr.match(/Box:\s*([^·]+)/i);
+      if (weatherMatch){
+        const normalizedWeather = formatBoxholderLabel(weatherMatch[1].trim());
+        if (normalizedWeather !== '—') return normalizedWeather;
+      }
+    }
+    const textSources = [row.reason, row.notes, weatherStr]
+      .filter(Boolean)
+      .map(v=> String(v).toLowerCase());
+    if (!textSources.length) return '—';
+    const combined = textSources.join(' ');
+    if (!/box/.test(combined)) return '—';
+    const match = combined.match(/box(?:holder)?[^a-z0-9]*(light|medium|heavy|x\s*\d|\d\s*x|\d+x)/i);
+    if (!match) return '—';
+    const token = match[1] ? match[1] : match[0];
+    return formatBoxholderLabel(token.replace(/\s+/g,''));
   }
 
   const WEEKDAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -1934,7 +1979,7 @@ function moonPhaseEmoji(dateStr) {
         const deltaHtml = formatMinutesDelta(deltaMinutes, zScore);
         const parcels = (+d.parcels || 0);
         const letters = (+d.letters || 0);
-        const boxholders = d.row.boxholders ? escapeHtml(d.row.boxholders) : '—';
+        const boxholders = escapeHtml(inferBoxholderLabel(d.row));
         const weatherSnippet = (d.row.weather_json || '').replace(/Reason:\s*/i,'').slice(0,80).trim();
         const weather = weatherSnippet ? escapeHtml(weatherSnippet) : '—';
         const rawNotes = (d.row.notes || '').trim();

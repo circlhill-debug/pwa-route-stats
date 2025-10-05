@@ -5,8 +5,15 @@ This sheet explains what each number means and how it’s computed so you can tr
 ## Units & Conventions
 - Hours: Stored/compared in hours (e.g., 4.75 = 4h45m).
 - Route adjusted hours: `route_hours − boxholder_offset_minutes/60` (x1=30m, x2=45m, x3=60m).
-- Combined volume: `parcels + 0.33 × letters`.
+- Combined volume: `parcels + (w × letters)` with a learned letter weight `w = bl ÷ bp` (defaults to 0.33 until the model has data).
 - “Mon..today”: This week-to-date (WTD). “Last” means last full week (Mon..Sun) unless noted.
+
+## Dynamic Volume Model
+- Model: `route_minutes ≈ a + (bp × parcels) + (bl × letters)`; coefficients update whenever new entries are added.
+- `bp` — minutes per parcel (parcel slope) and `bl` — minutes per letter (letter slope) capture how volume drives time.
+- Learned weight `w = bl ÷ bp` converts letters into parcel equivalents so mixed volume comparisons stay fair.
+- `R²` shows what share of route-minute variance the model explains; higher = fit follows your history more closely.
+- The pills in the header surface these live values so you can spot shifts in the route quickly.
 
 ## Snapshot Tiles (top row)
 - Volume (0–10): Percentile rank vs your recent worked days using combined volume. 3/10 ≈ 30th percentile (not “30% of max”).
@@ -18,6 +25,13 @@ Click any tile to see a short plain‑English explanation. Hover tooltips show d
 ## Today Deltas
 - Today Parcels Δ / Letters Δ: Today vs last same weekday you worked.
 - Today Office Δ: Office minutes today vs last same weekday you worked.
+
+## Diagnostics — Volume→Time Model
+- View: Settings → Diagnostics → "Volume → Time" shows the model coefficients alongside fit quality.
+- Coefficients panel: watch `bp`, `bl`, `w`, and `R²` week-to-week; big swings hint at changes in route mix or data entry issues.
+- Residuals list: highlights days where actual route minutes were far above/below the prediction; use Reason tags to explain recurring outliers.
+- Toggle "Show Residuals" to sort the biggest misses (± minutes) and decide if they’re noise, weather, detours, or require baseline tweaks.
+- Export: copy the table straight into notes when coaching or reviewing past adjustments.
 
 ## Smart Summary (under the title)
 - Week‑to‑date comparison (Mon..today) vs last Mon..today.
@@ -60,4 +74,3 @@ Click any tile to see a short plain‑English explanation. Hover tooltips show d
 - Ensure route start/return times are correct; don’t overlap office and route.
 - Mark Boxholders on days they occurred so adjustments reflect reality.
 - Use Reason tags on outlier days to keep context for later.
-

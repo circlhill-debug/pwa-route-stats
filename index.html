@@ -1244,6 +1244,43 @@
     return (iso && isVacationDate(iso)) ? ' (v)' : '';
   }
 
+  function isHolidayMarked(row){
+    if (!row) return false;
+    const text = String(row.weather_json || '');
+    return /\bHoliday\b/i.test(text);
+  }
+
+  function ensurePostHolidayTags(rows){
+    if (!Array.isArray(rows)) return rows;
+    try{
+      const holidayOff = new Set(
+        rows
+          .filter(r => r && r.status === 'off' && isHolidayMarked(r))
+          .map(r => r.work_date)
+          .filter(Boolean)
+      );
+      rows.forEach(r => {
+        try{
+          if (!r || !r.work_date) return;
+          const prevIso = DateTime.fromISO(r.work_date, { zone: ZONE }).minus({ days: 1 }).toISODate();
+          if (prevIso && holidayOff.has(prevIso)){
+            if (!Array.isArray(r._tags)) r._tags = [];
+            if (!r._tags.includes('post_holiday')) r._tags.push('post_holiday');
+            const base = String(r.weather_json || '').trim();
+            if (!/Reason:\s*Post-Holiday/i.test(base)){
+              r.weather_json = base ? `${base} · Reason: Post-Holiday` : 'Reason: Post-Holiday';
+            }
+          }
+        }catch(_){ /* ignore per-row errors */ }
+      });
+    }catch(_){ /* ignore */ }
+    return rows;
+  }
+
+  function hasTag(row, tag){
+    return !!(row && Array.isArray(row._tags) && row._tags.includes(tag));
+  }
+
   // NEW: Moon phase emoji helper
   // Improved Moon phase calc (better epoch)
 function moonPhaseEmoji(dateStr) {
@@ -1389,7 +1426,9 @@ function moonPhaseEmoji(dateStr) {
     }
     authMsg.textContent = 'Signed in!';
     pwDlg.close();
-    const rows = await fetchEntries(); allRows=rows; updateCurrentLetterWeight(allRows); renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildHeavinessToday(allRows); buildWeekHeaviness(allRows); buildUspsTiles(allRows); buildDiagnostics(allRows);
+    const rows = await fetchEntries();
+    allRows = rows;
+    rebuildAll();
   });
 
   doSignup?.addEventListener('click', async ()=>{
@@ -1545,24 +1584,9 @@ function moonPhaseEmoji(dateStr) {
     saveFlags(FLAGS);
     settingsDlg.close();
     renderVacationRanges();
-    // Re-render visuals affected by flags
-    buildCharts(allRows||[]);
-    buildSnapshot(allRows||[]);
-    buildMonthlyGlance(allRows||[]);
-    buildQuickFilter(allRows||[]);
-    buildMixViz(allRows||[]);
-    buildHeadlineDigest(allRows||[]);
-    buildSmartSummary(allRows||[]);
-    buildTrendingFactors(allRows||[]);
-    buildOfficeCompare(allRows||[]);
-    buildDayCompare(allRows||[]);
-    buildHeavinessToday(allRows||[]);
-    buildWeekHeaviness(allRows||[]);
-    buildUspsTiles(allRows||[]);
-    updateCurrentLetterWeight(allRows||[]);
-    buildDiagnostics(allRows||[]);
+    rebuildAll();
     renderUspsEvalTag();
-    
+
     applyTrendPillsVisibility();
     applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
@@ -2577,22 +2601,26 @@ function moonPhaseEmoji(dateStr) {
 
   function rebuildAll(){
     const rows = allRows || [];
-    updateCurrentLetterWeight(rows);
-    renderTable(applySearch(rows));
-    buildCharts(rows);
-    buildSnapshot(rows);
-    buildMonthlyGlance(rows);
-    buildQuickFilter(rows);
-    buildMixViz(rows);
-    buildHeadlineDigest(rows);
-    buildSmartSummary(rows);
-    buildTrendingFactors(rows);
-    buildOfficeCompare(rows);
-    buildDayCompare(rows);
-    buildHeavinessToday(rows);
-    buildWeekHeaviness(rows);
-    buildUspsTiles(rows);
-    buildDiagnostics(rows);
+    const rawRows = rows;
+    const normalRows = rows.filter(r => r && r.status !== 'off' && !hasTag(r, 'post_holiday'));
+
+    window.allRows = rows;
+    updateCurrentLetterWeight(normalRows);
+    renderTable(applySearch(rawRows));
+    buildCharts(rawRows);
+    buildSnapshot(rawRows);
+    buildMonthlyGlance(rawRows);
+    buildQuickFilter(rawRows);
+    buildMixViz(rawRows);
+    buildHeadlineDigest(rawRows);
+    buildSmartSummary(rawRows);
+    buildTrendingFactors(rawRows);
+    buildOfficeCompare(rawRows);
+    buildDayCompare(rawRows);
+    buildHeavinessToday(rawRows);
+    buildWeekHeaviness(rawRows);
+    buildUspsTiles(rawRows);
+    buildDiagnostics(normalRows);
   }
 
   async function loadByDate(){
@@ -2630,7 +2658,9 @@ function moonPhaseEmoji(dateStr) {
       dWrite.textContent = error ? 'Failed' : 'OK'; if (error){ alert(error.message); return; }
       clone.textContent = 'Update'; clone.disabled = true; clone.classList.add('saving','savedFlash');
       setTimeout(()=>{ clone.disabled=false; clone.classList.remove('saving'); }, 400); setTimeout(()=> clone.classList.remove('savedFlash'), 700);
-      const rows = await fetchEntries(); allRows = rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildDayCompare(allRows);
+      const rows = await fetchEntries();
+      allRows = rows;
+      rebuildAll();
       editingKey = { user_id:user.id, work_date:date.value }; clone.classList.remove('ghost');
     });
   })();
@@ -2650,21 +2680,27 @@ function moonPhaseEmoji(dateStr) {
     const { error } = await sb.from('entries').delete().eq('user_id',user.id).eq('work_date',d); if(error){ alert(error.message); return; }
     lastDeleted = rowToDelete; showUndo(true);
     $('notes').value=''; parcels.value=0; letters.value=0; miles.value=53; offDay.checked=false; start.value='08:00'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; computeBreakdown();
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildDayCompare(allRows); alert(`Deleted ${d}. You can Undo now.`);
+    const rows = await fetchEntries();
+    allRows = rows;
+    rebuildAll();
+    alert(`Deleted ${d}. You can Undo now.`);
   });
 
   btnUndoDelete?.addEventListener('click', async ()=>{
     if(!lastDeleted){ showUndo(false); return; }
     dWrite.textContent='—'; const { error } = await sb.from('entries').insert(lastDeleted);
     if(error){ alert('Undo failed: '+error.message); return; }
-    const rows = await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildDayCompare(allRows);
+    const rows = await fetchEntries();
+    allRows = rows;
+    rebuildAll();
     alert(`Restored ${lastDeleted.work_date}.`); $('date').value = lastDeleted.work_date; await loadByDate(); lastDeleted=null; showUndo(false);
   });
 
   async function fetchEntries(){
     const { data:{ user } } = await sb.auth.getUser(); if(!user) return [];
     const { data, error } = await sb.from('entries').select('*').eq('user_id',user.id).order('work_date',{ascending:false}).limit(365);
-    if(error){ console.error(error); return []; } return data;
+    if(error){ console.error(error); return []; }
+    return ensurePostHolidayTags(data || []);
   }
 
   function classifyRow(total, avg){ if(total==null||avg==null) return ''; const diff=(total-avg)/avg; if(diff<=-0.15) return 'light'; if(diff>=0.15) return 'heavy'; return 'typical'; }
@@ -2734,7 +2770,10 @@ function moonPhaseEmoji(dateStr) {
     const rows=[]; for(let i=1;i<lines.length;i++){ const cols=splitCsv(lines[i]); const get=(name)=> unq(cols[idx(name)] ?? ''); const r={ user_id:user.id, work_date:get('work_date'), route:'R1', status:get('status')||'worked', start_time:get('start_time')||null, depart_time:get('depart_time')||null, return_time:get('return_time')||null, end_time:get('end_time')||null, hours:+(get('hours')||0)||null, office_minutes:get('office_minutes')||null, route_minutes:get('route_minutes')||null, parcels:+(get('parcels')||0)||0, letters:+(get('letters')||0)||0, miles:+(get('miles')||0)||0, mood:get('mood')||null, notes:get('notes')||null, weather_json:get('weather_json')||null }; if(r.work_date) rows.push(r); }
     if(!rows.length){ alert('No rows detected'); return; }
     const chunk=200; for(let i=0;i<rows.length;i+=chunk){ const slice=rows.slice(i,i+chunk); const { error } = await sb.from('entries').insert(slice); if(error){ alert('Import failed: '+error.message); return; } }
-    const fresh=await fetchEntries(); allRows=fresh; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildUspsTiles(allRows); buildDiagnostics(allRows); alert(`Imported ${rows.length} rows into this account.`);
+    const fresh = await fetchEntries();
+    allRows = fresh;
+    rebuildAll();
+    alert(`Imported ${rows.length} rows into this account.`);
   });
 
   let dowChart, parcelsChart, lettersChart; function destroyCharts(){ [dowChart,parcelsChart,lettersChart].forEach(c=>c&&c.destroy()); }
@@ -3343,7 +3382,9 @@ function moonPhaseEmoji(dateStr) {
 
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{
-    const rows=await fetchEntries(); allRows=rows; renderTable(applySearch(allRows)); buildCharts(allRows); buildSnapshot(allRows); buildMonthlyGlance(allRows); buildMixViz(allRows); buildSmartSummary(allRows); buildTrendingFactors(allRows); buildOfficeCompare(allRows); buildDayCompare(allRows); buildUspsTiles(allRows); buildDiagnostics(allRows);
+      const rows = await fetchEntries();
+      allRows = rows;
+      rebuildAll();
     }).subscribe();
   }catch(e){ console.warn('Realtime not enabled:', e?.message||e); }
 
@@ -3561,22 +3602,7 @@ function moonPhaseEmoji(dateStr) {
 
     allRows = rows;
     window.allRows = rows;
-    updateCurrentLetterWeight(allRows);
-    renderTable(applySearch(allRows));
-    buildCharts(allRows);
-    buildSnapshot(allRows);
-    buildMonthlyGlance(allRows);
-    buildQuickFilter(allRows);
-    buildMixViz(allRows);
-    buildHeadlineDigest(allRows);
-    buildSmartSummary(allRows);
-    buildTrendingFactors(allRows);
-    buildOfficeCompare(allRows);
-    buildDayCompare(allRows);
-    buildHeavinessToday(allRows);
-    buildWeekHeaviness(allRows);
-    buildUspsTiles(allRows);
-    buildDiagnostics(allRows);
+    rebuildAll();
     computeBreakdown();
     applyTrendPillsVisibility();
     applyCollapsedUi();

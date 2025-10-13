@@ -43,6 +43,7 @@ Latest features (main)
   - Weekly $/h: 4‑week rolling average (completed weeks), derived from annual salary. Tooltip shows total hours used.
 - Vacation Mode: manage one or more date ranges (Settings → Vacation Mode). Analytics skip those days; table keeps them with a superscript `v`.
 - Data Sheet: in-app HTML view renders docs/METRICS.md (bp/bl/w/R², diagnostics guidance) with caching-safe refresh.
+- Diagnostics: auto-tag post-holiday “catch-up” days so residuals are annotated and coefficients stay stable.
 - Smart Summary (rule‑based): concise Hours/Volume/Efficiency deltas; daily under the title (top‑movers ≥5%).
 - Headline Digest (weekly): one‑line summary on Wednesdays after 5pm (flag‑controlled).
 - Trending Factors: quick culprit pills (Office / Route / Volume) for Mon..today vs last Mon..today.

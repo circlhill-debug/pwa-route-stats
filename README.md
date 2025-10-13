@@ -41,7 +41,8 @@ Latest features (main)
 - USPS tiles:
   - Hours vs Eval: weekly progress percent (Mon..today) vs eval hours/day (includes office). Tooltip shows “Xh of Yh over N day(s)”.
   - Weekly $/h: 4‑week rolling average (completed weeks), derived from annual salary. Tooltip shows total hours used.
-- Vacation Mode: exclude a date range from analytics (Settings → Vacation Mode). Table remains unchanged.
+- Vacation Mode: manage one or more date ranges (Settings → Vacation Mode). Analytics skip those days; table keeps them with a superscript `v`.
+- Data Sheet: in-app HTML view renders docs/METRICS.md (bp/bl/w/R², diagnostics guidance) with caching-safe refresh.
 - Smart Summary (rule‑based): concise Hours/Volume/Efficiency deltas; daily under the title (top‑movers ≥5%).
 - Headline Digest (weekly): one‑line summary on Wednesdays after 5pm (flag‑controlled).
 - Trending Factors: quick culprit pills (Office / Route / Volume) for Mon..today vs last Mon..today.
@@ -63,6 +64,7 @@ Next Session — Pick Up Here
 - Heaviness tuning: thresholds/copy for Today/Week pills; consider median baselines; optional “Similar” band widths.
 - Boxholder offsets: make x1/x2/x3 configurable (Settings) after a week of field data.
 - Small polish: Avg pill label (e.g., “Avg (4w)”), chart padding, and minor copy tweaks.
+- Tagging system exploration: seasonal labels (e.g., Peak Season) with filterable views for historical comparisons.
 
 Quick start next time
 1) Start `Start Server.command` → open the app.

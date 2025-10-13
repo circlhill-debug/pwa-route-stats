@@ -127,6 +127,11 @@
   }
   .notes-cell p{ margin:0 0 6px 0; }
   .notes-cell p:last-child{ margin-bottom:0; }
+  .vac-mark { font-size:0.7em; color:var(--muted); margin-left:2px; }
+  .vac-ranges{ margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+  .vac-range-item{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 10px; border:1px solid var(--border); border-radius:10px; background:rgba(148,163,184,0.08); font-size:0.9rem; }
+  .vac-range-item small{ color:var(--muted); }
+  .vac-range-item button{ margin-left:auto; }
   .diag-wrap{
     overflow:auto;
     border-radius:12px;
@@ -850,10 +855,11 @@
       <h4 style="margin:0 0 6px 0">Vacation Mode</h4>
       <small class="muted">Exclude entries in a date range from all metrics.</small>
       <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
-        <label class="pill"><input id="vacEnabled" type="checkbox"> Enable</label>
         <span class="pill" style="gap:6px"><small>From</small> <input id="vacFrom" type="date"></span>
         <span class="pill" style="gap:6px"><small>To</small> <input id="vacTo" type="date"></span>
+        <button id="vacAdd" class="ghost" type="button">Add Range</button>
       </div>
+      <div id="vacRanges" class="vac-ranges"></div>
     </div>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="ghost" value="cancel">Close</button>
@@ -928,6 +934,7 @@
   const VACAY_KEY = 'routeStats.vacation.v1';
   const BASELINE_KEY = 'routeStats.baseline.v1';
   const MODEL_SCOPE_KEY = 'routeStats.modelScope';
+  const DateTime = luxon.DateTime;
   function loadFlags(){
     try{ return Object.assign({ weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false, uspsEval:true, dayCompare:true }, JSON.parse(localStorage.getItem(FLAG_KEY)||'{}')); }
     catch(_){ return { weekdayTicks:true, progressivePills:false, monthlyGlance:true, holidayAdjustments:true, trendPills:false, sameRangeTotals:true, quickFilter:true, headlineDigest:false, smartSummary:true, mixViz:true, baselineCompare:true, collapsedUi:false, focusMode:false, quickEntry:false, uspsEval:true, dayCompare:true }; }
@@ -945,32 +952,108 @@
   // Vacation Mode config
   function loadVacation(){
     try{
-      return Object.assign({ enabled:false, ranges:[] }, JSON.parse(localStorage.getItem(VACAY_KEY)||'{}'));
-    }catch(_){ return { enabled:false, ranges:[] }; }
+      const v = JSON.parse(localStorage.getItem(VACAY_KEY)||'{}');
+      const ranges = Array.isArray(v?.ranges) ? v.ranges : [];
+      return { ranges: ranges.filter(r => r?.from && r?.to) };
+    }catch(_){ return { ranges: [] }; }
   }
-  function saveVacation(cfg){ try{ localStorage.setItem(VACAY_KEY, JSON.stringify(cfg||{enabled:false,ranges:[]})); }catch(_){ } }
+  function saveVacation(cfg){
+    try{ localStorage.setItem(VACAY_KEY, JSON.stringify({ ranges: cfg.ranges || [] })); }catch(_){ }
+  }
   let VACATION = loadVacation();
+  if (VACATION && Array.isArray(VACATION.ranges)){
+    const normalized = normalizeRanges(VACATION.ranges);
+    if (normalized.length !== VACATION.ranges.length || normalized.some((r,i)=> r.from!==VACATION.ranges[i]?.from || r.to!==VACATION.ranges[i]?.to)){
+      VACATION = { ranges: normalized };
+      saveVacation(VACATION);
+    }
+  }
+
+  function normalizeRanges(ranges){
+    try{
+      const parse = iso => DateTime.fromISO(iso, {zone: ZONE}).startOf('day');
+      const items = (ranges||[])
+        .map(r => ({ from: r.from, to: r.to }))
+        .filter(r => r.from && r.to)
+        .map(r => ({ a: parse(r.from), b: DateTime.fromISO(r.to, {zone: ZONE}).endOf('day') }))
+        .sort((x,y) => x.a.toMillis() - y.a.toMillis());
+      const merged = [];
+      for (const it of items){
+        if (!merged.length) { merged.push({ ...it }); continue; }
+        const last = merged[merged.length-1];
+        if (it.a <= last.b.plus({ days: 0 })){
+          if (it.b > last.b) last.b = it.b;
+        } else {
+          merged.push({ ...it });
+        }
+      }
+      return merged.map(x => ({ from: x.a.toISODate(), to: x.b.toISODate() }));
+    }catch(_){ return ranges || []; }
+  }
+
+  function addVacationRange(fromIso, toIso){
+    if (!fromIso || !toIso) return;
+    const next = { ranges: [...(VACATION?.ranges || []), { from: fromIso, to: toIso }] };
+    next.ranges = normalizeRanges(next.ranges);
+    VACATION = next;
+    saveVacation(VACATION);
+  }
+
+  function removeVacationRange(index){
+    const ranges = Array.isArray(VACATION?.ranges) ? [...VACATION.ranges] : [];
+    if (index < 0 || index >= ranges.length) return;
+    ranges.splice(index, 1);
+    VACATION = { ranges: normalizeRanges(ranges) };
+    saveVacation(VACATION);
+  }
+
+  function listVacationRanges(){
+    const cfg = VACATION || loadVacation();
+    return Array.isArray(cfg?.ranges) ? cfg.ranges : [];
+  }
+
+  function renderVacationRanges(){
+    const container = document.getElementById('vacRanges');
+    if (!container) return;
+    const ranges = listVacationRanges();
+    if (!ranges.length){
+      container.innerHTML = '<small class="muted">No vacation ranges saved.</small>';
+      return;
+    }
+    const rows = ranges.map((r, idx)=>{
+      try{
+        const from = DateTime.fromISO(r.from, { zone: ZONE });
+        const to   = DateTime.fromISO(r.to,   { zone: ZONE });
+        const days = Math.max(1, Math.round(to.endOf('day').diff(from.startOf('day'), 'days').days + 1));
+        const label = `${from.toFormat('LLL dd, yyyy')} → ${to.toFormat('LLL dd, yyyy')}`;
+        return `<div class="vac-range-item"><div><strong>${label}</strong><br><small>${days} day${days===1?'':'s'}</small></div><button class="ghost vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
+      }catch(_){
+        return `<div class="vac-range-item"><div><strong>${r.from} → ${r.to}</strong></div><button class="ghost vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
+      }
+    }).join('');
+    container.innerHTML = rows;
+  }
 
   function dateInRangeISO(iso, fromIso, toIso){
     try{
       if (!iso || !fromIso || !toIso) return false;
       const d = DateTime.fromISO(iso, {zone:ZONE}).startOf('day');
       const a = DateTime.fromISO(fromIso, {zone:ZONE}).startOf('day');
-      const b = DateTime.fromISO(toIso, {zone:ZONE}).endOf('day');
+      const b = DateTime.fromISO(toIso,   {zone:ZONE}).endOf('day');
       return d >= a && d <= b;
     }catch(_){ return false; }
   }
   function isVacationDate(iso){
     try{
       const cfg = VACATION || loadVacation();
-      if (!cfg || !cfg.enabled || !Array.isArray(cfg.ranges)) return false;
+      if (!cfg || !Array.isArray(cfg.ranges)) return false;
       return cfg.ranges.some(r=> dateInRangeISO(iso, r.from, r.to));
     }catch(_){ return false; }
   }
   function filterRowsForView(rows){
     try{
       const cfg = VACATION || loadVacation();
-      if (!cfg || !cfg.enabled || !Array.isArray(cfg.ranges) || cfg.ranges.length===0) return rows||[];
+      if (!cfg || !Array.isArray(cfg.ranges) || !cfg.ranges.length) return rows||[];
       return (rows||[]).filter(r=> !isVacationDate(r.work_date));
     }catch(_){ return rows||[]; }
   }
@@ -1050,7 +1133,6 @@
 
   // === Helpers ===
   const $ = id => document.getElementById(id);
-  const DateTime = luxon.DateTime;
   const dConn=$('dConn'), dAuth=$('dAuth'), dWrite=$('dWrite');
 
   function updateModelScopeBadge(){
@@ -1125,12 +1207,42 @@
   }
   // initial render
   renderUspsEvalTag();
+  renderVacationRanges();
 
   function todayStr(){ return DateTime.now().setZone(ZONE).toISODate(); }
   function hhmmNow(){ const d = DateTime.now().setZone(ZONE); return `${String(d.hour).padStart(2,'0')}:${String(d.minute).padStart(2,'0')}`; }
   function dowIndex(dateStr){ return DateTime.fromFormat(dateStr,'yyyy-MM-dd',{zone:ZONE}).weekday % 7; }
   function startOfWeekMonday(dt){ const w = dt.weekday; const shift = (w+6)%7; return dt.startOf('day').minus({days:shift}); }
   function endOfWeekSunday(dt){ return startOfWeekMonday(dt).plus({days:6}).endOf('day'); }
+  function getLastNonEmptyWeek(rows, now, { excludeVacation = true } = {}){
+    const worked = (rows || []).filter(r => (+r.hours || 0) > 0);
+    const weeksToScan = 12;
+    const inRange = (r, from, to) => {
+      const d = luxon.DateTime.fromISO(r.work_date, { zone: ZONE });
+      return d >= from && d <= to;
+    };
+    for (let w = 1; w <= weeksToScan; w++){
+      const start = startOfWeekMonday(now.minus({ weeks: w }));
+      const end   = endOfWeekSunday(now.minus({ weeks: w }));
+      const bucket = worked.filter(r => inRange(r, start, end) && (!excludeVacation || !isVacationDate(r.work_date)));
+      if (bucket.length) return { start, end, rows: bucket };
+    }
+    const fallbackStart = startOfWeekMonday(now.minus({ weeks: 1 }));
+    const fallbackEnd   = endOfWeekSunday(now.minus({ weeks: 1 }));
+    return {
+      start: fallbackStart,
+      end: fallbackEnd,
+      rows: worked.filter(r => inRange(r, fallbackStart, fallbackEnd))
+    };
+  }
+
+  function vacMark(iso){
+    return (iso && isVacationDate(iso)) ? '<sup class="vac-mark" title="Vacation day">v</sup>' : '';
+  }
+
+  function vacGlyph(iso){
+    return (iso && isVacationDate(iso)) ? ' (v)' : '';
+  }
 
   // NEW: Moon phase emoji helper
   // Improved Moon phase calc (better epoch)
@@ -1346,9 +1458,10 @@ function moonPhaseEmoji(dateStr) {
   const evalOfficeHoursIn = document.getElementById('evalOfficeHoursIn');
   const evalSalaryIn = document.getElementById('evalSalaryIn');
   // Vacation mode inputs
-  const vacEnabled = document.getElementById('vacEnabled');
   const vacFrom    = document.getElementById('vacFrom');
   const vacTo      = document.getElementById('vacTo');
+  const vacAdd     = document.getElementById('vacAdd');
+  const vacRangesEl= document.getElementById('vacRanges');
   const saveSettings = document.getElementById('saveSettings');
 
   btnSettings?.addEventListener('click', ()=>{
@@ -1382,10 +1495,11 @@ function moonPhaseEmoji(dateStr) {
     // populate Vacation Mode
     try{
       const v = VACATION || loadVacation();
-      if (vacEnabled) vacEnabled.checked = !!v.enabled;
-      if (vacFrom)    vacFrom.value = (v.ranges && v.ranges[0]?.from) || '';
-      if (vacTo)      vacTo.value   = (v.ranges && v.ranges[0]?.to)   || '';
+      const last = (v.ranges||[])[(v.ranges||[]).length-1];
+      if (vacFrom) vacFrom.value = last?.from || '';
+      if (vacTo)   vacTo.value   = last?.to   || '';
     }catch(_){ }
+    renderVacationRanges();
     settingsDlg.showModal();
   });
 
@@ -1422,14 +1536,15 @@ function moonPhaseEmoji(dateStr) {
     }catch(_){ }
     // read Vacation Mode
     try{
-      VACATION = {
-        enabled: !!(vacEnabled && vacEnabled.checked),
-        ranges: (vacFrom && vacFrom.value && vacTo && vacTo.value) ? [{ from: vacFrom.value, to: vacTo.value }] : []
-      };
-      saveVacation(VACATION);
+      const f = vacFrom?.value;
+      const t = vacTo?.value;
+      if (f && t) addVacationRange(f, t);
+      if (vacFrom) vacFrom.value = '';
+      if (vacTo)   vacTo.value   = '';
     }catch(_){ }
     saveFlags(FLAGS);
     settingsDlg.close();
+    renderVacationRanges();
     // Re-render visuals affected by flags
     buildCharts(allRows||[]);
     buildSnapshot(allRows||[]);
@@ -1451,6 +1566,31 @@ function moonPhaseEmoji(dateStr) {
     applyTrendPillsVisibility();
     applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
+  });
+
+  vacAdd?.addEventListener('click', ()=>{
+    try{
+      const f = vacFrom?.value;
+      const t = vacTo?.value;
+      if (f && t){
+        addVacationRange(f, t);
+        if (vacFrom) vacFrom.value = '';
+        if (vacTo)   vacTo.value   = '';
+        renderVacationRanges();
+        rebuildAll();
+      }
+    }catch(_){ }
+  });
+
+  vacRangesEl?.addEventListener('click', (event)=>{
+    const target = event.target;
+    if (!target || !target.matches('button.vac-remove[data-index]')) return;
+    const idx = parseInt(target.getAttribute('data-index') || '', 10);
+    if (!Number.isNaN(idx)){
+      removeVacationRange(idx);
+      renderVacationRanges();
+      rebuildAll();
+    }
   });
 
   // Force Refresh: update SW, clear caches, reload
@@ -2105,7 +2245,8 @@ function moonPhaseEmoji(dateStr) {
         const date = dt.toFormat('LLL dd');
         const total = row.hours != null ? row.hours : (safeNumber(row.office_minutes) + routeAdjustedHours(row));
         const totalTxt = (total==null) ? '—' : `${roundVal(total,2)?.toFixed(2) || '—'}h`;
-        return `${row.work_date} · ${day} ${date} · ${totalTxt}`;
+        const glyph = vacGlyph(row.work_date);
+        return `${row.work_date}${glyph} · ${day} ${date} · ${totalTxt}`;
       }catch(_){ return row.work_date; }
     }
 
@@ -2246,8 +2387,14 @@ function moonPhaseEmoji(dateStr) {
       }
 
       compareState.style.display = 'block';
-      subjectLabel.textContent = formatLabel(subjectMetrics);
-      referenceLabel.textContent = formatLabel(referenceMetrics);
+      if (subjectLabel){
+        const subjText = formatLabel(subjectMetrics);
+        subjectLabel.innerHTML = subjectMetrics?.iso ? `${subjText}${vacMark(subjectMetrics.iso)}` : subjText;
+      }
+      if (referenceLabel){
+        const refText = formatLabel(referenceMetrics);
+        referenceLabel.innerHTML = referenceMetrics?.iso ? `${refText}${vacMark(referenceMetrics.iso)}` : refText;
+      }
 
       subjectPills.innerHTML = [
         pillHtml('Total', formatNumber(subjectMetrics.totalHours, { decimals:2, suffix:'h' })),
@@ -2551,7 +2698,7 @@ function moonPhaseEmoji(dateStr) {
       tr.dataset.date=r.work_date;
       tr.tabIndex=0;
 
-      tr.innerHTML = `<td>${r.work_date} (${dowShort}) ${moon}</td><td>R1</td><td>${r.status||'worked'}</td>
+      tr.innerHTML = `<td>${r.work_date}${vacMark(r.work_date)} (${dowShort}) ${moon}</td><td>R1</td><td>${r.status||'worked'}</td>
         <td class="right">${offH}</td><td class="right">${rteH}</td><td class="right">${tot!=null? tot.toFixed(2):''}</td>
         <td class="right">${r.parcels||0}</td><td class="right">${r.letters||0}</td><td class="right">${r.miles||0}</td>
         <td>${r.weather_json||''}</td><td></td>`;
@@ -2649,8 +2796,9 @@ function moonPhaseEmoji(dateStr) {
             callbacks: {
               title: (items) => {
                 const iso = items?.[0]?.label;
+                if (!iso) return '';
                 const d = DateTime.fromISO(iso, { zone: ZONE });
-                return d.toFormat("cccc • MMM d, yyyy");
+                return d.toFormat("cccc • MMM d, yyyy") + vacGlyph(iso);
               }
             }
           }
@@ -2690,8 +2838,9 @@ function moonPhaseEmoji(dateStr) {
             callbacks: {
               title: (items) => {
                 const iso = items?.[0]?.label;
+                if (!iso) return '';
                 const d = DateTime.fromISO(iso, { zone: ZONE });
-                return d.toFormat("cccc • MMM d, yyyy");
+                return d.toFormat("cccc • MMM d, yyyy") + vacGlyph(iso);
               }
             }
           }
@@ -3826,13 +3975,18 @@ function moonPhaseEmoji(dateStr) {
     const now = DateTime.now().setZone(ZONE);
     const startThis = startOfWeekMonday(now);
     const endThis   = now.endOf('day');
-    const startLast = startOfWeekMonday(now.minus({weeks:1}));
-    const lastEndSame = startOfWeekMonday(now.minus({weeks:1})).plus({days: now.weekday-1}).endOf('day');
-    const endLastFull = endOfWeekSunday(now.minus({weeks:1}));
     const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
     const worked = rows.filter(r=> r.status!=='off');
+    const baseWeek = getLastNonEmptyWeek(worked, now, { excludeVacation: true });
+    const startLast = baseWeek.start;
+    const endLastFull = baseWeek.end;
+    const lastEndSame = luxon.DateTime.min(
+      endLastFull,
+      baseWeek.start.plus({ days: Math.max(0, now.weekday - 1) }).endOf('day')
+    );
     const W0 = worked.filter(r=> inRange(r,startThis,endThis));
-    const W1 = worked.filter(r=> inRange(r,startLast,lastEndSame));
+    const W1 = baseWeek.rows.filter(r=> inRange(r,startLast,lastEndSame));
+    const dayIdxToday = (now.weekday + 6) % 7;
     const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
     const p0=sum(W0,r=>+r.parcels||0), p1=sum(W1,r=>+r.parcels||0);
     const l0=sum(W0,r=>+r.letters||0), l1=sum(W1,r=>+r.letters||0);
@@ -3871,7 +4025,7 @@ function moonPhaseEmoji(dateStr) {
           return a;
         };
         const thisRoute = routeByDow(W0);
-        const lastRoute = routeByDow(worked.filter(r=> inRange(r, startLast, endLastFull)));
+        const lastRoute = routeByDow(baseWeek.rows);
         const out = [];
         for (let i=0;i<=dayIdxToday && i<7;i++){
           const base = lastRoute[i]||0, cur = thisRoute[i]||0;
@@ -3998,11 +4152,18 @@ function moonPhaseEmoji(dateStr) {
         };
         const thisBy = volByDow(W0);
         // Baseline uses LAST FULL WEEK (Mon..Sun) so the blue line is complete
-        const W1full = worked.filter(r=> inRange(r, startLast, endLastFull));
+        const W1full = baseWeek.rows;
         const lastBy = volByDow(W1full);
         const thisRoute = routeByDow(W0);
         const lastRoute = routeByDow(W1full);
         const dayIdxToday = (now.weekday + 6) % 7;
+        const isoForPoint = (datasetIndex, idx) => {
+          try{
+            if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
+            if (datasetIndex === 1 || datasetIndex === 2) return startThis.plus({ days: idx }).toISODate();
+          }catch(_){ /* ignore */ }
+          return null;
+        };
         const thisMasked = thisBy.map((v,i)=> i<=dayIdxToday? v : null);
         const thisRouteMasked = thisRoute.map((v,i)=> i<=dayIdxToday? v : null);
         overlay._chart = new Chart(ctx, {
@@ -4017,7 +4178,17 @@ function moonPhaseEmoji(dateStr) {
             interaction:{ mode:'nearest', intersect:false },
             plugins:{ legend:{ display:false }, tooltip:{
               callbacks:{
-                title:(items)=> items && items[0]? items[0].label : '',
+                title:(items)=>{
+                  if (!items || !items.length) return '';
+                  const item = items[0];
+                  const iso = isoForPoint(item.datasetIndex, item.dataIndex);
+                  if (iso){
+                    const dt = DateTime.fromISO(iso, { zone: ZONE });
+                    return dt.toFormat('ccc • MMM d, yyyy') + vacGlyph(iso);
+                  }
+                  const lbl = item.label || '';
+                  return lbl + vacGlyph(lbl);
+                },
                 label:(item)=>{
                   const i=item.dataIndex; const lw=lastBy[i]; const tw=thisBy[i];
                   const hasTw = i<=dayIdxToday && tw!=null;
@@ -4305,13 +4476,17 @@ function moonPhaseEmoji(dateStr) {
       const now = DateTime.now().setZone(ZONE);
       const startThis = startOfWeekMonday(now);
       const endThis   = now.endOf('day');
-      const startLast = startOfWeekMonday(now.minus({weeks:1}));
-      const endLast   = endOfWeekSunday(now.minus({weeks:1}));
-      const lastEndSame = startOfWeekMonday(now.minus({weeks:1})).plus({days: now.weekday-1}).endOf('day');
       const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
       const worked = (rows||[]).filter(r=> r.status!=='off');
+      const baseWeek = getLastNonEmptyWeek(worked, now, { excludeVacation: true });
+      const startLast = baseWeek.start;
+      const endLast   = baseWeek.end;
+      const lastEndSame = luxon.DateTime.min(
+        endLast,
+        baseWeek.start.plus({ days: Math.max(0, now.weekday - 1) }).endOf('day')
+      );
       const W0 = worked.filter(r=> inRange(r,startThis,endThis));
-      const W1 = worked.filter(r=> inRange(r,startLast,endLast));
+      const W1 = baseWeek.rows;
       const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
       const offByDow = (arr)=>{ const a=Array.from({length:7},()=>0); arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= (+r.office_minutes||0); }); return a.map(n=> +(Math.round(n*100)/100).toFixed(2)); };
       const thisBy = offByDow(W0);
@@ -4321,7 +4496,7 @@ function moonPhaseEmoji(dateStr) {
       const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
       // Summary (Mon..today vs last Mon..today)
       const off0 = sum(W0.filter(r=> inRange(r,startThis, endThis && DateTime.fromJSDate(new Date()).setZone(ZONE))), r=> +r.office_minutes||0); // already filtered
-      const off1same = sum(worked.filter(r=> inRange(r,startLast,lastEndSame)), r=> +r.office_minutes||0);
+      const off1same = sum(baseWeek.rows.filter(r=> inRange(r,startLast,lastEndSame)), r=> +r.office_minutes||0);
       const dPct = (off1same>0)? Math.round(((off0 - off1same)/off1same)*100) : null;
       if (summary) summary.textContent = `Office (so far): ${off0.toFixed(2)}h vs ${off1same.toFixed(2)}h (${dPct==null?'—':(dPct>=0?('↑ '+dPct+'%'):('↓ '+Math.abs(dPct)+'%'))})`;
       card.style.display='block';
@@ -4330,6 +4505,13 @@ function moonPhaseEmoji(dateStr) {
         if (overlay._chart) { try{ overlay._chart.destroy(); }catch(_){ } }
         const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
         const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
+        const isoForPoint = (datasetIndex, idx) => {
+          try{
+            if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
+            if (datasetIndex === 1) return startThis.plus({ days: idx }).toISODate();
+          }catch(_){ }
+          return null;
+        };
         overlay._chart = new Chart(ctx, {
           type:'line',
           data:{ labels:days, datasets:[
@@ -4341,7 +4523,17 @@ function moonPhaseEmoji(dateStr) {
             interaction:{ mode:'nearest', intersect:false },
             plugins:{ legend:{ display:false }, tooltip:{
               callbacks:{
-                title:(items)=> items && items[0]? items[0].label : '',
+                title:(items)=>{
+                  if (!items || !items.length) return '';
+                  const item = items[0];
+                  const iso = isoForPoint(item.datasetIndex, item.dataIndex);
+                  if (iso){
+                    const dt = DateTime.fromISO(iso, { zone: ZONE });
+                    return dt.toFormat('ccc • MMM d, yyyy') + vacGlyph(iso);
+                  }
+                  const lbl = item.label || '';
+                  return lbl + vacGlyph(lbl);
+                },
                 label:(item)=>{
                   const i=item.dataIndex; const lw=lastBy[i]; const tw=thisBy[i];
                   const hasTw = i<=dayIdxToday && tw!=null;

@@ -61,7 +61,8 @@ Click any tile to see a short plain‑English explanation. Hover tooltips show d
 - Works for any weekday; Sundays don’t carry into Monday (new week).
 
 ## Vacation Mode
-- Settings → Vacation Mode to exclude a date range from analytics (charts/tiles). The table remains unchanged.
+- Settings → Vacation Mode to exclude date ranges from analytics (charts/tiles). Add multiple spans with “Add Range”; remove any from the list as needed.
+- Entries inside a saved range are hidden from analytics but remain in the table with a superscript `v`; tooltips append `(v)` for clarity.
 
 ## Optional Reason Tag
 - Add a short “Reason (optional)” on a day (e.g., Boxholders, Detour, Weather). It’s surfaced in Weekly Compare outliers.

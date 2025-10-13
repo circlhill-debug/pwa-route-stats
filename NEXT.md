@@ -50,6 +50,8 @@ Ship plan
 Nice‑to‑have (post‑Phase 3)
 - Volatility view (z‑scores) behind a toggle.
 - Composition view (W1/W2 100% stacked, text fallback).
+- Holiday-aware baselines: smarter post-holiday handling (seasonal profiles, residual annotations, trend dampening).
+- Tagging/season labels (e.g., Peak Season) with filters for historical comparisons.
 
 How to verify
 - Quick Filter: Mondays → toggle metrics → lines render with normalization note and coverage text.

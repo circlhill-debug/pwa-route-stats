@@ -4343,12 +4343,18 @@ function moonPhaseEmoji(dateStr) {
       const startLast = startOfWeekMonday(now.minus({weeks:1}));
       const lastEndSame = startOfWeekMonday(now.minus({weeks:1})).plus({days: now.weekday-1}).endOf('day');
       const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
-      const worked = (rows||[]).filter(r=> r.status!=='off');
-      const W0 = worked.filter(r=> inRange(r,startThis,endThis));
-      const W1 = worked.filter(r=> inRange(r,startLast,lastEndSame));
-      const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
-      const h0 = sum(W0, r=> +r.hours||0), h1 = sum(W1, r=> +r.hours||0);
-      const p0 = sum(W0, r=> +r.parcels||0), p1 = sum(W1, r=> +r.parcels||0);
+    const worked = (rows||[]).filter(r=> r.status!=='off');
+    const W0 = worked.filter(r=> inRange(r,startThis,endThis));
+    const W1 = worked.filter(r=> inRange(r,startLast,lastEndSame));
+    const daysThisWeek = [...new Set(W0.map(r=> r.work_date))].length;
+    if (!daysThisWeek){
+      el.textContent = 'No worked days yet — 0 day(s) this week.';
+      el.style.display = 'block';
+      return;
+    }
+    const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
+    const h0 = sum(W0, r=> +r.hours||0), h1 = sum(W1, r=> +r.hours||0);
+    const p0 = sum(W0, r=> +r.parcels||0), p1 = sum(W1, r=> +r.parcels||0);
       const l0 = sum(W0, r=> +r.letters||0), l1 = sum(W1, r=> +r.letters||0);
       const letterW = getLetterWeight(rows);
       const vol = (p,l)=> p + letterW*l;
@@ -4369,9 +4375,8 @@ function moonPhaseEmoji(dateStr) {
       items.sort((a,b)=> Math.abs(b.v) - Math.abs(a.v));
       const top = items.slice(0,2);
       const parts = top.map(it => `${it.k} ${it.v>=0?`↑ ${it.v}%`:`↓ ${Math.abs(it.v)}%`}`);
-      const days = [...new Set(W0.map(r=> r.work_date))].length;
       const line = parts.length ? parts.join(' • ') : 'Similar to last week';
-      el.textContent = `${line} — ${days} day(s) this week.`;
+      el.textContent = `${line} — ${daysThisWeek} day(s) this week.`;
       el.style.display='block';
     }catch(_){ /* no-op */ }
   }
@@ -4387,11 +4392,15 @@ function moonPhaseEmoji(dateStr) {
       const startLast = startOfWeekMonday(now.minus({weeks:1}));
       const lastEndSame = startOfWeekMonday(now.minus({weeks:1})).plus({days: now.weekday-1}).endOf('day');
       const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
-      const worked = (rows||[]).filter(r=> r.status!=='off');
-      const W0 = worked.filter(r=> inRange(r,startThis,endThis));
-      const W1 = worked.filter(r=> inRange(r,startLast,lastEndSame));
-      const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
-      const off0 = sum(W0, r=> +r.office_minutes||0), off1 = sum(W1, r=> +r.office_minutes||0);
+    const worked = (rows||[]).filter(r=> r.status!=='off');
+    const W0 = worked.filter(r=> inRange(r,startThis,endThis));
+    const W1 = worked.filter(r=> inRange(r,startLast,lastEndSame));
+    if (!W0.length){
+      el.style.display = 'none';
+      return;
+    }
+    const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
+    const off0 = sum(W0, r=> +r.office_minutes||0), off1 = sum(W1, r=> +r.office_minutes||0);
     const rm0  = sum(W0, r=> routeAdjustedHours(r));
     const rm1  = sum(W1, r=> routeAdjustedHours(r));
       const vol = (arr)=> sum(arr, r=> (+r.parcels||0) + 0.33*(+r.letters||0));

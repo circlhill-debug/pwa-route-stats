@@ -136,8 +136,8 @@
   .stat .statValue--lg{ font-size:20px; }
   .stat .statValue--sm{ font-size:17px; }
   .stat .statDelta{ font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
-  .snapshot-section{ width:100%; border:1px solid var(--border); border-radius:14px; padding:14px; background:rgba(148,163,184,0.08); margin-top:12px; }
-  .snapshot-section:first-of-type{ margin-top:0; }
+  .snapshot-sections{ display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; }
+  .snapshot-section{ border:1px solid var(--border); border-radius:14px; padding:14px; background:rgba(148,163,184,0.08); display:flex; flex-direction:column; gap:12px; }
   .snapshot-section h4{ margin:0 0 10px 0; font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); }
   .snapshot-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; align-items:stretch; }
   .snapshot-grid .full-span{ grid-column:1 / -1; }
@@ -310,6 +310,7 @@
 <main class="wrap grid grid-2">
   <!-- SNAPSHOT -->
   <section class="card" id="snapshotCard">
+    <div class="snapshot-sections">
     <div class="snapshot-section">
       <h4>Today</h4>
       <div class="snapshot-grid">
@@ -398,6 +399,7 @@
           </div>
         </div>
       </div>
+    </div>
     </div>
 
     <!-- Inline details panel for weekly hours breakdown (toggled on click) -->

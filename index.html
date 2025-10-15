@@ -132,12 +132,17 @@
   .vac-range-item{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 10px; border:1px solid var(--border); border-radius:10px; background:rgba(148,163,184,0.08); font-size:0.9rem; }
   .vac-range-item small{ color:var(--muted); }
   .vac-range-item button{ margin-left:auto; }
-  .snapshot-row{ display:flex; flex-wrap:wrap; gap:8px; align-items:stretch; margin-top:8px; }
-  .snapshot-row:first-of-type{ margin-top:0; }
   .stat .statValue{ display:block; font-size:18px; font-weight:500; font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
   .stat .statValue--lg{ font-size:20px; }
   .stat .statValue--sm{ font-size:17px; }
   .stat .statDelta{ font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
+  .snapshot-section{ width:100%; border:1px solid var(--border); border-radius:14px; padding:14px; background:rgba(148,163,184,0.08); margin-top:12px; }
+  .snapshot-section:first-of-type{ margin-top:0; }
+  .snapshot-section h4{ margin:0 0 10px 0; font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); }
+  .snapshot-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; align-items:stretch; }
+  .snapshot-grid .full-span{ grid-column:1 / -1; }
+  .snapshot-subgrid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
+  .pill-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
   .diag-wrap{
     overflow:auto;
     border-radius:12px;
@@ -305,8 +310,9 @@
 <main class="wrap grid grid-2">
   <!-- SNAPSHOT -->
   <section class="card" id="snapshotCard">
-    <div class="row" style="justify-content:space-between;align-items:flex-start;flex-wrap:wrap">
-      <div class="snapshot-row">
+    <div class="snapshot-section">
+      <h4>Today</h4>
+      <div class="snapshot-grid">
         <div class="stat">
           <small>Expected End (today)</small>
           <span id="expEnd" class="statValue statValue--lg">—</span>
@@ -324,61 +330,12 @@
           <small class="muted">vs weekday baseline</small>
           <div id="helpRouteEff" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
         </div>
-      </div>
-
-      <div class="snapshot-row">
         <div class="stat">
           <small>Overall</small>
           <span id="badgeOverall" class="statValue statValue--lg">—</span>
           <small class="muted">office + route vs expected</small>
           <div id="helpOverall" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
         </div>
-        <div class="stat" id="tileUspsRouteEff">
-          <small>USPS Route Eff.</small>
-          <span id="uspsRouteEffVal" class="statValue">—</span>
-          <small class="muted">this week vs eval</small>
-        </div>
-        <div class="stat" id="tileUspsHourly">
-          <small>Weekly $/h</small>
-          <span id="uspsHourlyRateVal" class="statValue">—</span>
-          <small class="muted">4w avg</small>
-        </div>
-      </div>
-
-      <div class="snapshot-row">
-        <div class="stat" id="tileWkHours" style="cursor:pointer" tabindex="0" title="Click for weekly hours breakdown">
-          <small>Hours (week)</small>
-          <div><span id="wkHours" class="statValue statValue--lg">—</span> <span id="wkHoursDelta" class="pill">—</span></div>
-        </div>
-        <div class="stat" id="tileWkParcels" style="cursor:pointer" tabindex="0" title="Click for weekly parcels breakdown">
-          <small>Parcels (week)</small>
-          <div><span id="wkParcels" class="statValue statValue--lg">—</span> <span id="wkParcelsDelta" class="pill">—</span></div>
-        </div>
-        <div class="stat" id="tileWkLetters" style="cursor:pointer" tabindex="0" title="Click for weekly letters breakdown">
-          <small>Letters (week)</small>
-          <div><span id="wkLetters" class="statValue statValue--lg">—</span> <span id="wkLettersDelta" class="pill">—</span></div>
-        </div>
-      </div>
-
-      <div class="snapshot-row" id="trendPillsRow">
-        <div class="stat" id="tileAdvHours" style="cursor:pointer" tabindex="0" title="Click for weighted daily hour deltas">
-          <small>Weekly Hours Trend</small>
-          <div><span id="advHoursTrend" class="pill">—</span></div>
-          <small class="muted">day-by-day vs last week</small>
-        </div>
-        <div class="stat" id="tileAdvParcels" style="cursor:pointer" tabindex="0" title="Click for weighted daily parcel deltas">
-          <small>Weekly Parcels Trend</small>
-          <div><span id="advParcelsTrend" class="pill">—</span></div>
-          <small class="muted">day-by-day vs last week</small>
-        </div>
-        <div class="stat" id="tileAdvLetters" style="cursor:pointer" tabindex="0" title="Click for weighted daily letter deltas">
-          <small>Weekly Letters Trend</small>
-          <div><span id="advLettersTrend" class="pill">—</span></div>
-          <small class="muted">day-by-day vs last week</small>
-        </div>
-      </div>
-
-      <div class="snapshot-row">
         <div class="stat">
           <small>Today Parcels Δ</small>
           <span id="todayParcelsDelta" class="statDelta">—</span>
@@ -394,9 +351,55 @@
           <span id="todayOfficeDelta" class="statDelta">—</span>
           <small class="muted">vs past same weekday (worked)</small>
         </div>
+        <div class="stat full-span" id="todayHeaviness" style="display:none"></div>
       </div>
+    </div>
 
-      <div id="todayHeaviness" class="snapshot-row" style="display:none"></div>
+    <div class="snapshot-section">
+      <h4>Week & USPS</h4>
+      <div class="snapshot-grid">
+        <div class="stat" id="tileWkHours" style="cursor:pointer" tabindex="0" title="Click for weekly hours breakdown">
+          <small>Hours (week)</small>
+          <div><span id="wkHours" class="statValue statValue--lg">—</span> <span id="wkHoursDelta" class="pill">—</span></div>
+        </div>
+        <div class="stat" id="tileWkParcels" style="cursor:pointer" tabindex="0" title="Click for weekly parcels breakdown">
+          <small>Parcels (week)</small>
+          <div><span id="wkParcels" class="statValue statValue--lg">—</span> <span id="wkParcelsDelta" class="pill">—</span></div>
+        </div>
+        <div class="stat" id="tileWkLetters" style="cursor:pointer" tabindex="0" title="Click for weekly letters breakdown">
+          <small>Letters (week)</small>
+          <div><span id="wkLetters" class="statValue statValue--lg">—</span> <span id="wkLettersDelta" class="pill">—</span></div>
+        </div>
+        <div class="stat" id="tileUspsRouteEff">
+          <small>USPS Route Eff.</small>
+          <span id="uspsRouteEffVal" class="statValue">—</span>
+          <small class="muted">this week vs eval</small>
+        </div>
+        <div class="stat" id="tileUspsHourly">
+          <small>Weekly $/h</small>
+          <span id="uspsHourlyRateVal" class="statValue">—</span>
+          <small class="muted">4w avg</small>
+        </div>
+        <div id="trendPillsRow" class="snapshot-subgrid full-span" style="display:none">
+          <div class="stat" id="tileAdvHours" style="cursor:pointer" tabindex="0" title="Click for weighted daily hour deltas">
+            <small>Weekly Hours Trend</small>
+            <div><span id="advHoursTrend" class="pill">—</span></div>
+            <small class="muted">day-by-day vs last week</small>
+          </div>
+          <div class="stat" id="tileAdvParcels" style="cursor:pointer" tabindex="0" title="Click for weighted daily parcel deltas">
+            <small>Weekly Parcels Trend</small>
+            <div><span id="advParcelsTrend" class="pill">—</span></div>
+            <small class="muted">day-by-day vs last week</small>
+          </div>
+          <div class="stat" id="tileAdvLetters" style="cursor:pointer" tabindex="0" title="Click for weighted daily letter deltas">
+            <small>Weekly Letters Trend</small>
+            <div><span id="advLettersTrend" class="pill">—</span></div>
+            <small class="muted">day-by-day vs last week</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Inline details panel for weekly hours breakdown (toggled on click) -->
     <div id="wkHoursDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
       <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1648,7 +1651,7 @@ function moonPhaseEmoji(dateStr) {
     const show = !!(FLAGS && FLAGS.trendPills);
     ids.forEach(id=>{ const el = document.getElementById(id); if (el) el.style.display = show ? '' : 'none'; });
     const row = document.getElementById('trendPillsRow');
-    if (row) row.style.display = show ? '' : 'none';
+    if (row) row.style.display = show ? 'grid' : 'none';
   }
 
   // Always collapse Recent Entries by default; header click toggles open/close (independent of Collapsed UI flag)
@@ -4466,8 +4469,9 @@ function moonPhaseEmoji(dateStr) {
         const col = colorForDelta(p||0).fg;
         return `<span class="pill"><small>${label}</small> <b style="color:${col}">${txt}${pTxt}</b></span>`;
       };
-      el.style.display='flex';
-      el.innerHTML = [pill('Office', dOff), pill('Route', dRte), pill('Total', dTot)].join(' ');
+      el.style.display='block';
+      const pills = [pill('Office', dOff), pill('Route', dRte), pill('Total', dTot)].join(' ');
+      el.innerHTML = `<small>Heaviness (today)</small><div class="pill-row">${pills}</div>`;
     }catch(_){ /* no-op */ }
   }
 

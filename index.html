@@ -144,6 +144,10 @@
   .snapshot-grid .full-span{ grid-column:1 / -1; }
   .snapshot-subgrid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
   .pill-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+  .leaderboard-table{ width:100%; border-collapse:collapse; font-size:13px; }
+  .leaderboard-table th, .leaderboard-table td{ padding:6px 8px; border-bottom:1px solid var(--border); text-align:right; }
+  .leaderboard-table th:first-child, .leaderboard-table td:first-child{ text-align:left; }
+  .leaderboard-table tbody tr:last-child td{ border-bottom:none; }
   .diag-wrap{
     overflow:auto;
     border-radius:12px;
@@ -323,6 +327,7 @@
           <span id="badgeVolume" class="statValue statValue--lg">—</span>
           <small class="muted">parcels + <span class="modelMetric">w×letters</span> (data-fit)</small>
           <div id="helpVolume" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
+          <button id="openVolumeLeaderboard" type="button" class="ghost" style="align-self:flex-start;font-size:12px;padding:4px 8px;">Top days</button>
         </div>
         <div class="stat">
           <small>Route Eff.</small>
@@ -458,6 +463,20 @@
       </div>
       <small class="muted">Mon..today vs same weekday last week. Uses Weighted average (falls back to Cumulative if needed).</small>
       <div id="advLettersDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
+    </div>
+
+    <div id="volumeLeaderboard" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Top Volume Days</h4>
+        <button id="closeVolumeLeaderboard" class="ghost">Close</button>
+      </div>
+      <small id="volumeLeaderboardNote" class="muted">—</small>
+      <div style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px">
+        <table class="leaderboard-table">
+          <thead><tr><th>Date</th><th>Parcels</th><th>Letters</th><th>Volume</th><th>Percentile</th></tr></thead>
+          <tbody id="volumeLeaderboardBody"></tbody>
+        </table>
+      </div>
     </div>
   </section>
 
@@ -2025,6 +2044,51 @@ function moonPhaseEmoji(dateStr) {
     return row ? dayMetricsFromRow(row, { source:'manualReference', label: row.work_date }) : null;
   }
 
+  function buildVolumeLeaderboard(rows){
+    const panel = document.getElementById('volumeLeaderboard');
+    const body = document.getElementById('volumeLeaderboardBody');
+    const note = document.getElementById('volumeLeaderboardNote');
+    if (!panel || !body) return;
+
+    const worked = filterRowsForView(rows||[]).filter(r=> r && r.status!=='off' && ((+r.parcels||0)+(+r.letters||0)>0));
+    if (!worked.length){
+      body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:8px;color:var(--muted)">No worked days yet.</td></tr>';
+      if (note) note.textContent = '—';
+      return;
+    }
+
+    const weight = CURRENT_LETTER_WEIGHT;
+    const volumes = worked.map(r => ({
+      date: r.work_date,
+      parcels: +r.parcels||0,
+      letters: +r.letters||0,
+      volume: combinedVolume(r.parcels, r.letters, weight)
+    }));
+
+    const asc = [...volumes].sort((a,b)=> a.volume - b.volume);
+    const percentileByDate = new Map();
+    asc.forEach((item, idx)=>{
+      const pct = Math.round(((idx + 1) / asc.length) * 100);
+      percentileByDate.set(item.date, pct);
+    });
+
+    const top = [...volumes].sort((a,b)=> b.volume - a.volume).slice(0, Math.min(10, volumes.length));
+    body.innerHTML = top.map(item => {
+      const dt = DateTime.fromISO(item.date, { zone: ZONE });
+      const pct = percentileByDate.get(item.date);
+      const pctText = (pct!=null) ? `${pct}%` : '—';
+      return `<tr>
+        <td>${dt.toFormat('ccc LLL dd')}</td>
+        <td>${item.parcels}</td>
+        <td>${item.letters}</td>
+        <td>${item.volume.toFixed(1)}</td>
+        <td>${pctText}</td>
+      </tr>`;
+    }).join('');
+
+    if (note) note.textContent = `Combined volume = parcels + ${(weight||0).toFixed(2)}×letters`;
+  }
+
   // === Diagnostics model & outliers ===
   function fitVolumeTimeModel(rows){
     rows = (rows||[]).filter(r=> r && r.status !== 'off');
@@ -2621,6 +2685,7 @@ function moonPhaseEmoji(dateStr) {
     const rawRows = rows;
     const normalRows = rows.filter(r => r && r.status !== 'off' && !hasTag(r, 'post_holiday'));
 
+    window.__rawRows = rawRows;
     window.allRows = rows;
     updateCurrentLetterWeight(normalRows);
     renderTable(applySearch(rawRows));
@@ -2638,6 +2703,7 @@ function moonPhaseEmoji(dateStr) {
     buildWeekHeaviness(rawRows);
     buildUspsTiles(rawRows);
     buildDiagnostics(normalRows);
+    buildVolumeLeaderboard(rawRows);
   }
 
   async function loadByDate(){
@@ -3574,6 +3640,21 @@ function moonPhaseEmoji(dateStr) {
     const show = !!FLAGS.quickEntry && !!isCollapsed;
     bar.style.display = show ? 'inline-flex' : 'none';
   }
+
+  (function bindVolumeLeaderboard(){
+    const openBtn = document.getElementById('openVolumeLeaderboard');
+    const closeBtn = document.getElementById('closeVolumeLeaderboard');
+    const panel = document.getElementById('volumeLeaderboard');
+    const showPanel = ()=>{
+      if (!panel) return;
+      buildVolumeLeaderboard(window.__rawRows || allRows || []);
+      panel.style.display = 'block';
+      panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    };
+    openBtn?.addEventListener('click', showPanel);
+    openBtn?.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); showPanel(); } });
+    closeBtn?.addEventListener('click', ()=>{ if(panel) panel.style.display='none'; });
+  })();
 
   // Toggle Weekly details panels (hours, parcels, letters)
   (function enableWeeklyPanels(){

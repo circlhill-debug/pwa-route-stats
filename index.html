@@ -132,6 +132,12 @@
   .vac-range-item{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 10px; border:1px solid var(--border); border-radius:10px; background:rgba(148,163,184,0.08); font-size:0.9rem; }
   .vac-range-item small{ color:var(--muted); }
   .vac-range-item button{ margin-left:auto; }
+  .snapshot-row{ display:flex; flex-wrap:wrap; gap:8px; align-items:stretch; margin-top:8px; }
+  .snapshot-row:first-of-type{ margin-top:0; }
+  .stat .statValue{ display:block; font-size:18px; font-weight:500; font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
+  .stat .statValue--lg{ font-size:20px; }
+  .stat .statValue--sm{ font-size:17px; }
+  .stat .statDelta{ font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
   .diag-wrap{
     overflow:auto;
     border-radius:12px;
@@ -300,57 +306,61 @@
   <!-- SNAPSHOT -->
   <section class="card" id="snapshotCard">
     <div class="row" style="justify-content:space-between;align-items:flex-start;flex-wrap:wrap">
-      <div class="row" style="gap:8px;align-items:stretch">
+      <div class="snapshot-row">
         <div class="stat">
           <small>Expected End (today)</small>
-          <span id="expEnd" style="font-size:20px; font-weight:400">—</span>
+          <span id="expEnd" class="statValue statValue--lg">—</span>
           <small id="expMeta" style="color:var(--muted)">DOW avg —</small>
         </div>
         <div class="stat">
-        <small>Volume</small>
-        <span id="badgeVolume" style="font-size:20px; font-weight:400">—</span>
+          <small>Volume</small>
+          <span id="badgeVolume" class="statValue statValue--lg">—</span>
           <small class="muted">parcels + <span class="modelMetric">w×letters</span> (data-fit)</small>
           <div id="helpVolume" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
         </div>
         <div class="stat">
           <small>Route Eff.</small>
-          <span id="badgeRouteEff" style="font-size:20px; font-weight:400">—</span>
+          <span id="badgeRouteEff" class="statValue statValue--lg">—</span>
           <small class="muted">vs weekday baseline</small>
           <div id="helpRouteEff" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
         </div>
+      </div>
+
+      <div class="snapshot-row">
         <div class="stat">
           <small>Overall</small>
-          <span id="badgeOverall" style="font-size:20px; font-weight:400">—</span>
+          <span id="badgeOverall" class="statValue statValue--lg">—</span>
           <small class="muted">office + route vs expected</small>
           <div id="helpOverall" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
         </div>
-        <!-- USPS tiles (moved up into primary snapshot row) -->
         <div class="stat" id="tileUspsRouteEff">
           <small>USPS Route Eff.</small>
-          <div><span id="uspsRouteEffVal" style="font-size:18px; font-weight:400">—</span></div>
+          <span id="uspsRouteEffVal" class="statValue">—</span>
           <small class="muted">this week vs eval</small>
         </div>
         <div class="stat" id="tileUspsHourly">
           <small>Weekly $/h</small>
-          <div><span id="uspsHourlyRateVal" style="font-size:18px; font-weight:400">—</span></div>
+          <span id="uspsHourlyRateVal" class="statValue">—</span>
           <small class="muted">4w avg</small>
         </div>
       </div>
-      <div class="row" style="gap:8px;align-items:stretch">
+
+      <div class="snapshot-row">
         <div class="stat" id="tileWkHours" style="cursor:pointer" tabindex="0" title="Click for weekly hours breakdown">
           <small>Hours (week)</small>
-          <div><strong id="wkHours">—</strong> <span id="wkHoursDelta" class="pill">—</span></div>
+          <div><span id="wkHours" class="statValue statValue--lg">—</span> <span id="wkHoursDelta" class="pill">—</span></div>
         </div>
         <div class="stat" id="tileWkParcels" style="cursor:pointer" tabindex="0" title="Click for weekly parcels breakdown">
           <small>Parcels (week)</small>
-          <div><strong id="wkParcels">—</strong> <span id="wkParcelsDelta" class="pill">—</span></div>
+          <div><span id="wkParcels" class="statValue statValue--lg">—</span> <span id="wkParcelsDelta" class="pill">—</span></div>
         </div>
         <div class="stat" id="tileWkLetters" style="cursor:pointer" tabindex="0" title="Click for weekly letters breakdown">
           <small>Letters (week)</small>
-          <div><strong id="wkLetters">—</strong> <span id="wkLettersDelta" class="pill">—</span></div>
+          <div><span id="wkLetters" class="statValue statValue--lg">—</span> <span id="wkLettersDelta" class="pill">—</span></div>
         </div>
-      <!-- Advanced Weekly Metrics (Phase 1) — moved above today's deltas -->
-      <div class="row" id="trendPillsRow" style="gap:8px;align-items:stretch">
+      </div>
+
+      <div class="snapshot-row" id="trendPillsRow">
         <div class="stat" id="tileAdvHours" style="cursor:pointer" tabindex="0" title="Click for weighted daily hour deltas">
           <small>Weekly Hours Trend</small>
           <div><span id="advHoursTrend" class="pill">—</span></div>
@@ -367,25 +377,26 @@
           <small class="muted">day-by-day vs last week</small>
         </div>
       </div>
-      <!-- Today vs same-weekday pills -->
-      <div class="stat">
-        <small>Today Parcels Δ</small>
-        <div><strong id="todayParcelsDelta">—</strong></div>
-        <small class="muted">vs past same weekday (worked)</small>
+
+      <div class="snapshot-row">
+        <div class="stat">
+          <small>Today Parcels Δ</small>
+          <span id="todayParcelsDelta" class="statDelta">—</span>
+          <small class="muted">vs past same weekday (worked)</small>
+        </div>
+        <div class="stat">
+          <small>Today Letters Δ</small>
+          <span id="todayLettersDelta" class="statDelta">—</span>
+          <small class="muted">vs past same weekday (worked)</small>
+        </div>
+        <div class="stat">
+          <small>Today Office Δ</small>
+          <span id="todayOfficeDelta" class="statDelta">—</span>
+          <small class="muted">vs past same weekday (worked)</small>
+        </div>
       </div>
-      <div class="stat">
-        <small>Today Letters Δ</small>
-        <div><strong id="todayLettersDelta">—</strong></div>
-        <small class="muted">vs past same weekday (worked)</small>
-      </div>
-      <div class="stat">
-        <small>Today Office Δ</small>
-        <div><strong id="todayOfficeDelta">—</strong></div>
-        <small class="muted">vs past same weekday (worked)</small>
-      </div>
-      </div>
-      <!-- Heaviness (today) attribution -->
-      <div id="todayHeaviness" class="row" style="display:none;gap:8px;flex-wrap:wrap;margin-top:6px"></div>
+
+      <div id="todayHeaviness" class="snapshot-row" style="display:none"></div>
     <!-- Inline details panel for weekly hours breakdown (toggled on click) -->
     <div id="wkHoursDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
       <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
@@ -3374,9 +3385,9 @@ function moonPhaseEmoji(dateStr) {
       const { fg:fgP } = colorForDelta(tdp);
       const { fg:fgL } = colorForDelta(tdl);
       const { fg:fgO } = colorForDelta(tdo);
-      if (tp) { tp.className='pill'; tp.style.color=fgP; tp.style.background='transparent'; tp.style.borderColor='transparent'; }
-      if (tl) { tl.className='pill'; tl.style.color=fgL; tl.style.background='transparent'; tl.style.borderColor='transparent'; }
-      if (to) { to.className='pill'; to.style.color=fgO; to.style.background='transparent'; to.style.borderColor='transparent'; }
+      if (tp) { tp.className='pill statDelta'; tp.style.color=fgP; tp.style.background='transparent'; tp.style.borderColor='transparent'; }
+      if (tl) { tl.className='pill statDelta'; tl.style.color=fgL; tl.style.background='transparent'; tl.style.borderColor='transparent'; }
+      if (to) { to.className='pill statDelta'; to.style.color=fgO; to.style.background='transparent'; to.style.borderColor='transparent'; }
     })();
 }
 

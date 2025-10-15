@@ -293,8 +293,6 @@
       <div id="modelScopeBadge" class="scope-badge" aria-live="polite"></div>
       <div id="headlineDigest" style="display:none;font-size:13px;color:var(--text);text-align:center;margin-top:6px">—</div>
       <div id="smartSummary" style="display:none;font-size:13px;color:var(--text);text-align:center;margin-top:6px">—</div>
-      <div id="trendFactors" class="row" style="display:none;justify-content:center;gap:8px;margin-top:4px"></div>
-      <div id="weekHeaviness" class="row" style="display:none;justify-content:center;gap:8px;margin-top:2px"></div>
     </div>
     <div class="row">
       <button id="signInBtn" class="ghost">Sign in</button>
@@ -382,6 +380,8 @@
           <span id="uspsHourlyRateVal" class="statValue">—</span>
           <small class="muted">4w avg</small>
         </div>
+        <div class="stat full-span" id="trendFactors" style="display:none"></div>
+        <div class="stat full-span" id="weekHeaviness" style="display:none"></div>
         <div id="trendPillsRow" class="snapshot-subgrid full-span" style="display:none">
           <div class="stat" id="tileAdvHours" style="cursor:pointer" tabindex="0" title="Click for weighted daily hour deltas">
             <small>Weekly Hours Trend</small>
@@ -4430,11 +4430,13 @@ function moonPhaseEmoji(dateStr) {
       pushIf('Volume', pct(v0, v1));
       items.sort((a,b)=> Math.abs(b.v) - Math.abs(a.v));
       const top = items.slice(0,2);
-      el.style.display = 'flex';
       if (!top.length){
-        el.innerHTML = `<span class="pill"><small>Factors</small> <b style="color:var(--muted)">Similar</b></span>`;
+        el.style.display = 'none';
+        el.innerHTML = '';
       } else {
-        el.innerHTML = top.map(it=> `<span class="pill"><small>${it.k}</small> <b style="color:${colorForDelta(it.v).fg}">${it.v>=0?'↑ '+it.v+'%':'↓ '+Math.abs(it.v)+'%'}</b></span>`).join('');
+        const pills = top.map(it=> `<span class="pill"><small>${it.k}</small> <b style="color:${colorForDelta(it.v).fg}">${it.v>=0?'↑ '+it.v+'%':'↓ '+Math.abs(it.v)+'%'}</b></span>`).join(' ');
+        el.style.display = 'block';
+        el.innerHTML = `<small>Weekly Movers</small><div class="pill-row">${pills}</div>`;
       }
     }catch(_){ /* no-op */ }
   }
@@ -4514,8 +4516,9 @@ function moonPhaseEmoji(dateStr) {
         const col = colorForDelta(p || 0).fg;
         return `<span class="pill"><small>${label}</small> <b style="color:${col}">${txt}${pTxt}</b></span>`;
       };
-      el.style.display='flex';
-      el.innerHTML = [pill('Office', dOff), pill('Route', dRte), pill('Total', dTot)].join(' ');
+      el.style.display='block';
+      const pills = [pill('Office', dOff), pill('Route', dRte), pill('Total', dTot)].join(' ');
+      el.innerHTML = `<small>Heaviness (week)</small><div class="pill-row">${pills}</div>`;
     }catch(_){ /* no-op */ }
   }
 

@@ -359,6 +359,16 @@
           <span id="todayOfficeDelta" class="statDelta">—</span>
           <small class="muted">vs past same weekday (worked)</small>
         </div>
+        <div class="stat" id="extraTripTodayTile" style="display:none">
+          <small>Extra Trip</small>
+          <span id="extraTripTodayVal" class="statValue statValue--lg">—</span>
+          <small class="muted" id="extraTripTodayMeta">—</small>
+        </div>
+        <div class="stat" id="todayHourlyTile" style="display:none">
+          <small>Running $/h</small>
+          <span id="todayHourlyRate" class="statValue statValue--lg">—</span>
+          <small class="muted" id="todayHourlyMeta">Includes extra trip payout</small>
+        </div>
         <div class="stat full-span" id="todayHeaviness" style="display:none"></div>
       </div>
     </div>
@@ -569,6 +579,20 @@
       </div>
 
       <div><label>Mood</label><select id="mood"><option value="">—</option><option>🔥 dialed in</option><option>🙂 good</option><option>😐 meh</option><option>🥵 cooked</option><option>🌧️ soggy</option><option>🛑 off</option></select></div>
+      <div><label>Extra trip miles
+        <input id="secondTripMiles" type="number" min="0" step="0.1" placeholder="e.g., 6.5">
+      </label></div>
+      <div><label>Extra trip time (min)
+        <input id="secondTripTime" type="number" min="0" step="1" placeholder="e.g., 45">
+      </label></div>
+      <input id="secondTripEma" type="hidden">
+      <div class="trip-summary" id="secondTripSummary" style="grid-column:1/-1;margin-top:-2px">
+        🕒 Paid time: <strong id="secondTripPaid">0</strong> min (2 min/mi)
+        · ⏱ Actual: <strong id="secondTripActual">0</strong> min
+        · 💸 Reimbursement: $<strong id="secondTripReimburse">0.00</strong>
+        · EMA: $<strong id="secondTripEmaRate">0.00</strong>/mi
+      </div>
+      <small class="muted" style="grid-column:1/-1;margin-top:-6px">Second-trip time is excluded from route efficiency; defaults live under Settings → Extra Trip Defaults and totals roll into weekly tiles.</small>
       <div style="grid-column:1/-1"><label>Notes</label><textarea id="notes" rows="2" placeholder="Anything notable…"></textarea></div>
 
       <div class="row" style="grid-column:1/-1;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
@@ -904,26 +928,6 @@
       </div>
     </div>
 
-    <div class="cardSection" id="secondTripSection">
-      <h4>Extra Trip (optional)</h4>
-      <div class="grid" style="grid-template-columns:repeat(3,minmax(140px,190px));gap:10px">
-        <label>Trip miles
-          <input id="secondTripMiles" type="number" min="0" step="0.1" placeholder="e.g., 6.5">
-        </label>
-        <label>Actual time (min)
-          <input id="secondTripTime" type="number" min="0" step="1" placeholder="e.g., 45">
-        </label>
-        <label>EMA rate ($/mi)
-          <input id="secondTripEma" type="number" min="0" step="0.01" placeholder="0.95">
-        </label>
-      </div>
-      <div class="trip-summary" id="secondTripSummary" style="margin-top:8px">
-        🕒 Paid time: <strong id="secondTripPaid">0</strong> min (2 min/mi)
-        · ⏱ Actual: <strong id="secondTripActual">0</strong> min
-        · 💸 Reimbursement: $<strong id="secondTripReimburse">0.00</strong>
-      </div>
-      <small class="muted">Second-trip time is excluded from route efficiency; we track it separately for weekly totals.</small>
-    </div>
 
     <!-- Vacation Mode configuration -->
     <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
@@ -1677,6 +1681,7 @@ function moonPhaseEmoji(dateStr) {
           if (isFinite(parsed) && parsed >= 0){
             localStorage.setItem(SECOND_TRIP_EMA_KEY, String(parsed));
             if (secondTripEmaInput){ secondTripEmaInput.value = parsed; }
+            try{ updateSecondTripSummary(); }catch(_){ }
           }
         }
         updateSecondTripSummary();
@@ -1791,13 +1796,20 @@ function moonPhaseEmoji(dateStr) {
   const date=$('date'), route=$('route'), start=$('start'), end=$('end'), departTime=$('departTime'), returnTime=$('returnTime');
 const parcels=$('parcels'), letters=$('letters'), miles=$('miles'), mood=$('mood'), notes=$('notes');
 const secondTripMilesInput=$('secondTripMiles'), secondTripTimeInput=$('secondTripTime'), secondTripEmaInput=$('secondTripEma');
-const secondTripPaidEl=$('secondTripPaid'), secondTripActualEl=$('secondTripActual'), secondTripReimburseEl=$('secondTripReimburse');
+const secondTripPaidEl=$('secondTripPaid'), secondTripActualEl=$('secondTripActual'), secondTripReimburseEl=$('secondTripReimburse'), secondTripEmaRateEl=$('secondTripEmaRate');
 const SECOND_TRIP_EMA_KEY = 'routeStats.secondTrip.ema';
+
+function readStoredEma(){
+  try{
+    const saved = parseFloat(localStorage.getItem(SECOND_TRIP_EMA_KEY));
+    if (isFinite(saved) && saved >= 0) return saved;
+  }catch(_){ }
+  return 0.98;
+}
 
 try{
   if (secondTripEmaInput){
-    const saved = parseFloat(localStorage.getItem(SECOND_TRIP_EMA_KEY));
-    if (isFinite(saved) && saved >= 0) secondTripEmaInput.value = saved;
+    secondTripEmaInput.value = readStoredEma();
   }
 }catch(_){ }
 setSecondTripInputs(null);
@@ -2790,8 +2802,11 @@ function getSecondTripInputs(){
   if (!secondTripMilesInput) return { miles:0, actualMinutes:0, ema:0.98 };
   const miles = parseFloat(secondTripMilesInput.value || '');
   const actual = parseInt(secondTripTimeInput.value || '');
-  const emaRaw = parseFloat(secondTripEmaInput.value || '');
-  const ema = isFinite(emaRaw) && emaRaw >= 0 ? emaRaw : 0.98;
+  const emaRaw = secondTripEmaInput ? parseFloat(secondTripEmaInput.value || '') : NaN;
+  const ema = isFinite(emaRaw) && emaRaw >= 0 ? emaRaw : readStoredEma();
+  if (secondTripEmaInput && (!isFinite(emaRaw) || emaRaw < 0)) {
+    secondTripEmaInput.value = ema;
+  }
   return {
     miles: isFinite(miles) && miles >= 0 ? miles : 0,
     actualMinutes: isFinite(actual) && actual >= 0 ? actual : 0,
@@ -2817,6 +2832,7 @@ function updateSecondTripSummary(){
   if (secondTripPaidEl) secondTripPaidEl.textContent = paidMinutes.toFixed(0);
   if (secondTripActualEl) secondTripActualEl.textContent = actualMinutes.toFixed(0);
   if (secondTripReimburseEl) secondTripReimburseEl.textContent = gas.toFixed(2);
+  if (secondTripEmaRateEl) secondTripEmaRateEl.textContent = ema.toFixed(2);
   // Persist user EMA preference
   try{ if (ema>0) localStorage.setItem(SECOND_TRIP_EMA_KEY, String(ema)); }catch(_){ }
   try{ computeBreakdown(); }catch(_){ }
@@ -2824,10 +2840,13 @@ function updateSecondTripSummary(){
 
 function setSecondTripInputs(data){
   if (!secondTripMilesInput) return;
-  const obj = data || { m:'', t:'', e:localStorage.getItem(SECOND_TRIP_EMA_KEY)||'' };
+  const obj = data || { m:'', t:'', e:readStoredEma() };
   secondTripMilesInput.value = obj.m!=null && obj.m!=='' ? obj.m : '';
   secondTripTimeInput.value  = obj.t!=null && obj.t!=='' ? obj.t : '';
-  if (obj.e!=null && obj.e!=='') secondTripEmaInput.value = obj.e;
+  if (secondTripEmaInput){
+    const emaVal = obj.e!=null && obj.e!=='' ? obj.e : readStoredEma();
+    secondTripEmaInput.value = emaVal;
+  }
   updateSecondTripSummary();
 }
 
@@ -3255,6 +3274,85 @@ function getHourlyRateFromEval(){
       if (ho) ho.textContent = `Total hours vs weekday expected. Today ${totToday.toFixed(2)}h vs exp ${exp?exp.toFixed(2)+'h':'—'}. Score ${overallScore}/10.`;
     }catch(_){ }
 
+    const todayRow = workRows[0] || null;
+    const tripRaw = todayRow ? parseSecondTripFromRow(todayRow) : null;
+    const evalHourly = getHourlyRateFromEval();
+    let extraTrip = null;
+    if (tripRaw){
+      const miles = Math.max(0, +tripRaw.m || 0);
+      const actual = Math.max(0, +tripRaw.t || 0);
+      const emaRaw = (tripRaw.e!=null && tripRaw.e!=='') ? +tripRaw.e : NaN;
+      const emaVal = Number.isFinite(emaRaw) && emaRaw >= 0 ? emaRaw : readStoredEma();
+      if ((miles > 0) || (actual > 0)){
+        const paidMinutes = miles * 2;
+        const gas = miles * emaVal;
+        const timePay = evalHourly!=null ? (paidMinutes/60) * evalHourly : null;
+        const payout = gas + (timePay || 0);
+        extraTrip = {
+          miles,
+          actual,
+          ema: emaVal,
+          paidMinutes,
+          gas,
+          timePay,
+          payout
+        };
+      }
+    }
+
+    try{
+      const tile = document.getElementById('extraTripTodayTile');
+      const valEl = document.getElementById('extraTripTodayVal');
+      const metaEl = document.getElementById('extraTripTodayMeta');
+      if (tile && valEl && metaEl){
+        if (!extraTrip){
+          tile.style.display = 'none';
+        } else {
+          tile.style.display = '';
+          valEl.textContent = `$${extraTrip.payout.toFixed(2)}`;
+          const metaParts = [];
+          metaParts.push(`${extraTrip.miles.toFixed(1)} mi`);
+          metaParts.push(`Paid ${extraTrip.paidMinutes.toFixed(0)}m`);
+          if (extraTrip.actual > 0) metaParts.push(`Actual ${extraTrip.actual.toFixed(0)}m`);
+          metaParts.push(`Gas $${extraTrip.gas.toFixed(2)}`);
+          if (extraTrip.timePay != null) metaParts.push(`Time $${extraTrip.timePay.toFixed(2)}`);
+          metaEl.textContent = metaParts.join(' · ');
+          tile.title = `Miles ${extraTrip.miles.toFixed(2)} · Paid ${extraTrip.paidMinutes.toFixed(0)}m · Actual ${extraTrip.actual.toFixed(0)}m · EMA $${extraTrip.ema.toFixed(2)}/mi`;
+        }
+      }
+    }catch(_){ }
+
+    try{
+      const tile = document.getElementById('todayHourlyTile');
+      const valEl = document.getElementById('todayHourlyRate');
+      const metaEl = document.getElementById('todayHourlyMeta');
+      if (tile && valEl && metaEl){
+        if (evalHourly == null || !(totToday > 0)){
+          tile.style.display = 'none';
+        } else {
+          const basePay = evalHourly * totToday;
+          const extraPay = extraTrip ? extraTrip.payout : 0;
+          const runRate = (basePay + extraPay) / Math.max(totToday, 0.01);
+          tile.style.display = '';
+          valEl.textContent = `$${runRate.toFixed(2)}`;
+          const metaParts = [`Base $${basePay.toFixed(2)}`];
+          if (extraPay > 0){
+            metaParts.push(`Extra $${extraPay.toFixed(2)}`);
+          }
+          metaParts.push(`${totToday.toFixed(2)}h`);
+          metaEl.textContent = metaParts.join(' · ');
+          const lines = [`Base pay (est.): $${basePay.toFixed(2)} for ${totToday.toFixed(2)}h (@ $${evalHourly.toFixed(2)}/h)`];
+          if (extraTrip){
+            const timeLine = extraTrip.timePay != null ? `Time $${extraTrip.timePay.toFixed(2)}` : null;
+            const extras = [`Gas $${extraTrip.gas.toFixed(2)}`];
+            if (timeLine) extras.push(timeLine);
+            lines.push(`Extra trip payout: $${extraTrip.payout.toFixed(2)} (${extras.join(' + ')})`);
+          }
+          tile.title = lines.join('\n');
+        }
+      }
+    }catch(_){ }
+
     // ===== Weekly tiles (Monday-based) =====
     const weekStart = startOfWeekMonday(today);
     const weekEnd   = today.endOf('day');
@@ -3328,15 +3426,26 @@ function getHourlyRateFromEval(){
     const tripsThisWeek = (rows||[]).map(r=> ({ row:r, data: parseSecondTripFromRow(r) }))
       .filter(entry => entry.data && inRange(entry.row, weekStart, weekEnd));
     if (!tripsThisWeek.length){
-      extraTiles.forEach(el=>{ if (el) el.style.display='none'; });
-      if (extraMilesEl) extraMilesEl.textContent = '—';
-      if (extraTimeEl) extraTimeEl.textContent = '—';
-      if (extraPayoutEl) extraPayoutEl.textContent = '—';
+      extraTiles.forEach(el=>{ if (el) el.style.display=''; });
+      if (extraMilesEl) extraMilesEl.textContent = '0 mi';
+      if (extraTimeEl){
+        extraTimeEl.textContent = '0 min';
+        extraTimeEl.title = 'No extra trips logged yet';
+      }
+      if (extraPayoutEl){
+        extraPayoutEl.textContent = '$0.00';
+        extraPayoutEl.title = 'No extra trips logged yet';
+      }
     } else {
       const totalMiles = tripsThisWeek.reduce((sum, entry)=> sum + (+entry.data.m || 0), 0);
       const totalActual = tripsThisWeek.reduce((sum, entry)=> sum + (+entry.data.t || 0), 0);
       const totalPaid = tripsThisWeek.reduce((sum, entry)=> sum + ((+entry.data.m || 0) * 2), 0);
-      const totalGas = tripsThisWeek.reduce((sum, entry)=> sum + ((+entry.data.m || 0) * (+entry.data.e || 0)), 0);
+      const totalGas = tripsThisWeek.reduce((sum, entry)=>{
+        const miles = +entry.data.m || 0;
+        const emaRaw = entry.data?.e;
+        const ema = Number.isFinite(+emaRaw) && +emaRaw >= 0 ? +emaRaw : readStoredEma();
+        return sum + (miles * ema);
+      }, 0);
       const hourlyRate = getHourlyRateFromEval();
       const timeComp = hourlyRate!=null ? (totalPaid/60) * hourlyRate : null;
       const payout = (timeComp!=null ? timeComp : 0) + totalGas;

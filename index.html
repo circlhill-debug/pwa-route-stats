@@ -941,6 +941,12 @@
       <button id="saveSettings">Save</button>
     </div>
     <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
+      <h4 style="margin:0 0 6px 0">Extra Trip Defaults</h4>
+      <label class="pill">EMA rate ($/mi)
+        <input id="settingsEmaRate" type="number" min="0" step="0.01" style="margin-left:6px; width:120px">
+      </label>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
       <small class="muted">Maintenance</small>
       <div class="row" style="gap:8px;margin-top:6px">
         <button id="forceRefreshBtn" class="ghost" title="Force update service worker and clear caches">Force Refresh (update + clear cache)</button>
@@ -1563,6 +1569,7 @@ function moonPhaseEmoji(dateStr) {
   const flagSmartSummary = document.getElementById('flagSmartSummary');
   const flagDayCompare = document.getElementById('flagDayCompare');
   const flagUspsEval = document.getElementById('flagUspsEval');
+  const settingsEmaRate = document.getElementById('settingsEmaRate');
   // USPS Eval inputs
   const evalRouteId = document.getElementById('evalRouteId');
   const evalCode    = document.getElementById('evalCode');
@@ -1613,6 +1620,12 @@ function moonPhaseEmoji(dateStr) {
       if (vacFrom) vacFrom.value = last?.from || '';
       if (vacTo)   vacTo.value   = last?.to   || '';
     }catch(_){ }
+    try{
+      if (settingsEmaRate){
+        const stored = localStorage.getItem(SECOND_TRIP_EMA_KEY);
+        settingsEmaRate.value = stored != null ? stored : (secondTripEmaInput?.value || '');
+      }
+    }catch(_){ }
     renderVacationRanges();
     settingsDlg.showModal();
   });
@@ -1655,6 +1668,19 @@ function moonPhaseEmoji(dateStr) {
       if (f && t) addVacationRange(f, t);
       if (vacFrom) vacFrom.value = '';
       if (vacTo)   vacTo.value   = '';
+    }catch(_){ }
+    try{
+      if (settingsEmaRate){
+        const val = settingsEmaRate.value;
+        if (val !== ''){
+          const parsed = parseFloat(val);
+          if (isFinite(parsed) && parsed >= 0){
+            localStorage.setItem(SECOND_TRIP_EMA_KEY, String(parsed));
+            if (secondTripEmaInput){ secondTripEmaInput.value = parsed; }
+          }
+        }
+        updateSecondTripSummary();
+      }
     }catch(_){ }
     saveFlags(FLAGS);
     settingsDlg.close();
@@ -1790,7 +1816,15 @@ setSecondTripInputs(null);
   route.value = 'R1';
 
   function computeBreakdown(){
-    if (offDay.checked){ officeH.textContent='0.00'; routeH.textContent='0.00'; totalH.textContent='0.00'; return 0; }
+    const trip = getSecondTripInputs();
+    const extraHours = trip.actualMinutes ? (trip.actualMinutes / 60) : 0;
+    const extraPaidMinutes = trip.miles ? (trip.miles * 2) : 0;
+    if (offDay.checked){
+      officeH.textContent='0.00';
+      routeH.textContent='0.00';
+      totalH.textContent='0.00';
+      return 0;
+    }
     const d=date.value; const s=start.value||'08:00';
     const off=diffHours(d, s, departTime.value);
     let rte  = diffHours(d, departTime.value, routeEndTime());
@@ -1798,12 +1832,16 @@ setSecondTripInputs(null);
       const span = diffHours(d, s, routeEndTime());
       if (span!=null && off!=null) rte = Math.max(0, +(span - off).toFixed(2));
     }
-    const tot=Math.max(0, (off??0)+(rte??0));
-    officeH.textContent = off!=null? off.toFixed(2) : '—';
+    const officeDisplay = (off!=null? off : 0) + extraHours;
+    const tot = Math.max(0, (off??0) + (rte??0) + extraHours);
+    officeH.textContent = (off!=null || extraHours) ? officeDisplay.toFixed(2) : '—';
     routeH.textContent  = rte!=null? rte.toFixed(2) : '—';
-    totalH.textContent  = (off!=null||rte!=null)? tot.toFixed(2) : '—';
+    totalH.textContent  = (off!=null||rte!=null||extraHours) ? tot.toFixed(2) : '—';
     const diag=$('diag');
-    if (diag){ diag.innerHTML = `ROUTE STATS · Supabase: <b id="dConn">${dConn.textContent}</b> · Auth: <b id="dAuth">${dAuth.textContent}</b> · Write: <b id="dWrite">${dWrite.textContent}</b> · <b>Off:</b> ${off ?? '—'}h · <b>Route:</b> ${rte ?? '—'}h · <b>Total:</b> ${((off??0)+(rte??0)).toFixed(2)}h`; }
+    if (diag){
+      const extraTxt = extraHours ? ` · <b>Extra:</b> ${trip.actualMinutes.toFixed(0)}m (${extraPaidMinutes.toFixed(0)}m paid)` : '';
+      diag.innerHTML = `ROUTE STATS · Supabase: <b id="dConn">${dConn.textContent}</b> · Auth: <b id="dAuth">${dAuth.textContent}</b> · Write: <b id="dWrite">${dWrite.textContent}</b> · <b>Off:</b> ${off ?? '—'}h · <b>Route:</b> ${rte ?? '—'}h · <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
+    }
     return tot;
   }
 
@@ -2665,9 +2703,12 @@ function weatherString(){
       const span = diffHours(d, s, routeEndTime());
       if (span!=null && offRaw!=null) rteRaw = Math.max(0, +(span - offRaw).toFixed(2));
     }
+    const trip = getSecondTripInputs();
+    const extraHours = trip.actualMinutes ? (trip.actualMinutes / 60) : 0;
     const off = offDay.checked ? 0 : offRaw;
     const rte = offDay.checked ? 0 : rteRaw;
-    const tot = offDay.checked ? 0 : ((off??0)+(rte??0));
+    const tot = offDay.checked ? 0 : ((off??0)+(rte??0)+extraHours);
+    const officeForStore = offDay.checked ? 0 : (offRaw!=null ? +(offRaw + extraHours).toFixed(2) : (extraHours ? +extraHours.toFixed(2) : null));
     return {
       user_id:userId,
       work_date:d,
@@ -2684,7 +2725,7 @@ function weatherString(){
       office_start: s||null,
       depart_time:  departTime.value||null,
       return_time:  returnTime.value||null,
-      office_minutes: offDay.checked ? 0 : (offRaw!=null? +offRaw.toFixed(2): null),
+      office_minutes: offDay.checked ? 0 : officeForStore,
       route_minutes:  offDay.checked ? 0 : (rteRaw!=null? +rteRaw.toFixed(2): null),
       weather_json: weatherString()
     };
@@ -2778,6 +2819,7 @@ function updateSecondTripSummary(){
   if (secondTripReimburseEl) secondTripReimburseEl.textContent = gas.toFixed(2);
   // Persist user EMA preference
   try{ if (ema>0) localStorage.setItem(SECOND_TRIP_EMA_KEY, String(ema)); }catch(_){ }
+  try{ computeBreakdown(); }catch(_){ }
 }
 
 function setSecondTripInputs(data){

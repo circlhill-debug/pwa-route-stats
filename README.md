@@ -44,6 +44,7 @@ Latest features (main)
 - Vacation Mode: manage one or more date ranges (Settings → Vacation Mode). Analytics skip those days; table keeps them with a superscript `v`.
 - Data Sheet: in-app HTML view renders docs/METRICS.md (bp/bl/w/R², diagnostics guidance) with caching-safe refresh.
 - Volume leaderboard: click “Top days” in the Volume tile to view the heaviest parcel/letter days with percentile ranks.
+- Extra Trip tracking: optional fields in Add Entry capture second-trip miles/time/EMA; Today summary shows paid/gas amounts and Weekly tiles roll up totals.
 - Diagnostics: auto-tag post-holiday “catch-up” days so residuals are annotated and coefficients stay stable.
 - Smart Summary (rule‑based): concise Hours/Volume/Efficiency deltas; daily under the title (top‑movers ≥5%).
 - Headline Digest (weekly): one‑line summary on Wednesdays after 5pm (flag‑controlled).

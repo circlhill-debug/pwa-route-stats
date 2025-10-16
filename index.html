@@ -148,6 +148,9 @@
   .leaderboard-table th, .leaderboard-table td{ padding:6px 8px; border-bottom:1px solid var(--border); text-align:right; }
   .leaderboard-table th:first-child, .leaderboard-table td:first-child{ text-align:left; }
   .leaderboard-table tbody tr:last-child td{ border-bottom:none; }
+  .cardSection{ border-top:1px solid var(--border); margin-top:16px; padding-top:12px; }
+  .cardSection h4{ margin:0 0 10px 0; font-size:14px; }
+  .trip-summary{ font-size:13px; line-height:1.5; }
   .diag-wrap{
     overflow:auto;
     border-radius:12px;
@@ -374,6 +377,21 @@
         <div class="stat" id="tileWkLetters" style="cursor:pointer" tabindex="0" title="Click for weekly letters breakdown">
           <small>Letters (week)</small>
           <div><span id="wkLetters" class="statValue statValue--lg">—</span> <span id="wkLettersDelta" class="pill">—</span></div>
+        </div>
+        <div class="stat" id="extraMilesWeek">
+          <small>Extra trip miles</small>
+          <span class="statValue statValue--lg" id="extraMilesWeekVal">—</span>
+          <small class="muted">Mon..today total</small>
+        </div>
+        <div class="stat" id="extraTimeWeek">
+          <small>Extra trip time</small>
+          <span class="statValue statValue--lg" id="extraTimeWeekVal">—</span>
+          <small class="muted">Actual min (Mon..today)</small>
+        </div>
+        <div class="stat" id="extraPayoutWeek">
+          <small>Extra trip payout</small>
+          <span class="statValue statValue--lg" id="extraPayoutWeekVal">—</span>
+          <small class="muted">Paid time + EMA</small>
         </div>
         <div class="stat" id="tileUspsRouteEff">
           <small>USPS Route Eff.</small>
@@ -884,6 +902,27 @@
           <input id="evalSalaryIn" type="number" min="0" step="100" placeholder="e.g., 68000" />
         </div>
       </div>
+    </div>
+
+    <div class="cardSection" id="secondTripSection">
+      <h4>Extra Trip (optional)</h4>
+      <div class="grid" style="grid-template-columns:repeat(3,minmax(140px,190px));gap:10px">
+        <label>Trip miles
+          <input id="secondTripMiles" type="number" min="0" step="0.1" placeholder="e.g., 6.5">
+        </label>
+        <label>Actual time (min)
+          <input id="secondTripTime" type="number" min="0" step="1" placeholder="e.g., 45">
+        </label>
+        <label>EMA rate ($/mi)
+          <input id="secondTripEma" type="number" min="0" step="0.01" placeholder="0.95">
+        </label>
+      </div>
+      <div class="trip-summary" id="secondTripSummary" style="margin-top:8px">
+        🕒 Paid time: <strong id="secondTripPaid">0</strong> min (2 min/mi)
+        · ⏱ Actual: <strong id="secondTripActual">0</strong> min
+        · 💸 Reimbursement: $<strong id="secondTripReimburse">0.00</strong>
+      </div>
+      <small class="muted">Second-trip time is excluded from route efficiency; we track it separately for weekly totals.</small>
     </div>
 
     <!-- Vacation Mode configuration -->
@@ -1724,7 +1763,17 @@ function moonPhaseEmoji(dateStr) {
   function routeEndTime(){ return ($('returnTime').value || $('end').value || ''); }
 
   const date=$('date'), route=$('route'), start=$('start'), end=$('end'), departTime=$('departTime'), returnTime=$('returnTime');
-  const parcels=$('parcels'), letters=$('letters'), miles=$('miles'), mood=$('mood'), notes=$('notes');
+const parcels=$('parcels'), letters=$('letters'), miles=$('miles'), mood=$('mood'), notes=$('notes');
+const secondTripMilesInput=$('secondTripMiles'), secondTripTimeInput=$('secondTripTime'), secondTripEmaInput=$('secondTripEma');
+const secondTripPaidEl=$('secondTripPaid'), secondTripActualEl=$('secondTripActual'), secondTripReimburseEl=$('secondTripReimburse');
+
+try{
+  if (secondTripEmaInput){
+    const saved = parseFloat(localStorage.getItem(SECOND_TRIP_EMA_KEY));
+    if (isFinite(saved) && saved >= 0) secondTripEmaInput.value = saved;
+  }
+}catch(_){ }
+setSecondTripInputs(null);
   const weather=$('weather'), temp=$('temp'), boxholders=$('boxholders'), holiday=$('holiday');
   const offDay=$('offDay');
   const officeH=$('officeH'), routeH=$('routeH'), totalH=$('totalH');
@@ -2588,7 +2637,10 @@ function moonPhaseEmoji(dateStr) {
   $('btnClockNow2').addEventListener('click',()=>{ setNow(end); if(!returnTime.value){ returnTime.value = end.value; } });
 
   offDay.addEventListener('change', ()=>{ if(offDay.checked){ end.value=hhmmNow(); parcels.value=letters.value=miles.value=0; mood.value='🛑 off'; computeBreakdown(); }});
-  ;[date,start,departTime,returnTime,end,parcels,letters,miles,offDay,weather,temp,boxholders].forEach(el=> el.addEventListener('input', computeBreakdown));
+;[date,start,departTime,returnTime,end,parcels,letters,miles,offDay,weather,temp,boxholders].forEach(el=> el.addEventListener('input', computeBreakdown));
+secondTripMilesInput?.addEventListener('input', updateSecondTripSummary);
+secondTripTimeInput?.addEventListener('input', updateSecondTripSummary);
+secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
 
   document.addEventListener('keydown', (e)=>{
     const mod = e.metaKey || e.ctrlKey; if(!mod) return; const k = e.key.toLowerCase();
@@ -2597,8 +2649,10 @@ function moonPhaseEmoji(dateStr) {
     else if(e.key==='Backspace'){ e.preventDefault(); $('btnDeleteDay')?.click(); }
   });
 
-  function weatherString(){
+function weatherString(){
     const parts=[]; if(weather?.value) parts.push(weather.value); if(temp?.value) parts.push(`${temp.value}°F`); if(boxholders?.value) parts.push(`Box: ${boxholders.value}`); if (holiday?.checked) parts.push('Holiday'); if (reasonTag?.value) parts.push(`Reason: ${reasonTag.value}`);
+    const st = getSecondTripPayload();
+    if (st){ parts.push(`SecondTrip:${JSON.stringify(st)}`); }
     return parts.length? parts.join(' · ') : null;
   }
 
@@ -2648,14 +2702,23 @@ function moonPhaseEmoji(dateStr) {
     offDay.checked    = (r.status === 'off');
 
     const raw = r.weather_json || '';
-    if (!raw){ if(temp) temp.value=''; if(boxholders) boxholders.value=''; if(holiday) holiday.checked=false; weather.value=''; }
-    else {
+    if (!raw){
+      if(temp) temp.value='';
+      if(boxholders) boxholders.value='';
+      if(holiday) holiday.checked=false;
+      weather.value='';
+      const reasonTag = document.getElementById('reasonTag'); if (reasonTag) reasonTag.value = '';
+      setSecondTripInputs(null);
+    } else {
       const parts = String(raw).split('·').map(s=>s.trim());
-      let w='', t='', b=''; let hol=false; let rsn='';
+      let w='', t='', b=''; let hol=false; let rsn=''; let stData=null;
       for (const p of parts){
         if (/°F$/.test(p)) t = p.replace('°F','').trim();
         else if (/^Box:/i.test(p)) b = p.split(':').slice(1).join(':').trim();
         else if (/^Reason:/i.test(p)) rsn = p.split(':').slice(1).join(':').trim();
+        else if (/^SecondTrip:/i.test(p)) {
+          try{ stData = JSON.parse(p.split(':').slice(1).join(':')); }catch(_){ stData=null; }
+        }
         else if (/^Holiday$/i.test(p)) hol = true;
         else w = p;
       }
@@ -2664,6 +2727,7 @@ function moonPhaseEmoji(dateStr) {
       if (boxholders) boxholders.value = b || '';
       if (holiday) holiday.checked = !!hol;
       const reasonTag = document.getElementById('reasonTag'); if (reasonTag) reasonTag.value = rsn || '';
+      setSecondTripInputs(stData);
     }
     try { computeBreakdown(); } catch(_){}
   }
@@ -2671,14 +2735,79 @@ function moonPhaseEmoji(dateStr) {
   let editingKey = null; let lastDeleted = null; const btnUndoDelete = $('btnUndoDelete');
   function showUndo(show){ if(!btnUndoDelete) return; btnUndoDelete.style.display = show ? 'inline-block' : 'none'; }
 
-  const searchBox = $('searchBox'); let allRows = [];
-  function applySearch(rows){
+const searchBox = $('searchBox'); let allRows = [];
+function applySearch(rows){
     const q = (searchBox.value||'').trim().toLowerCase(); if(!q) return rows;
     return rows.filter(r=>{
       const fields=[ r.work_date, r.status, r.mood, r.weather_json, r.notes, String(r.parcels||''), String(r.letters||''), String(r.miles||'') ];
       return fields.some(v=> String(v||'').toLowerCase().includes(q));
     });
   }
+
+const SECOND_TRIP_EMA_KEY = 'routeStats.secondTrip.ema';
+
+function getSecondTripInputs(){
+  if (!secondTripMilesInput) return { miles:0, actualMinutes:0, ema:0.98 };
+  const miles = parseFloat(secondTripMilesInput.value || '');
+  const actual = parseInt(secondTripTimeInput.value || '');
+  const emaRaw = parseFloat(secondTripEmaInput.value || '');
+  const ema = isFinite(emaRaw) && emaRaw >= 0 ? emaRaw : 0.98;
+  return {
+    miles: isFinite(miles) && miles >= 0 ? miles : 0,
+    actualMinutes: isFinite(actual) && actual >= 0 ? actual : 0,
+    ema
+  };
+}
+
+function getSecondTripPayload(){
+  const { miles, actualMinutes, ema } = getSecondTripInputs();
+  if (!(miles > 0 || actualMinutes > 0)) return null;
+  return {
+    m: +miles.toFixed(2),
+    t: actualMinutes,
+    e: +ema.toFixed(2)
+  };
+}
+
+function updateSecondTripSummary(){
+  if (!secondTripMilesInput) return;
+  const { miles, actualMinutes, ema } = getSecondTripInputs();
+  const paidMinutes = miles * 2;
+  const gas = miles * ema;
+  if (secondTripPaidEl) secondTripPaidEl.textContent = paidMinutes.toFixed(0);
+  if (secondTripActualEl) secondTripActualEl.textContent = actualMinutes.toFixed(0);
+  if (secondTripReimburseEl) secondTripReimburseEl.textContent = gas.toFixed(2);
+  // Persist user EMA preference
+  try{ if (ema>0) localStorage.setItem(SECOND_TRIP_EMA_KEY, String(ema)); }catch(_){ }
+}
+
+function setSecondTripInputs(data){
+  if (!secondTripMilesInput) return;
+  const obj = data || { m:'', t:'', e:localStorage.getItem(SECOND_TRIP_EMA_KEY)||'' };
+  secondTripMilesInput.value = obj.m!=null && obj.m!=='' ? obj.m : '';
+  secondTripTimeInput.value  = obj.t!=null && obj.t!=='' ? obj.t : '';
+  if (obj.e!=null && obj.e!=='') secondTripEmaInput.value = obj.e;
+  updateSecondTripSummary();
+}
+
+function parseSecondTripFromRow(row){
+  if (!row || !row.weather_json) return null;
+  const part = row.weather_json.split('·').map(s=> s.trim()).find(p => /^SecondTrip:/i.test(p));
+  if (!part) return null;
+  try{ return JSON.parse(part.split(':').slice(1).join(':')); }catch(_){ return null; }
+}
+
+function getHourlyRateFromEval(){
+  try{
+    const cfg = USPS_EVAL || loadEval();
+    if (!cfg || cfg.annualSalary==null || cfg.hoursPerDay==null) return null;
+    const weeklyPay = cfg.annualSalary / 52;
+    const hoursPerWeek = Math.max(0, (cfg.hoursPerDay||0) * 5);
+    if (!hoursPerWeek) return null;
+    return weeklyPay / hoursPerWeek;
+  }catch(_){ return null; }
+}
+
 
   function rebuildAll(){
     const rows = allRows || [];
@@ -3030,24 +3159,29 @@ function moonPhaseEmoji(dateStr) {
       }catch(_){ }
     })();
 
-    // Badges (volume, route eff, overall) using last 30 worked rows
-    const lastN = workRows.slice(0,30);
-    const volMetric = (r)=> (+r.parcels||0) + 0.33*(+r.letters||0);
-    const vols = lastN.map(volMetric);
+    // Badges (volume, route eff, overall) — align with leaderboard (all worked days, learned letter weight)
+    const letterW = CURRENT_LETTER_WEIGHT || 0.33;
+    const volMetric = (r)=> combinedVolume(r.parcels||0, r.letters||0, letterW);
+    const vols = workRows.map(volMetric);
     const v = vols.length? volMetric(workRows[0]||{}):0;
-    const rank = (arr,x)=>{ const s=[...arr].sort((a,b)=>a-b); let i=s.findIndex(n=>x<=n); if(i<0) i=s.length; return i/s.length; };
+    const rank = (arr,x)=>{
+      const s=[...arr].sort((a,b)=>a-b);
+      let idx = s.findIndex(n=> x <= n);
+      if (idx < 0) idx = s.length - 1;
+      return (idx + 1) / s.length;
+    };
     const volScore10 = vols.length? Math.round(rank(vols,v)*10) : null;
     if (volScore10==null) badgeVolume.textContent = '—'; else badgeVolume.textContent = `${volScore10}/10`;
     try{
-      if (vols.length){
+    if (vols.length){
         const s=[...vols].sort((a,b)=>a-b); const min=s[0], max=s[s.length-1];
         const mid = Math.floor(s.length/2); const med = s.length%2? s[mid] : (s[mid-1]+s[mid])/2;
         const pct = Math.round(rank(vols,v)*100);
-        const volTip = `Volume today: ${v.toFixed(1)} (parcels + 0.33×letters)\nScore: ${volScore10}/10 ≈ ${pct}th percentile of last ${vols.length} worked days\nNote: This is a rank vs recent days, not % of max.\nRange: min ${min.toFixed(1)} • median ${med.toFixed(1)} • max ${max.toFixed(1)}`;
+        const volTip = `Volume today: ${v.toFixed(1)} (parcels + ${letterW.toFixed(2)}×letters)\nScore: ${volScore10}/10 ≈ ${pct}th percentile of ${vols.length} worked day(s)\nRange: min ${min.toFixed(1)} • median ${med.toFixed(1)} • max ${max.toFixed(1)}`;
         badgeVolume.title = volTip;
         try{ const tile = badgeVolume.closest('.stat'); if (tile) tile.title = volTip; }catch(_){ }
         const hv = document.getElementById('helpVolume');
-        if (hv) hv.textContent = `Rank vs recent: ${volScore10}/10 (~${pct}th percentile). Today ${v.toFixed(1)}; min ${min.toFixed(1)}, median ${med.toFixed(1)}, max ${max.toFixed(1)}.`;
+        if (hv) hv.textContent = `Rank (all-time): ${volScore10}/10 (~${pct}th percentile). Today ${v.toFixed(1)}; min ${min.toFixed(1)}, median ${med.toFixed(1)}, max ${max.toFixed(1)}.`;
       }
     }catch(_){ }
     const rhs = workRows
@@ -3144,6 +3278,45 @@ function moonPhaseEmoji(dateStr) {
     setPill($('wkHoursDelta'),   dh);
     setPill($('wkParcelsDelta'), dp);
     setPill($('wkLettersDelta'), dl);
+
+    // Extra trip weekly totals
+    const extraMilesEl = document.getElementById('extraMilesWeekVal');
+    const extraTimeEl = document.getElementById('extraTimeWeekVal');
+    const extraPayoutEl = document.getElementById('extraPayoutWeekVal');
+    const extraTiles = [document.getElementById('extraMilesWeek'), document.getElementById('extraTimeWeek'), document.getElementById('extraPayoutWeek')];
+    const tripsThisWeek = (rows||[]).map(r=> ({ row:r, data: parseSecondTripFromRow(r) }))
+      .filter(entry => entry.data && inRange(entry.row, weekStart, weekEnd));
+    if (!tripsThisWeek.length){
+      extraTiles.forEach(el=>{ if (el) el.style.display='none'; });
+      if (extraMilesEl) extraMilesEl.textContent = '—';
+      if (extraTimeEl) extraTimeEl.textContent = '—';
+      if (extraPayoutEl) extraPayoutEl.textContent = '—';
+    } else {
+      const totalMiles = tripsThisWeek.reduce((sum, entry)=> sum + (+entry.data.m || 0), 0);
+      const totalActual = tripsThisWeek.reduce((sum, entry)=> sum + (+entry.data.t || 0), 0);
+      const totalPaid = tripsThisWeek.reduce((sum, entry)=> sum + ((+entry.data.m || 0) * 2), 0);
+      const totalGas = tripsThisWeek.reduce((sum, entry)=> sum + ((+entry.data.m || 0) * (+entry.data.e || 0)), 0);
+      const hourlyRate = getHourlyRateFromEval();
+      const timeComp = hourlyRate!=null ? (totalPaid/60) * hourlyRate : null;
+      const payout = (timeComp!=null ? timeComp : 0) + totalGas;
+
+      if (extraTiles[0]) extraTiles[0].style.display = '';
+      if (extraTiles[1]) extraTiles[1].style.display = '';
+      if (extraTiles[2]) extraTiles[2].style.display = '';
+
+      if (extraMilesEl) extraMilesEl.textContent = `${totalMiles.toFixed(1)} mi`;
+      if (extraTimeEl) {
+        const paidNote = totalPaid.toFixed(0);
+        extraTimeEl.textContent = `${totalActual.toFixed(0)} min`;
+        extraTimeEl.title = `Actual minutes: ${totalActual.toFixed(0)} · Paid minutes: ${paidNote}`;
+      }
+      if (extraPayoutEl){
+        extraPayoutEl.textContent = `$${payout.toFixed(2)}`;
+        extraPayoutEl.title = timeComp!=null
+          ? `Gas: $${totalGas.toFixed(2)} · Time pay: $${timeComp.toFixed(2)}`
+          : `Gas: $${totalGas.toFixed(2)} · Add salary in Settings to include paid time`; 
+      }
+    }
 
     // ===== Advanced Weekly Metrics (Phase 1) =====
     // Day-by-day comparison Mon..today vs same weekday last week,

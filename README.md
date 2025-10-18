@@ -46,6 +46,7 @@ Latest features (main)
 - Volume leaderboard: click “Top days” in the Volume tile to view the heaviest parcel/letter days with percentile ranks.
 - Extra Trip tracking: optional fields in Add Entry capture second-trip miles/time (EMA default lives in Settings); Today summary shows paid/gas amounts and Weekly tiles roll up totals.
 - Diagnostics holiday tagging: automatic "Holiday catch-up" detection annotates post-holiday residuals with baseline context so they’re explained in the outlier list.
+- Diagnostics weighting toggle: optional downweighting for holiday catch-up days refits the volume→time model with softened impact.
 - Diagnostics: auto-tag post-holiday “catch-up” days so residuals are annotated and coefficients stay stable.
 - Smart Summary (rule‑based): concise Hours/Volume/Efficiency deltas; daily under the title (top‑movers ≥5%).
 - Headline Digest (weekly): one‑line summary on Wednesdays after 5pm (flag‑controlled).

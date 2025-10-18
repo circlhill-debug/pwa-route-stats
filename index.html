@@ -61,6 +61,15 @@
     letter-spacing:0.01em;
     text-transform:uppercase;
   }
+  .pill.toggle-button{
+    cursor:pointer;
+    transition:background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  }
+  .pill.toggle-button.active{
+    background:rgba(59,130,246,0.18);
+    border-color:rgba(59,130,246,0.55);
+    color:#93c5fd;
+  }
   /* Ensure checkboxes render visibly inside pill labels */
   input[type="checkbox"]{ width:auto; height:auto; padding:0; margin:0 4px 0 0; accent-color: var(--brand); }
   .modelMetric{ color:#fbbf24; font-weight:400; }
@@ -765,6 +774,10 @@
       </div>
     </button>
     <div class="sparkline-labels" id="diagSummary">—</div>
+    <div class="row" id="diagWeightControls" style="gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center">
+      <button id="diagHolidayWeightBtn" type="button" class="pill toggle-button ghost">Downweight holiday catch-up</button>
+      <small class="muted" id="diagWeightNote">—</small>
+    </div>
     <div id="diagDetails" style="display:none;margin-top:8px">
       <small class="muted">Top residual days (|actual − predicted|). Helps spot non-volume causes: detours, weather, boxholders, etc.</small>
       <div class="diag-wrap" style="margin-top:8px;border:1px solid var(--border);border-radius:12px">
@@ -1452,6 +1465,27 @@
     return stats;
   }
 
+  function isHolidayDownweightEnabled(){
+    try{ return localStorage.getItem(RESIDUAL_WEIGHT_PREF_KEY) === '1'; }catch(_){ return false; }
+  }
+
+  function setHolidayDownweightEnabled(on){
+    try{ localStorage.setItem(RESIDUAL_WEIGHT_PREF_KEY, on ? '1' : '0'); }catch(_){ }
+  }
+
+  function getResidualWeighting(){
+    const enabled = isHolidayDownweightEnabled();
+    if (!enabled) return { enabled:false, fn:null };
+    const fn = (row)=>{
+      if (!row) return 1;
+      if (!hasTag(row, 'holiday_catchup')) return 1;
+      const hint = row._weightHints?.holidayCatchup?.recommended;
+      if (Number.isFinite(hint) && hint > 0 && hint <= 1) return hint;
+      return 0.65;
+    };
+    return { enabled:true, fn };
+  }
+
   // NEW: Moon phase emoji helper
   // Improved Moon phase calc (better epoch)
 function moonPhaseEmoji(dateStr) {
@@ -1884,6 +1918,7 @@ const parcels=$('parcels'), letters=$('letters'), miles=$('miles'), mood=$('mood
 const secondTripMilesInput=$('secondTripMiles'), secondTripTimeInput=$('secondTripTime'), secondTripEmaInput=$('secondTripEma');
 const secondTripPaidEl=$('secondTripPaid'), secondTripActualEl=$('secondTripActual'), secondTripReimburseEl=$('secondTripReimburse'), secondTripEmaRateEl=$('secondTripEmaRate');
 const SECOND_TRIP_EMA_KEY = 'routeStats.secondTrip.ema';
+const RESIDUAL_WEIGHT_PREF_KEY = 'routeStats.residual.downweightHoliday';
 
 function readStoredEma(){
   try{
@@ -2276,32 +2311,83 @@ setSecondTripInputs(null);
   }
 
   // === Diagnostics model & outliers ===
-  function fitVolumeTimeModel(rows){
-    rows = (rows||[]).filter(r=> r && r.status !== 'off');
-    const n = rows.length; if (!n) return null;
-    const mp = rows.reduce((s,r)=> s + (+r.parcels||0), 0) / n;
-    const ml = rows.reduce((s,r)=> s + (+r.letters||0), 0) / n;
-    const my = rows.reduce((s,r)=> s + routeAdjustedMinutes(r), 0) / n;
+  function fitVolumeTimeModel(rows, opts){
+    const weightFn = typeof opts?.weightFn === 'function' ? opts.weightFn : null;
+    const prepared = (rows||[])
+      .filter(r=> r && r.status !== 'off')
+      .map(row => {
+        const parcels = +row.parcels || 0;
+        const letters = +row.letters || 0;
+        const minutes = routeAdjustedMinutes(row);
+        const raw = weightFn ? Number(weightFn(row)) : 1;
+        const weight = Number.isFinite(raw) && raw > 0 ? raw : 0;
+        return { row, parcels, letters, minutes, weight };
+      })
+      .filter(entry => entry.weight > 0);
+
+    if (!prepared.length) return null;
+
+    const sumW = prepared.reduce((t,e)=> t + e.weight, 0);
+    if (!(sumW > 0)) return null;
+
+    const mp = prepared.reduce((t,e)=> t + e.weight * e.parcels, 0) / sumW;
+    const ml = prepared.reduce((t,e)=> t + e.weight * e.letters, 0) / sumW;
+    const my = prepared.reduce((t,e)=> t + e.weight * e.minutes, 0) / sumW;
+
     let Cpp=0, Cll=0, Cpl=0, Cpy=0, Cly=0, SST=0, SSR=0;
-    for (const r of rows){
-      const p=(+r.parcels||0)-mp, l=(+r.letters||0)-ml, y=routeAdjustedMinutes(r)-my;
-      Cpp += p*p; Cll += l*l; Cpl += p*l; Cpy += p*y; Cly += l*y; SST += y*y;
+    for (const e of prepared){
+      const p = e.parcels - mp;
+      const l = e.letters - ml;
+      const y = e.minutes - my;
+      const w = e.weight;
+      Cpp += w * p * p;
+      Cll += w * l * l;
+      Cpl += w * p * l;
+      Cpy += w * p * y;
+      Cly += w * l * y;
+      SST += w * y * y;
     }
+
     const det = (Cpp*Cll - Cpl*Cpl);
     if (!isFinite(det) || Math.abs(det) < 1e-6) return null;
+
     const bp = ( Cpy*Cll - Cpl*Cly ) / det; // minutes per parcel
     const bl = ( Cpp*Cly - Cpl*Cpy ) / det; // minutes per letter
     const a  = my - bp*mp - bl*ml;          // intercept in minutes
+
     const residuals = [];
-    for (const r of rows){
-      const y  = routeAdjustedMinutes(r);
-      const p  = +r.parcels||0; const l = +r.letters||0;
-      const yhat = a + bp*p + bl*l;
-      residuals.push({ iso:r.work_date, parcels:p, letters:l, routeMin:y, predMin:yhat, residMin:(y - yhat), row:r });
-      SSR += (y - yhat)*(y - yhat);
+    for (const e of prepared){
+      const yhat = a + bp*e.parcels + bl*e.letters;
+      const resid = e.minutes - yhat;
+      residuals.push({
+        iso: e.row.work_date,
+        parcels: e.parcels,
+        letters: e.letters,
+        routeMin: e.minutes,
+        predMin: yhat,
+        residMin: resid,
+        weight: e.weight,
+        row: e.row
+      });
+      SSR += e.weight * resid * resid;
     }
+
     const r2 = (SST>0) ? (1 - SSR/SST) : 0;
-    return { a, bp, bl, r2, n, residuals };
+    const downweighted = prepared.filter(e => e.weight < 0.999).length;
+    return {
+      a,
+      bp,
+      bl,
+      r2,
+      n: prepared.length,
+      residuals,
+      weighting: {
+        enabled: !!weightFn,
+        sumWeights: sumW,
+        averageWeight: sumW / prepared.length,
+        downweighted
+      }
+    };
   }
   function learnedLetterWeight(model){
     if (!model || !isFinite(model.bp) || Math.abs(model.bp) < 1e-6) return null;
@@ -2346,13 +2432,45 @@ setSecondTripInputs(null);
     const worked = rows.filter(r=> r && r.status !== 'off' && ((+r.parcels||0)+(+r.letters||0)>0))
                        .sort((a,b)=> a.work_date < b.work_date ? -1 : 1);
     const scoped = rowsForModelScope(worked);
-    const model = fitVolumeTimeModel(scoped);
+    const weightCfg = getResidualWeighting();
+    const model = fitVolumeTimeModel(scoped, weightCfg.fn ? { weightFn: weightCfg.fn } : undefined);
     renderModelStrip(model);
     const badge = document.getElementById('diagModelBadge');
     const summaryEl = document.getElementById('diagSummary');
+    const weightBtn = document.getElementById('diagHolidayWeightBtn');
+    const weightNote = document.getElementById('diagWeightNote');
     const tbody = document.getElementById('diagTableBody');
     const toggleBtn = document.getElementById('toggleDiagDetails');
     const details = document.getElementById('diagDetails');
+
+    if (weightBtn){
+      if (!weightBtn.dataset.bound){
+        weightBtn.addEventListener('click', ()=>{
+          const next = !isHolidayDownweightEnabled();
+          setHolidayDownweightEnabled(next);
+          __residModelCache = null;
+          rebuildAll();
+        });
+        weightBtn.dataset.bound = '1';
+      }
+      weightBtn.classList.toggle('active', !!weightCfg.enabled);
+      weightBtn.textContent = weightCfg.enabled ? 'Downweight holiday catch-up · ON' : 'Downweight holiday catch-up · OFF';
+    }
+    if (weightNote){
+      if (!model){
+        weightNote.textContent = weightCfg.enabled ? 'Need more data to apply weights.' : 'Weights off (full impact).';
+      } else if (!weightCfg.enabled){
+        weightNote.textContent = 'Weights off (full impact).';
+      } else if (model.weighting){
+        const dw = model.weighting.downweighted || 0;
+        const avg = model.weighting.averageWeight || 1;
+        weightNote.textContent = dw
+          ? `${dw} day${dw===1?'':'s'} at ~${avg.toFixed(2)}× weight`
+          : 'No holiday catch-up days in range.';
+      } else {
+        weightNote.textContent = 'Weights off (full impact).';
+      }
+    }
     if (!model){
       renderModelStrip(null);
       if (badge) badge.textContent = 'Insufficient data';
@@ -2377,6 +2495,11 @@ setSecondTripInputs(null);
         if (extraHours && extraHours !== '0.0') parts.push(`${extraHours}h extra`);
         if (ratioTxt) parts.push(ratioTxt);
         summaryText += ` · ${parts.join(' • ')}`;
+      }
+      if (weightCfg.enabled){
+        const avgW = model.weighting?.averageWeight;
+        const avgTxt = avgW ? ` (~${avgW.toFixed(2)}× weight)` : '';
+        summaryText += ` · Holiday downweight ON${avgTxt}`;
       }
       summaryEl.textContent = summaryText;
     }
@@ -2471,7 +2594,8 @@ setSecondTripInputs(null);
     const worked = (rows||[]).filter(r=> r && r.status!=='off' && ((+r.parcels||0)+(+r.letters||0)>0))
                              .sort((a,b)=> a.work_date < b.work_date ? -1 : 1);
     const scoped = rowsForModelScope(worked);
-    __residModelCache = fitVolumeTimeModel(scoped);
+    const weightCfg = getResidualWeighting();
+    __residModelCache = fitVolumeTimeModel(scoped, weightCfg.fn ? { weightFn: weightCfg.fn } : undefined);
     return __residModelCache;
   }
 

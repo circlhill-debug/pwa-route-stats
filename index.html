@@ -53,6 +53,14 @@
   th{ color:var(--muted); font-weight:600 }
   .right{ text-align:right }
   .pill{ display:inline-flex; gap:8px; align-items:center; border:1px solid var(--border); padding:6px 8px; border-radius:999px; background:transparent }
+  .pill.badge-holiday{
+    background:rgba(234,179,8,0.16);
+    border-color:rgba(202,138,4,0.45);
+    color:#facc15;
+    font-size:12px;
+    letter-spacing:0.01em;
+    text-transform:uppercase;
+  }
   /* Ensure checkboxes render visibly inside pill labels */
   input[type="checkbox"]{ width:auto; height:auto; padding:0; margin:0 4px 0 0; accent-color: var(--brand); }
   .modelMetric{ color:#fbbf24; font-weight:400; }
@@ -781,6 +789,7 @@
         <span><span class="swatch" style="background:rgba(22,101,52,0.25)"></span> Faster than predicted</span>
         <span><span class="swatch" style="background:rgba(153,27,27,0.25)"></span> Slower than predicted</span>
         <span><span class="swatch" style="background:rgba(107,114,128,0.20)"></span> Near expected</span>
+        <span><span class="swatch" style="background:rgba(250,204,21,0.35);border-color:rgba(202,138,4,0.55)"></span> Holiday catch-up</span>
       </div>
     </div>
   </section>
@@ -1344,17 +1353,74 @@
           .map(r => r.work_date)
           .filter(Boolean)
       );
-      rows.forEach(r => {
+
+      const sorted = [...rows].filter(r => r && r.work_date).sort((a,b)=> a.work_date.localeCompare(b.work_date));
+      const history = Array.from({ length: 7 }, () => ({ count:0, parcels:0, letters:0, routeMinutes:0 }));
+
+      sorted.forEach(r => {
         try{
-          if (!r || !r.work_date) return;
-          const prevIso = DateTime.fromISO(r.work_date, { zone: ZONE }).minus({ days: 1 }).toISODate();
-          if (prevIso && holidayOff.has(prevIso)){
+          if (!r || r.status === 'off') return;
+          const dt = DateTime.fromISO(r.work_date, { zone: ZONE });
+          if (!dt.isValid) return;
+          const dow = dt.weekday % 7;
+          const hist = history[dow];
+          const baselineParcels = hist.count ? hist.parcels / hist.count : null;
+          const baselineLetters = hist.count ? hist.letters / hist.count : null;
+          const baselineRoute = hist.count ? hist.routeMinutes / hist.count : null;
+
+          const parcels = +r.parcels || 0;
+          const letters = +r.letters || 0;
+          const routeMinutes = routeAdjustedMinutes(r);
+
+          const prevIso = dt.minus({ days: 1 }).toISODate();
+          const followsHoliday = prevIso && holidayOff.has(prevIso);
+          let flagged = false;
+          let context = null;
+
+          if (followsHoliday){
+            const ratio = (a,b)=> (b && b > 0) ? (a / b) : null;
+            const ratioParcels = ratio(parcels, baselineParcels);
+            const ratioLetters = ratio(letters, baselineLetters);
+            const ratioRoute   = ratio(routeMinutes, baselineRoute);
+            const overParcels = ratioParcels != null && ratioParcels >= 1.25;
+            const overLetters = ratioLetters != null && ratioLetters >= 1.25;
+            const overRoute   = ratioRoute != null && ratioRoute >= 1.15;
+            flagged = overParcels || overLetters || overRoute;
+
+            if (flagged){
+              context = {
+                baselineParcels,
+                baselineLetters,
+                baselineRouteMinutes: baselineRoute,
+                parcels,
+                letters,
+                routeMinutes,
+                ratioParcels,
+                ratioLetters,
+                ratioRoute,
+                prevHoliday: prevIso,
+                sampleSize: hist.count
+              };
+            }
+          }
+
+          if (flagged){
             if (!Array.isArray(r._tags)) r._tags = [];
             if (!r._tags.includes('post_holiday')) r._tags.push('post_holiday');
+            if (!r._tags.includes('holiday_catchup')) r._tags.push('holiday_catchup');
+            r._holidayCatchup = context;
+            r._weightHints = Object.assign({}, r._weightHints, { holidayCatchup: { recommended: 0.65 }});
             const base = String(r.weather_json || '').trim();
             if (!/Reason:\s*Post-Holiday/i.test(base)){
               r.weather_json = base ? `${base} · Reason: Post-Holiday` : 'Reason: Post-Holiday';
             }
+          }
+
+          if (parcels > 0 || letters > 0 || routeMinutes > 0){
+            hist.count += 1;
+            hist.parcels += parcels;
+            hist.letters += letters;
+            hist.routeMinutes += routeMinutes;
           }
         }catch(_){ /* ignore per-row errors */ }
       });
@@ -1364,6 +1430,26 @@
 
   function hasTag(row, tag){
     return !!(row && Array.isArray(row._tags) && row._tags.includes(tag));
+  }
+
+  function summarizeHolidayCatchups(rows){
+    const stats = { count:0, addedMinutes:0, avgRouteRatio:null };
+    const ratios = [];
+    (rows||[]).forEach(row => {
+      if (!hasTag(row, 'holiday_catchup')) return;
+      stats.count++;
+      const ctx = row?._holidayCatchup || {};
+      if (ctx.routeMinutes!=null && ctx.baselineRouteMinutes!=null){
+        const delta = Math.max(0, ctx.routeMinutes - ctx.baselineRouteMinutes);
+        stats.addedMinutes += delta;
+      }
+      if (ctx.ratioRoute!=null && isFinite(ctx.ratioRoute)) ratios.push(ctx.ratioRoute);
+    });
+    if (ratios.length){
+      const total = ratios.reduce((sum,val)=> sum + val, 0);
+      stats.avgRouteRatio = total / ratios.length;
+    }
+    return stats;
   }
 
   // NEW: Moon phase emoji helper
@@ -2280,7 +2366,20 @@ setSecondTripInputs(null);
       try{ localStorage.setItem('routeStats.letterWeight', String(CURRENT_LETTER_WEIGHT)); }catch(_){ }
     }
     if (badge){ badge.innerHTML = `<small class="modelMetric">bp</small> <span>${model.bp.toFixed(2)}</span> · <small class="modelMetric">bl</small> <span>${model.bl.toFixed(3)}</span> · <small class="modelMetric">w</small> <span>${(w!=null?w.toFixed(2):'—')}</span>`; }
-    if (summaryEl){ const pct = Math.round(Math.max(0,Math.min(1,model.r2))*100); summaryEl.textContent = `Fit on ${model.n} days · R² ${pct}% · Predicts route minutes from parcels & letters.`; }
+    if (summaryEl){
+      const pct = Math.round(Math.max(0,Math.min(1,model.r2))*100);
+      const catchupSummary = summarizeHolidayCatchups(rows);
+      let summaryText = `Fit on ${model.n} days · R² ${pct}% · Predicts route minutes from parcels & letters.`;
+      if (catchupSummary.count){
+        const extraHours = catchupSummary.addedMinutes ? (catchupSummary.addedMinutes/60).toFixed(1) : null;
+        const ratioTxt = catchupSummary.avgRouteRatio ? `${catchupSummary.avgRouteRatio.toFixed(2)}× route` : null;
+        const parts = [`${catchupSummary.count} holiday catch-up day${catchupSummary.count===1?'':'s'}`];
+        if (extraHours && extraHours !== '0.0') parts.push(`${extraHours}h extra`);
+        if (ratioTxt) parts.push(ratioTxt);
+        summaryText += ` · ${parts.join(' • ')}`;
+      }
+      summaryEl.textContent = summaryText;
+    }
     if (toggleBtn && details && !toggleBtn.dataset.bound){
       const labelPill = toggleBtn.querySelector('.pill[aria-hidden]');
       const setLabel = ()=>{
@@ -2326,6 +2425,19 @@ setSecondTripInputs(null);
         const boxholders = escapeHtml(inferBoxholderLabel(d.row));
         const weatherSnippet = (d.row.weather_json || '').replace(/Reason:\s*/i,'').slice(0,80).trim();
         const weather = weatherSnippet ? escapeHtml(weatherSnippet) : '—';
+        const badges = [];
+        if (hasTag(d.row, 'holiday_catchup')){
+          const ctx = d.row._holidayCatchup || {};
+          const formatRatio = (ratio)=> ratio!=null && isFinite(ratio) ? `${ratio.toFixed(2)}×` : '—';
+          const fmt = (val, decimals)=> (val!=null && isFinite(val)) ? Number(val).toFixed(decimals) : '—';
+          const tipParts = [];
+          if (ctx.prevHoliday) tipParts.push(`Holiday on ${ctx.prevHoliday}`);
+          if (ctx.baselineParcels!=null) tipParts.push(`Parcels ${fmt(ctx.parcels,0)} vs avg ${fmt(ctx.baselineParcels,1)} (${formatRatio(ctx.ratioParcels)})`);
+          if (ctx.baselineRouteMinutes!=null) tipParts.push(`Route ${fmt((ctx.routeMinutes||0)/60,2)}h vs avg ${fmt((ctx.baselineRouteMinutes||0)/60,2)}h (${formatRatio(ctx.ratioRoute)})`);
+          const badgeTitle = escapeHtml(tipParts.join(' • ') || 'Follows holiday off-day with higher-than-baseline load');
+          badges.push(`<span class="pill badge-holiday" title="${badgeTitle}">Holiday catch-up</span>`);
+        }
+        const weatherCell = badges.length ? `${weather} ${badges.join(' ')}` : weather;
         const rawNotes = (d.row.notes || '').trim();
         const noteParts = rawNotes ? rawNotes.split(/\n+/).filter(Boolean).slice(0,3) : [];
         const notesHtml = noteParts.length ? noteParts.map(n=>`<p>${escapeHtml(n)}</p>`).join('') : '<p>—</p>';
@@ -2337,7 +2449,7 @@ setSecondTripInputs(null);
           <td>${actualHours}</td>
           <td>${deltaHtml}</td>
           <td class="text-left">${boxholders}</td>
-          <td class="text-left">${weather}</td>
+          <td class="text-left">${weatherCell}</td>
           <td class="notes-cell">${notesHtml}</td>
         </tr>`;
       }).join('');
@@ -2872,10 +2984,11 @@ function getHourlyRateFromEval(){
   function rebuildAll(){
     const rows = allRows || [];
     const rawRows = rows;
-    const normalRows = rows.filter(r => r && r.status !== 'off' && !hasTag(r, 'post_holiday'));
+    const normalRows = rows.filter(r => r && r.status !== 'off');
 
     window.__rawRows = rawRows;
     window.allRows = rows;
+    window.__holidayCatchupStats = summarizeHolidayCatchups(rawRows);
     updateCurrentLetterWeight(normalRows);
     renderTable(applySearch(rawRows));
     buildCharts(rawRows);

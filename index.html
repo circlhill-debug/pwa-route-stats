@@ -2642,11 +2642,13 @@ setSecondTripInputs(null);
         btn.addEventListener('click', ()=>{
           const iso = btn.dataset.dismissIso;
           if (!iso) return;
-          const reason = (window.prompt('Tag reason (e.g., Road closure, Weather, Extra parcels):','') || '').trim();
-          const minutesRaw = (window.prompt('Minutes attributable to this reason (optional, numbers only):','') || '').trim();
+          const reasonPrompt = window.prompt('Tag reason (e.g., Road closure, Weather, Extra parcels):','');
+          if (reasonPrompt === null) return; // user cancelled
+          const reason = reasonPrompt.trim();
+          const minutesPrompt = window.prompt('Minutes attributable to this reason (optional, numbers only):','');
           let minutes = null;
-          if (minutesRaw){
-            const parsed = parseFloat(minutesRaw);
+          if (minutesPrompt && minutesPrompt.trim()){
+            const parsed = parseFloat(minutesPrompt.trim());
             if (isFinite(parsed)) minutes = parsed;
           }
           const entry = {

@@ -777,6 +777,7 @@
     <div class="row" id="diagWeightControls" style="gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center">
       <button id="diagHolidayWeightBtn" type="button" class="pill toggle-button ghost">Downweight holiday catch-up</button>
       <small class="muted" id="diagWeightNote">—</small>
+      <button id="diagManageDismissed" type="button" class="ghost" style="font-size:12px;">Manage dismissed</button>
     </div>
     <div id="diagDetails" style="display:none;margin-top:8px">
       <small class="muted">Top residual days (|actual − predicted|). Helps spot non-volume causes: detours, weather, boxholders, etc.</small>
@@ -793,6 +794,7 @@
               <th>Box H</th>
               <th>Wx</th>
               <th>Notes</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody id="diagTableBody"></tbody>
@@ -1465,6 +1467,27 @@
     return stats;
   }
 
+  function loadDismissedResiduals(){
+    try{
+      const raw = localStorage.getItem(RESIDUAL_DISMISS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    }catch(_){ return []; }
+  }
+
+  function saveDismissedResiduals(list){
+    try{ localStorage.setItem(RESIDUAL_DISMISS_KEY, JSON.stringify(list||[])); }catch(_){ }
+  }
+
+  function buildDismissedMap(list){
+    const map = new Map();
+    (list||[]).forEach(item => {
+      if (item && item.iso) map.set(item.iso, item);
+    });
+    return map;
+  }
+
   function isHolidayDownweightEnabled(){
     try{ return localStorage.getItem(RESIDUAL_WEIGHT_PREF_KEY) === '1'; }catch(_){ return false; }
   }
@@ -1919,6 +1942,7 @@ const secondTripMilesInput=$('secondTripMiles'), secondTripTimeInput=$('secondTr
 const secondTripPaidEl=$('secondTripPaid'), secondTripActualEl=$('secondTripActual'), secondTripReimburseEl=$('secondTripReimburse'), secondTripEmaRateEl=$('secondTripEmaRate');
 const SECOND_TRIP_EMA_KEY = 'routeStats.secondTrip.ema';
 const RESIDUAL_WEIGHT_PREF_KEY = 'routeStats.residual.downweightHoliday';
+const RESIDUAL_DISMISS_KEY = 'routeStats.diagnostics.dismissed';
 
 function readStoredEma(){
   try{
@@ -2439,6 +2463,7 @@ setSecondTripInputs(null);
     const summaryEl = document.getElementById('diagSummary');
     const weightBtn = document.getElementById('diagHolidayWeightBtn');
     const weightNote = document.getElementById('diagWeightNote');
+    const manageDismissBtn = document.getElementById('diagManageDismissed');
     const tbody = document.getElementById('diagTableBody');
     const toggleBtn = document.getElementById('toggleDiagDetails');
     const details = document.getElementById('diagDetails');
@@ -2455,6 +2480,34 @@ setSecondTripInputs(null);
       }
       weightBtn.classList.toggle('active', !!weightCfg.enabled);
       weightBtn.textContent = weightCfg.enabled ? 'Downweight holiday catch-up · ON' : 'Downweight holiday catch-up · OFF';
+    }
+    if (manageDismissBtn && !manageDismissBtn.dataset.bound){
+      manageDismissBtn.addEventListener('click', ()=>{
+        const list = loadDismissedResiduals();
+        if (!list.length){
+          window.alert('No dismissed residuals yet.');
+          return;
+        }
+        const lines = list
+          .map(item => {
+            const mins = item.minutes!=null ? ` · ${item.minutes}m` : '';
+            const reason = item.reason ? ` · ${item.reason}` : '';
+            return `${item.iso}${reason}${mins}`;
+          })
+          .join('\n');
+        const input = window.prompt(`Dismissed residuals:\n${lines}\n\nEnter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, '');
+        if (!input) return;
+        const trimmed = input.trim();
+        if (!trimmed) return;
+        const updated = list.filter(item => item.iso !== trimmed);
+        if (updated.length === list.length){
+          window.alert(`No dismissed entry found for ${trimmed}.`);
+          return;
+        }
+        saveDismissedResiduals(updated);
+        buildDiagnostics(rows);
+      });
+      manageDismissBtn.dataset.bound = '1';
     }
     if (weightNote){
       if (!model){
@@ -2478,6 +2531,8 @@ setSecondTripInputs(null);
       if (tbody) tbody.innerHTML = '';
       return;
     }
+    const dismissedList = loadDismissedResiduals();
+    const dismissedMap = buildDismissedMap(dismissedList);
     const w = learnedLetterWeight(model);
     if (w!=null) {
       CURRENT_LETTER_WEIGHT = +(0.7*CURRENT_LETTER_WEIGHT + 0.3*w).toFixed(4);
@@ -2500,6 +2555,9 @@ setSecondTripInputs(null);
         const avgW = model.weighting?.averageWeight;
         const avgTxt = avgW ? ` (~${avgW.toFixed(2)}× weight)` : '';
         summaryText += ` · Holiday downweight ON${avgTxt}`;
+      }
+      if (dismissedList.length){
+        summaryText += ` · ${dismissedList.length} dismissed`;
       }
       summaryEl.textContent = summaryText;
     }
@@ -2524,16 +2582,18 @@ setSecondTripInputs(null);
       const ZONE = 'America/Detroit';
       const residuals = model.residuals || [];
       const stats = (()=>{
-        if (!residuals.length) return { mean:0, std:0 };
-        const mean = residuals.reduce((acc,r)=> acc + r.residMin, 0) / residuals.length;
-        if (residuals.length < 2) return { mean, std:0 };
-        const variance = residuals.reduce((acc,r)=>{
+        const pool = residuals.filter(r=> !dismissedMap.has(r.iso));
+        if (!pool.length) return { mean:0, std:0 };
+        const mean = pool.reduce((acc,r)=> acc + r.residMin, 0) / pool.length;
+        if (pool.length < 2) return { mean, std:0 };
+        const variance = pool.reduce((acc,r)=>{
           const diff = r.residMin - mean;
           return acc + diff*diff;
-        },0) / (residuals.length - 1);
+        },0) / (pool.length - 1);
         return { mean, std: Math.sqrt(Math.max(variance, 0)) };
       })();
-      const top = [...residuals].sort((a,b)=> Math.abs(b.residMin) - Math.abs(a.residMin)).slice(0,10);
+      const visibleResiduals = residuals.filter(r=> !dismissedMap.has(r.iso));
+      const top = [...visibleResiduals].sort((a,b)=> Math.abs(b.residMin) - Math.abs(a.residMin)).slice(0,10);
       tbody.innerHTML = top.map(d=>{
         const dt = luxon.DateTime.fromISO(d.iso,{zone:ZONE}).toFormat('ccc LLL dd');
         const actualMinutes = d.routeMin;
@@ -2574,8 +2634,33 @@ setSecondTripInputs(null);
           <td class="text-left">${boxholders}</td>
           <td class="text-left">${weatherCell}</td>
           <td class="notes-cell">${notesHtml}</td>
+          <td><button class="ghost diag-dismiss" data-dismiss-iso="${d.iso}">Tag & dismiss</button></td>
         </tr>`;
       }).join('');
+      const dismissBtns = tbody.querySelectorAll('.diag-dismiss');
+      dismissBtns.forEach(btn => {
+        btn.addEventListener('click', ()=>{
+          const iso = btn.dataset.dismissIso;
+          if (!iso) return;
+          const reason = (window.prompt('Tag reason (e.g., Road closure, Weather, Extra parcels):','') || '').trim();
+          const minutesRaw = (window.prompt('Minutes attributable to this reason (optional, numbers only):','') || '').trim();
+          let minutes = null;
+          if (minutesRaw){
+            const parsed = parseFloat(minutesRaw);
+            if (isFinite(parsed)) minutes = parsed;
+          }
+          const entry = {
+            iso,
+            reason: reason || 'dismissed',
+            minutes,
+            notedAt: new Date().toISOString()
+          };
+          const existing = loadDismissedResiduals().filter(item => item && item.iso !== iso);
+          existing.push(entry);
+          saveDismissedResiduals(existing);
+          buildDiagnostics(rows);
+        });
+      });
     }
   }
 
@@ -4790,6 +4875,8 @@ function getHourlyRateFromEval(){
       dP = d(p0,p1);
       dLx= d(l0,l1);
     }
+    const expectationStroke = 'rgba(255,140,0,0.85)';
+    const expectationFill = 'rgba(255,140,0,0.22)';
     const dEff = ( (p0+ln0)>0 && (p1+ln1)>0 )
       ? Math.round((( (rm1/(p1+ln1)) - (rm0/(p0+ln0)) ) / (rm1/(p1+ln1)) )*100)
       : null;
@@ -4802,16 +4889,12 @@ function getHourlyRateFromEval(){
     if (details){
       const usedP = (typeof resP!== 'undefined' && resP && resP.used) ? `, ${resP.used} day(s) used` : '';
       const usedL = (typeof resL!== 'undefined' && resL && resL.used) ? `, ${resL.used} day(s) used` : '';
-      const rowsHtml = [
+      details.innerHTML = [
         line('Efficiency', dEff, `(min/vol ${ ( (rm0/(p0+ln0))||0 ).toFixed(2) } vs ${ ( (rm1/(p1+ln1))||0 ).toFixed(2) })`),
         line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, warn || '#f97316'),
         line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, '#60a5fa'),
         line('Hours', dH, `(${(sum(W0,r=>+r.hours||0)).toFixed(1)}h vs ${(sum(W1,r=>+r.hours||0)).toFixed(1)}h)`)
-      ];
-      if (bandMinData && bandMaxData){
-        rowsHtml.push(`<div style="color:${expectationStroke};font-size:0.9em">Expectation band (orange) = min/max volume from last ${expectationWeeks.length} week(s)</div>`);
-      }
-      details.innerHTML = rowsHtml.join('');
+      ].join('');
     }
     } catch (e) {
       console.error('[MixViz] render error', e);
@@ -4848,28 +4931,7 @@ function getHourlyRateFromEval(){
         const thisRoute = routeByDow(W0);
         const lastRoute = routeByDow(W1full);
         const dayIdxToday = (now.weekday + 6) % 7;
-        const expectationWeeks = [];
-        const maxBandWeeks = 4;
-        for (let w = 1; w <= 12 && expectationWeeks.length < maxBandWeeks; w++){
-          const start = startOfWeekMonday(now.minus({ weeks: w }));
-          const end   = endOfWeekSunday(now.minus({ weeks: w }));
-          const bucket = worked.filter(r=> inRange(r, start, end) && !isVacationDate(r.work_date));
-          if (bucket.length) expectationWeeks.push(bucket);
-        }
-        let bandMinVol = null;
-        let bandMaxVol = null;
-        if (expectationWeeks.length){
-          const histVolArrays = expectationWeeks.map(weekRows => volByDow(weekRows));
-          bandMinVol = Array.from({length:7}, (_, idx) => {
-            const vals = histVolArrays.map(arr => arr[idx]).filter(v => v != null);
-            return vals.length ? Math.min(...vals) : null;
-          });
-          bandMaxVol = Array.from({length:7}, (_, idx) => {
-            const vals = histVolArrays.map(arr => arr[idx]).filter(v => v != null);
-            return vals.length ? Math.max(...vals) : null;
-          });
-        }
-        const hasBand = !!(bandMinVol && bandMaxVol);
+        const hasBand = !!(bandMinData && bandMaxData);
         const isoForPoint = (datasetIndex, idx) => {
           try{
             if (hasBand){
@@ -4885,17 +4947,14 @@ function getHourlyRateFromEval(){
         };
         const thisMasked = thisBy.map((v,i)=> i<=dayIdxToday? v : null);
         const thisRouteMasked = thisRoute.map((v,i)=> i<=dayIdxToday? v : null);
-        const bandMinData = bandMinVol ? bandMinVol.map(v=> v==null? null : Number((Math.round(v*10)/10).toFixed(1))) : null;
-        const bandMaxData = bandMaxVol ? bandMaxVol.map(v=> v==null? null : Number((Math.round(v*10)/10).toFixed(1))) : null;
-        const expectationColor = 'rgba(255,165,0,1)';
-        const expectationFill = 'rgba(255,165,0,0.18)';
         const datasets = [];
         if (bandMinData && bandMaxData){
           datasets.push({
             label:'Vol expect min',
             data:bandMinData,
-            borderColor:expectationColor,
-            borderWidth:0,
+            borderColor:expectationStroke,
+            borderWidth:1,
+            borderDash:[6,4],
             backgroundColor:'transparent',
             pointRadius:0,
             spanGaps:true,
@@ -4909,7 +4968,7 @@ function getHourlyRateFromEval(){
             pointRadius:0,
             borderWidth:0,
             spanGaps:true,
-            fill:'-1'
+            fill:{ target:'-1', above:expectationFill, below:expectationFill }
           });
         }
         datasets.push(

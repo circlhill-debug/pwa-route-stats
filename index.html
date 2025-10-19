@@ -4795,16 +4795,23 @@ function getHourlyRateFromEval(){
       : null;
     const arrow=(v)=> v==null?'—':(v>=0?'↑ '+v+'%':'↓ '+Math.abs(v)+'%');
     const color=(v)=> v==null?'var(--text)':(v>=0?'var(--good)':'var(--bad)');
-    const line=(label,v,ctx)=> `<div>${label}: <span style="color:${color(v)}">${arrow(v)}</span> ${ctx||''}</div>`;
+    const line=(label,v,ctx,colorOverride)=>{
+      const labelHtml = colorOverride ? `<span style="color:${colorOverride};font-weight:600">${label}</span>` : label;
+      return `<div>${labelHtml}: <span style="color:${color(v)}">${arrow(v)}</span> ${ctx||''}</div>`;
+    };
     if (details){
       const usedP = (typeof resP!== 'undefined' && resP && resP.used) ? `, ${resP.used} day(s) used` : '';
       const usedL = (typeof resL!== 'undefined' && resL && resL.used) ? `, ${resL.used} day(s) used` : '';
-      details.innerHTML = [
+      const rowsHtml = [
         line('Efficiency', dEff, `(min/vol ${ ( (rm0/(p0+ln0))||0 ).toFixed(2) } vs ${ ( (rm1/(p1+ln1))||0 ).toFixed(2) })`),
-        line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`),
-        line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`),
+        line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, warn || '#f97316'),
+        line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, '#60a5fa'),
         line('Hours', dH, `(${(sum(W0,r=>+r.hours||0)).toFixed(1)}h vs ${(sum(W1,r=>+r.hours||0)).toFixed(1)}h)`)
-      ].join('');
+      ];
+      if (bandMinData && bandMaxData){
+        rowsHtml.push(`<div style="color:${expectationStroke};font-size:0.9em">Expectation band (orange) = min/max volume from last ${expectationWeeks.length} week(s)</div>`);
+      }
+      details.innerHTML = rowsHtml.join('');
     }
     } catch (e) {
       console.error('[MixViz] render error', e);
@@ -4841,22 +4848,78 @@ function getHourlyRateFromEval(){
         const thisRoute = routeByDow(W0);
         const lastRoute = routeByDow(W1full);
         const dayIdxToday = (now.weekday + 6) % 7;
+        const expectationWeeks = [];
+        const maxBandWeeks = 4;
+        for (let w = 1; w <= 12 && expectationWeeks.length < maxBandWeeks; w++){
+          const start = startOfWeekMonday(now.minus({ weeks: w }));
+          const end   = endOfWeekSunday(now.minus({ weeks: w }));
+          const bucket = worked.filter(r=> inRange(r, start, end) && !isVacationDate(r.work_date));
+          if (bucket.length) expectationWeeks.push(bucket);
+        }
+        let bandMinVol = null;
+        let bandMaxVol = null;
+        if (expectationWeeks.length){
+          const histVolArrays = expectationWeeks.map(weekRows => volByDow(weekRows));
+          bandMinVol = Array.from({length:7}, (_, idx) => {
+            const vals = histVolArrays.map(arr => arr[idx]).filter(v => v != null);
+            return vals.length ? Math.min(...vals) : null;
+          });
+          bandMaxVol = Array.from({length:7}, (_, idx) => {
+            const vals = histVolArrays.map(arr => arr[idx]).filter(v => v != null);
+            return vals.length ? Math.max(...vals) : null;
+          });
+        }
+        const hasBand = !!(bandMinVol && bandMaxVol);
         const isoForPoint = (datasetIndex, idx) => {
           try{
-            if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
-            if (datasetIndex === 1 || datasetIndex === 2) return startThis.plus({ days: idx }).toISODate();
+            if (hasBand){
+              if (datasetIndex === 0 || datasetIndex === 1) return startThis.plus({ days: idx }).toISODate();
+              if (datasetIndex === 2) return startLast.plus({ days: idx }).toISODate();
+              if (datasetIndex === 3 || datasetIndex === 4) return startThis.plus({ days: idx }).toISODate();
+            }else{
+              if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
+              if (datasetIndex === 1 || datasetIndex === 2) return startThis.plus({ days: idx }).toISODate();
+            }
           }catch(_){ /* ignore */ }
           return null;
         };
         const thisMasked = thisBy.map((v,i)=> i<=dayIdxToday? v : null);
         const thisRouteMasked = thisRoute.map((v,i)=> i<=dayIdxToday? v : null);
+        const bandMinData = bandMinVol ? bandMinVol.map(v=> v==null? null : Number((Math.round(v*10)/10).toFixed(1))) : null;
+        const bandMaxData = bandMaxVol ? bandMaxVol.map(v=> v==null? null : Number((Math.round(v*10)/10).toFixed(1))) : null;
+        const expectationColor = 'rgba(255,165,0,1)';
+        const expectationFill = 'rgba(255,165,0,0.18)';
+        const datasets = [];
+        if (bandMinData && bandMaxData){
+          datasets.push({
+            label:'Vol expect min',
+            data:bandMinData,
+            borderColor:expectationColor,
+            borderWidth:0,
+            backgroundColor:'transparent',
+            pointRadius:0,
+            spanGaps:true,
+            fill:false
+          });
+          datasets.push({
+            label:'Vol expect max',
+            data:bandMaxData,
+            borderColor:'rgba(0,0,0,0)',
+            backgroundColor:expectationFill,
+            pointRadius:0,
+            borderWidth:0,
+            spanGaps:true,
+            fill:'-1'
+          });
+        }
+        datasets.push(
+          { label:'Vol last', data:lastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+          { label:'Vol this', data:thisMasked, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+          { label:'Route h (this)', data:thisRouteMasked, borderColor:good, backgroundColor:'transparent', borderDash:[4,3], tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true, yAxisID:'y2' }
+        );
         overlay._chart = new Chart(ctx, {
           type:'line',
-          data:{ labels:days, datasets:[
-            { label:'Vol last', data:lastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-            { label:'Vol this', data:thisMasked, borderColor:warn,  backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-            { label:'Route h (this)', data:thisRouteMasked, borderColor:good, backgroundColor:'transparent', borderDash:[4,3], tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true, yAxisID:'y2' }
-          ]},
+          data:{ labels:days, datasets },
           options:{ responsive:true, maintainAspectRatio:false,
             layout:{ padding:{ top:12, right:16, bottom:10, left:16 } },
             interaction:{ mode:'nearest', intersect:false },
@@ -4876,6 +4939,13 @@ function getHourlyRateFromEval(){
                 label:(item)=>{
                   const i=item.dataIndex; const lw=lastBy[i]; const tw=thisBy[i];
                   const hasTw = i<=dayIdxToday && tw!=null;
+                  if (item.dataset?.label === 'Vol expect min') return '';
+                  if (item.dataset?.label === 'Vol expect max'){
+                    const min = bandMinData?.[i];
+                    const max = bandMaxData?.[i];
+                    const fmt = (n)=> n==null? '—' : n.toFixed(1);
+                    return `Expectation: ${fmt(min)} – ${fmt(max)}`;
+                  }
                   if (item.dataset?.label === 'Route h (this)'){
                     const rw=thisRoute[i]; const rl=lastRoute[i]; const fmt=(n)=> n==null?'—':(Math.round(n*100)/100).toFixed(2);
                     return hasTw? `This route: ${fmt(rw)}h (Last: ${fmt(rl)}h)` : `Last route: ${fmt(rl)}h`;

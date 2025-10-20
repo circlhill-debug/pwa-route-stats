@@ -2642,10 +2642,26 @@ setSecondTripInputs(null);
         btn.addEventListener('click', ()=>{
           const iso = btn.dataset.dismissIso;
           if (!iso) return;
-          const reasonPrompt = window.prompt('Tag reason (e.g., Road closure, Weather, Extra parcels):','');
+          const residual = residuals.find(r => r.iso === iso);
+          const deltaMinutes = residual ? Math.round(residual.residMin) : null;
+          const vol = residual ? Math.round(residual.parcels) : null;
+          const letterCount = residual ? Math.round(residual.letters) : null;
+          const defaultReason = (() => {
+            if (!residual) return '';
+            if (vol != null && vol > 0 && letterCount != null && letterCount === 0) return 'parcels';
+            if (letterCount != null && letterCount > vol) return 'letters';
+            return '';
+          })();
+          const defaultMinutes = deltaMinutes != null ? String(deltaMinutes) : '';
+          const hintParts = [];
+          if (deltaMinutes != null) hintParts.push(`Residual: ${deltaMinutes}m`);
+          if (vol != null) hintParts.push(`Parcels: ${vol}`);
+          if (letterCount != null) hintParts.push(`Letters: ${letterCount}`);
+          const basePrompt = hintParts.length ? `${hintParts.join(' · ')}\nReason (e.g., Road closure, Weather, Extra parcels):` : 'Reason (e.g., Road closure, Weather, Extra parcels):';
+          const reasonPrompt = window.prompt(basePrompt, defaultReason);
           if (reasonPrompt === null) return; // user cancelled
           const reason = reasonPrompt.trim();
-          const minutesPrompt = window.prompt('Minutes attributable to this reason (optional, numbers only):','');
+          const minutesPrompt = window.prompt('Minutes attributable to this reason (optional, numbers only):', defaultMinutes);
           let minutes = null;
           if (minutesPrompt && minutesPrompt.trim()){
             const parsed = parseFloat(minutesPrompt.trim());

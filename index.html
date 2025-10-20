@@ -2827,9 +2827,16 @@ let latestDiagnosticsContext = null;
         }
         const weatherCell = badges.length ? `${weather} ${badges.join(' ')}` : weather;
         const rawNotes = (d.row.notes || '').trim();
-        const noteParts = rawNotes ? rawNotes.split(/\n+/).filter(Boolean).slice(0,3) : [];
-        const notesHtml = noteParts.length ? noteParts.map(n=>`<p>${escapeHtml(n)}</p>`).join('') : '<p>—</p>';
-        const notesPlain = noteParts.length ? noteParts.join(' ') : '';
+        const notePlainFull = rawNotes.replace(/\s+/g,' ').trim();
+        const hasNotes = !!notePlainFull;
+        const hasLongNotes = notePlainFull.length > 140;
+        const previewText = hasNotes ? (hasLongNotes ? notePlainFull.slice(0,140) + '…' : notePlainFull) : '—';
+        const notePreviewEsc = escapeHtml(previewText);
+        const noteFullEsc = escapeHtml(notePlainFull);
+        const notesHtml = hasNotes
+          ? `<div class="note-preview">${notePreviewEsc}${hasLongNotes ? ` <button class=\"ghost diag-note\" data-note-full=\"${noteFullEsc}\">Read full</button>` : ''}</div>`
+          : '<div class="note-preview">—</div>';
+        const notesPlain = notePlainFull;
         topContext.push({
           iso: d.iso,
           deltaMinutes: Math.round(d.residMin),
@@ -2916,6 +2923,13 @@ let latestDiagnosticsContext = null;
           existing.push(entry);
           saveDismissedResiduals(existing);
           buildDiagnostics(rows);
+        });
+      });
+      const noteBtns = tbody.querySelectorAll('.diag-note');
+      noteBtns.forEach(btn => {
+        btn.addEventListener('click', ()=>{
+          const full = btn.dataset.noteFull || '';
+          window.alert(full || 'No additional notes.');
         });
       });
     }

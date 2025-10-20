@@ -2658,10 +2658,17 @@ setSecondTripInputs(null);
           if (vol != null) hintParts.push(`Parcels: ${vol}`);
           if (letterCount != null) hintParts.push(`Letters: ${letterCount}`);
           const basePrompt = hintParts.length ? `${hintParts.join(' · ')}\nReason (e.g., Road closure, Weather, Extra parcels):` : 'Reason (e.g., Road closure, Weather, Extra parcels):';
-          const reasonPrompt = window.prompt(basePrompt, defaultReason);
+          const reasonPrompt = window.prompt(`${basePrompt}\nYou can append minutes like "+15" (e.g., "parcels +15").`, defaultReason);
           if (reasonPrompt === null) return; // user cancelled
-          const reason = reasonPrompt.trim();
-          const minutesPrompt = window.prompt('Minutes attributable to this reason (optional, numbers only):', defaultMinutes);
+          const reasonInput = reasonPrompt.trim();
+          let minutesFromReason = null;
+          let reason = reasonInput;
+          const reasonMatch = reasonInput.match(/(.+?)\s*\+\s*(\d+)/);
+          if (reasonMatch){
+            reason = reasonMatch[1].trim();
+            minutesFromReason = parseFloat(reasonMatch[2]);
+          }
+          const minutesPrompt = window.prompt('Minutes attributable to this reason (optional, numbers only):', minutesFromReason!=null? String(minutesFromReason) : defaultMinutes);
           let minutes = null;
           if (minutesPrompt && minutesPrompt.trim()){
             const parsed = parseFloat(minutesPrompt.trim());

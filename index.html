@@ -786,6 +786,7 @@
           <thead>
             <tr style="color:var(--muted);text-transform:uppercase;font-size:12px">
               <th>Date</th>
+              <th>Action</th>
               <th>Parcels</th>
               <th>Letters</th>
               <th>Expected h</th>
@@ -794,7 +795,6 @@
               <th>Box H</th>
               <th>Wx</th>
               <th>Notes</th>
-              <th>Action</th>
             </tr>
           </thead>
           <tbody id="diagTableBody"></tbody>
@@ -2626,6 +2626,7 @@ setSecondTripInputs(null);
         const notesHtml = noteParts.length ? noteParts.map(n=>`<p>${escapeHtml(n)}</p>`).join('') : '<p>—</p>';
         return `<tr>
           <td class="text-left">${dt}</td>
+          <td><button class="ghost diag-dismiss" data-dismiss-iso="${d.iso}" style="padding:4px 8px;font-size:12px">Tag & dismiss</button></td>
           <td>${parcels}</td>
           <td>${letters}</td>
           <td>${expectedHours}</td>
@@ -2634,7 +2635,6 @@ setSecondTripInputs(null);
           <td class="text-left">${boxholders}</td>
           <td class="text-left">${weatherCell}</td>
           <td class="notes-cell">${notesHtml}</td>
-          <td><button class="ghost diag-dismiss" data-dismiss-iso="${d.iso}">Tag & dismiss</button></td>
         </tr>`;
       }).join('');
       const dismissBtns = tbody.querySelectorAll('.diag-dismiss');

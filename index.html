@@ -809,6 +809,16 @@
     </div>
   </section>
 
+  <section class="card" id="aiSummaryCard" style="grid-column:1/-1; display:none">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">AI Summary</h3>
+      <button id="generateAiSummary" class="ghost">Generate summary</button>
+    </div>
+    <small class="muted" id="aiSummaryHint">Set your OpenAI API key in Settings → AI Summary.</small>
+    <div id="aiSummaryStatus" class="muted" style="margin-top:6px"></div>
+    <div id="aiSummaryOutput" style="margin-top:8px;white-space:pre-wrap;font-size:0.95rem"></div>
+  </section>
+
   <!-- Monthly Glance (preview) — behind feature flag -->
   <section class="card" id="monthlyGlanceCard" style="grid-column:1/-1; display:none">
     <h3 style="margin:0 0 8px 0">Monthly Glance (preview)</h3>
@@ -973,6 +983,18 @@
       <label class="pill">EMA rate ($/mi)
         <input id="settingsEmaRate" type="number" min="0" step="0.01" style="margin-left:6px; width:120px">
       </label>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
+      <h4 style="margin:0 0 6px 0">AI Summary (experimental)</h4>
+      <small class="muted">Stored locally; used when generating the AI diagnostics summary.</small>
+      <div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center">
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>OpenAI API key</small>
+          <input id="settingsOpenAiKey" type="password" placeholder="sk-..." style="width:220px">
+        </label>
+        <button id="clearOpenAiKey" type="button" class="ghost" style="font-size:12px">Clear</button>
+      </div>
+      <small class="muted">Keep this key private. Requests run only when you click “Generate summary.”</small>
     </div>
     <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
       <small class="muted">Maintenance</small>
@@ -1488,6 +1510,151 @@
     return map;
   }
 
+  function getOpenAiKey(){
+    try{
+      const val = localStorage.getItem(OPENAI_KEY_STORAGE);
+      if (!val) return null;
+      const trimmed = val.trim();
+      return trimmed ? trimmed : null;
+    }catch(_){ return null; }
+  }
+
+  function setOpenAiKey(val){
+    try{
+      if (val && val.trim()) localStorage.setItem(OPENAI_KEY_STORAGE, val.trim());
+      else localStorage.removeItem(OPENAI_KEY_STORAGE);
+    }catch(_){ }
+  }
+
+  function loadLastAiSummary(){
+    try{
+      const raw = localStorage.getItem(AI_LAST_SUMMARY_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    }catch(_){ return null; }
+  }
+
+  function saveLastAiSummary(obj){
+    try{
+      if (obj) localStorage.setItem(AI_LAST_SUMMARY_KEY, JSON.stringify(obj));
+      else localStorage.removeItem(AI_LAST_SUMMARY_KEY);
+    }catch(_){ }
+  }
+
+  function updateAiSummaryAvailability(){
+    if (!aiSummaryCard || !aiSummaryBtn || !aiSummaryHint) return;
+    aiSummaryCard.style.display = 'block';
+    const key = getOpenAiKey();
+    aiSummaryBtn.disabled = !key;
+    aiSummaryHint.textContent = key
+      ? 'AI summary uses OpenAI when you click the button. Data stays local until then.'
+      : 'Set your OpenAI API key in Settings → AI Summary to enable.';
+  }
+
+  function renderLastAiSummary(){
+    if (!aiSummaryOutput || !aiSummaryStatus) return;
+    const saved = loadLastAiSummary();
+    if (saved && saved.text){
+      aiSummaryOutput.textContent = saved.text;
+      const stamp = saved.timestamp ? new Date(saved.timestamp) : null;
+      aiSummaryStatus.textContent = stamp ? `Last updated ${stamp.toLocaleString()}` : 'Last summary loaded.';
+    }
+  }
+
+  function buildAiPrompt(ctx){
+    const lines = [];
+    lines.push('You are helping a USPS route analyst interpret daily metrics.');
+    if (ctx.summaryText){
+      lines.push(`Summary: ${ctx.summaryText}`);
+    }
+    if (ctx.catchupSummary && ctx.catchupSummary.count){
+      const c = ctx.catchupSummary;
+      const gas = c.addedMinutes ? `${(c.addedMinutes/60).toFixed(2)} extra hours tagged` : '';
+      const ratio = c.avgRouteRatio ? `avg route ratio ${c.avgRouteRatio.toFixed(2)}×` : '';
+      lines.push(`Holiday catch-up context: ${c.count} day(s) ${[gas, ratio].filter(Boolean).join(' · ')}`);
+    }
+    if (ctx.weight && ctx.weight.enabled){
+      lines.push(`Holiday downweight applied: average weight ${(ctx.weight.averageWeight||1).toFixed(2)}, ${ctx.weight.downweighted||0} day(s) affected.`);
+    }
+    const residuals = ctx.residuals || [];
+    if (residuals.length){
+      lines.push('Top residual days (actual - predicted route minutes):');
+      residuals.forEach((r, idx) => {
+        const tags = r.tags && r.tags.length ? ` tags: ${r.tags.join(', ')}` : '';
+        const weather = r.weather ? ` weather: ${r.weather}` : '';
+        const notes = r.notes ? ` notes: ${r.notes}` : '';
+        lines.push(`${idx+1}. ${r.iso}: ${r.deltaMinutes>=0?'+':''}${r.deltaMinutes}m; parcels ${r.parcels}; letters ${r.letters}; boxholders ${r.boxholders||'—'}${tags}${weather}${notes}`);
+      });
+    }
+    const dismissed = ctx.dismissed || [];
+    if (dismissed.length){
+      const list = dismissed.map(item => `${item.iso} (${item.reason || 'dismissed'}${item.minutes!=null?` ${item.minutes}m`:''})`).join('; ');
+      lines.push(`Dismissed (already reviewed): ${list}`);
+    }
+    lines.push('Provide 3 concise bullet points: 1) root causes or contributing factors, 2) suggested actions or notes for tomorrow, 3) notable trends or items to watch. Keep it short and focused.');
+    return lines.join('\n');
+  }
+
+  async function generateAiSummary(){
+    if (!aiSummaryBtn) return;
+    const key = getOpenAiKey();
+    if (!key){
+      if (aiSummaryStatus) aiSummaryStatus.textContent = 'Set your OpenAI API key in Settings first.';
+      updateAiSummaryAvailability();
+      return;
+    }
+    if (!latestDiagnosticsContext || !(latestDiagnosticsContext.residuals||[]).length){
+      if (aiSummaryStatus) aiSummaryStatus.textContent = 'Run diagnostics first so residuals are available.';
+      return;
+    }
+    const prompt = buildAiPrompt(latestDiagnosticsContext);
+    aiSummaryBtn.disabled = true;
+    if (aiSummaryStatus) aiSummaryStatus.textContent = 'Generating summary…';
+    if (aiSummaryOutput) aiSummaryOutput.textContent = '';
+    try{
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0.4,
+          messages: [
+            { role: 'system', content: 'You are a concise operations analyst for a USPS route dashboard. Highlight real causes and actionable insights.' },
+            { role: 'user', content: prompt }
+          ]
+        })
+      });
+      if (!response.ok){
+        const text = await response.text();
+        throw new Error(text || `HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      let text = '';
+      const content = data?.choices?.[0]?.message?.content;
+      if (typeof content === 'string'){
+        text = content;
+      } else if (Array.isArray(content)){
+        text = content.map(part => typeof part === 'string' ? part : part?.text || '').join('');
+      } else if (content && typeof content === 'object' && 'text' in content){
+        text = content.text;
+      }
+      text = (text || '').trim() || '(No summary returned)';
+      if (aiSummaryOutput) aiSummaryOutput.textContent = text;
+      const stamp = new Date().toISOString();
+      if (aiSummaryStatus) aiSummaryStatus.textContent = `Updated ${new Date(stamp).toLocaleTimeString()}`;
+      saveLastAiSummary({ text, timestamp: stamp, prompt });
+    }catch(err){
+      console.error('[AI summary] error', err);
+      if (aiSummaryStatus) aiSummaryStatus.textContent = `AI summary failed: ${err.message || err}`;
+    }finally{
+      aiSummaryBtn.disabled = false;
+    }
+  }
+
   function isHolidayDownweightEnabled(){
     try{ return localStorage.getItem(RESIDUAL_WEIGHT_PREF_KEY) === '1'; }catch(_){ return false; }
   }
@@ -1731,6 +1898,14 @@ function moonPhaseEmoji(dateStr) {
   const vacAdd     = document.getElementById('vacAdd');
   const vacRangesEl= document.getElementById('vacRanges');
   const saveSettings = document.getElementById('saveSettings');
+  const settingsOpenAiKey = document.getElementById('settingsOpenAiKey');
+  const clearOpenAiKeyBtn = document.getElementById('clearOpenAiKey');
+
+  const aiSummaryCard = document.getElementById('aiSummaryCard');
+  const aiSummaryBtn = document.getElementById('generateAiSummary');
+  const aiSummaryHint = document.getElementById('aiSummaryHint');
+  const aiSummaryStatus = document.getElementById('aiSummaryStatus');
+  const aiSummaryOutput = document.getElementById('aiSummaryOutput');
 
   btnSettings?.addEventListener('click', ()=>{
     // populate from FLAGS
@@ -1773,6 +1948,9 @@ function moonPhaseEmoji(dateStr) {
         settingsEmaRate.value = stored != null ? stored : (secondTripEmaInput?.value || '');
       }
     }catch(_){ }
+    if (settingsOpenAiKey){
+      settingsOpenAiKey.value = getOpenAiKey() || '';
+    }
     renderVacationRanges();
     settingsDlg.showModal();
   });
@@ -1830,6 +2008,12 @@ function moonPhaseEmoji(dateStr) {
         updateSecondTripSummary();
       }
     }catch(_){ }
+    try{
+      if (settingsOpenAiKey){
+        const val = settingsOpenAiKey.value || '';
+        setOpenAiKey(val);
+      }
+    }catch(_){ }
     saveFlags(FLAGS);
     settingsDlg.close();
     renderVacationRanges();
@@ -1839,7 +2023,20 @@ function moonPhaseEmoji(dateStr) {
     applyTrendPillsVisibility();
     applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
+    updateAiSummaryAvailability();
+    renderLastAiSummary();
   });
+
+  clearOpenAiKeyBtn?.addEventListener('click', ()=>{
+    if (settingsOpenAiKey) settingsOpenAiKey.value = '';
+    setOpenAiKey('');
+    updateAiSummaryAvailability();
+    if (aiSummaryStatus) aiSummaryStatus.textContent = 'OpenAI key cleared.';
+  });
+
+  aiSummaryBtn?.addEventListener('click', generateAiSummary);
+  updateAiSummaryAvailability();
+  renderLastAiSummary();
 
   vacAdd?.addEventListener('click', ()=>{
     try{
@@ -1943,6 +2140,8 @@ const secondTripPaidEl=$('secondTripPaid'), secondTripActualEl=$('secondTripActu
 const SECOND_TRIP_EMA_KEY = 'routeStats.secondTrip.ema';
 const RESIDUAL_WEIGHT_PREF_KEY = 'routeStats.residual.downweightHoliday';
 const RESIDUAL_DISMISS_KEY = 'routeStats.diagnostics.dismissed';
+const OPENAI_KEY_STORAGE = 'routeStats.ai.openaiKey';
+const AI_LAST_SUMMARY_KEY = 'routeStats.ai.lastSummary';
 
 function readStoredEma(){
   try{
@@ -2417,7 +2616,8 @@ setSecondTripInputs(null);
     if (!model || !isFinite(model.bp) || Math.abs(model.bp) < 1e-6) return null;
     const w = model.bl / model.bp; return (isFinite(w) && w>=0 && w<=1.5) ? w : null;
   }
-  let __residModelCache = null;
+let __residModelCache = null;
+let latestDiagnosticsContext = null;
 
   function escapeHtml(s=''){
     return String(s)
@@ -2539,9 +2739,10 @@ setSecondTripInputs(null);
       try{ localStorage.setItem('routeStats.letterWeight', String(CURRENT_LETTER_WEIGHT)); }catch(_){ }
     }
     if (badge){ badge.innerHTML = `<small class="modelMetric">bp</small> <span>${model.bp.toFixed(2)}</span> · <small class="modelMetric">bl</small> <span>${model.bl.toFixed(3)}</span> · <small class="modelMetric">w</small> <span>${(w!=null?w.toFixed(2):'—')}</span>`; }
+    const catchupSummary = summarizeHolidayCatchups(rows);
+    let summaryTextForContext = '';
     if (summaryEl){
       const pct = Math.round(Math.max(0,Math.min(1,model.r2))*100);
-      const catchupSummary = summarizeHolidayCatchups(rows);
       let summaryText = `Fit on ${model.n} days · R² ${pct}% · Predicts route minutes from parcels & letters.`;
       if (catchupSummary.count){
         const extraHours = catchupSummary.addedMinutes ? (catchupSummary.addedMinutes/60).toFixed(1) : null;
@@ -2560,6 +2761,7 @@ setSecondTripInputs(null);
         summaryText += ` · ${dismissedList.length} dismissed`;
       }
       summaryEl.textContent = summaryText;
+      summaryTextForContext = summaryText;
     }
     if (toggleBtn && details && !toggleBtn.dataset.bound){
       const labelPill = toggleBtn.querySelector('.pill[aria-hidden]');
@@ -2594,6 +2796,7 @@ setSecondTripInputs(null);
       })();
       const visibleResiduals = residuals.filter(r=> !dismissedMap.has(r.iso));
       const top = [...visibleResiduals].sort((a,b)=> Math.abs(b.residMin) - Math.abs(a.residMin)).slice(0,10);
+      const topContext = [];
       tbody.innerHTML = top.map(d=>{
         const dt = luxon.DateTime.fromISO(d.iso,{zone:ZONE}).toFormat('ccc LLL dd');
         const actualMinutes = d.routeMin;
@@ -2624,6 +2827,19 @@ setSecondTripInputs(null);
         const rawNotes = (d.row.notes || '').trim();
         const noteParts = rawNotes ? rawNotes.split(/\n+/).filter(Boolean).slice(0,3) : [];
         const notesHtml = noteParts.length ? noteParts.map(n=>`<p>${escapeHtml(n)}</p>`).join('') : '<p>—</p>';
+        const notesPlain = noteParts.length ? noteParts.join(' ') : '';
+        topContext.push({
+          iso: d.iso,
+          deltaMinutes: Math.round(d.residMin),
+          parcels,
+          letters,
+          expectedMinutes,
+          actualMinutes,
+          boxholders: inferBoxholderLabel(d.row),
+          weather: weatherSnippet,
+          notes: notesPlain,
+          tags: Array.isArray(d.row?._tags) ? d.row._tags : []
+        });
         return `<tr>
           <td class="text-left">${dt}</td>
           <td>${parcels}</td>
@@ -2637,6 +2853,20 @@ setSecondTripInputs(null);
           <td><button class="ghost diag-dismiss" data-dismiss-iso="${d.iso}">Tag & dismiss</button></td>
         </tr>`;
       }).join('');
+      latestDiagnosticsContext = {
+        generatedAt: new Date().toISOString(),
+        residuals: topContext,
+        dismissed: dismissedList,
+        summaryText: summaryTextForContext,
+        stats: { mean: stats.mean, std: stats.std },
+        catchupSummary,
+        weight: {
+          enabled: weightCfg.enabled,
+          averageWeight: model.weighting?.averageWeight ?? null,
+          downweighted: model.weighting?.downweighted ?? 0
+        }
+      };
+      updateAiSummaryAvailability();
       const dismissBtns = tbody.querySelectorAll('.diag-dismiss');
       dismissBtns.forEach(btn => {
         btn.addEventListener('click', ()=>{

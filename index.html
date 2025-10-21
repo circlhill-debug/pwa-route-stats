@@ -1044,6 +1044,10 @@
           <input id="tokenUsageLimit" type="number" min="0" step="1" placeholder="optional" style="width:110px">
         </label>
       </div>
+      <label style="display:block;margin-top:10px">
+        <small class="muted">AI base prompt (system message)</small>
+        <textarea id="aiSummaryBasePrompt" rows="3" style="width:100%;margin-top:4px"></textarea>
+      </label>
       <small class="muted">Keep this key private. Requests run only when you click “Generate summary.”</small>
     </div>
     <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
@@ -1576,6 +1580,22 @@
     }catch(_){ }
   }
 
+  function getAiBasePrompt(){
+    try{
+      const val = localStorage.getItem(AI_BASE_PROMPT_KEY);
+      if (!val) return DEFAULT_AI_BASE_PROMPT;
+      const trimmed = val.trim();
+      return trimmed ? trimmed : DEFAULT_AI_BASE_PROMPT;
+    }catch(_){ return DEFAULT_AI_BASE_PROMPT; }
+  }
+
+  function setAiBasePrompt(val){
+    try{
+      if (val && val.trim()) localStorage.setItem(AI_BASE_PROMPT_KEY, val.trim());
+      else localStorage.removeItem(AI_BASE_PROMPT_KEY);
+    }catch(_){ }
+  }
+
   function loadLastAiSummary(){
     try{
       const raw = localStorage.getItem(AI_LAST_SUMMARY_KEY);
@@ -1802,7 +1822,7 @@
           model: 'gpt-4o-mini',
           temperature: 0.4,
           messages: [
-            { role: 'system', content: 'You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.' },
+            { role: 'system', content: getAiBasePrompt() },
             { role: 'user', content: prompt }
           ]
         })
@@ -2102,6 +2122,7 @@ const tokenTodayInput = document.getElementById('tokenUsageToday');
 const tokenWeekInput = document.getElementById('tokenUsageWeek');
 const tokenMonthInput = document.getElementById('tokenUsageMonth');
 const tokenLimitInput = document.getElementById('tokenUsageLimit');
+const aiPromptTextarea = document.getElementById('aiSummaryBasePrompt');
 let CURRENT_USER_ID = null;
 
   btnSettings?.addEventListener('click', ()=>{
@@ -2139,15 +2160,19 @@ let CURRENT_USER_ID = null;
       if (vacFrom) vacFrom.value = last?.from || '';
       if (vacTo)   vacTo.value   = last?.to   || '';
     }catch(_){ }
-  try{
-    if (settingsEmaRate){
-      const stored = localStorage.getItem(SECOND_TRIP_EMA_KEY);
-      settingsEmaRate.value = stored != null ? stored : (secondTripEmaInput?.value || '');
+    try{
+      if (settingsEmaRate){
+        const stored = localStorage.getItem(SECOND_TRIP_EMA_KEY);
+        settingsEmaRate.value = stored != null ? stored : (secondTripEmaInput?.value || '');
+      }
+    }catch(_){ }
+    if (settingsOpenAiKey){
+      settingsOpenAiKey.value = getOpenAiKey() || '';
     }
-  }catch(_){ }
-  if (settingsOpenAiKey){
-    settingsOpenAiKey.value = getOpenAiKey() || '';
-  }
+    if (aiPromptTextarea){
+      aiPromptTextarea.value = getAiBasePrompt();
+      aiPromptTextarea.placeholder = DEFAULT_AI_BASE_PROMPT;
+    }
   const savedUsage = loadTokenUsage();
   if (savedUsage){
     updateTokenUsage(savedUsage);
@@ -2217,6 +2242,11 @@ let CURRENT_USER_ID = null;
       if (settingsOpenAiKey){
         const val = settingsOpenAiKey.value || '';
         setOpenAiKey(val);
+      }
+    }catch(_){ }
+    try{
+      if (aiPromptTextarea){
+        setAiBasePrompt(aiPromptTextarea.value || '');
       }
     }catch(_){ }
     try{
@@ -2389,6 +2419,8 @@ const OPENAI_KEY_STORAGE = 'routeStats.ai.openaiKey';
 const AI_LAST_SUMMARY_KEY = 'routeStats.ai.lastSummary';
 const AI_SUMMARY_COLLAPSED_KEY = 'routeStats.ai.summaryCollapsed';
 const TOKEN_USAGE_STORAGE = 'routeStats.ai.tokenUsage';
+const AI_BASE_PROMPT_KEY = 'routeStats.ai.basePrompt';
+const DEFAULT_AI_BASE_PROMPT = 'You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.';
 
 function readStoredEma(){
   try{

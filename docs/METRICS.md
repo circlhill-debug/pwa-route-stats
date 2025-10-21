@@ -32,6 +32,7 @@ Click any tile to see a short plain‑English explanation. Hover tooltips show d
 - Residuals list: highlights days where actual route minutes were far above/below the prediction; use Reason tags to explain recurring outliers.
 - Toggle "Show Residuals" to sort the biggest misses (± minutes) and decide if they’re noise, weather, detours, or require baseline tweaks.
 - Export: copy the table straight into notes when coaching or reviewing past adjustments.
+- **Tag & dismiss workflow**: use the “Tag & dismiss” button to log a short reason (e.g., `flats +12`, `weather`). The residual is hidden, the tag is stored locally, and you can reinstate it via “Manage dismissed.” Tagged days feed future summaries.
 
 ## Smart Summary (under the title)
 - Week‑to‑date comparison (Mon..today) vs last Mon..today.
@@ -42,6 +43,7 @@ Click any tile to see a short plain‑English explanation. Hover tooltips show d
 
 ## Weekly Compare (card)
 - Volume overlay: Last full week (blue) vs this week so far (yellow) by weekday.
+- Expectation band: translucent orange min/max envelope computed from up to four recent non-vacation weeks, so you can tell at a glance whether current volume is within the historical range.
 - Route h (this): Dashed line (right axis) for this week’s adjusted route hours per weekday.
 - Efficiency label: Shows `min/vol` this week vs last with an up/down indicator.
 - Outliers: Lists weekdays where route hours are >+10% vs the same weekday last week and shows any Reason tag.
@@ -67,9 +69,15 @@ Click any tile to see a short plain‑English explanation. Hover tooltips show d
 ## Optional Reason Tag
 - Add a short “Reason (optional)” on a day (e.g., Boxholders, Detour, Weather). It’s surfaced in Weekly Compare outliers.
 - Stored in `weather_json` as `Reason: …` (no DB migration needed).
+- Diagnostics tags (`Tag & dismiss`) share the same spirit—use them to keep context for the residuals table and future AI summaries.
 
 ## Quick Filter
 - Pick a weekday to see pills and a sparkline for the last N filtered days (normalized when multiple metrics are on). Ruler option shows 0/50/100.
+
+## AI Summary & Token Usage
+- Settings → AI Summary: store your OpenAI API key locally and (optionally) log token usage for today/week/month plus a monthly cap.
+- “Generate summary” (Diagnostics card) sends curated diagnostics context to `gpt-4o-mini` and returns three upbeat bullets (root cause, suggested action, trend to watch). Results are cached locally so you can collapse/expand without re-running.
+- Token usage card displays your tracked token totals with a progress bar that shifts color as you approach the monthly limit. Update the values in Settings whenever you want to budget the experimentation cost.
 
 ## Data Integrity Tips
 - Ensure route start/return times are correct; don’t overlap office and route.

@@ -85,6 +85,21 @@ Verification checklist (manual)
 - Toggle “Use baseline-normalized compare” ON/OFF → details update without errors and drift sparkline remains stable.
 - Force Refresh updates the SW and clears caches; subsequent reload shows updated card reliably.
 
+### 2025-10-19 — Diagnostics tagging + AI summary (main)
+
+What we shipped
+- Residual list now supports “Tag & dismiss” with shorthand (`flats +12`), stores context locally, and hides handled days until reinstated; summary surface tracks dismissed count.
+- Diagnostics weather/notes cells wrap gracefully, “Read full” opens an alert so tall notes don’t stretch mobile layout.
+- Mix Viz weekly compare shows an orange min/max expectation band derived from recent comparable weeks.
+- AI Summary card (optional OpenAI key) calls `gpt-4o-mini` for three upbeat bullets (cause, action, trend); result cached in localStorage with expand/collapse state.
+- Token usage tracker displays today/week/month totals with optional monthly cap and color-coded progress bar; values editable in Settings.
+
+Verification checklist (manual)
+- Tag a residual (`detour +18`) and confirm it hides, shows up in “dismissed” count, and the reason is stored; reinstate via Manage dismissed.
+- Open Diagnostics on iPhone: table stays compact, “Read full” link pops the entire note without stretching rows.
+- Weekly Compare orange band appears once 2+ historic weeks exist; tooltips show expectation range when hovering.
+- Enter OpenAI key + token totals in Settings, generate AI summary, collapse/expand the card, reload page: summary persists until another API call; token card shows saved values.
+
 ### 2025-09-07 — Phase 2 (part 1) shipped (tag: v2.0.1)
 
 What we implemented

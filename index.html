@@ -2976,8 +2976,12 @@ let latestDiagnosticsContext = null;
         const parcels = (+d.parcels || 0);
         const letters = (+d.letters || 0);
         const boxholders = escapeHtml(inferBoxholderLabel(d.row));
-        const weatherSnippet = (d.row.weather_json || '').replace(/Reason:\s*/i,'').slice(0,80).trim();
-        const weather = weatherSnippet ? escapeHtml(weatherSnippet) : '—';
+        const weatherRaw = String(d.row.weather_json || '');
+        const weatherPieces = weatherRaw.split('·').map(s=>s.trim()).filter(Boolean);
+        const weatherDisplayParts = weatherPieces.filter(p=> !/^Reason:/i.test(p) && !/^SecondTrip:/i.test(p) && !/^Box:/i.test(p));
+        const weatherSnippet = weatherRaw.replace(/Reason:\s*[^·]+/ig,'').trim();
+        const weatherShort = weatherDisplayParts.length ? weatherDisplayParts.slice(0,2).join(' · ') : '—';
+        const weather = escapeHtml(weatherShort);
         const badges = [];
         if (hasTag(d.row, 'holiday_catchup')){
           const ctx = d.row._holidayCatchup || {};

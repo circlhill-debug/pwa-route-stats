@@ -2102,6 +2102,7 @@ const tokenTodayInput = document.getElementById('tokenUsageToday');
 const tokenWeekInput = document.getElementById('tokenUsageWeek');
 const tokenMonthInput = document.getElementById('tokenUsageMonth');
 const tokenLimitInput = document.getElementById('tokenUsageLimit');
+let CURRENT_USER_ID = null;
 
   btnSettings?.addEventListener('click', ()=>{
     // populate from FLAGS
@@ -2388,7 +2389,6 @@ const OPENAI_KEY_STORAGE = 'routeStats.ai.openaiKey';
 const AI_LAST_SUMMARY_KEY = 'routeStats.ai.lastSummary';
 const AI_SUMMARY_COLLAPSED_KEY = 'routeStats.ai.summaryCollapsed';
 const TOKEN_USAGE_STORAGE = 'routeStats.ai.tokenUsage';
-let CURRENT_USER_ID = null;
 
 function readStoredEma(){
   try{

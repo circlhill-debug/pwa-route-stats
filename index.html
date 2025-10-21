@@ -2978,7 +2978,9 @@ let latestDiagnosticsContext = null;
         const boxholders = escapeHtml(inferBoxholderLabel(d.row));
         const weatherRaw = String(d.row.weather_json || '');
         const weatherPieces = weatherRaw.split('·').map(s=>s.trim()).filter(Boolean);
-        const weatherDisplayParts = weatherPieces.filter(p=> !/^Reason:/i.test(p) && !/^SecondTrip:/i.test(p) && !/^Box:/i.test(p));
+        const weatherDisplayParts = weatherPieces
+          .filter(p=> !/^Reason:/i.test(p) && !/^SecondTrip:/i.test(p) && !/^Box:/i.test(p))
+          .map(p=> p.replace(/partly\s+cloudy/i, 'PC'));
         const weatherSnippet = weatherRaw.replace(/Reason:\s*[^·]+/ig,'').trim();
         const weatherShort = weatherDisplayParts.length ? weatherDisplayParts.slice(0,2).join(' · ') : '—';
         const weather = escapeHtml(weatherShort);

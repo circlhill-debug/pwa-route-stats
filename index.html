@@ -1888,7 +1888,6 @@ function moonPhaseEmoji(dateStr) {
 
   // Supabase
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth:{ persistSession:true }});
-  let CURRENT_USER_ID = null;
 
   // === Supabase v2 auth callback (works for PKCE or token-in-hash) ===
   async function handleAuthCallback(sb) {
@@ -2389,6 +2388,7 @@ const OPENAI_KEY_STORAGE = 'routeStats.ai.openaiKey';
 const AI_LAST_SUMMARY_KEY = 'routeStats.ai.lastSummary';
 const AI_SUMMARY_COLLAPSED_KEY = 'routeStats.ai.summaryCollapsed';
 const TOKEN_USAGE_STORAGE = 'routeStats.ai.tokenUsage';
+let CURRENT_USER_ID = null;
 
 function readStoredEma(){
   try{

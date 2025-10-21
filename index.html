@@ -818,11 +818,16 @@
   <section class="card" id="aiSummaryCard" style="grid-column:1/-1; display:none">
     <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <h3 style="margin:0">AI Summary</h3>
-      <button id="generateAiSummary" class="ghost">Generate summary</button>
+      <div class="row" style="gap:6px;align-items:center">
+        <button id="toggleAiSummary" class="ghost">Collapse</button>
+        <button id="generateAiSummary" class="ghost">Generate summary</button>
+      </div>
     </div>
-    <small class="muted" id="aiSummaryHint">Set your OpenAI API key in Settings → AI Summary.</small>
-    <div id="aiSummaryStatus" class="muted" style="margin-top:6px"></div>
-    <div id="aiSummaryOutput" style="margin-top:8px;white-space:pre-wrap;font-size:0.95rem"></div>
+    <div id="aiSummaryContent" style="margin-top:6px">
+      <small class="muted" id="aiSummaryHint">Set your OpenAI API key in Settings → AI Summary.</small>
+      <div id="aiSummaryStatus" class="muted" style="margin-top:6px"></div>
+      <div id="aiSummaryOutput" style="margin-top:8px;white-space:pre-wrap;font-size:0.95rem"></div>
+    </div>
   </section>
 
   <!-- Monthly Glance (preview) — behind feature flag -->
@@ -1548,6 +1553,21 @@
     }catch(_){ }
   }
 
+  function isAiSummaryCollapsed(){
+    try{ return localStorage.getItem(AI_SUMMARY_COLLAPSED_KEY) === '1'; }catch(_){ return false; }
+  }
+
+  function setAiSummaryCollapsed(flag){
+    try{ localStorage.setItem(AI_SUMMARY_COLLAPSED_KEY, flag ? '1' : '0'); }catch(_){ }
+    applyAiSummaryCollapsed(flag);
+  }
+
+  function applyAiSummaryCollapsed(force){
+    const collapsed = typeof force === 'boolean' ? force : isAiSummaryCollapsed();
+    if (aiSummaryContent) aiSummaryContent.style.display = collapsed ? 'none' : 'block';
+    if (toggleAiSummaryBtn) toggleAiSummaryBtn.textContent = collapsed ? 'Expand' : 'Collapse';
+  }
+
   function updateAiSummaryAvailability(){
     if (!aiSummaryCard || !aiSummaryBtn || !aiSummaryHint) return;
     aiSummaryCard.style.display = 'block';
@@ -1556,6 +1576,7 @@
     aiSummaryHint.textContent = key
       ? 'AI summary uses OpenAI when you click the button. Data stays local until then.'
       : 'Set your OpenAI API key in Settings → AI Summary to enable.';
+    applyAiSummaryCollapsed();
   }
 
   function renderLastAiSummary(){
@@ -1565,6 +1586,9 @@
       aiSummaryOutput.textContent = saved.text;
       const stamp = saved.timestamp ? new Date(saved.timestamp) : null;
       aiSummaryStatus.textContent = stamp ? `Last updated ${stamp.toLocaleString()}` : 'Last summary loaded.';
+    } else {
+      aiSummaryOutput.textContent = '';
+      aiSummaryStatus.textContent = 'No AI summary yet.';
     }
   }
 
@@ -1615,6 +1639,7 @@
       return;
     }
     const prompt = buildAiPrompt(latestDiagnosticsContext);
+    setAiSummaryCollapsed(false);
     aiSummaryBtn.disabled = true;
     if (aiSummaryStatus) aiSummaryStatus.textContent = 'Generating summary…';
     if (aiSummaryOutput) aiSummaryOutput.textContent = '';
@@ -1653,6 +1678,7 @@
       const stamp = new Date().toISOString();
       if (aiSummaryStatus) aiSummaryStatus.textContent = `Updated ${new Date(stamp).toLocaleTimeString()}`;
       saveLastAiSummary({ text, timestamp: stamp, prompt });
+      setAiSummaryCollapsed(false);
     }catch(err){
       console.error('[AI summary] error', err);
       if (aiSummaryStatus) aiSummaryStatus.textContent = `AI summary failed: ${err.message || err}`;
@@ -1904,14 +1930,16 @@ function moonPhaseEmoji(dateStr) {
   const vacAdd     = document.getElementById('vacAdd');
   const vacRangesEl= document.getElementById('vacRanges');
   const saveSettings = document.getElementById('saveSettings');
-  const settingsOpenAiKey = document.getElementById('settingsOpenAiKey');
-  const clearOpenAiKeyBtn = document.getElementById('clearOpenAiKey');
+const settingsOpenAiKey = document.getElementById('settingsOpenAiKey');
+const clearOpenAiKeyBtn = document.getElementById('clearOpenAiKey');
 
-  const aiSummaryCard = document.getElementById('aiSummaryCard');
-  const aiSummaryBtn = document.getElementById('generateAiSummary');
-  const aiSummaryHint = document.getElementById('aiSummaryHint');
-  const aiSummaryStatus = document.getElementById('aiSummaryStatus');
-  const aiSummaryOutput = document.getElementById('aiSummaryOutput');
+const aiSummaryCard = document.getElementById('aiSummaryCard');
+const aiSummaryBtn = document.getElementById('generateAiSummary');
+const toggleAiSummaryBtn = document.getElementById('toggleAiSummary');
+const aiSummaryHint = document.getElementById('aiSummaryHint');
+const aiSummaryStatus = document.getElementById('aiSummaryStatus');
+const aiSummaryOutput = document.getElementById('aiSummaryOutput');
+const aiSummaryContent = document.getElementById('aiSummaryContent');
 
   btnSettings?.addEventListener('click', ()=>{
     // populate from FLAGS
@@ -2041,6 +2069,10 @@ function moonPhaseEmoji(dateStr) {
   });
 
   aiSummaryBtn?.addEventListener('click', generateAiSummary);
+  toggleAiSummaryBtn?.addEventListener('click', ()=>{
+    const next = !isAiSummaryCollapsed();
+    setAiSummaryCollapsed(next);
+  });
   updateAiSummaryAvailability();
   renderLastAiSummary();
 
@@ -2148,6 +2180,7 @@ const RESIDUAL_WEIGHT_PREF_KEY = 'routeStats.residual.downweightHoliday';
 const RESIDUAL_DISMISS_KEY = 'routeStats.diagnostics.dismissed';
 const OPENAI_KEY_STORAGE = 'routeStats.ai.openaiKey';
 const AI_LAST_SUMMARY_KEY = 'routeStats.ai.lastSummary';
+const AI_SUMMARY_COLLAPSED_KEY = 'routeStats.ai.summaryCollapsed';
 
 function readStoredEma(){
   try{

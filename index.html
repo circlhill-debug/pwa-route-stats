@@ -1635,6 +1635,62 @@
     tokenUsageCard.style.display = 'block';
   }
 
+  function todayIso(){
+    return DateTime.now().setZone(ZONE).toISODate();
+  }
+
+  async function fetchAiSummaryFromSupabase(){
+    if (!CURRENT_USER_ID || !window.supabase) return null;
+    try{
+      const today = todayIso();
+      const { data, error } = await sb
+        .from('daily_reports')
+        .select('report,timestamp')
+        .eq('user_id', CURRENT_USER_ID)
+        .eq('date', today)
+        .maybeSingle();
+      if (error && error.code !== 'PGRST116'){ // ignore no-row errors
+        console.warn('[AI summary] load error', error.message);
+        return null;
+      }
+      if (!data || !data.report) return null;
+      let parsed;
+      try{
+        parsed = typeof data.report === 'string' ? JSON.parse(data.report) : data.report;
+      }catch(_){ parsed = { text: data.report }; }
+      if (!parsed || !parsed.text) return null;
+      if (!parsed.timestamp && data.timestamp){ parsed.timestamp = data.timestamp; }
+      saveLastAiSummary(parsed);
+      return parsed;
+    }catch(err){
+      console.warn('[AI summary] load exception', err);
+      return null;
+    }
+  }
+
+  async function saveAiSummaryToSupabase(obj){
+    if (!CURRENT_USER_ID || !window.supabase) return false;
+    try{
+      const today = todayIso();
+      const payload = {
+        user_id: CURRENT_USER_ID,
+        date: today,
+        report: JSON.stringify(obj || {})
+      };
+      const { error } = await sb
+        .from('daily_reports')
+        .upsert(payload, { onConflict: ['user_id','date'] });
+      if (error){
+        console.warn('[AI summary] save error', error.message);
+        return false;
+      }
+      return true;
+    }catch(err){
+      console.warn('[AI summary] save exception', err);
+      return false;
+    }
+  }
+
   function loadTokenUsage(){
     try{
       const raw = localStorage.getItem(TOKEN_USAGE_STORAGE);
@@ -1672,6 +1728,15 @@
     } else {
       aiSummaryOutput.textContent = '';
       aiSummaryStatus.textContent = 'No AI summary yet.';
+      if (CURRENT_USER_ID){
+        fetchAiSummaryFromSupabase().then(remote=>{
+          if (remote && remote.text){
+            aiSummaryOutput.textContent = remote.text;
+            const stamp = remote.timestamp ? new Date(remote.timestamp) : null;
+            aiSummaryStatus.textContent = stamp ? `Last updated ${stamp.toLocaleString()}` : 'Loaded from cloud.';
+          }
+        });
+      }
     }
   }
 
@@ -1760,7 +1825,9 @@
       if (aiSummaryOutput) aiSummaryOutput.textContent = text;
       const stamp = new Date().toISOString();
       if (aiSummaryStatus) aiSummaryStatus.textContent = `Updated ${new Date(stamp).toLocaleTimeString()}`;
-      const persisted = saveLastAiSummary({ text, timestamp: stamp, prompt });
+      const summaryPayload = { text, timestamp: stamp, prompt };
+      const persisted = saveLastAiSummary(summaryPayload);
+      await saveAiSummaryToSupabase(summaryPayload);
       if (persisted) renderLastAiSummary();
       setAiSummaryCollapsed(false);
     }catch(err){
@@ -2287,10 +2354,22 @@ const tokenLimitInput = document.getElementById('tokenUsageLimit');
 
   sb.auth.onAuthStateChange((_evt, session) => {
     const authed = !!session;
+    CURRENT_USER_ID = authed ? session?.user?.id || null : null;
     const signOutBtn = $('signOut');
     if (signOutBtn) signOutBtn.style.display = authed ? 'inline-block' : 'none';
     dAuth.textContent = authed ? 'Session' : 'No session';
+    if (authed){
+      renderLastAiSummary();
+    }
   });
+
+  sb.auth.getSession().then(({ data })=>{
+    const session = data?.session || null;
+    CURRENT_USER_ID = session?.user?.id || null;
+    if (CURRENT_USER_ID){
+      renderLastAiSummary();
+    }
+  }).catch(()=>{});
 
   // ====== APP LOGIC (unchanged beyond tiny UX tweaks) ======
 
@@ -2309,6 +2388,7 @@ const OPENAI_KEY_STORAGE = 'routeStats.ai.openaiKey';
 const AI_LAST_SUMMARY_KEY = 'routeStats.ai.lastSummary';
 const AI_SUMMARY_COLLAPSED_KEY = 'routeStats.ai.summaryCollapsed';
 const TOKEN_USAGE_STORAGE = 'routeStats.ai.tokenUsage';
+let CURRENT_USER_ID = null;
 
 function readStoredEma(){
   try{

@@ -1548,7 +1548,24 @@
       const raw = localStorage.getItem(RESIDUAL_DISMISS_KEY);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .map(item => {
+          if (!item || !item.iso) return null;
+          const sourceTags = Array.isArray(item.tags) ? item.tags : (item.reason ? [{ reason:item.reason, minutes:item.minutes, notedAt:item.notedAt }] : []);
+          const tags = sourceTags
+            .map(tag => {
+              if (!tag) return null;
+              const reason = String(tag.reason || '').trim();
+              if (!reason) return null;
+              const minutes = (tag.minutes!=null && tag.minutes!=='') ? Number(tag.minutes) : null;
+              const notedAt = tag.notedAt || item.notedAt || new Date().toISOString();
+              return { reason, minutes: Number.isFinite(minutes) ? minutes : null, notedAt };
+            })
+            .filter(Boolean);
+          return tags.length ? { iso:item.iso, tags } : null;
+        })
+        .filter(Boolean);
     }catch(_){ return []; }
   }
 
@@ -1596,6 +1613,101 @@
     }catch(_){ }
   }
 
+  function loadTokenUsage(){
+    try{
+      const raw = localStorage.getItem(TOKEN_USAGE_STORAGE);
+      const now = DateTime.now().setZone(ZONE);
+      const today = now.toISODate();
+      const weekStart = startOfWeekMonday(now).toISODate();
+      const monthKey = now.toFormat('yyyy-MM');
+      if (!raw) return { today:0, week:0, month:0, monthlyLimit:null, todayDate:today, weekStart, monthKey };
+      const parsed = JSON.parse(raw) || {};
+      const usage = {
+        today: Number(parsed.today) || 0,
+        week: Number(parsed.week) || 0,
+        month: Number(parsed.month) || 0,
+        monthlyLimit: (parsed.monthlyLimit!==undefined && parsed.monthlyLimit!==null) ? Number(parsed.monthlyLimit) : null,
+        todayDate: parsed.todayDate || today,
+        weekStart: parsed.weekStart || weekStart,
+        monthKey: parsed.monthKey || monthKey
+      };
+      if (usage.todayDate !== today){ usage.today = 0; usage.todayDate = today; }
+      if (usage.weekStart !== weekStart){ usage.week = 0; usage.weekStart = weekStart; }
+      if (usage.monthKey !== monthKey){ usage.month = 0; usage.monthKey = monthKey; }
+      return usage;
+    }catch(_){
+      const now = DateTime.now().setZone(ZONE);
+      return {
+        today:0,
+        week:0,
+        month:0,
+        monthlyLimit:null,
+        todayDate: now.toISODate(),
+        weekStart: startOfWeekMonday(now).toISODate(),
+        monthKey: now.toFormat('yyyy-MM')
+      };
+    }
+  }
+
+  function saveTokenUsage(obj){
+    try{ localStorage.setItem(TOKEN_USAGE_STORAGE, JSON.stringify(obj||{})); }catch(_){ }
+  }
+
+  function updateTokenUsageCard(usage){
+    if (!usage || !tokenUsageCard) return;
+    const today = usage.today || 0;
+    const week = usage.week || 0;
+    const month = usage.month || 0;
+    const limit = usage.monthlyLimit;
+    if (tokenTodayEl) tokenTodayEl.textContent = today;
+    if (tokenWeekEl) tokenWeekEl.textContent = week;
+    if (tokenMonthEl) tokenMonthEl.textContent = month;
+    if (tokenLimitEl) tokenLimitEl.textContent = limit!=null ? limit : '—';
+    if (tokenBarFill){
+      let percent = 0;
+      if (limit && limit > 0){ percent = Math.min((month/limit)*100, 100); }
+      tokenBarFill.style.width = `${percent}%`;
+      let color = 'var(--brand)';
+      if (percent > 90) color = '#ff4d4d';
+      else if (percent > 60) color = '#ffcc00';
+      tokenBarFill.style.background = color;
+    }
+    if (tokenBarNote) tokenBarNote.textContent = 'Token totals update automatically after each AI summary.';
+    tokenUsageCard.style.display = 'block';
+  }
+
+  function populateTokenInputs(usage){
+    if (!usage) return;
+    if (tokenTodayInput) tokenTodayInput.value = usage.today;
+    if (tokenWeekInput) tokenWeekInput.value = usage.week;
+    if (tokenMonthInput) tokenMonthInput.value = usage.month;
+    if (tokenLimitInput) tokenLimitInput.value = usage.monthlyLimit!=null ? usage.monthlyLimit : '';
+  }
+
+  function readTokenInputs(){
+    const usage = loadTokenUsage();
+    if (tokenTodayInput) usage.today = Number(tokenTodayInput.value) || 0;
+    if (tokenWeekInput) usage.week = Number(tokenWeekInput.value) || 0;
+    if (tokenMonthInput) usage.month = Number(tokenMonthInput.value) || 0;
+    if (tokenLimitInput){
+      const val = tokenLimitInput.value;
+      usage.monthlyLimit = val!=='' ? Number(val) : null;
+    }
+    saveTokenUsage(usage);
+    updateTokenUsageCard(usage);
+  }
+
+  function addTokenUsage(deltaTokens){
+    if (!(deltaTokens > 0)) return;
+    const usage = loadTokenUsage();
+    usage.today += deltaTokens;
+    usage.week += deltaTokens;
+    usage.month += deltaTokens;
+    saveTokenUsage(usage);
+    updateTokenUsageCard(usage);
+    populateTokenInputs(usage);
+  }
+
   function loadLastAiSummary(){
     try{
       const raw = localStorage.getItem(AI_LAST_SUMMARY_KEY);
@@ -1630,29 +1742,6 @@
     const collapsed = typeof force === 'boolean' ? force : isAiSummaryCollapsed();
     if (aiSummaryContent) aiSummaryContent.style.display = collapsed ? 'none' : 'block';
     if (toggleAiSummaryBtn) toggleAiSummaryBtn.textContent = collapsed ? 'Expand' : 'Collapse';
-  }
-
-  function updateTokenUsage(usage){
-    if (!tokenUsageCard) return;
-    const today = usage?.today ?? 0;
-    const week = usage?.week ?? 0;
-    const month = usage?.month ?? 0;
-    const limit = usage?.monthlyLimit ?? null;
-    if (tokenTodayEl) tokenTodayEl.textContent = today;
-    if (tokenWeekEl) tokenWeekEl.textContent = week;
-    if (tokenMonthEl) tokenMonthEl.textContent = month;
-    if (tokenLimitEl) tokenLimitEl.textContent = limit != null ? limit : '—';
-    let percent = 0;
-    if (limit && limit > 0){ percent = Math.min((month / limit) * 100, 100); }
-    if (tokenBarFill){
-      tokenBarFill.style.width = `${percent}%`;
-      let color = 'var(--brand)';
-      if (percent > 90) color = '#ff4d4d';
-      else if (percent > 60) color = '#ffcc00';
-      tokenBarFill.style.background = color;
-    }
-    if (tokenBarNote) tokenBarNote.textContent = usage?.note || 'Usage resets when you reload this page or update these numbers manually.';
-    tokenUsageCard.style.display = 'block';
   }
 
   function todayIso(){
@@ -1709,22 +1798,6 @@
       console.warn('[AI summary] save exception', err);
       return false;
     }
-  }
-
-  function loadTokenUsage(){
-    try{
-      const raw = localStorage.getItem(TOKEN_USAGE_STORAGE);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' ? parsed : null;
-    }catch(_){ return null; }
-  }
-
-  function saveTokenUsage(obj){
-    try{
-      if (obj) localStorage.setItem(TOKEN_USAGE_STORAGE, JSON.stringify(obj));
-      else localStorage.removeItem(TOKEN_USAGE_STORAGE);
-    }catch(_){ }
   }
 
   function updateAiSummaryAvailability(){
@@ -1787,7 +1860,10 @@
     }
     const dismissed = ctx.dismissed || [];
     if (dismissed.length){
-      const list = dismissed.map(item => `${item.iso} (${item.reason || 'dismissed'}${item.minutes!=null?` ${item.minutes}m`:''})`).join('; ');
+      const list = dismissed.map(item => {
+        const tags = (item.tags||[]).map(tag => tag.minutes!=null ? `${tag.reason} ${tag.minutes}m` : tag.reason).join(', ');
+        return `${item.iso}${tags?': '+tags:''}`;
+      }).join('; ');
       lines.push(`Dismissed (already reviewed): ${list}`);
     }
     lines.push('Provide 3 concise bullet points: 1) root causes or contributing factors, 2) suggested actions or notes for tomorrow, 3) notable trends or items to watch. Keep it short and focused.');
@@ -1849,6 +1925,8 @@
       const persisted = saveLastAiSummary(summaryPayload);
       await saveAiSummaryToSupabase(summaryPayload);
       if (persisted) renderLastAiSummary();
+      const tokensUsed = data?.usage?.total_tokens;
+      if (Number.isFinite(tokensUsed) && tokensUsed > 0){ addTokenUsage(tokensUsed); }
       setAiSummaryCollapsed(false);
     }catch(err){
       console.error('[AI summary] error', err);
@@ -2173,14 +2251,7 @@ let CURRENT_USER_ID = null;
       aiPromptTextarea.value = getAiBasePrompt();
       aiPromptTextarea.placeholder = DEFAULT_AI_BASE_PROMPT;
     }
-  const savedUsage = loadTokenUsage();
-  if (savedUsage){
-    updateTokenUsage(savedUsage);
-    if (tokenTodayInput) tokenTodayInput.value = savedUsage.today != null ? savedUsage.today : '';
-    if (tokenWeekInput) tokenWeekInput.value = savedUsage.week != null ? savedUsage.week : '';
-    if (tokenMonthInput) tokenMonthInput.value = savedUsage.month != null ? savedUsage.month : '';
-    if (tokenLimitInput) tokenLimitInput.value = savedUsage.monthlyLimit != null ? savedUsage.monthlyLimit : '';
-  }
+    populateTokenInputs(loadTokenUsage());
   renderVacationRanges();
   settingsDlg.showModal();
 });
@@ -2249,18 +2320,7 @@ let CURRENT_USER_ID = null;
         setAiBasePrompt(aiPromptTextarea.value || '');
       }
     }catch(_){ }
-    try{
-      if (tokenTodayInput && tokenWeekInput && tokenMonthInput && tokenLimitInput){
-        const usage = {
-          today: Number(tokenTodayInput.value) || 0,
-          week: Number(tokenWeekInput.value) || 0,
-          month: Number(tokenMonthInput.value) || 0,
-          monthlyLimit: tokenLimitInput.value !== '' ? Number(tokenLimitInput.value) : null
-        };
-        saveTokenUsage(usage);
-        updateTokenUsage(usage);
-      }
-    }catch(_){ }
+    try{ readTokenInputs(); }catch(_){ }
     saveFlags(FLAGS);
     settingsDlg.close();
     renderVacationRanges();
@@ -2288,18 +2348,9 @@ let CURRENT_USER_ID = null;
   });
   updateAiSummaryAvailability();
   renderLastAiSummary();
-  const initialUsageState = loadTokenUsage();
-  if (initialUsageState){
-    updateTokenUsage(initialUsageState);
-  }
-  const existingUsage = loadTokenUsage();
-  if (existingUsage){
-    updateTokenUsage(existingUsage);
-  } else {
-    const seedUsage = { today:128, week:764, month:2210, monthlyLimit:10000, note:'Sample data — replace with your own totals.' };
-    saveTokenUsage(seedUsage);
-    updateTokenUsage(seedUsage);
-  }
+  const initialTokenUsage = loadTokenUsage();
+  updateTokenUsageCard(initialTokenUsage);
+  populateTokenInputs(initialTokenUsage);
 
   vacAdd?.addEventListener('click', ()=>{
     try{
@@ -2969,9 +3020,10 @@ let latestDiagnosticsContext = null;
         }
         const lines = list
           .map(item => {
-            const mins = item.minutes!=null ? ` · ${item.minutes}m` : '';
-            const reason = item.reason ? ` · ${item.reason}` : '';
-            return `${item.iso}${reason}${mins}`;
+            const tagSummary = (item.tags||[])
+              .map(tag => tag.minutes!=null ? `${tag.reason} ${tag.minutes}m` : tag.reason)
+              .join(', ');
+            return `${item.iso}${tagSummary? ' · '+tagSummary:''}`;
           })
           .join('\n');
         const input = window.prompt(`Dismissed residuals:\n${lines}\n\nEnter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, '');

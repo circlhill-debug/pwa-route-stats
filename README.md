@@ -47,8 +47,10 @@ Latest features (main)
 - Extra Trip tracking: optional fields in Add Entry capture second-trip miles/time (EMA default lives in Settings); Today summary shows paid/gas amounts and Weekly tiles roll up totals.
 - Diagnostics holiday tagging: automatic "Holiday catch-up" detection annotates post-holiday residuals with baseline context so they’re explained in the outlier list.
 - Diagnostics weighting toggle: optional downweighting for holiday catch-up days refits the volume→time model with softened impact.
-- Diagnostics tag & dismiss: residuals list supports “Tag & dismiss” with shorthand minutes (`flats +12`), stores the review reason, and hides handled days until reinstated.
+- Diagnostics tag & dismiss: residuals list supports comma-separated reasons (`parcels +15, flats +10`) with minutes tracked per tag, stores the review rationale, and hides handled days until reinstated.
 - Weekly compare expectation band: the Mix Viz overlay now shades an orange min/max envelope from recent comparable weeks so you can judge whether this week’s volume is in range.
+- AI summary card: provide an OpenAI key in Settings to generate an upbeat, three-bullet field summary; cached locally (and to Supabase) with collapse toggle.
+- Token usage tracker: totals auto-increment after each AI summary (today/week/month) with an optional monthly cap; progress bar shifts color as you approach the limit.
 - AI summary card: provide an OpenAI key in Settings to generate an upbeat, three-bullet field summary; cached locally with collapse toggle.
 - Token usage tracker: track approximate OpenAI tokens (today/week/month) plus an optional monthly limit; progress bar shifts color as you approach the cap.
 - Diagnostics: auto-tag post-holiday “catch-up” days so residuals are annotated and coefficients stay stable.

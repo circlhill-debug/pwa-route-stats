@@ -88,17 +88,17 @@ Verification checklist (manual)
 ### 2025-10-19 — Diagnostics tagging + AI summary (main)
 
 What we shipped
-- Residual list now supports “Tag & dismiss” with shorthand (`flats +12`), stores context locally, and hides handled days until reinstated; summary surface tracks dismissed count.
+- Residual list now supports “Tag & dismiss” with comma-separated reasons (`parcels +15, flats +10`), stores the tag list (local + Supabase), and hides handled days until reinstated; summary surface tracks dismissed count.
 - Diagnostics weather/notes cells wrap gracefully, “Read full” opens an alert so tall notes don’t stretch mobile layout.
 - Mix Viz weekly compare shows an orange min/max expectation band derived from recent comparable weeks.
-- AI Summary card (optional OpenAI key) calls `gpt-4o-mini` for three upbeat bullets (cause, action, trend); result cached in localStorage with expand/collapse state.
-- Token usage tracker displays today/week/month totals with optional monthly cap and color-coded progress bar; values editable in Settings.
+- AI Summary card (optional OpenAI key) calls `gpt-4o-mini` for three upbeat bullets (cause, action, trend); result cached in localStorage and mirrored to Supabase with expand/collapse state.
+- Token usage tracker now auto-increments today/week/month totals after each summary, with an optional monthly cap and color-coded progress bar; manual overrides still available in Settings.
 
 Verification checklist (manual)
-- Tag a residual (`detour +18`) and confirm it hides, shows up in “dismissed” count, and the reason is stored; reinstate via Manage dismissed.
+- Tag a residual (`parcels +15, flats +10`) and confirm both reasons are logged, the row hides, and the dismissed count updates; reinstate via Manage dismissed to recover it.
 - Open Diagnostics on iPhone: table stays compact, “Read full” link pops the entire note without stretching rows.
 - Weekly Compare orange band appears once 2+ historic weeks exist; tooltips show expectation range when hovering.
-- Enter OpenAI key + token totals in Settings, generate AI summary, collapse/expand the card, reload page: summary persists until another API call; token card shows saved values.
+- Enter OpenAI key + generate AI summary, collapse/expand the card, reload page: summary persists across devices and token card increments automatically.
 
 ### 2025-09-07 — Phase 2 (part 1) shipped (tag: v2.0.1)
 

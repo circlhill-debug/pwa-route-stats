@@ -391,6 +391,11 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
     return { enabled:true, fn };
   }
 
+  let aiSummary = null;
+  function updateAiSummaryAvailability(){
+    try{ aiSummary?.updateAvailability(); }catch(_){ /* noop */ }
+  }
+
   const diagnosticsFeature = createDiagnostics({
     getFlags: () => FLAGS,
     filterRowsForView,
@@ -620,7 +625,7 @@ const tokenLimitInput = document.getElementById('tokenUsageLimit');
 const aiPromptTextarea = document.getElementById('aiSummaryBasePrompt');
 let CURRENT_USER_ID = null;
 
-const aiSummary = createAiSummary({
+aiSummary = createAiSummary({
   elements: {
     card: aiSummaryCard,
     button: aiSummaryBtn,

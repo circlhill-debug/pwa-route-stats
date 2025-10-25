@@ -3382,6 +3382,13 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     };
     return { enabled: true, fn };
   }
+  var aiSummary = null;
+  function updateAiSummaryAvailability() {
+    try {
+      aiSummary == null ? void 0 : aiSummary.updateAvailability();
+    } catch (_) {
+    }
+  }
   var diagnosticsFeature = createDiagnostics({
     getFlags: () => FLAGS,
     filterRowsForView,
@@ -3611,7 +3618,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
   var tokenLimitInput = document.getElementById("tokenUsageLimit");
   var aiPromptTextarea = document.getElementById("aiSummaryBasePrompt");
   var CURRENT_USER_ID = null;
-  var aiSummary = createAiSummary({
+  aiSummary = createAiSummary({
     elements: {
       card: aiSummaryCard,
       button: aiSummaryBtn,

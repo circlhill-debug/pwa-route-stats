@@ -2763,6 +2763,291 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     };
   }
 
+  // src/features/summaries.js
+  function createSummariesFeature({
+    getFlags,
+    filterRowsForView: filterRowsForView2,
+    routeAdjustedHours: routeAdjustedHours2,
+    computeLetterWeight: computeLetterWeight2,
+    getCurrentLetterWeight,
+    colorForDelta: colorForDelta2
+  }) {
+    if (typeof getFlags !== "function") throw new Error("createSummariesFeature: getFlags is required");
+    if (typeof filterRowsForView2 !== "function") throw new Error("createSummariesFeature: filterRowsForView is required");
+    if (typeof routeAdjustedHours2 !== "function") throw new Error("createSummariesFeature: routeAdjustedHours is required");
+    if (typeof computeLetterWeight2 !== "function") throw new Error("createSummariesFeature: computeLetterWeight is required");
+    if (typeof getCurrentLetterWeight !== "function") throw new Error("createSummariesFeature: getCurrentLetterWeight is required");
+    if (typeof colorForDelta2 !== "function") throw new Error("createSummariesFeature: colorForDelta is required");
+    function getLetterWeightForSummary2(rows) {
+      try {
+        const scoped = filterRowsForView2(rows || []).filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0).sort((a, b) => a.work_date < b.work_date ? -1 : 1);
+        const sample = scoped.slice(-60);
+        const learned = computeLetterWeight2(sample);
+        if (learned != null) return learned;
+      } catch (_err) {
+      }
+      return getCurrentLetterWeight();
+    }
+    function buildSmartSummary2(rows) {
+      const el = document.getElementById("smartSummary");
+      if (!el) return;
+      try {
+        const flags = getFlags();
+        if (!(flags == null ? void 0 : flags.smartSummary)) {
+          el.style.display = "none";
+          return;
+        }
+        const scoped = filterRowsForView2(rows || []);
+        const now = DateTime.now().setZone(ZONE);
+        const startThis = startOfWeekMonday(now);
+        const endThis = now.endOf("day");
+        const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
+        const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf("day");
+        const inRange = (r, from, to) => {
+          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+          return d >= from && d <= to;
+        };
+        const worked = scoped.filter((r) => r.status !== "off");
+        const W0 = worked.filter((r) => inRange(r, startThis, endThis));
+        const W1 = worked.filter((r) => inRange(r, startLast, lastEndSame));
+        const daysThisWeek = [...new Set(W0.map((r) => r.work_date))].length;
+        if (!daysThisWeek) {
+          el.textContent = "No worked days yet \u2014 0 day(s) this week.";
+          el.style.display = "block";
+          return;
+        }
+        const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
+        const h0 = sum(W0, (r) => +r.hours || 0);
+        const h1 = sum(W1, (r) => +r.hours || 0);
+        const p0 = sum(W0, (r) => +r.parcels || 0);
+        const p1 = sum(W1, (r) => +r.parcels || 0);
+        const l0 = sum(W0, (r) => +r.letters || 0);
+        const l1 = sum(W1, (r) => +r.letters || 0);
+        const letterW = getLetterWeightForSummary2(scoped);
+        const volume = (p, l) => p + letterW * l;
+        const v0 = volume(p0, l0);
+        const v1 = volume(p1, l1);
+        const rm02 = sum(W0, (r) => routeAdjustedHours2(r));
+        const rm12 = sum(W1, (r) => routeAdjustedHours2(r));
+        const idx = (hours, vol) => hours > 0 && vol > 0 ? hours / vol : null;
+        const i0 = idx(rm02, v0);
+        const i1 = idx(rm12, v1);
+        const pct = (a, b) => b > 0 ? Math.round((a - b) / b * 100) : null;
+        const dh = pct(h0, h1);
+        const dv = pct(v0, v1);
+        const di = i0 != null && i1 != null && i1 > 0 ? Math.round((i1 - i0) / i1 * 100) : null;
+        const movers = [];
+        if (dh != null && Math.abs(dh) >= 5) movers.push({ k: "Hours", v: dh });
+        if (dv != null && Math.abs(dv) >= 5) movers.push({ k: "Volume", v: dv });
+        if (di != null && Math.abs(di) >= 5) movers.push({ k: "Efficiency", v: di });
+        movers.sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
+        const top = movers.slice(0, 2).map((it) => `${it.k} ${it.v >= 0 ? `\u2191 ${it.v}%` : `\u2193 ${Math.abs(it.v)}%`}`);
+        const line = top.length ? top.join(" \u2022 ") : "Similar to last week";
+        el.textContent = `${line} \u2014 ${daysThisWeek} day(s) this week.`;
+        el.style.display = "block";
+      } catch (_err) {
+      }
+    }
+    function buildTrendingFactors2(rows) {
+      const el = document.getElementById("trendFactors");
+      if (!el) return;
+      try {
+        const scoped = filterRowsForView2(rows || []);
+        const now = DateTime.now().setZone(ZONE);
+        const startThis = startOfWeekMonday(now);
+        const endThis = now.endOf("day");
+        const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
+        const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf("day");
+        const inRange = (r, from, to) => {
+          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+          return d >= from && d <= to;
+        };
+        const worked = scoped.filter((r) => r.status !== "off");
+        const thisWeek = worked.filter((r) => inRange(r, startThis, endThis));
+        const lastWeek = worked.filter((r) => inRange(r, startLast, lastEndSame));
+        if (!thisWeek.length) {
+          el.style.display = "none";
+          el.innerHTML = "";
+          return;
+        }
+        const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
+        const office0 = sum(thisWeek, (r) => +r.office_minutes || 0);
+        const office1 = sum(lastWeek, (r) => +r.office_minutes || 0);
+        const route0 = sum(thisWeek, (r) => routeAdjustedHours2(r));
+        const route1 = sum(lastWeek, (r) => routeAdjustedHours2(r));
+        const vol = (arr) => sum(arr, (r) => (+r.parcels || 0) + 0.33 * (+r.letters || 0));
+        const vol0 = vol(thisWeek);
+        const vol1 = vol(lastWeek);
+        const pct = (a, b) => b > 0 ? Math.round((a - b) / b * 100) : null;
+        const items = [];
+        const pushIf = (label, delta) => {
+          if (delta != null && Math.abs(delta) >= 5) items.push({ label, delta });
+        };
+        pushIf("Office", pct(office0, office1));
+        pushIf("Route", pct(route0, route1));
+        pushIf("Volume", pct(vol0, vol1));
+        items.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+        const top = items.slice(0, 2);
+        if (!top.length) {
+          el.style.display = "none";
+          el.innerHTML = "";
+          return;
+        }
+        const pills = top.map((it) => {
+          const { fg } = colorForDelta2(it.delta || 0);
+          const direction = it.delta >= 0 ? `\u2191 ${it.delta}%` : `\u2193 ${Math.abs(it.delta)}%`;
+          return `<span class="pill"><small>${it.label}</small> <b style="color:${fg}">${direction}</b></span>`;
+        }).join(" ");
+        el.style.display = "block";
+        el.innerHTML = `<small>Weekly Movers</small><div class="pill-row">${pills}</div>`;
+      } catch (_err) {
+      }
+    }
+    function buildHeavinessToday2(rows) {
+      const el = document.getElementById("todayHeaviness");
+      if (!el) return;
+      try {
+        const scoped = filterRowsForView2(rows || []);
+        const now = DateTime.now().setZone(ZONE);
+        const dow = now.weekday % 7;
+        const worked = scoped.filter((r) => r.status !== "off");
+        const todayIso2 = now.toISODate();
+        const todayRow = worked.find((r) => r.work_date === todayIso2);
+        if (!todayRow) {
+          el.style.display = "none";
+          return;
+        }
+        const offTodayH = +todayRow.office_minutes || 0;
+        const rteTodayH = routeAdjustedHours2(todayRow);
+        const totTodayH = +todayRow.hours || offTodayH + rteTodayH;
+        const sameDow = worked.filter((r) => r.work_date !== todayIso2 && dowIndex(r.work_date) === dow);
+        const avg = (arr, fn) => {
+          const values = arr.map(fn).filter((val) => val > 0);
+          return values.length ? values.reduce((sum, val) => sum + val, 0) / values.length : null;
+        };
+        const offAvgH = avg(sameDow, (r) => +r.office_minutes || 0);
+        const rteAvgH = avg(sameDow, (r) => routeAdjustedHours2(r));
+        const totAvgH = avg(sameDow, (r) => +r.hours || 0);
+        if (offAvgH == null && rteAvgH == null && totAvgH == null) {
+          el.style.display = "none";
+          return;
+        }
+        const dOff = offAvgH == null ? null : offTodayH - offAvgH;
+        const dRte = rteAvgH == null ? null : rteTodayH - rteAvgH;
+        const dTot = totAvgH == null ? null : totTodayH - totAvgH;
+        const baseTot = totAvgH && totAvgH > 0 ? totAvgH : (offAvgH || 0) + (rteAvgH || 0) || null;
+        const pct = (delta) => delta == null || !baseTot ? null : Math.round(delta / baseTot * 100);
+        const pill = (label, delta) => {
+          const p = pct(delta);
+          const deltaText = delta == null ? "\u2014" : `${delta >= 0 ? "+" : ""}${(Math.round(delta * 10) / 10).toFixed(1)}h`;
+          const pctText = p == null ? "" : ` (${p >= 0 ? "+" : ""}${p}%)`;
+          const { fg } = colorForDelta2(p || 0);
+          return `<span class="pill"><small>${label}</small> <b style="color:${fg}">${deltaText}${pctText}</b></span>`;
+        };
+        el.style.display = "block";
+        const pills = [pill("Office", dOff), pill("Route", dRte), pill("Total", dTot)].join(" ");
+        el.innerHTML = `<small>Heaviness (today)</small><div class="pill-row">${pills}</div>`;
+      } catch (_err) {
+      }
+    }
+    function buildWeekHeaviness2(rows) {
+      const el = document.getElementById("weekHeaviness");
+      if (!el) return;
+      try {
+        const scoped = filterRowsForView2(rows || []);
+        const now = DateTime.now().setZone(ZONE);
+        const startThis = startOfWeekMonday(now);
+        const endThis = now.endOf("day");
+        const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
+        const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf("day");
+        const inRange = (r, from, to) => {
+          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+          return d >= from && d <= to;
+        };
+        const worked = scoped.filter((r) => r.status !== "off");
+        const thisWeek = worked.filter((r) => inRange(r, startThis, endThis));
+        const lastWeek = worked.filter((r) => inRange(r, startLast, lastEndSame));
+        if (!thisWeek.length || !lastWeek.length) {
+          el.style.display = "none";
+          return;
+        }
+        const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
+        const off0 = sum(thisWeek, (r) => +r.office_minutes || 0);
+        const off1 = sum(lastWeek, (r) => +r.office_minutes || 0);
+        const rte0 = sum(thisWeek, (r) => routeAdjustedHours2(r));
+        const rte1 = sum(lastWeek, (r) => routeAdjustedHours2(r));
+        const tot0 = sum(thisWeek, (r) => +r.hours || 0);
+        const tot1 = sum(lastWeek, (r) => +r.hours || 0);
+        const dOff = off0 - off1;
+        const dRte = rte0 - rte1;
+        const dTot = tot0 - tot1;
+        const baseTot = tot1 > 0 ? tot1 : null;
+        const pct = (delta) => baseTot && delta != null ? Math.round(delta / baseTot * 100) : null;
+        const pill = (label, delta) => {
+          const p = pct(delta);
+          const deltaText = delta == null ? "\u2014" : `${delta >= 0 ? "+" : ""}${(Math.round(delta * 10) / 10).toFixed(1)}h`;
+          const pctText = p == null ? "" : ` (${p >= 0 ? "+" : ""}${p}%)`;
+          const { fg } = colorForDelta2(p || 0);
+          return `<span class="pill"><small>${label}</small> <b style="color:${fg}">${deltaText}${pctText}</b></span>`;
+        };
+        el.style.display = "block";
+        const pills = [pill("Office", dOff), pill("Route", dRte), pill("Total", dTot)].join(" ");
+        el.innerHTML = `<small>Heaviness (week)</small><div class="pill-row">${pills}</div>`;
+      } catch (_err) {
+      }
+    }
+    return {
+      getLetterWeightForSummary: getLetterWeightForSummary2,
+      buildSmartSummary: buildSmartSummary2,
+      buildTrendingFactors: buildTrendingFactors2,
+      buildHeavinessToday: buildHeavinessToday2,
+      buildWeekHeaviness: buildWeekHeaviness2
+    };
+  }
+
+  // src/utils/diagnostics.js
+  function parseDismissReasonInput(raw) {
+    if (!raw) return [];
+    let working = String(raw).replace(/[;\n]+/g, ",").replace(/\s*,\s*/g, ",").trim();
+    if (!working) return [];
+    const aggregated = /* @__PURE__ */ new Map();
+    const upsert = (reasonRaw, minutesVal, hasMinutes = false) => {
+      if (reasonRaw == null) return;
+      const reason = String(reasonRaw).replace(/\s+/g, " ").trim();
+      if (!reason) return;
+      const key = reason.toLowerCase();
+      const entry = aggregated.get(key) || { reason, minutes: 0, hasMinutes: false };
+      if (hasMinutes && Number.isFinite(minutesVal)) {
+        entry.minutes += minutesVal;
+        entry.hasMinutes = true;
+      }
+      aggregated.set(key, entry);
+    };
+    working = working.replace(/([^,+:]+?)\s*\+\s*([-+]?\d+(?:\.\d+)?)/g, (_, reasonPart, minutesPart) => {
+      const reason = reasonPart.trim();
+      const minutes = parseFloat(minutesPart);
+      upsert(reason, Number.isFinite(minutes) ? minutes : 0, Number.isFinite(minutes));
+      return " ";
+    });
+    working = working.replace(/([^,+:]+?)\s*:\s*([^,+\s]+)/g, (_, keyPart, valuePart) => {
+      const key = keyPart.trim();
+      const value = valuePart.trim();
+      const label = value ? `${key}:${value}` : key;
+      upsert(label, 0, false);
+      return " ";
+    });
+    working.split(",").map((segment) => segment.trim()).filter(Boolean).forEach((segment) => {
+      const cleaned = segment.replace(/\s+/g, " ").trim();
+      if (!cleaned) return;
+      if (/^[+\-]?\d+(?:\.\d+)?$/.test(cleaned)) return;
+      upsert(cleaned, 0, false);
+    });
+    return Array.from(aggregated.values()).map((item) => ({
+      reason: item.reason,
+      minutes: item.hasMinutes ? item.minutes : null
+    }));
+  }
+
   // src/app.js
   (function() {
     function ready(fn) {
@@ -3070,47 +3355,6 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       stats.avgRouteRatio = total / ratios.length;
     }
     return stats;
-  }
-  function parseDismissReasonInput(raw) {
-    if (!raw) return [];
-    let working = String(raw).replace(/[;\n]+/g, ",").replace(/\s*,\s*/g, ",").trim();
-    if (!working) return [];
-    const aggregated = /* @__PURE__ */ new Map();
-    const upsert = (reasonRaw, minutesVal, hasMinutes = false) => {
-      if (reasonRaw == null) return;
-      const reason = String(reasonRaw).replace(/\s+/g, " ").trim();
-      if (!reason) return;
-      const key = reason.toLowerCase();
-      const entry = aggregated.get(key) || { reason, minutes: 0, hasMinutes: false };
-      if (hasMinutes && Number.isFinite(minutesVal)) {
-        entry.minutes += minutesVal;
-        entry.hasMinutes = true;
-      }
-      aggregated.set(key, entry);
-    };
-    working = working.replace(/([^,+:]+?)\s*\+\s*([-+]?\d+(?:\.\d+)?)/g, (_, reasonPart, minutesPart) => {
-      const reason = reasonPart.trim();
-      const minutes = parseFloat(minutesPart);
-      upsert(reason, Number.isFinite(minutes) ? minutes : 0, Number.isFinite(minutes));
-      return " ";
-    });
-    working = working.replace(/([^,+:]+?)\s*:\s*([^,+\s]+)/g, (_, keyPart, valuePart) => {
-      const key = keyPart.trim();
-      const value = valuePart.trim();
-      const label = value ? `${key}:${value}` : key;
-      upsert(label, 0, false);
-      return " ";
-    });
-    working.split(",").map((segment) => segment.trim()).filter(Boolean).forEach((segment) => {
-      const cleaned = segment.replace(/\s+/g, " ").trim();
-      if (!cleaned) return;
-      if (/^[+\-]?\d+(?:\.\d+)?$/.test(cleaned)) return;
-      upsert(cleaned, 0, false);
-    });
-    return Array.from(aggregated.values()).map((item) => ({
-      reason: item.reason,
-      minutes: item.hasMinutes ? item.minutes : null
-    }));
   }
   function isHolidayDownweightEnabled() {
     try {
@@ -3925,6 +4169,20 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     const fg = clamp >= 0 ? green[step] : red[step];
     return { fg, bg: "transparent", bc: "transparent" };
   }
+  var {
+    getLetterWeightForSummary,
+    buildSmartSummary,
+    buildTrendingFactors,
+    buildHeavinessToday,
+    buildWeekHeaviness
+  } = createSummariesFeature({
+    getFlags: () => FLAGS,
+    filterRowsForView,
+    routeAdjustedHours,
+    computeLetterWeight,
+    getCurrentLetterWeight: () => CURRENT_LETTER_WEIGHT,
+    colorForDelta
+  });
   function setNow(el) {
     el.value = hhmmNow();
     computeBreakdown();
@@ -5516,212 +5774,6 @@ Score: ${overallScore}/10 (higher is better)`;
         console.error("Service worker registration failed:", err);
       });
     });
-  }
-  function getLetterWeightForSummary(rows) {
-    try {
-      const worked = filterRowsForView(rows || []).filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0).sort((a, b) => a.work_date < b.work_date ? -1 : 1);
-      const sample = worked.slice(-60);
-      const w = computeLetterWeight(sample);
-      if (w != null) return w;
-    } catch (_) {
-    }
-    return CURRENT_LETTER_WEIGHT;
-  }
-  function buildSmartSummary(rows) {
-    rows = filterRowsForView(rows || []);
-    try {
-      const el = document.getElementById("smartSummary");
-      if (!el) return;
-      if (!FLAGS.smartSummary) {
-        el.style.display = "none";
-        return;
-      }
-      const now = DateTime.now().setZone(ZONE);
-      const startThis = startOfWeekMonday(now);
-      const endThis = now.endOf("day");
-      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const lastEndSame = startOfWeekMonday(now.minus({ weeks: 1 })).plus({ days: now.weekday - 1 }).endOf("day");
-      const inRange = (r, from, to) => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        return d >= from && d <= to;
-      };
-      const worked = (rows || []).filter((r) => r.status !== "off");
-      const W0 = worked.filter((r) => inRange(r, startThis, endThis));
-      const W1 = worked.filter((r) => inRange(r, startLast, lastEndSame));
-      const daysThisWeek = [...new Set(W0.map((r) => r.work_date))].length;
-      if (!daysThisWeek) {
-        el.textContent = "No worked days yet \u2014 0 day(s) this week.";
-        el.style.display = "block";
-        return;
-      }
-      const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-      const h0 = sum(W0, (r) => +r.hours || 0), h1 = sum(W1, (r) => +r.hours || 0);
-      const p0 = sum(W0, (r) => +r.parcels || 0), p1 = sum(W1, (r) => +r.parcels || 0);
-      const l0 = sum(W0, (r) => +r.letters || 0), l1 = sum(W1, (r) => +r.letters || 0);
-      const letterW = getLetterWeightForSummary(rows);
-      const vol = (p, l) => p + letterW * l;
-      const v0 = vol(p0, l0), v1 = vol(p1, l1);
-      const rm02 = sum(W0, (r) => routeAdjustedHours(r));
-      const rm12 = sum(W1, (r) => routeAdjustedHours(r));
-      const idx = (rm, vv) => rm > 0 && vv > 0 ? rm / vv : null;
-      const i0 = idx(rm02, v0), i1 = idx(rm12, v1);
-      const pct = (a, b) => b > 0 ? Math.round((a - b) / b * 100) : null;
-      const dh = pct(h0, h1);
-      const dv = pct(v0, v1);
-      const di = i0 != null && i1 != null && i1 > 0 ? Math.round((i1 - i0) / i1 * 100) : null;
-      const movers = [];
-      if (dh != null && Math.abs(dh) >= 5) movers.push({ k: "Hours", v: dh });
-      if (dv != null && Math.abs(dv) >= 5) movers.push({ k: "Volume", v: dv });
-      if (di != null && Math.abs(di) >= 5) movers.push({ k: "Efficiency", v: di });
-      movers.sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
-      const top = movers.slice(0, 2).map((it) => `${it.k} ${it.v >= 0 ? `\u2191 ${it.v}%` : `\u2193 ${Math.abs(it.v)}%`}`);
-      const line = top.length ? top.join(" \u2022 ") : "Similar to last week";
-      el.textContent = `${line} \u2014 ${daysThisWeek} day(s) this week.`;
-      el.style.display = "block";
-    } catch (_) {
-    }
-  }
-  function buildTrendingFactors(rows) {
-    rows = filterRowsForView(rows || []);
-    try {
-      const el = document.getElementById("trendFactors");
-      if (!el) return;
-      const now = DateTime.now().setZone(ZONE);
-      const startThis = startOfWeekMonday(now);
-      const endThis = now.endOf("day");
-      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const lastEndSame = startOfWeekMonday(now.minus({ weeks: 1 })).plus({ days: now.weekday - 1 }).endOf("day");
-      const inRange = (r, from, to) => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        return d >= from && d <= to;
-      };
-      const worked = (rows || []).filter((r) => r.status !== "off");
-      const W0 = worked.filter((r) => inRange(r, startThis, endThis));
-      const W1 = worked.filter((r) => inRange(r, startLast, lastEndSame));
-      if (!W0.length) {
-        el.style.display = "none";
-        return;
-      }
-      const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-      const off0 = sum(W0, (r) => +r.office_minutes || 0);
-      const off1 = sum(W1, (r) => +r.office_minutes || 0);
-      const rm02 = sum(W0, (r) => routeAdjustedHours(r));
-      const rm12 = sum(W1, (r) => routeAdjustedHours(r));
-      const vol = (arr) => sum(arr, (r) => (+r.parcels || 0) + 0.33 * (+r.letters || 0));
-      const v0 = vol(W0), v1 = vol(W1);
-      const pct = (a, b) => b > 0 ? Math.round((a - b) / b * 100) : null;
-      const items = [];
-      const pushIf = (k, d) => {
-        if (d != null && Math.abs(d) >= 5) items.push({ k, v: d });
-      };
-      pushIf("Office", pct(off0, off1));
-      pushIf("Route", pct(rm02, rm12));
-      pushIf("Volume", pct(v0, v1));
-      items.sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
-      const top = items.slice(0, 2);
-      if (!top.length) {
-        el.style.display = "none";
-        el.innerHTML = "";
-      } else {
-        const pills = top.map((it) => `<span class="pill"><small>${it.k}</small> <b style="color:${colorForDelta(it.v).fg}">${it.v >= 0 ? "\u2191 " + it.v + "%" : "\u2193 " + Math.abs(it.v) + "%"}</b></span>`).join(" ");
-        el.style.display = "block";
-        el.innerHTML = `<small>Weekly Movers</small><div class="pill-row">${pills}</div>`;
-      }
-    } catch (_) {
-    }
-  }
-  function buildHeavinessToday(rows) {
-    rows = filterRowsForView(rows || []);
-    try {
-      const el = document.getElementById("todayHeaviness");
-      if (!el) return;
-      const now = DateTime.now().setZone(ZONE);
-      const dow = now.weekday % 7;
-      const worked = (rows || []).filter((r) => r.status !== "off");
-      const todayIso2 = now.toISODate();
-      const todayRow = worked.find((r) => r.work_date === todayIso2);
-      if (!todayRow) {
-        el.style.display = "none";
-        return;
-      }
-      const offTodayH = +todayRow.office_minutes || 0;
-      const rteTodayH = routeAdjustedHours(todayRow);
-      const totTodayH = +todayRow.hours || 0 || offTodayH + rteTodayH;
-      const sameDow = worked.filter((r) => r.work_date !== todayIso2 && dowIndex(r.work_date) === dow);
-      const avg = (arr, fn) => {
-        const v = arr.map(fn).filter((x) => x > 0);
-        return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
-      };
-      const offAvgH = avg(sameDow, (r) => +r.office_minutes || 0);
-      const rteAvgH = avg(sameDow, (r) => routeAdjustedHours(r));
-      const totAvgH = avg(sameDow, (r) => +r.hours || 0);
-      if (offAvgH == null && rteAvgH == null && totAvgH == null) {
-        el.style.display = "none";
-        return;
-      }
-      const dOff = offAvgH == null ? null : offTodayH - offAvgH;
-      const dRte = rteAvgH == null ? null : rteTodayH - rteAvgH;
-      const dTot = totAvgH == null ? null : totTodayH - totAvgH;
-      const baseTot = totAvgH && totAvgH > 0 ? totAvgH : (offAvgH || 0) + (rteAvgH || 0) || null;
-      const pct = (x) => x == null || !baseTot ? null : Math.round(x / baseTot * 100);
-      const pill = (label, dh) => {
-        const p = pct(dh);
-        const txt = dh == null ? "\u2014" : `${dh >= 0 ? "+" : ""}${(Math.round(dh * 10) / 10).toFixed(1)}h`;
-        const pTxt = p == null ? "" : ` (${p >= 0 ? "+" : ""}${p}%)`;
-        const col = colorForDelta(p || 0).fg;
-        return `<span class="pill"><small>${label}</small> <b style="color:${col}">${txt}${pTxt}</b></span>`;
-      };
-      el.style.display = "block";
-      const pills = [pill("Office", dOff), pill("Route", dRte), pill("Total", dTot)].join(" ");
-      el.innerHTML = `<small>Heaviness (today)</small><div class="pill-row">${pills}</div>`;
-    } catch (_) {
-    }
-  }
-  function buildWeekHeaviness(rows) {
-    rows = filterRowsForView(rows || []);
-    try {
-      const el = document.getElementById("weekHeaviness");
-      if (!el) return;
-      const now = DateTime.now().setZone(ZONE);
-      const startThis = startOfWeekMonday(now);
-      const endThis = now.endOf("day");
-      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const lastEndSame = startOfWeekMonday(now.minus({ weeks: 1 })).plus({ days: now.weekday - 1 }).endOf("day");
-      const inRange = (r, from, to) => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        return d >= from && d <= to;
-      };
-      const worked = (rows || []).filter((r) => r.status !== "off");
-      const thisWeek = worked.filter((r) => inRange(r, startThis, endThis));
-      const lastWeek = worked.filter((r) => inRange(r, startLast, lastEndSame));
-      if (!thisWeek.length || !lastWeek.length) {
-        el.style.display = "none";
-        return;
-      }
-      const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-      const off0 = sum(thisWeek, (r) => +r.office_minutes || 0);
-      const off1 = sum(lastWeek, (r) => +r.office_minutes || 0);
-      const rte0 = sum(thisWeek, (r) => routeAdjustedHours(r));
-      const rte1 = sum(lastWeek, (r) => routeAdjustedHours(r));
-      const tot0 = sum(thisWeek, (r) => +r.hours || 0);
-      const tot1 = sum(lastWeek, (r) => +r.hours || 0);
-      const dOff = off0 - off1;
-      const dRte = rte0 - rte1;
-      const dTot = tot0 - tot1;
-      const baseTot = tot1 > 0 ? tot1 : null;
-      const pct = (delta) => baseTot && delta != null ? Math.round(delta / baseTot * 100) : null;
-      const pill = (label, delta) => {
-        const p = pct(delta);
-        const txt = delta == null ? "\u2014" : `${delta >= 0 ? "+" : ""}${(Math.round(delta * 10) / 10).toFixed(1)}h`;
-        const pTxt = p == null ? "" : ` (${p >= 0 ? "+" : ""}${p}%)`;
-        const col = colorForDelta(p || 0).fg;
-        return `<span class="pill"><small>${label}</small> <b style="color:${col}">${txt}${pTxt}</b></span>`;
-      };
-      el.style.display = "block";
-      const pills = [pill("Office", dOff), pill("Route", dRte), pill("Total", dTot)].join(" ");
-      el.innerHTML = `<small>Heaviness (week)</small><div class="pill-row">${pills}</div>`;
-    } catch (_) {
-    }
   }
   function buildUspsTiles(rows) {
     try {

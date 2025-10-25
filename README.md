@@ -13,6 +13,7 @@ Run the app locally (macOS, no install required):
    - Version tag at top‑right shows today’s date like `vYYYY-MM-DD`.
    - “Miles” defaults to `53` when adding a new entry and after delete reset (Off Day still sets it to 0).
    - “Averages by Day of Week” bar chart starts at Mon → … → Sun.
+   - Optional: run `npm run test` for quick helper smoke checks before shipping.
 
 Troubleshooting
 - If the page doesn’t load: ensure the terminal shows “Starting local server…” and visit the printed URL.

@@ -1,5 +1,12 @@
 # Release Notes
 
+## v2.0.5 — Modular UI + helper smoke tests
+
+- Split dashboard logic into feature modules (`diagnostics`, `charts`, `aiSummary`, `summaries`) so `src/app.js` just wires them together.
+- Extracted Smart Summary, Trending Factors, and Heaviness builders into `src/features/summaries.js`.
+- Added Vitest-based smoke coverage for helper utilities (`parseDismissReasonInput`, date helpers, storage adapters).
+- Service worker cache bumped to `rs-pwa-v2025-10-25-01`; run Force Refresh after deploying.
+
 ## v2.0.2 — Phase 2 (part 2)
 
 - Monthly Glance: 3 slim sparklines (Hours, Parcels, Letters) with numeric labels; text fallback when charts unavailable.

@@ -1133,7 +1133,8 @@ if (breakMinutesInput) breakMinutesInput.value = '0';
     buildSmartSummary,
     buildTrendingFactors,
     buildHeavinessToday,
-    buildWeekHeaviness
+    buildWeekHeaviness,
+    buildHeadlineDigest
   } = createSummariesFeature({
     getFlags: () => FLAGS,
     filterRowsForView,

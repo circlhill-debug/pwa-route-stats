@@ -2998,12 +2998,88 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       } catch (_err) {
       }
     }
+    function buildHeadlineDigest2(rows) {
+      const el = document.getElementById("headlineDigest");
+      if (!el) return;
+      try {
+        const flags = getFlags();
+        if (!(flags == null ? void 0 : flags.headlineDigest)) {
+          el.style.display = "none";
+          return;
+        }
+        const scoped = filterRowsForView2(rows || []).filter((r) => r && r.status !== "off");
+        if (!scoped.length) {
+          el.style.display = "none";
+          el.textContent = "\u2014";
+          return;
+        }
+        const now = DateTime.now().setZone(ZONE);
+        const startThis = startOfWeekMonday(now);
+        const endThis = now.endOf("day");
+        const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
+        const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf("day");
+        const inRange = (row, from, to) => {
+          const d = DateTime.fromISO(row.work_date, { zone: ZONE });
+          return d >= from && d <= to;
+        };
+        const W0 = scoped.filter((r) => inRange(r, startThis, endThis));
+        const W1 = scoped.filter((r) => inRange(r, startLast, lastEndSame));
+        if (!W0.length || !W1.length) {
+          el.style.display = "none";
+          el.textContent = "\u2014";
+          return;
+        }
+        const sum = (arr, fn) => arr.reduce((total, item) => total + (fn(item) || 0), 0);
+        const hours0 = sum(W0, (r) => +r.hours || 0);
+        const hours1 = sum(W1, (r) => +r.hours || 0);
+        const parcels0 = sum(W0, (r) => +r.parcels || 0);
+        const parcels1 = sum(W1, (r) => +r.parcels || 0);
+        const letters0 = sum(W0, (r) => +r.letters || 0);
+        const letters1 = sum(W1, (r) => +r.letters || 0);
+        const letterWeight = getLetterWeightForSummary2(scoped);
+        const volume = (p, l) => p + letterWeight * l;
+        const volume0 = volume(parcels0, letters0);
+        const volume1 = volume(parcels1, letters1);
+        const route0 = sum(W0, (r) => routeAdjustedHours2(r));
+        const route1 = sum(W1, (r) => routeAdjustedHours2(r));
+        const efficiency0 = volume0 > 0 && route0 > 0 ? route0 / volume0 : null;
+        const efficiency1 = volume1 > 0 && route1 > 0 ? route1 / volume1 : null;
+        const pct = (current, baseline) => baseline > 0 ? Math.round((current - baseline) / baseline * 100) : null;
+        const format = (label, delta) => {
+          if (delta == null) return null;
+          const clamped = Math.max(-99, Math.min(99, delta));
+          const arrow = clamped >= 0 ? "\u2191" : "\u2193";
+          return `${label} ${arrow} ${Math.abs(clamped)}%`;
+        };
+        const parts = [];
+        const hoursDelta = pct(hours0, hours1);
+        const volumeDelta = pct(volume0, volume1);
+        const efficiencyDelta = efficiency0 != null && efficiency1 != null && efficiency1 > 0 ? Math.round((efficiency0 - efficiency1) / efficiency1 * 100) : null;
+        const pushIf = (label, delta) => {
+          const text = format(label, delta);
+          if (text) parts.push(text);
+        };
+        pushIf("Hours", hoursDelta);
+        pushIf("Volume", volumeDelta);
+        pushIf("Efficiency", efficiencyDelta);
+        if (!parts.length) {
+          el.textContent = "Similar to last week.";
+        } else {
+          el.textContent = parts.join(" \u2022 ");
+        }
+        el.style.display = "block";
+        el.title = `W1 vs W2 \u2014 Hours: ${hours0.toFixed(1)}h vs ${hours1.toFixed(1)}h \xB7 Volume: ${Math.round(volume0)} vs ${Math.round(volume1)} \xB7 Efficiency: ${efficiency0 != null ? efficiency0.toFixed(2) : "\u2014"} vs ${efficiency1 != null ? efficiency1.toFixed(2) : "\u2014"}`;
+      } catch (_err) {
+        el.style.display = "none";
+      }
+    }
     return {
       getLetterWeightForSummary: getLetterWeightForSummary2,
       buildSmartSummary: buildSmartSummary2,
       buildTrendingFactors: buildTrendingFactors2,
       buildHeavinessToday: buildHeavinessToday2,
-      buildWeekHeaviness: buildWeekHeaviness2
+      buildWeekHeaviness: buildWeekHeaviness2,
+      buildHeadlineDigest: buildHeadlineDigest2
     };
   }
 
@@ -4183,7 +4259,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     buildSmartSummary,
     buildTrendingFactors,
     buildHeavinessToday,
-    buildWeekHeaviness
+    buildWeekHeaviness,
+    buildHeadlineDigest
   } = createSummariesFeature({
     getFlags: () => FLAGS,
     filterRowsForView,

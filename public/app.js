@@ -2297,6 +2297,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, "#60a5fa"),
           line("Hours", dH, `(${sum(W0, (r) => +r.hours || 0).toFixed(1)}h vs ${sum(W1, (r) => +r.hours || 0).toFixed(1)}h)`)
         ].join("");
+        details.style.display = "block";
+        if (btn) btn.setAttribute("aria-expanded", "true");
       }
       try {
         if (overlay && window.Chart && overlay.getContext) {

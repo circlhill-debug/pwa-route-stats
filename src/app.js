@@ -4386,6 +4386,10 @@ if ('serviceWorker' in navigator) {
     if (!FLAGS.mixViz) { card.style.display='none'; return; }
     // Show card early so header is visible even if later logic fails
     card.style.display='block';
+    const docStyle = getComputedStyle(document.documentElement);
+    const brand = docStyle.getPropertyValue('--brand').trim() || '#2b7fff';
+    const warnColor = docStyle.getPropertyValue('--warn').trim() || '#FFD27A';
+    const goodColor = docStyle.getPropertyValue('--good').trim() || '#7CE38B';
     const text = document.getElementById('mixText');
     const eff  = document.getElementById('mixEff');
     const overlay = document.getElementById('weekOverlay');
@@ -4542,7 +4546,7 @@ if ('serviceWorker' in navigator) {
       const usedL = (typeof resL!== 'undefined' && resL && resL.used) ? `, ${resL.used} day(s) used` : '';
       details.innerHTML = [
         line('Efficiency', dEff, `(min/vol ${ ( (rm0/(p0+ln0))||0 ).toFixed(2) } vs ${ ( (rm1/(p1+ln1))||0 ).toFixed(2) })`),
-        line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, warn || '#f97316'),
+        line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, warnColor || '#f97316'),
         line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, '#60a5fa'),
         line('Hours', dH, `(${(sum(W0,r=>+r.hours||0)).toFixed(1)}h vs ${(sum(W1,r=>+r.hours||0)).toFixed(1)}h)`)
       ].join('');
@@ -4557,9 +4561,8 @@ if ('serviceWorker' in navigator) {
         const ctx = overlay.getContext('2d');
         if (overlay._chart) { try{ overlay._chart.destroy(); }catch(_){ } }
         const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-        const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim()||'#2b7fff';
-        const warn  = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#FFD27A';
-        const good  = getComputedStyle(document.documentElement).getPropertyValue('--good').trim() || '#7CE38B';
+        const warn = warnColor;
+        const good = goodColor;
         // Build daily arrays
         const volByDow = (arr)=>{
           const a = Array.from({length:7},()=>0);

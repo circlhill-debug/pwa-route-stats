@@ -1159,8 +1159,9 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         if (metric.notes) parts.push(`Notes: ${metric.notes}`);
         return parts.join(" \u2022 ");
       }
-      function pillHtml(label, value) {
-        return `<span class="pill"><small>${label}</small> <b>${value}</b></span>`;
+      function pillHtml(label, value, colorToken) {
+        const style = colorToken ? ` style="color:${colorToken}"` : "";
+        return `<span class="pill"${style}><small>${label}</small> <b>${value}</b></span>`;
       }
       function deltaDetails(subject, reference) {
         var _a6, _b, _c;
@@ -1221,19 +1222,25 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         subjectLabel.textContent = subjectMetrics.label || subjectMetrics.workDate;
         referenceLabel.textContent = referenceMetrics.label || referenceMetrics.workDate;
         const subjectPillData = [
-          { label: "Total", value: `${formatNumber(subjectMetrics.totalHours, { decimals: 2, suffix: "h" })}` },
-          { label: "Route", value: `${formatNumber(subjectMetrics.routeHours, { decimals: 2, suffix: "h" })}` },
-          { label: "Office", value: `${formatNumber(subjectMetrics.officeHours, { decimals: 2, suffix: "h" })}` },
-          { label: "Volume", value: `${formatNumber(subjectMetrics.volume, { decimals: 2 })}` }
+          { key: "totalHours", label: "Total", value: `${formatNumber(subjectMetrics.totalHours, { decimals: 2, suffix: "h" })}` },
+          { key: "routeHours", label: "Route", value: `${formatNumber(subjectMetrics.routeHours, { decimals: 2, suffix: "h" })}` },
+          { key: "officeHours", label: "Office", value: `${formatNumber(subjectMetrics.officeHours, { decimals: 2, suffix: "h" })}` },
+          { key: "volume", label: "Volume", value: `${formatNumber(subjectMetrics.volume, { decimals: 2 })}` }
         ];
-        subjectPills.innerHTML = subjectPillData.map((p) => pillHtml(p.label, p.value)).join("");
+        const pillColorFor = (key) => {
+          const row = tableRows.find((r) => r.key === key);
+          if (!row || row.colorDelta == null) return null;
+          const { fg } = colorForDelta(row.colorDelta || 0);
+          return fg;
+        };
+        subjectPills.innerHTML = subjectPillData.map((p) => pillHtml(p.label, p.value, pillColorFor(p.key))).join("");
         const referencePillData = [
-          { label: "Total", value: `${formatNumber(referenceMetrics.totalHours, { decimals: 2, suffix: "h" })}` },
-          { label: "Route", value: `${formatNumber(referenceMetrics.routeHours, { decimals: 2, suffix: "h" })}` },
-          { label: "Office", value: `${formatNumber(referenceMetrics.officeHours, { decimals: 2, suffix: "h" })}` },
-          { label: "Volume", value: `${formatNumber(referenceMetrics.volume, { decimals: 2 })}` }
+          { key: "totalHours", label: "Total", value: `${formatNumber(referenceMetrics.totalHours, { decimals: 2, suffix: "h" })}` },
+          { key: "routeHours", label: "Route", value: `${formatNumber(referenceMetrics.routeHours, { decimals: 2, suffix: "h" })}` },
+          { key: "officeHours", label: "Office", value: `${formatNumber(referenceMetrics.officeHours, { decimals: 2, suffix: "h" })}` },
+          { key: "volume", label: "Volume", value: `${formatNumber(referenceMetrics.volume, { decimals: 2 })}` }
         ];
-        referencePills.innerHTML = referencePillData.map((p) => pillHtml(p.label, p.value)).join("");
+        referencePills.innerHTML = referencePillData.map((p) => pillHtml(p.label, p.value, pillColorFor(p.key))).join("");
         subjectNotes.textContent = summarizeExtras(subjectMetrics) || "\u2014";
         referenceNotes.textContent = summarizeExtras(referenceMetrics) || "\u2014";
         const { rows: tableRows, highlights, reasoning } = deltaDetails(subjectMetrics, referenceMetrics);
@@ -2824,14 +2831,14 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     routeAdjustedHours: routeAdjustedHours2,
     computeLetterWeight: computeLetterWeight2,
     getCurrentLetterWeight,
-    colorForDelta: colorForDelta2
+    colorForDelta: colorForDelta3
   }) {
     if (typeof getFlags !== "function") throw new Error("createSummariesFeature: getFlags is required");
     if (typeof filterRowsForView2 !== "function") throw new Error("createSummariesFeature: filterRowsForView is required");
     if (typeof routeAdjustedHours2 !== "function") throw new Error("createSummariesFeature: routeAdjustedHours is required");
     if (typeof computeLetterWeight2 !== "function") throw new Error("createSummariesFeature: computeLetterWeight is required");
     if (typeof getCurrentLetterWeight !== "function") throw new Error("createSummariesFeature: getCurrentLetterWeight is required");
-    if (typeof colorForDelta2 !== "function") throw new Error("createSummariesFeature: colorForDelta is required");
+    if (typeof colorForDelta3 !== "function") throw new Error("createSummariesFeature: colorForDelta is required");
     function getLetterWeightForSummary2(rows) {
       try {
         const scoped = filterRowsForView2(rows || []).filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0).sort((a, b) => a.work_date < b.work_date ? -1 : 1);
@@ -2948,7 +2955,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           return;
         }
         const pills = top.map((it) => {
-          const { fg } = colorForDelta2(it.delta || 0);
+          const { fg } = colorForDelta3(it.delta || 0);
           const direction = it.delta >= 0 ? `\u2191 ${it.delta}%` : `\u2193 ${Math.abs(it.delta)}%`;
           return `<span class="pill"><small>${it.label}</small> <b style="color:${fg}">${direction}</b></span>`;
         }).join(" ");
@@ -2995,7 +3002,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           const p = pct(delta);
           const deltaText = delta == null ? "\u2014" : `${delta >= 0 ? "+" : ""}${(Math.round(delta * 10) / 10).toFixed(1)}h`;
           const pctText = p == null ? "" : ` (${p >= 0 ? "+" : ""}${p}%)`;
-          const { fg } = colorForDelta2(p || 0);
+          const { fg } = colorForDelta3(p || 0);
           return `<span class="pill"><small>${label}</small> <b style="color:${fg}">${deltaText}${pctText}</b></span>`;
         };
         el.style.display = "block";
@@ -3041,7 +3048,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           const p = pct(delta);
           const deltaText = delta == null ? "\u2014" : `${delta >= 0 ? "+" : ""}${(Math.round(delta * 10) / 10).toFixed(1)}h`;
           const pctText = p == null ? "" : ` (${p >= 0 ? "+" : ""}${p}%)`;
-          const { fg } = colorForDelta2(p || 0);
+          const { fg } = colorForDelta3(p || 0);
           return `<span class="pill"><small>${label}</small> <b style="color:${fg}">${deltaText}${pctText}</b></span>`;
         };
         el.style.display = "block";
@@ -4293,7 +4300,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     const W = w == null ? CURRENT_LETTER_WEIGHT : w;
     return safeNumber(p) + W * safeNumber(l);
   }
-  function colorForDelta(pct) {
+  function colorForDelta2(pct) {
     if (pct == null) return { fg: "var(--muted)", bg: "transparent", bc: "var(--border)" };
     if (!FLAGS || !FLAGS.progressivePills) {
       return { fg: pct >= 0 ? "var(--good)" : "var(--bad)", bg: "transparent", bc: "transparent" };
@@ -4319,7 +4326,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     routeAdjustedHours,
     computeLetterWeight,
     getCurrentLetterWeight: () => CURRENT_LETTER_WEIGHT,
-    colorForDelta
+    colorForDelta: colorForDelta2
   });
   function setNow(el) {
     el.value = hhmmNow();
@@ -5180,7 +5187,7 @@ Score: ${overallScore}/10 (higher is better)`;
     const setPill = (el, delta) => {
       el.textContent = fmt(delta);
       el.className = "pill";
-      const { fg } = colorForDelta(delta || 0);
+      const { fg } = colorForDelta2(delta || 0);
       el.style.color = fg || "var(--text)";
       el.style.background = "transparent";
       el.style.borderColor = "transparent";
@@ -5363,12 +5370,12 @@ Score: ${overallScore}/10 (higher is better)`;
           const delta = cur == null || base === 0 ? null : (cur - base) / base * 100;
           const curTxt = cur == null ? "Off" : cur.toFixed(2);
           const baseTxt = base === 0 ? "Off" : base.toFixed(2);
-          const { fg } = colorForDelta(delta || 0);
+          const { fg } = colorForDelta2(delta || 0);
           const deltaTxt = delta == null ? "\u2014" : delta >= 0 ? `\u2191 ${Math.round(delta)}%` : `\u2193 ${Math.abs(Math.round(delta))}%`;
           rowsHtml.push(`<tr><td>${dNames[i]}${adjMark}</td><td class="right">${curTxt}</td><td class="right">${baseTxt}</td><td class="right" style="color:${fg};white-space:nowrap">${deltaTxt}</td></tr>`);
         }
         const totalDelta = tLast === 0 ? null : (tThis - tLast) / tLast * 100;
-        const { fg: totFg } = colorForDelta(totalDelta || 0);
+        const { fg: totFg } = colorForDelta2(totalDelta || 0);
         const totalRow = `<tr><th>Total</th><th class="right">${tThis.toFixed(2)}</th><th class="right">${tLast.toFixed(2)}</th><th class="right" style="color:${totFg}">${totalDelta == null ? "\u2014" : totalDelta >= 0 ? `\u2191 ${Math.round(totalDelta)}%` : `\u2193 ${Math.abs(Math.round(totalDelta))}%`}</th></tr>`;
         const summaryHtml = `<small><span>This week so far: </span><span style="color:var(--warn)">${tThis.toFixed(2)}h over ${dThis} day(s). Last week: ${tLast.toFixed(2)}h over ${dLast} day(s).</span></small>`;
         panelBody.innerHTML = `
@@ -5408,12 +5415,12 @@ Score: ${overallScore}/10 (higher is better)`;
           const delta = cur == null || base === 0 ? null : (cur - base) / base * 100;
           const curTxt = cur == null ? "\u2014" : String(cur);
           const baseTxt = String(base);
-          const { fg } = colorForDelta(delta || 0);
+          const { fg } = colorForDelta2(delta || 0);
           const deltaTxt = delta == null ? "\u2014" : delta >= 0 ? `\u2191 ${Math.round(delta)}%` : `\u2193 ${Math.abs(Math.round(delta))}%`;
           rowsHtml.push(`<tr><td>${dNames[i]}${adjMark}</td><td class="right">${curTxt}</td><td class="right">${baseTxt}</td><td class="right" style="color:${fg};white-space:nowrap">${deltaTxt}</td></tr>`);
         }
         const totalDelta = tLast === 0 ? null : (tThis - tLast) / tLast * 100;
-        const { fg: totFg } = colorForDelta(totalDelta || 0);
+        const { fg: totFg } = colorForDelta2(totalDelta || 0);
         const totalRow = `<tr><th style="color:var(--brand)">Total (this week vs last)</th><th class="right">${tThis}</th><th class="right">${tLast}</th><th class="right" style="color:${totFg}">${totalDelta == null ? "\u2014" : totalDelta >= 0 ? `\u2191 ${Math.round(totalDelta)}%` : `\u2193 ${Math.abs(Math.round(totalDelta))}%`}</th></tr>`;
         const summaryHtml = `<small><span>This week so far: </span><span style="color:var(--warn)">${tThis} parcels over ${dThis} day(s). Last week: ${tLast} parcels over ${dLast} day(s).</span></small>`;
         panelBody.innerHTML = `
@@ -5446,12 +5453,12 @@ Score: ${overallScore}/10 (higher is better)`;
           const delta = cur == null || base === 0 ? null : (cur - base) / base * 100;
           const curTxt = cur == null ? "\u2014" : String(cur);
           const baseTxt = String(base);
-          const { fg } = colorForDelta(delta || 0);
+          const { fg } = colorForDelta2(delta || 0);
           const deltaTxt = delta == null ? "\u2014" : delta >= 0 ? `\u2191 ${Math.round(delta)}%` : `\u2193 ${Math.abs(Math.round(delta))}%`;
           rowsHtml.push(`<tr><td>${dNames[i]}${adjMark}</td><td class="right">${curTxt}</td><td class="right">${baseTxt}</td><td class="right" style="color:${fg};white-space:nowrap">${deltaTxt}</td></tr>`);
         }
         const totalDelta = tLast === 0 ? null : (tThis - tLast) / tLast * 100;
-        const { fg: totFg } = colorForDelta(totalDelta || 0);
+        const { fg: totFg } = colorForDelta2(totalDelta || 0);
         const totalRow = `<tr><th style="color:var(--brand)">Total (this week vs last)</th><th class="right">${tThis}</th><th class="right">${tLast}</th><th class="right" style="color:${totFg}">${totalDelta == null ? "\u2014" : totalDelta >= 0 ? `\u2191 ${Math.round(totalDelta)}%` : `\u2193 ${Math.abs(Math.round(totalDelta))}%`}</th></tr>`;
         const summaryHtml = `<small><span>This week so far: </span><span style="color:var(--warn)">${tThis} letters over ${dThis} day(s). Last week: ${tLast} letters over ${dLast} day(s).</span></small>`;
         panelBody.innerHTML = `
@@ -5481,7 +5488,7 @@ Score: ${overallScore}/10 (higher is better)`;
           adjMark = " (adj)";
         }
         const pctTxt = v2 == null || !isFinite(v2) ? "\u2014" : v2 >= 0 ? `\u2191 ${Math.round(v2)}%` : `\u2193 ${Math.abs(Math.round(v2))}%`;
-        const { fg } = colorForDelta(v2 || 0);
+        const { fg } = colorForDelta2(v2 || 0);
         const fmt2 = key === "h" ? (n) => n.toFixed(2) : (n) => String(n);
         const curTxt = i <= dayIndexToday ? cur == null ? key === "h" ? "Off" : "\u2014" : fmt2(cur) : "\u2014";
         const baseTxt = key === "h" ? base === 0 ? "Off" : fmt2(base) : fmt2(base);
@@ -5491,9 +5498,9 @@ Score: ${overallScore}/10 (higher is better)`;
       const wTxt = weightedVal == null || !isFinite(weightedVal) ? "\u2014" : `${weightedVal >= 0 ? "\u2191" : "\u2193"} ${Math.abs(Math.round(weightedVal))}%`;
       const cTxt = cumulativeVal == null || !isFinite(cumulativeVal) ? "\u2014" : `${cumulativeVal >= 0 ? "\u2191" : "\u2193"} ${Math.abs(Math.round(cumulativeVal))}%`;
       const sTxt = !sc || sc.delta == null || !isFinite(sc.delta) ? "\u2014" : `${sc.delta >= 0 ? "\u2191" : "\u2193"} ${Math.abs(Math.round(sc.delta))}%`;
-      const { fg: sFg } = colorForDelta(sc && sc.delta || 0);
-      const { fg: wFg } = colorForDelta(weightedVal || 0);
-      const { fg: cFg } = colorForDelta(cumulativeVal || 0);
+      const { fg: sFg } = colorForDelta2(sc && sc.delta || 0);
+      const { fg: wFg } = colorForDelta2(weightedVal || 0);
+      const { fg: cFg } = colorForDelta2(cumulativeVal || 0);
       body.innerHTML = `
         <table style="width:100%;border-collapse:collapse">
           <thead><tr><th>Day</th><th class="right">This week</th><th class="right">Last week</th><th class="right">\u0394%</th></tr></thead>
@@ -5538,9 +5545,9 @@ Score: ${overallScore}/10 (higher is better)`;
       const tp = document.getElementById("todayParcelsDelta");
       const tl = document.getElementById("todayLettersDelta");
       const to = document.getElementById("todayOfficeDelta");
-      const { fg: fgP } = colorForDelta(tdp);
-      const { fg: fgL } = colorForDelta(tdl);
-      const { fg: fgO } = colorForDelta(tdo);
+      const { fg: fgP } = colorForDelta2(tdp);
+      const { fg: fgL } = colorForDelta2(tdl);
+      const { fg: fgO } = colorForDelta2(tdo);
       if (tp) {
         tp.className = "pill statDelta";
         tp.style.color = fgP;

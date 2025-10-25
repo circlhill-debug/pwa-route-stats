@@ -798,9 +798,10 @@ export function createDiagnostics({
       return parts.join(' • ');
     }
 
-    function pillHtml(label, value) {
-      return `<span class="pill"><small>${label}</small> <b>${value}</b></span>`;
-    }
+  function pillHtml(label, value, colorToken) {
+    const style = colorToken ? ` style="color:${colorToken}"` : '';
+    return `<span class="pill"${style}><small>${label}</small> <b>${value}</b></span>`;
+  }
 
     function deltaDetails(subject, reference) {
       if (!subject || !reference) return { rows: [], highlights: [], reasoning: '' };
@@ -867,20 +868,32 @@ export function createDiagnostics({
       referenceLabel.textContent = referenceMetrics.label || referenceMetrics.workDate;
 
       const subjectPillData = [
-        { label: 'Total', value: `${formatNumber(subjectMetrics.totalHours, { decimals: 2, suffix: 'h' })}` },
-        { label: 'Route', value: `${formatNumber(subjectMetrics.routeHours, { decimals: 2, suffix: 'h' })}` },
-        { label: 'Office', value: `${formatNumber(subjectMetrics.officeHours, { decimals: 2, suffix: 'h' })}` },
-        { label: 'Volume', value: `${formatNumber(subjectMetrics.volume, { decimals: 2 })}` }
+        { key: 'totalHours', label: 'Total', value: `${formatNumber(subjectMetrics.totalHours, { decimals: 2, suffix: 'h' })}` },
+        { key: 'routeHours', label: 'Route', value: `${formatNumber(subjectMetrics.routeHours, { decimals: 2, suffix: 'h' })}` },
+        { key: 'officeHours', label: 'Office', value: `${formatNumber(subjectMetrics.officeHours, { decimals: 2, suffix: 'h' })}` },
+        { key: 'volume', label: 'Volume', value: `${formatNumber(subjectMetrics.volume, { decimals: 2 })}` }
       ];
-      subjectPills.innerHTML = subjectPillData.map(p => pillHtml(p.label, p.value)).join('');
+
+      const pillColorFor = (key) => {
+        const row = tableRows.find(r => r.key === key);
+        if (!row || row.colorDelta == null) return null;
+        const { fg } = colorForDelta(row.colorDelta || 0);
+        return fg;
+      };
+
+      subjectPills.innerHTML = subjectPillData
+        .map(p => pillHtml(p.label, p.value, pillColorFor(p.key)))
+        .join('');
 
       const referencePillData = [
-        { label: 'Total', value: `${formatNumber(referenceMetrics.totalHours, { decimals: 2, suffix: 'h' })}` },
-        { label: 'Route', value: `${formatNumber(referenceMetrics.routeHours, { decimals: 2, suffix: 'h' })}` },
-        { label: 'Office', value: `${formatNumber(referenceMetrics.officeHours, { decimals: 2, suffix: 'h' })}` },
-        { label: 'Volume', value: `${formatNumber(referenceMetrics.volume, { decimals: 2 })}` }
+        { key: 'totalHours', label: 'Total', value: `${formatNumber(referenceMetrics.totalHours, { decimals: 2, suffix: 'h' })}` },
+        { key: 'routeHours', label: 'Route', value: `${formatNumber(referenceMetrics.routeHours, { decimals: 2, suffix: 'h' })}` },
+        { key: 'officeHours', label: 'Office', value: `${formatNumber(referenceMetrics.officeHours, { decimals: 2, suffix: 'h' })}` },
+        { key: 'volume', label: 'Volume', value: `${formatNumber(referenceMetrics.volume, { decimals: 2 })}` }
       ];
-      referencePills.innerHTML = referencePillData.map(p => pillHtml(p.label, p.value)).join('');
+      referencePills.innerHTML = referencePillData
+        .map(p => pillHtml(p.label, p.value, pillColorFor(p.key)))
+        .join('');
 
       subjectNotes.textContent = summarizeExtras(subjectMetrics) || '—';
       referenceNotes.textContent = summarizeExtras(referenceMetrics) || '—';

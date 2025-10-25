@@ -614,6 +614,9 @@
       <div><label>Extra trip time (min)
         <input id="secondTripTime" type="number" min="0" step="1" placeholder="e.g., 45">
       </label></div>
+      <div><label>Break (min)
+        <input id="breakMinutes" type="number" min="0" step="1" value="0">
+      </label></div>
       <input id="secondTripEma" type="hidden">
       <div class="trip-summary" id="secondTripSummary" style="grid-column:1/-1;margin-top:-2px">
         🕒 Paid time: <strong id="secondTripPaid">0</strong> min (2 min/mi)
@@ -1543,6 +1546,62 @@
     return stats;
   }
 
+  function parseDismissReasonInput(raw) {
+    if (!raw) return [];
+
+    let working = String(raw)
+      .replace(/[;\n]+/g, ',')
+      .replace(/\s*,\s*/g, ',')
+      .trim();
+
+    if (!working) return [];
+
+    const aggregated = new Map();
+
+    const upsert = (reasonRaw, minutesVal, hasMinutes=false) => {
+      if (reasonRaw == null) return;
+      const reason = String(reasonRaw).replace(/\s+/g, ' ').trim();
+      if (!reason) return;
+      const key = reason.toLowerCase();
+      const entry = aggregated.get(key) || { reason, minutes: 0, hasMinutes: false };
+      if (hasMinutes && Number.isFinite(minutesVal)) {
+        entry.minutes += minutesVal;
+        entry.hasMinutes = true;
+      }
+      aggregated.set(key, entry);
+    };
+
+    working = working.replace(/([^,+:]+?)\s*\+\s*([-+]?\d+(?:\.\d+)?)/g, (_, reasonPart, minutesPart) => {
+      const reason = reasonPart.trim();
+      const minutes = parseFloat(minutesPart);
+      upsert(reason, Number.isFinite(minutes) ? minutes : 0, Number.isFinite(minutes));
+      return ' ';
+    });
+
+    working = working.replace(/([^,+:]+?)\s*:\s*([^,+\s]+)/g, (_, keyPart, valuePart) => {
+      const key = keyPart.trim();
+      const value = valuePart.trim();
+      const label = value ? `${key}:${value}` : key;
+      upsert(label, 0, false);
+      return ' ';
+    });
+
+    working.split(',')
+      .map(segment => segment.trim())
+      .filter(Boolean)
+      .forEach(segment => {
+        const cleaned = segment.replace(/\s+/g, ' ').trim();
+        if (!cleaned) return;
+        if (/^[+\-]?\d+(?:\.\d+)?$/.test(cleaned)) return;
+        upsert(cleaned, 0, false);
+      });
+
+    return Array.from(aggregated.values()).map(item => ({
+      reason: item.reason,
+      minutes: item.hasMinutes ? item.minutes : null
+    }));
+  }
+
   function loadDismissedResiduals(){
     try{
       const raw = localStorage.getItem(RESIDUAL_DISMISS_KEY);
@@ -1552,7 +1611,21 @@
       return parsed
         .map(item => {
           if (!item || !item.iso) return null;
-          const sourceTags = Array.isArray(item.tags) ? item.tags : (item.reason ? [{ reason:item.reason, minutes:item.minutes, notedAt:item.notedAt }] : []);
+          let sourceTags = [];
+          if (Array.isArray(item.tags)){
+            sourceTags = item.tags;
+          } else if (item.reason){
+            const parsedReasonTags = parseDismissReasonInput(item.reason);
+            if (parsedReasonTags.length){
+              sourceTags = parsedReasonTags.map(tag => ({
+                reason: tag.reason,
+                minutes: tag.minutes,
+                notedAt: item.notedAt
+              }));
+            } else {
+              sourceTags = [{ reason:item.reason, minutes:item.minutes, notedAt:item.notedAt }];
+            }
+          }
           const tags = sourceTags
             .map(tag => {
               if (!tag) return null;
@@ -2459,9 +2532,10 @@ let CURRENT_USER_ID = null;
 
   function routeEndTime(){ return ($('returnTime').value || $('end').value || ''); }
 
-  const date=$('date'), route=$('route'), start=$('start'), end=$('end'), departTime=$('departTime'), returnTime=$('returnTime');
+const date=$('date'), route=$('route'), start=$('start'), end=$('end'), departTime=$('departTime'), returnTime=$('returnTime');
 const parcels=$('parcels'), letters=$('letters'), miles=$('miles'), mood=$('mood'), notes=$('notes');
 const secondTripMilesInput=$('secondTripMiles'), secondTripTimeInput=$('secondTripTime'), secondTripEmaInput=$('secondTripEma');
+const breakMinutesInput=$('breakMinutes');
 const secondTripPaidEl=$('secondTripPaid'), secondTripActualEl=$('secondTripActual'), secondTripReimburseEl=$('secondTripReimburse'), secondTripEmaRateEl=$('secondTripEmaRate');
 const SECOND_TRIP_EMA_KEY = 'routeStats.secondTrip.ema';
 const RESIDUAL_WEIGHT_PREF_KEY = 'routeStats.residual.downweightHoliday';
@@ -2487,6 +2561,7 @@ try{
   }
 }catch(_){ }
 setSecondTripInputs(null);
+if (breakMinutesInput) breakMinutesInput.value = '0';
   const weather=$('weather'), temp=$('temp'), boxholders=$('boxholders'), holiday=$('holiday');
   const offDay=$('offDay');
   const officeH=$('officeH'), routeH=$('routeH'), totalH=$('totalH');
@@ -2505,6 +2580,8 @@ setSecondTripInputs(null);
     const trip = getSecondTripInputs();
     const extraHours = trip.actualMinutes ? (trip.actualMinutes / 60) : 0;
     const extraPaidMinutes = trip.miles ? (trip.miles * 2) : 0;
+    const breakMinutesVal = parseFloat(breakMinutesInput?.value || '0');
+    const breakHours = (Number.isFinite(breakMinutesVal) && breakMinutesVal > 0) ? (breakMinutesVal / 60) : 0;
     if (offDay.checked){
       officeH.textContent='0.00';
       routeH.textContent='0.00';
@@ -2519,14 +2596,17 @@ setSecondTripInputs(null);
       if (span!=null && off!=null) rte = Math.max(0, +(span - off).toFixed(2));
     }
     const officeDisplay = (off!=null? off : 0) + extraHours;
-    const tot = Math.max(0, (off??0) + (rte??0) + extraHours);
+    const routeDisplay = rte!=null ? Math.max(0, rte - breakHours) : null;
+    const tot = Math.max(0, (off??0) + (rte??0) + extraHours - breakHours);
     officeH.textContent = (off!=null || extraHours) ? officeDisplay.toFixed(2) : '—';
-    routeH.textContent  = rte!=null? rte.toFixed(2) : '—';
-    totalH.textContent  = (off!=null||rte!=null||extraHours) ? tot.toFixed(2) : '—';
+    routeH.textContent  = routeDisplay!=null? routeDisplay.toFixed(2) : '—';
+    totalH.textContent  = (off!=null||rte!=null||extraHours||breakHours) ? tot.toFixed(2) : '—';
     const diag=$('diag');
     if (diag){
       const extraTxt = extraHours ? ` · <b>Extra:</b> ${trip.actualMinutes.toFixed(0)}m (${extraPaidMinutes.toFixed(0)}m paid)` : '';
+      const breakTxt = breakHours ? ` · <b>Break:</b> ${breakMinutesVal.toFixed(0)}m` : '';
       diag.innerHTML = `ROUTE STATS · Supabase: <b id="dConn">${dConn.textContent}</b> · Auth: <b id="dAuth">${dAuth.textContent}</b> · Write: <b id="dWrite">${dWrite.textContent}</b> · <b>Off:</b> ${off ?? '—'}h · <b>Route:</b> ${rte ?? '—'}h · <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
+      if (breakTxt) diag.innerHTML += breakTxt;
     }
     return tot;
   }
@@ -2560,7 +2640,9 @@ setSecondTripInputs(null);
   // Consistent: route_minutes are stored in HOURS; adjust by subtracting boxholder minutes converted to hours
   function routeAdjustedHours(row){
     const baseH = (+row.route_minutes||0);
-    const adjH  = boxholderAdjMinutes(row) / 60;
+    const adjBox = boxholderAdjMinutes(row);
+    const adjBreak = parseBreakMinutesFromRow(row);
+    const adjH  = (adjBox + adjBreak) / 60;
     return Math.max(0, +(baseH - adjH).toFixed(2));
   }
 
@@ -3143,7 +3225,7 @@ let latestDiagnosticsContext = null;
         const weatherRaw = String(d.row.weather_json || '');
         const weatherPieces = weatherRaw.split('·').map(s=>s.trim()).filter(Boolean);
         const weatherDisplayParts = weatherPieces
-          .filter(p=> !/^Reason:/i.test(p) && !/^SecondTrip:/i.test(p) && !/^Box:/i.test(p))
+          .filter(p=> !/^Reason:/i.test(p) && !/^SecondTrip:/i.test(p) && !/^Box:/i.test(p) && !/^Break:/i.test(p))
           .map(p=> p.replace(/partly\s+cloudy/i, 'PC'));
         const weatherSnippet = weatherRaw.replace(/Reason:\s*[^·]+/ig,'').trim();
         const weatherShort = weatherDisplayParts.length ? weatherDisplayParts.slice(0,2).join(' · ') : '—';
@@ -3229,31 +3311,57 @@ let latestDiagnosticsContext = null;
           if (vol != null) hintParts.push(`Parcels: ${vol}`);
           if (letterCount != null) hintParts.push(`Letters: ${letterCount}`);
           const basePrompt = hintParts.length ? `${hintParts.join(' · ')}\nReason (e.g., Road closure, Weather, Extra parcels):` : 'Reason (e.g., Road closure, Weather, Extra parcels):';
-          const reasonPrompt = window.prompt(`${basePrompt}\nYou can append minutes like "+15" (e.g., "parcels +15").`, defaultReason);
+          const reasonPrompt = window.prompt(`${basePrompt}\nYou can append minutes like "+15" (e.g., "parcels+15") and separate multiple reasons with commas (e.g., "parcels+15, flats+30").`, defaultReason);
           if (reasonPrompt === null) return; // user cancelled
           const reasonInput = reasonPrompt.trim();
-          let minutesFromReason = null;
-          let reason = reasonInput;
-          const reasonMatch = reasonInput.match(/(.+?)\s*\+\s*(\d+)/);
-          if (reasonMatch){
-            reason = reasonMatch[1].trim();
-            minutesFromReason = parseFloat(reasonMatch[2]);
+          const nowIso = new Date().toISOString();
+          let tags = parseDismissReasonInput(reasonInput);
+
+          if (!tags.length){
+            let minutesFromReason = null;
+            let reason = reasonInput;
+            const reasonMatch = reasonInput.match(/(.+?)\s*\+\s*(\d+)/);
+            if (reasonMatch){
+              reason = reasonMatch[1].trim();
+              minutesFromReason = parseFloat(reasonMatch[2]);
+            }
+            const minutesPrompt = window.prompt('Minutes attributable to this reason (optional, numbers only):', minutesFromReason!=null? String(minutesFromReason) : defaultMinutes);
+            let minutes = null;
+            if (minutesPrompt && minutesPrompt.trim()){
+              const parsed = parseFloat(minutesPrompt.trim());
+              if (Number.isFinite(parsed)) minutes = parsed;
+            }
+            const fallbackReason = reason.replace(/\s+/g,' ').trim();
+            if (!fallbackReason){
+              window.alert('No reason provided; dismissal cancelled.');
+              return;
+            }
+            tags = [{ reason: fallbackReason, minutes: minutes!=null ? minutes : null }];
+          } else {
+            const tagsNeedingMinutes = tags.filter(tag => tag.minutes == null);
+            if (tagsNeedingMinutes.length === 1){
+              const minutesPrompt = window.prompt('Minutes attributable to this reason (optional, numbers only):', defaultMinutes);
+              if (minutesPrompt && minutesPrompt.trim()){
+                const parsed = parseFloat(minutesPrompt.trim());
+                if (Number.isFinite(parsed)) tagsNeedingMinutes[0].minutes = parsed;
+              }
+            }
           }
-          const minutesPrompt = window.prompt('Minutes attributable to this reason (optional, numbers only):', minutesFromReason!=null? String(minutesFromReason) : defaultMinutes);
-          let minutes = null;
-          if (minutesPrompt && minutesPrompt.trim()){
-            const parsed = parseFloat(minutesPrompt.trim());
-            if (isFinite(parsed)) minutes = parsed;
-          }
-          const entry = {
-            iso,
-            reason: reason || 'dismissed',
-            minutes,
-            notedAt: new Date().toISOString()
-          };
+
           const existing = loadDismissedResiduals().filter(item => item && item.iso !== iso);
-          existing.push(entry);
-          saveDismissedResiduals(existing);
+          if (tags.length) {
+            const entry = {
+              iso,
+              tags: tags.map(t => ({
+                reason: t.reason,
+                minutes: t.minutes,
+                notedAt: Date.now()
+              })),
+              notedAt: nowIso
+            };
+            existing.push(entry);
+            saveDismissedResiduals(existing);
+          }
           buildDiagnostics(rows);
         });
       });
@@ -3627,6 +3735,7 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
 
 function weatherString(){
     const parts=[]; if(weather?.value) parts.push(weather.value); if(temp?.value) parts.push(`${temp.value}°F`); if(boxholders?.value) parts.push(`Box: ${boxholders.value}`); if (holiday?.checked) parts.push('Holiday'); if (reasonTag?.value) parts.push(`Reason: ${reasonTag.value}`);
+    const breakVal = parseFloat(breakMinutesInput?.value || '0'); if (Number.isFinite(breakVal) && breakVal > 0) parts.push(`Break:${breakVal}`);
     const st = getSecondTripPayload();
     if (st){ parts.push(`SecondTrip:${JSON.stringify(st)}`); }
     return parts.length? parts.join(' · ') : null;
@@ -3642,9 +3751,11 @@ function weatherString(){
     }
     const trip = getSecondTripInputs();
     const extraHours = trip.actualMinutes ? (trip.actualMinutes / 60) : 0;
+    const breakMinutesVal = parseFloat(breakMinutesInput?.value || '0');
+    const breakHours = (Number.isFinite(breakMinutesVal) && breakMinutesVal>0) ? (breakMinutesVal / 60) : 0;
     const off = offDay.checked ? 0 : offRaw;
     const rte = offDay.checked ? 0 : rteRaw;
-    const tot = offDay.checked ? 0 : ((off??0)+(rte??0)+extraHours);
+    const tot = offDay.checked ? 0 : Math.max(0, ((off??0)+(rte??0)+extraHours - breakHours));
     const officeForStore = offDay.checked ? 0 : (offRaw!=null ? +(offRaw + extraHours).toFixed(2) : (extraHours ? +extraHours.toFixed(2) : null));
     return {
       user_id:userId,
@@ -3688,15 +3799,20 @@ function weatherString(){
       weather.value='';
       const reasonTag = document.getElementById('reasonTag'); if (reasonTag) reasonTag.value = '';
       setSecondTripInputs(null);
+      if (breakMinutesInput) breakMinutesInput.value = '0';
     } else {
       const parts = String(raw).split('·').map(s=>s.trim());
-      let w='', t='', b=''; let hol=false; let rsn=''; let stData=null;
+      let w='', t='', b=''; let hol=false; let rsn=''; let stData=null; let brk=null;
       for (const p of parts){
         if (/°F$/.test(p)) t = p.replace('°F','').trim();
         else if (/^Box:/i.test(p)) b = p.split(':').slice(1).join(':').trim();
         else if (/^Reason:/i.test(p)) rsn = p.split(':').slice(1).join(':').trim();
         else if (/^SecondTrip:/i.test(p)) {
           try{ stData = JSON.parse(p.split(':').slice(1).join(':')); }catch(_){ stData=null; }
+        }
+        else if (/^Break:/i.test(p)){
+          const val = parseFloat(p.split(':').slice(1).join(':'));
+          brk = Number.isFinite(val) && val>=0 ? val : null;
         }
         else if (/^Holiday$/i.test(p)) hol = true;
         else w = p;
@@ -3707,6 +3823,7 @@ function weatherString(){
       if (holiday) holiday.checked = !!hol;
       const reasonTag = document.getElementById('reasonTag'); if (reasonTag) reasonTag.value = rsn || '';
       setSecondTripInputs(stData);
+      if (breakMinutesInput) breakMinutesInput.value = brk!=null ? String(brk) : '0';
     }
     try { computeBreakdown(); } catch(_){}
   }
@@ -3780,6 +3897,16 @@ function parseSecondTripFromRow(row){
   const part = row.weather_json.split('·').map(s=> s.trim()).find(p => /^SecondTrip:/i.test(p));
   if (!part) return null;
   try{ return JSON.parse(part.split(':').slice(1).join(':')); }catch(_){ return null; }
+}
+
+function parseBreakMinutesFromRow(row){
+  if (!row || !row.weather_json) return 0;
+  try{
+    const part = row.weather_json.split('·').map(s=> s.trim()).find(p => /^Break:/i.test(p));
+    if (!part) return 0;
+    const val = parseFloat(part.split(':').slice(1).join(':'));
+    return Number.isFinite(val) && val > 0 ? val : 0;
+  }catch(_){ return 0; }
 }
 
 function getHourlyRateFromEval(){

@@ -2172,6 +2172,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const l0 = sum(W0, (r) => +r.letters || 0), l1 = sum(W1, (r) => +r.letters || 0);
       const ln0 = +(letterW * l0).toFixed(1);
       const ln1 = +(letterW * l1).toFixed(1);
+      let rm0 = 0;
+      let rm1 = 0;
       try {
         if (text) text.textContent = `W1: Parcels ${p0}, Letters ${l0} \u2022 W2: Parcels ${p1}, Letters ${l1}`;
         const wBadge = document.getElementById("mixWeight");
@@ -2181,10 +2183,10 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         }
         const vol0 = mixCombinedVolume(p0, l0, letterW);
         const vol1 = mixCombinedVolume(p1, l1, letterW);
-        const rm02 = sum(W0, (r) => routeAdjustedHours2(r));
-        const rm12 = sum(W1, (r) => routeAdjustedHours2(r));
-        const idx0 = vol0 > 0 && rm02 > 0 ? rm02 / vol0 : null;
-        const idx1 = vol1 > 0 && rm12 > 0 ? rm12 / vol1 : null;
+        rm0 = sum(W0, (r) => routeAdjustedHours2(r));
+        rm1 = sum(W1, (r) => routeAdjustedHours2(r));
+        const idx0 = vol0 > 0 && rm0 > 0 ? rm0 / vol0 : null;
+        const idx1 = vol1 > 0 && rm1 > 0 ? rm1 / vol1 : null;
         let deltaStr = "\u2014";
         let deltaStyle = "";
         if (idx0 != null && idx1 != null && idx1 > 0) {
@@ -2827,11 +2829,11 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         const volume = (p, l) => p + letterW * l;
         const v0 = volume(p0, l0);
         const v1 = volume(p1, l1);
-        const rm02 = sum(W0, (r) => routeAdjustedHours2(r));
-        const rm12 = sum(W1, (r) => routeAdjustedHours2(r));
+        const rm0 = sum(W0, (r) => routeAdjustedHours2(r));
+        const rm1 = sum(W1, (r) => routeAdjustedHours2(r));
         const idx = (hours, vol) => hours > 0 && vol > 0 ? hours / vol : null;
-        const i0 = idx(rm02, v0);
-        const i1 = idx(rm12, v1);
+        const i0 = idx(rm0, v0);
+        const i1 = idx(rm1, v1);
         const pct = (a, b) => b > 0 ? Math.round((a - b) / b * 100) : null;
         const dh = pct(h0, h1);
         const dv = pct(v0, v1);

@@ -455,13 +455,15 @@ export function createCharts({
     const l0=sum(W0,r=>+r.letters||0), l1=sum(W1,r=>+r.letters||0);
     const ln0 = +( (letterW * l0) ).toFixed(1);
     const ln1 = +( (letterW * l1) ).toFixed(1);
+    let rm0 = 0;
+    let rm1 = 0;
     try{
       if (text) text.textContent = `W1: Parcels ${p0}, Letters ${l0} • W2: Parcels ${p1}, Letters ${l1}`;
       const wBadge = document.getElementById('mixWeight');
       if (wBadge){ wBadge.style.display='inline-flex'; wBadge.innerHTML = `<small class="modelMetric">Letter w</small> <span>${(Math.round(letterW*100)/100).toFixed(2)}</span>`; }
       const vol0 = mixCombinedVolume(p0, l0, letterW); const vol1 = mixCombinedVolume(p1, l1, letterW);
-      const rm0  = sum(W0,r=> routeAdjustedHours(r));
-      const rm1  = sum(W1,r=> routeAdjustedHours(r));
+      rm0  = sum(W0,r=> routeAdjustedHours(r));
+      rm1  = sum(W1,r=> routeAdjustedHours(r));
       const idx0 = (vol0>0 && rm0>0) ? (rm0/vol0) : null;
       const idx1 = (vol1>0 && rm1>0) ? (rm1/vol1) : null;
       let deltaStr = '—'; let deltaStyle='';

@@ -867,12 +867,7 @@ export function createDiagnostics({
       subjectLabel.textContent = subjectMetrics.label || subjectMetrics.workDate;
       referenceLabel.textContent = referenceMetrics.label || referenceMetrics.workDate;
 
-      const subjectPillData = [
-        { key: 'totalHours', label: 'Total', value: `${formatNumber(subjectMetrics.totalHours, { decimals: 2, suffix: 'h' })}` },
-        { key: 'routeHours', label: 'Route', value: `${formatNumber(subjectMetrics.routeHours, { decimals: 2, suffix: 'h' })}` },
-        { key: 'officeHours', label: 'Office', value: `${formatNumber(subjectMetrics.officeHours, { decimals: 2, suffix: 'h' })}` },
-        { key: 'volume', label: 'Volume', value: `${formatNumber(subjectMetrics.volume, { decimals: 2 })}` }
-      ];
+      const { rows: tableRows, highlights, reasoning } = deltaDetails(subjectMetrics, referenceMetrics);
 
       const pillColorFor = (key) => {
         const row = tableRows.find(r => r.key === key);
@@ -881,6 +876,12 @@ export function createDiagnostics({
         return fg;
       };
 
+      const subjectPillData = [
+        { key: 'totalHours', label: 'Total', value: `${formatNumber(subjectMetrics.totalHours, { decimals: 2, suffix: 'h' })}` },
+        { key: 'routeHours', label: 'Route', value: `${formatNumber(subjectMetrics.routeHours, { decimals: 2, suffix: 'h' })}` },
+        { key: 'officeHours', label: 'Office', value: `${formatNumber(subjectMetrics.officeHours, { decimals: 2, suffix: 'h' })}` },
+        { key: 'volume', label: 'Volume', value: `${formatNumber(subjectMetrics.volume, { decimals: 2 })}` }
+      ];
       subjectPills.innerHTML = subjectPillData
         .map(p => pillHtml(p.label, p.value, pillColorFor(p.key)))
         .join('');
@@ -898,7 +899,6 @@ export function createDiagnostics({
       subjectNotes.textContent = summarizeExtras(subjectMetrics) || '—';
       referenceNotes.textContent = summarizeExtras(referenceMetrics) || '—';
 
-      const { rows: tableRows, highlights, reasoning } = deltaDetails(subjectMetrics, referenceMetrics);
       tableBody.innerHTML = tableRows
         .map(row => {
           const deltaClass = row.colorDelta == null ? '' : row.colorDelta > 0 ? 'pos' : 'neg';

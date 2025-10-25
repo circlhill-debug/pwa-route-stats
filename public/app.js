@@ -1221,18 +1221,19 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         if (dailyMovers) dailyMovers.style.display = "block";
         subjectLabel.textContent = subjectMetrics.label || subjectMetrics.workDate;
         referenceLabel.textContent = referenceMetrics.label || referenceMetrics.workDate;
-        const subjectPillData = [
-          { key: "totalHours", label: "Total", value: `${formatNumber(subjectMetrics.totalHours, { decimals: 2, suffix: "h" })}` },
-          { key: "routeHours", label: "Route", value: `${formatNumber(subjectMetrics.routeHours, { decimals: 2, suffix: "h" })}` },
-          { key: "officeHours", label: "Office", value: `${formatNumber(subjectMetrics.officeHours, { decimals: 2, suffix: "h" })}` },
-          { key: "volume", label: "Volume", value: `${formatNumber(subjectMetrics.volume, { decimals: 2 })}` }
-        ];
+        const { rows: tableRows, highlights, reasoning } = deltaDetails(subjectMetrics, referenceMetrics);
         const pillColorFor = (key) => {
           const row = tableRows.find((r) => r.key === key);
           if (!row || row.colorDelta == null) return null;
           const { fg } = colorForDelta(row.colorDelta || 0);
           return fg;
         };
+        const subjectPillData = [
+          { key: "totalHours", label: "Total", value: `${formatNumber(subjectMetrics.totalHours, { decimals: 2, suffix: "h" })}` },
+          { key: "routeHours", label: "Route", value: `${formatNumber(subjectMetrics.routeHours, { decimals: 2, suffix: "h" })}` },
+          { key: "officeHours", label: "Office", value: `${formatNumber(subjectMetrics.officeHours, { decimals: 2, suffix: "h" })}` },
+          { key: "volume", label: "Volume", value: `${formatNumber(subjectMetrics.volume, { decimals: 2 })}` }
+        ];
         subjectPills.innerHTML = subjectPillData.map((p) => pillHtml(p.label, p.value, pillColorFor(p.key))).join("");
         const referencePillData = [
           { key: "totalHours", label: "Total", value: `${formatNumber(referenceMetrics.totalHours, { decimals: 2, suffix: "h" })}` },
@@ -1243,7 +1244,6 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         referencePills.innerHTML = referencePillData.map((p) => pillHtml(p.label, p.value, pillColorFor(p.key))).join("");
         subjectNotes.textContent = summarizeExtras(subjectMetrics) || "\u2014";
         referenceNotes.textContent = summarizeExtras(referenceMetrics) || "\u2014";
-        const { rows: tableRows, highlights, reasoning } = deltaDetails(subjectMetrics, referenceMetrics);
         tableBody.innerHTML = tableRows.map((row) => {
           const deltaClass = row.colorDelta == null ? "" : row.colorDelta > 0 ? "pos" : "neg";
           return `<tr>

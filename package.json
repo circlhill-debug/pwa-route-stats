@@ -1,0 +1,11 @@
+{
+  "name": "pwa-route-stats",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "node scripts/build.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

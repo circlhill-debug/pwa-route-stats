@@ -2153,6 +2153,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const culprits = document.getElementById("mixCulprits");
       const details = document.getElementById("mixCompareDetails");
       const btn = document.getElementById("mixCompareBtn");
+      const driftLabel = document.getElementById("mixDriftText");
       const now = DateTime.now().setZone(ZONE);
       const startThis = startOfWeekMonday(now);
       const endThis = now.endOf("day");
@@ -2237,6 +2238,35 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       let resL = { used: 0 };
       const baselines = ensureWeeklyBaselines(rows) || getWeeklyBaselines();
       const anchor = computeAnchorBaselines(rows, 8);
+      const applyDriftLine = (message) => {
+        if (driftLabel) {
+          if (message) {
+            driftLabel.textContent = message;
+            driftLabel.style.display = "block";
+          } else {
+            driftLabel.textContent = "\u2014";
+            driftLabel.style.display = "none";
+          }
+        }
+        if (details) {
+          let driftEl = details._driftEl;
+          if (!driftEl) {
+            driftEl = document.createElement("div");
+            driftEl.className = "sparkline-labels mix-drift-line";
+            if (details.parentNode) {
+              details.parentNode.insertBefore(driftEl, details);
+            }
+            details._driftEl = driftEl;
+          }
+          if (message) {
+            driftEl.textContent = message;
+            driftEl.style.display = "block";
+          } else if (driftEl) {
+            driftEl.textContent = "\u2014";
+            driftEl.style.display = "none";
+          }
+        }
+      };
       const nowDayIdx = (now.weekday + 6) % 7;
       if (flags.baselineCompare) {
         const mins = 5;
@@ -2275,9 +2305,29 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         dLx = resL.delta;
         lineLabelP = "Parcels (vs baseline)";
         lineLabelL = "Letters (vs baseline)";
+        const sumRange = (arr, upto) => {
+          let s = 0;
+          for (let i = 0; i <= upto; i++) {
+            s += arr && arr[i] != null ? arr[i] : 0;
+          }
+          return s;
+        };
+        const bpSum = bp ? sumRange(bp, nowDayIdx) : null;
+        const blSum = bl ? sumRange(bl, nowDayIdx) : null;
+        let driftLine = "";
+        if (anchor && Array.isArray(anchor.parcels) && Array.isArray(anchor.letters)) {
+          const ap = sumRange(anchor.parcels, nowDayIdx);
+          const al = sumRange(anchor.letters, nowDayIdx);
+          const driftP = ap > 0 && bpSum != null ? Math.round((bpSum - ap) / ap * 100) : null;
+          const driftL = al > 0 && blSum != null ? Math.round((blSum - al) / al * 100) : null;
+          const fmt = (v) => v == null ? "\u2014" : v >= 0 ? `\u2191 ${v}%` : `\u2193 ${Math.abs(v)}%`;
+          driftLine = `Baseline drift vs anchor \u2014 Parcels: ${fmt(driftP)} \u2022 Letters: ${fmt(driftL)}`;
+        }
+        applyDriftLine(driftLine);
       } else {
         dP = d(p0, p1);
         dLx = d(l0, l1);
+        applyDriftLine(null);
       }
       const expectationStroke = "rgba(255,140,0,0.85)";
       const expectationFill = "rgba(255,140,0,0.22)";

@@ -1,4 +1,2768 @@
 (() => {
+  // src/utils/date.js
+  var { DateTime } = luxon;
+  var ZONE = "America/Detroit";
+  function todayStr() {
+    return DateTime.now().setZone(ZONE).toISODate();
+  }
+  function todayIso() {
+    return DateTime.now().setZone(ZONE).toISODate();
+  }
+  function hhmmNow() {
+    const d = DateTime.now().setZone(ZONE);
+    return `${String(d.hour).padStart(2, "0")}:${String(d.minute).padStart(2, "0")}`;
+  }
+  function dowIndex(dateStr) {
+    return DateTime.fromFormat(dateStr, "yyyy-MM-dd", { zone: ZONE }).weekday % 7;
+  }
+  function startOfWeekMonday(dt) {
+    const w = dt.weekday;
+    const shift = (w + 6) % 7;
+    return dt.startOf("day").minus({ days: shift });
+  }
+  function endOfWeekSunday(dt) {
+    return startOfWeekMonday(dt).plus({ days: 6 }).endOf("day");
+  }
+  function dateInRangeISO(iso, fromIso, toIso) {
+    try {
+      if (!iso || !fromIso || !toIso) return false;
+      const d = DateTime.fromISO(iso, { zone: ZONE }).startOf("day");
+      const a = DateTime.fromISO(fromIso, { zone: ZONE }).startOf("day");
+      const b = DateTime.fromISO(toIso, { zone: ZONE }).endOf("day");
+      return d >= a && d <= b;
+    } catch (_) {
+      return false;
+    }
+  }
+  function normalizeRanges(ranges) {
+    try {
+      const parse = (iso) => DateTime.fromISO(iso, { zone: ZONE }).startOf("day");
+      const items = (ranges || []).map((r) => ({ from: r.from, to: r.to })).filter((r) => r.from && r.to).map((r) => ({ a: parse(r.from), b: DateTime.fromISO(r.to, { zone: ZONE }).endOf("day") })).sort((x, y) => x.a.toMillis() - y.a.toMillis());
+      const merged = [];
+      for (const it of items) {
+        if (!merged.length) {
+          merged.push({ ...it });
+          continue;
+        }
+        const last = merged[merged.length - 1];
+        if (it.a <= last.b.plus({ days: 0 })) {
+          if (it.b > last.b) last.b = it.b;
+        } else {
+          merged.push({ ...it });
+        }
+      }
+      return merged.map((x) => ({ from: x.a.toISODate(), to: x.b.toISODate() }));
+    } catch (_) {
+      return ranges || [];
+    }
+  }
+  function diffHours(dateIso, t1, t2) {
+    if (!t1 || !t2) return null;
+    const a = DateTime.fromISO(`${dateIso}T${t1}`, { zone: ZONE });
+    const b = DateTime.fromISO(`${dateIso}T${t2}`, { zone: ZONE });
+    let h = (b.toMillis() - a.toMillis()) / 36e5;
+    if (h < 0) h += 24;
+    return Math.round(h * 100) / 100;
+  }
+  function moonPhaseEmoji(dateStr) {
+    const d = DateTime.fromISO(dateStr, { zone: ZONE });
+    const lp = 25514428e-1;
+    const newMoon = DateTime.fromISO("2000-01-06T18:14:00Z").toSeconds();
+    const phase = ((d.toSeconds() - newMoon) % lp + lp) % lp / lp;
+    if (phase < 0.03 || phase > 0.97) return "\u{1F311}";
+    if (phase < 0.25) return "\u{1F312}";
+    if (phase < 0.27) return "\u{1F313}";
+    if (phase < 0.48) return "\u{1F314}";
+    if (phase < 0.52) return "\u{1F315}";
+    if (phase < 0.75) return "\u{1F316}";
+    if (phase < 0.77) return "\u{1F317}";
+    return "\u{1F318}";
+  }
+
+  // src/utils/storage.js
+  var FLAG_KEY = "routeStats.flags.v1";
+  var EVAL_KEY = "routeStats.uspsEval.v1";
+  var VACAY_KEY = "routeStats.vacation.v1";
+  var BASELINE_KEY = "routeStats.baseline.v1";
+  var MODEL_SCOPE_KEY = "routeStats.modelScope";
+  var RESIDUAL_WEIGHT_PREF_KEY = "routeStats.residual.downweightHoliday";
+  var RESIDUAL_DISMISS_KEY = "routeStats.diagnostics.dismissed";
+  var OPENAI_KEY_STORAGE = "routeStats.ai.openaiKey";
+  var AI_LAST_SUMMARY_KEY = "routeStats.ai.lastSummary";
+  var AI_SUMMARY_COLLAPSED_KEY = "routeStats.ai.summaryCollapsed";
+  var TOKEN_USAGE_STORAGE = "routeStats.ai.tokenUsage";
+  var AI_BASE_PROMPT_KEY = "routeStats.ai.basePrompt";
+  var DEFAULT_FLAGS = {
+    weekdayTicks: true,
+    progressivePills: false,
+    monthlyGlance: true,
+    holidayAdjustments: true,
+    trendPills: false,
+    sameRangeTotals: true,
+    quickFilter: true,
+    headlineDigest: false,
+    smartSummary: true,
+    mixViz: true,
+    baselineCompare: true,
+    collapsedUi: false,
+    focusMode: false,
+    quickEntry: false,
+    uspsEval: true,
+    dayCompare: true
+  };
+  var DEFAULT_EVAL = {
+    routeId: "R1",
+    evalCode: "44K",
+    boxes: 670,
+    stops: null,
+    hoursPerDay: 9.4,
+    officeHoursPerDay: 2,
+    annualSalary: 68e3
+  };
+  var EMPTY_VACATION = { ranges: [] };
+  function loadFlags() {
+    try {
+      return Object.assign({}, DEFAULT_FLAGS, JSON.parse(localStorage.getItem(FLAG_KEY) || "{}"));
+    } catch (_) {
+      return { ...DEFAULT_FLAGS };
+    }
+  }
+  function saveFlags(flags) {
+    localStorage.setItem(FLAG_KEY, JSON.stringify(flags));
+  }
+  function loadEval() {
+    try {
+      return Object.assign({}, DEFAULT_EVAL, JSON.parse(localStorage.getItem(EVAL_KEY) || "{}"));
+    } catch (_) {
+      return { ...DEFAULT_EVAL };
+    }
+  }
+  function saveEval(cfg) {
+    localStorage.setItem(EVAL_KEY, JSON.stringify(cfg || {}));
+  }
+  function loadVacation() {
+    try {
+      const v = JSON.parse(localStorage.getItem(VACAY_KEY) || "{}");
+      const ranges = Array.isArray(v == null ? void 0 : v.ranges) ? v.ranges : [];
+      return { ranges: ranges.filter((r) => (r == null ? void 0 : r.from) && (r == null ? void 0 : r.to)) };
+    } catch (_) {
+      return { ...EMPTY_VACATION };
+    }
+  }
+  function saveVacation(cfg) {
+    try {
+      localStorage.setItem(VACAY_KEY, JSON.stringify({ ranges: cfg.ranges || [] }));
+    } catch (_) {
+    }
+  }
+  function ensureWeeklyBaselines(rows) {
+    try {
+      const now = DateTime.now().setZone(ZONE);
+      const weekStartIso = startOfWeekMonday(now).toISODate();
+      const savedRaw = localStorage.getItem(BASELINE_KEY);
+      if (savedRaw) {
+        const saved = JSON.parse(savedRaw);
+        if (saved && saved.weekStart === weekStartIso) return saved;
+      }
+      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
+      const endLast = endOfWeekSunday(now.minus({ weeks: 1 }));
+      const startPrev = startOfWeekMonday(now.minus({ weeks: 2 }));
+      const endPrev = endOfWeekSunday(now.minus({ weeks: 2 }));
+      const inRange = (r, from, to) => {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        return d >= from && d <= to;
+      };
+      const worked = (rows || []).filter((r) => (r == null ? void 0 : r.status) !== "off");
+      const W1 = worked.filter((r) => inRange(r, startLast, endLast));
+      const W2 = worked.filter((r) => inRange(r, startPrev, endPrev));
+      const byW = (arr, fn) => {
+        const out = Array.from({ length: 7 }, () => []);
+        arr.forEach((r) => {
+          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+          const idx = (d.weekday + 6) % 7;
+          out[idx].push(fn(r) || 0);
+        });
+        return out;
+      };
+      const pW1 = byW(W1, (r) => +r.parcels || 0);
+      const pW2 = byW(W2, (r) => +r.parcels || 0);
+      const lW1 = byW(W1, (r) => +r.letters || 0);
+      const lW2 = byW(W2, (r) => +r.letters || 0);
+      const mean = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+      const parcels2 = Array.from({ length: 7 }, (_, i) => mean([...pW1[i] || [], ...pW2[i] || []]));
+      const letters2 = Array.from({ length: 7 }, (_, i) => mean([...lW1[i] || [], ...lW2[i] || []]));
+      const snap = { weekStart: weekStartIso, parcels: parcels2, letters: letters2 };
+      localStorage.setItem(BASELINE_KEY, JSON.stringify(snap));
+      return snap;
+    } catch (_) {
+      return null;
+    }
+  }
+  function getWeeklyBaselines() {
+    try {
+      return JSON.parse(localStorage.getItem(BASELINE_KEY) || "null");
+    } catch (_) {
+      return null;
+    }
+  }
+  function computeAnchorBaselines(rows, weeks = 8) {
+    try {
+      const now = DateTime.now().setZone(ZONE);
+      const worked = (rows || []).filter((r) => (r == null ? void 0 : r.status) !== "off");
+      const weeksArr = [];
+      for (let w = 1; w <= weeks; w++) {
+        const s = startOfWeekMonday(now.minus({ weeks: w }));
+        const e = endOfWeekSunday(now.minus({ weeks: w }));
+        weeksArr.push({ s, e });
+      }
+      const perW = (fn) => {
+        const arrs = Array.from({ length: 7 }, () => []);
+        for (const wk of weeksArr) {
+          const set = worked.filter((r) => {
+            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+            return d >= wk.s && d <= wk.e;
+          });
+          const tmp = Array.from({ length: 7 }, () => 0);
+          set.forEach((r) => {
+            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+            const idx = (d.weekday + 6) % 7;
+            tmp[idx] += fn(r) || 0;
+          });
+          for (let i = 0; i < 7; i++) arrs[i].push(tmp[i]);
+        }
+        const med = arrs.map((a) => {
+          const b = [...a].sort((x, y) => x - y);
+          const n = b.length;
+          if (!n) return null;
+          const mid = Math.floor(n / 2);
+          return n % 2 ? b[mid] : (b[mid - 1] + b[mid]) / 2;
+        });
+        return med;
+      };
+      return {
+        parcels: perW((r) => +r.parcels || 0),
+        letters: perW((r) => +r.letters || 0)
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+  function getModelScope() {
+    try {
+      const v = localStorage.getItem(MODEL_SCOPE_KEY);
+      return v === "all" || v === "rolling" ? v : "rolling";
+    } catch (_) {
+      return "rolling";
+    }
+  }
+  function setModelScope(v) {
+    try {
+      localStorage.setItem(MODEL_SCOPE_KEY, v);
+    } catch (_) {
+    }
+  }
+  function loadDismissedResiduals(parseDismissReasonInput2) {
+    try {
+      const raw = localStorage.getItem(RESIDUAL_DISMISS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const iso = item.iso || item.date || null;
+        if (!iso) return null;
+        let sourceTags = [];
+        if (Array.isArray(item.tags)) {
+          sourceTags = item.tags;
+        } else if (item.reason) {
+          if (typeof parseDismissReasonInput2 === "function") {
+            const parsedReasonTags = parseDismissReasonInput2(item.reason) || [];
+            if (parsedReasonTags.length) {
+              sourceTags = parsedReasonTags.map((tag) => ({
+                reason: tag.reason,
+                minutes: tag.minutes,
+                notedAt: item.notedAt
+              }));
+            } else {
+              sourceTags = [{ reason: item.reason, minutes: item.minutes, notedAt: item.notedAt }];
+            }
+          } else {
+            sourceTags = [{ reason: item.reason, minutes: item.minutes, notedAt: item.notedAt }];
+          }
+        }
+        const tags = sourceTags.map((tag) => {
+          if (!tag) return null;
+          const reason = String(tag.reason || "").trim();
+          if (!reason) return null;
+          const minutes = tag.minutes != null && tag.minutes !== "" ? Number(tag.minutes) : null;
+          const notedAt = tag.notedAt || item.notedAt || (/* @__PURE__ */ new Date()).toISOString();
+          return { reason, minutes: Number.isFinite(minutes) ? minutes : null, notedAt };
+        }).filter(Boolean);
+        return tags.length ? { iso, tags } : null;
+      }).filter(Boolean);
+    } catch (_) {
+      return [];
+    }
+  }
+  function saveDismissedResiduals(list) {
+    try {
+      localStorage.setItem(RESIDUAL_DISMISS_KEY, JSON.stringify(list || []));
+    } catch (_) {
+    }
+  }
+  function getOpenAiKey() {
+    try {
+      const val = localStorage.getItem(OPENAI_KEY_STORAGE);
+      if (!val) return null;
+      const trimmed = val.trim();
+      return trimmed ? trimmed : null;
+    } catch (_) {
+      return null;
+    }
+  }
+  function setOpenAiKey(val) {
+    try {
+      if (val && val.trim()) localStorage.setItem(OPENAI_KEY_STORAGE, val.trim());
+      else localStorage.removeItem(OPENAI_KEY_STORAGE);
+    } catch (_) {
+    }
+  }
+  function getAiBasePrompt(defaultPrompt) {
+    try {
+      const val = localStorage.getItem(AI_BASE_PROMPT_KEY);
+      if (!val) return defaultPrompt;
+      const trimmed = val.trim();
+      return trimmed ? trimmed : defaultPrompt;
+    } catch (_) {
+      return defaultPrompt;
+    }
+  }
+  function setAiBasePrompt(val) {
+    try {
+      if (val && val.trim()) localStorage.setItem(AI_BASE_PROMPT_KEY, val.trim());
+      else localStorage.removeItem(AI_BASE_PROMPT_KEY);
+    } catch (_) {
+    }
+  }
+  function loadTokenUsage() {
+    try {
+      const raw = localStorage.getItem(TOKEN_USAGE_STORAGE);
+      const now = DateTime.now().setZone(ZONE);
+      const today = now.toISODate();
+      const weekStart = startOfWeekMonday(now).toISODate();
+      const monthKey = now.toFormat("yyyy-MM");
+      if (!raw) return { today: 0, week: 0, month: 0, monthlyLimit: null, todayDate: today, weekStart, monthKey };
+      const parsed = JSON.parse(raw) || {};
+      const usage = {
+        today: Number(parsed.today) || 0,
+        week: Number(parsed.week) || 0,
+        month: Number(parsed.month) || 0,
+        monthlyLimit: parsed.monthlyLimit !== void 0 && parsed.monthlyLimit !== null ? Number(parsed.monthlyLimit) : null,
+        todayDate: parsed.todayDate || today,
+        weekStart: parsed.weekStart || weekStart,
+        monthKey: parsed.monthKey || monthKey
+      };
+      if (usage.todayDate !== today) {
+        usage.today = 0;
+        usage.todayDate = today;
+      }
+      if (usage.weekStart !== weekStart) {
+        usage.week = 0;
+        usage.weekStart = weekStart;
+      }
+      if (usage.monthKey !== monthKey) {
+        usage.month = 0;
+        usage.monthKey = monthKey;
+      }
+      return usage;
+    } catch (_) {
+      const now = DateTime.now().setZone(ZONE);
+      return {
+        today: 0,
+        week: 0,
+        month: 0,
+        monthlyLimit: null,
+        todayDate: now.toISODate(),
+        weekStart: startOfWeekMonday(now).toISODate(),
+        monthKey: now.toFormat("yyyy-MM")
+      };
+    }
+  }
+  function saveTokenUsage(obj) {
+    try {
+      localStorage.setItem(TOKEN_USAGE_STORAGE, JSON.stringify(obj || {}));
+    } catch (_) {
+    }
+  }
+
+  // src/services/supabaseClient.js
+  var SUPABASE_URL = "https://ouwkdtiixkaydrtfdhnh.supabase.co";
+  var SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91d2tkdGlpeGtheWRydGZkaG5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMDc0NDksImV4cCI6MjA3MDU4MzQ0OX0.KI-dYG5_A8jvPEHSog3wlnLbIGYIHQR_4ztXHL2SzIg";
+  function createSupabaseClient() {
+    return supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: true } });
+  }
+  async function handleAuthCallback(sb2) {
+    try {
+      const url = new URL(window.location.href);
+      const hasHashToken = url.hash.includes("access_token=") || url.hash.includes("refresh_token=");
+      const code = url.searchParams.get("code");
+      let out = null;
+      if (hasHashToken) {
+        const { data, error } = await sb2.auth.exchangeCodeForSession(url.hash);
+        if (error) throw error;
+        out = data;
+      } else if (code) {
+        const { data, error } = await sb2.auth.exchangeCodeForSession(code);
+        if (error) throw error;
+        out = data;
+      } else {
+        const { data, error } = await sb2.auth.getSession();
+        if (error) console.warn("[Auth] getSession warning:", error.message);
+        out = data;
+      }
+      if (hasHashToken || code) {
+        window.history.replaceState({}, document.title, url.origin + url.pathname);
+      }
+      console.log("[Auth] session ready", (out == null ? void 0 : out.session) ? "(signed in)" : "(no session)");
+      return (out == null ? void 0 : out.session) || null;
+    } catch (err) {
+      console.warn("Auth callback error \u2013", err);
+      return null;
+    }
+  }
+
+  // src/features/diagnostics.js
+  function createDiagnostics({
+    getFlags,
+    filterRowsForView: filterRowsForView2,
+    rowsForModelScope: rowsForModelScope2,
+    getResidualWeighting: getResidualWeighting2,
+    setHolidayDownweightEnabled: setHolidayDownweightEnabled2,
+    isHolidayDownweightEnabled: isHolidayDownweightEnabled2,
+    loadDismissedResiduals: loadDismissedResiduals2,
+    saveDismissedResiduals: saveDismissedResiduals2,
+    parseDismissReasonInput: parseDismissReasonInput2,
+    rebuildAll: rebuildAll2,
+    updateAiSummaryAvailability: updateAiSummaryAvailability2,
+    inferBoxholderLabel: inferBoxholderLabel2,
+    hasTag: hasTag2,
+    summarizeHolidayCatchups: summarizeHolidayCatchups2,
+    getCurrentLetterWeight,
+    setCurrentLetterWeight,
+    combinedVolume: combinedVolume2,
+    routeAdjustedMinutes: routeAdjustedMinutes2
+  }) {
+    if (typeof getFlags !== "function") throw new Error("createDiagnostics: getFlags is required");
+    if (typeof filterRowsForView2 !== "function") throw new Error("createDiagnostics: filterRowsForView is required");
+    if (typeof rowsForModelScope2 !== "function") throw new Error("createDiagnostics: rowsForModelScope is required");
+    if (typeof getResidualWeighting2 !== "function") throw new Error("createDiagnostics: getResidualWeighting is required");
+    if (typeof loadDismissedResiduals2 !== "function") throw new Error("createDiagnostics: loadDismissedResiduals is required");
+    if (typeof saveDismissedResiduals2 !== "function") throw new Error("createDiagnostics: saveDismissedResiduals is required");
+    if (typeof parseDismissReasonInput2 !== "function") throw new Error("createDiagnostics: parseDismissReasonInput is required");
+    if (typeof rebuildAll2 !== "function") throw new Error("createDiagnostics: rebuildAll is required");
+    if (typeof inferBoxholderLabel2 !== "function") throw new Error("createDiagnostics: inferBoxholderLabel is required");
+    if (typeof hasTag2 !== "function") throw new Error("createDiagnostics: hasTag is required");
+    if (typeof summarizeHolidayCatchups2 !== "function") throw new Error("createDiagnostics: summarizeHolidayCatchups is required");
+    if (typeof getCurrentLetterWeight !== "function") throw new Error("createDiagnostics: getCurrentLetterWeight is required");
+    if (typeof setCurrentLetterWeight !== "function") throw new Error("createDiagnostics: setCurrentLetterWeight is required");
+    if (typeof combinedVolume2 !== "function") throw new Error("createDiagnostics: combinedVolume is required");
+    if (typeof routeAdjustedMinutes2 !== "function") throw new Error("createDiagnostics: routeAdjustedMinutes is required");
+    let residModelCache = null;
+    let latestDiagnosticsContext = null;
+    const DAY_COMPARE_STORE = {
+      subject: "routeStats.dayCompare.subject",
+      mode: "routeStats.dayCompare.mode",
+      manual: "routeStats.dayCompare.manual"
+    };
+    function escapeHtml(str = "") {
+      return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+    function minutesDelta(actualMinutes, expectedMinutes) {
+      if (actualMinutes == null || expectedMinutes == null) return 0;
+      return actualMinutes - expectedMinutes;
+    }
+    function formatMinutesDelta(deltaMinutes, zScore) {
+      const isZeroish = Math.abs(deltaMinutes) < 0.5;
+      let cls = "delta zero";
+      let text = "0";
+      if (!isZeroish) {
+        const sign = deltaMinutes > 0 ? "+" : "\u2212";
+        cls = `delta ${deltaMinutes > 0 ? "pos" : "neg"}`;
+        text = `${sign}${Math.round(Math.abs(deltaMinutes))}m`;
+      }
+      if (typeof zScore === "number" && Math.abs(zScore) >= 1.5) {
+        cls += " outlier";
+      }
+      return `<span class="${cls}">${text}</span>`;
+    }
+    function buildDismissedMap(list) {
+      const map = /* @__PURE__ */ new Map();
+      (list || []).forEach((item) => {
+        if (item && item.iso) map.set(item.iso, item);
+      });
+      return map;
+    }
+    function collectWorkedDays(rows, limit = 365) {
+      const all = filterRowsForView2(rows || []).filter((r) => r && r.status !== "off" && r.work_date);
+      const sorted = [...all].sort((a, b) => a.work_date < b.work_date ? 1 : -1);
+      return limit && sorted.length > limit ? sorted.slice(0, limit) : sorted;
+    }
+    function buildDayCompareContext(rows, limit = 365) {
+      const worked = collectWorkedDays(rows, limit);
+      const byDate = /* @__PURE__ */ new Map();
+      worked.forEach((r) => byDate.set(r.work_date, r));
+      return { worked, byDate };
+    }
+    function getSubjectMetrics(context, iso) {
+      if (!context) return null;
+      const row = iso && context.byDate.get(iso) || context.worked[0];
+      return row ? dayMetricsFromRow(row, { source: "subject", label: row.work_date }) : null;
+    }
+    function getLastSameWeekdayMetrics(context, iso) {
+      if (!context || !iso) return null;
+      const targetDow = dowIndex(iso);
+      for (const row of context.worked) {
+        if (row.work_date === iso) continue;
+        if (row.work_date < iso && dowIndex(row.work_date) === targetDow) {
+          const label = `Last ${WEEKDAY_NAMES[targetDow]} (${row.work_date})`;
+          return dayMetricsFromRow(row, { source: "lastSameWeekday", label });
+        }
+      }
+      return null;
+    }
+    function getWeekdayBaselineMetrics(context, iso) {
+      if (!context || !iso) return null;
+      const targetDow = dowIndex(iso);
+      const candidates = context.worked.filter((r) => r.work_date !== iso && dowIndex(r.work_date) === targetDow);
+      if (!candidates.length) return null;
+      const label = `Typical ${WEEKDAY_NAMES[targetDow]}`;
+      return aggregateDayMetrics(candidates, { source: "weekdayAverage", type: "average", dow: targetDow, label });
+    }
+    function getCustomReferenceMetrics(context, iso) {
+      if (!context || !iso) return null;
+      const row = context.byDate.get(iso);
+      return row ? dayMetricsFromRow(row, { source: "manualReference", label: row.work_date }) : null;
+    }
+    function dayMetricsFromRow(row, meta) {
+      if (!row) return null;
+      const parcels2 = +row.parcels || 0;
+      const letters2 = +row.letters || 0;
+      const volume = combinedVolume2(parcels2, letters2);
+      const routeHours = Number(row.route_minutes || row.routeMinutes || 0) / 60;
+      const officeHours = Number(row.office_minutes || row.officeMinutes || 0) / 60;
+      const totalHours = Number(row.hours || row.totalHours || routeHours + officeHours) || 0;
+      const miles2 = Number(row.miles) || 0;
+      const efficiencyMinutes = volume > 0 ? routeHours * 60 / volume : null;
+      return {
+        ...meta,
+        workDate: row.work_date,
+        totalHours,
+        routeHours,
+        officeHours,
+        parcels: parcels2,
+        letters: letters2,
+        volume,
+        miles: miles2,
+        mood: row.mood || null,
+        notes: row.notes || null,
+        weather: inferWeather(row),
+        reason: inferReason(row),
+        efficiencyMinutes
+      };
+    }
+    function aggregateDayMetrics(rows, meta) {
+      const valid = rows.filter(Boolean);
+      if (!valid.length) return null;
+      const totals = valid.reduce((acc, row) => {
+        acc.totalHours += Number(row.route_minutes || row.routeMinutes || 0) / 60 + Number(row.office_minutes || row.officeMinutes || 0) / 60;
+        acc.routeHours += Number(row.route_minutes || row.routeMinutes || 0) / 60;
+        acc.officeHours += Number(row.office_minutes || row.officeMinutes || 0) / 60;
+        acc.parcels += +row.parcels || 0;
+        acc.letters += +row.letters || 0;
+        acc.miles += +row.miles || 0;
+        return acc;
+      }, { totalHours: 0, routeHours: 0, officeHours: 0, parcels: 0, letters: 0, miles: 0 });
+      const volume = combinedVolume2(totals.parcels, totals.letters) / valid.length;
+      const efficiencyMinutes = volume > 0 ? totals.routeHours * 60 / valid.length / volume : null;
+      return {
+        ...meta,
+        count: valid.length,
+        totalHours: totals.totalHours / valid.length,
+        routeHours: totals.routeHours / valid.length,
+        officeHours: totals.officeHours / valid.length,
+        parcels: totals.parcels / valid.length,
+        letters: totals.letters / valid.length,
+        miles: totals.miles / valid.length,
+        volume,
+        efficiencyMinutes,
+        raw: { rows: valid, totals }
+      };
+    }
+    function inferWeather(row) {
+      const raw = String(row.weather_json || "");
+      const parts = raw.split("\xB7").map((s) => s.trim()).filter(Boolean);
+      return parts.filter((p) => !/^Reason:/i.test(p)).join(" \xB7 ");
+    }
+    function inferReason(row) {
+      const raw = String(row.weather_json || "");
+      const match = raw.match(/Reason:\s*([^·]+)/i);
+      return match ? match[1].trim() : null;
+    }
+    const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    function summarizeEntry(row, model, stats, dismissedMap) {
+      const iso = row.work_date;
+      const dt = DateTime.fromISO(iso, { zone: ZONE }).toFormat("ccc LLL dd");
+      const actualMinutes = routeAdjustedMinutes2(row);
+      const expectedMinutes = model ? model.a + model.bp * (+row.parcels || 0) + model.bl * (+row.letters || 0) : null;
+      const deltaMinutes = minutesDelta(actualMinutes, expectedMinutes);
+      const zScore = stats.std > 0 ? (deltaMinutes - stats.mean) / stats.std : null;
+      const deltaHtml = formatMinutesDelta(deltaMinutes, zScore);
+      const parcels2 = +row.parcels || 0;
+      const letters2 = +row.letters || 0;
+      const boxholders2 = escapeHtml(inferBoxholderLabel2(row));
+      const weatherRaw = String(row.weather_json || "");
+      const weatherPieces = weatherRaw.split("\xB7").map((s) => s.trim()).filter(Boolean);
+      const weatherDisplayParts = weatherPieces.filter((p) => !/^Reason:/i.test(p) && !/^SecondTrip:/i.test(p) && !/^Box:/i.test(p) && !/^Break:/i.test(p)).map((p) => p.replace(/partly\s+cloudy/i, "PC"));
+      const weatherSnippet = weatherRaw.replace(/Reason:\s*[^·]+/ig, "").trim();
+      const weatherShort = weatherDisplayParts.length ? weatherDisplayParts.slice(0, 2).join(" \xB7 ") : "\u2014";
+      const weather2 = escapeHtml(weatherShort);
+      const badges = [];
+      if (hasTag2(row, "holiday_catchup")) {
+        const ctx = row._holidayCatchup || {};
+        const formatRatio = (ratio) => ratio != null && isFinite(ratio) ? `${ratio.toFixed(2)}\xD7` : "\u2014";
+        const fmt = (val, decimals) => val != null && isFinite(val) ? Number(val).toFixed(decimals) : "\u2014";
+        const tipParts = [];
+        if (ctx.prevHoliday) tipParts.push(`Holiday on ${ctx.prevHoliday}`);
+        if (ctx.baselineParcels != null) tipParts.push(`Parcels ${fmt(ctx.parcels, 0)} vs avg ${fmt(ctx.baselineParcels, 1)} (${formatRatio(ctx.ratioParcels)})`);
+        if (ctx.baselineRouteMinutes != null) tipParts.push(`Route ${fmt((ctx.routeMinutes || 0) / 60, 2)}h vs avg ${fmt((ctx.baselineRouteMinutes || 0) / 60, 2)}h (${formatRatio(ctx.ratioRoute)})`);
+        const badgeTitle = escapeHtml(tipParts.join(" \u2022 ") || "Follows holiday off-day with higher-than-baseline load");
+        badges.push(`<span class="pill badge-holiday" title="${badgeTitle}">Holiday catch-up</span>`);
+      }
+      const weatherCell = badges.length ? `${weather2} ${badges.join(" ")}` : weather2;
+      const rawNotes = (row.notes || "").trim();
+      const notePlainFull = rawNotes.replace(/\s+/g, " ").trim();
+      const noteFullEncoded = encodeURIComponent(notePlainFull);
+      const notesHtml = notePlainFull ? `<button class="ghost diag-note" data-note-full="${noteFullEncoded}">Read full</button>` : "\u2014";
+      return {
+        iso,
+        dt,
+        parcels: parcels2,
+        letters: letters2,
+        expectedMinutes,
+        actualMinutes,
+        deltaHtml,
+        boxholders: boxholders2,
+        weatherCell,
+        notesHtml,
+        weatherSnippet,
+        notesPlain: notePlainFull
+      };
+    }
+    function fitVolumeTimeModel2(rows, opts) {
+      const weightFn = typeof (opts == null ? void 0 : opts.weightFn) === "function" ? opts.weightFn : null;
+      const prepared = (rows || []).filter((r) => r && r.status !== "off").map((row) => {
+        const parcels2 = +row.parcels || 0;
+        const letters2 = +row.letters || 0;
+        const minutes = routeAdjustedMinutes2(row);
+        const rawWeight = weightFn ? Number(weightFn(row)) : 1;
+        const weight = Number.isFinite(rawWeight) && rawWeight > 0 ? rawWeight : 0;
+        return { row, parcels: parcels2, letters: letters2, minutes, weight };
+      }).filter((entry) => entry.weight > 0);
+      if (!prepared.length) return null;
+      const sumW = prepared.reduce((t, e) => t + e.weight, 0);
+      if (!(sumW > 0)) return null;
+      const mp = prepared.reduce((t, e) => t + e.weight * e.parcels, 0) / sumW;
+      const ml = prepared.reduce((t, e) => t + e.weight * e.letters, 0) / sumW;
+      const my = prepared.reduce((t, e) => t + e.weight * e.minutes, 0) / sumW;
+      let Cpp = 0;
+      let Cll = 0;
+      let Cpl = 0;
+      let Cpy = 0;
+      let Cly = 0;
+      let SST = 0;
+      let SSR = 0;
+      for (const e of prepared) {
+        const p = e.parcels - mp;
+        const l = e.letters - ml;
+        const y = e.minutes - my;
+        const w = e.weight;
+        Cpp += w * p * p;
+        Cll += w * l * l;
+        Cpl += w * p * l;
+        Cpy += w * p * y;
+        Cly += w * l * y;
+        SST += w * y * y;
+      }
+      const det = Cpp * Cll - Cpl * Cpl;
+      if (!isFinite(det) || Math.abs(det) < 1e-6) return null;
+      const bp = (Cpy * Cll - Cpl * Cly) / det;
+      const bl = (Cpp * Cly - Cpl * Cpy) / det;
+      const a = my - bp * mp - bl * ml;
+      const residuals = [];
+      for (const e of prepared) {
+        const yhat = a + bp * e.parcels + bl * e.letters;
+        const resid = e.minutes - yhat;
+        residuals.push({
+          iso: e.row.work_date,
+          parcels: e.parcels,
+          letters: e.letters,
+          routeMin: e.minutes,
+          predMin: yhat,
+          residMin: resid,
+          weight: e.weight,
+          row: e.row
+        });
+        SSR += e.weight * resid * resid;
+      }
+      const r2 = SST > 0 ? 1 - SSR / SST : 0;
+      const downweighted = prepared.filter((e) => e.weight < 0.999).length;
+      return {
+        a,
+        bp,
+        bl,
+        r2,
+        n: prepared.length,
+        residuals,
+        weighting: {
+          enabled: !!weightFn,
+          sumWeights: sumW,
+          averageWeight: sumW / prepared.length,
+          downweighted
+        }
+      };
+    }
+    function learnedLetterWeight(model) {
+      if (!model || !isFinite(model.bp) || Math.abs(model.bp) < 1e-6) return null;
+      const w = model.bl / model.bp;
+      return isFinite(w) && w >= 0 && w <= 1.5 ? w : null;
+    }
+    function computeResidualForRow(row, model) {
+      if (!model) return null;
+      const y = routeAdjustedMinutes2(row);
+      const p = +row.parcels || 0;
+      const l = +row.letters || 0;
+      const yhat = model.a + model.bp * p + model.bl * l;
+      return y - yhat;
+    }
+    function getResidualModel2(rows) {
+      if (residModelCache) return residModelCache;
+      const worked = (rows || []).filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0).sort((a, b) => a.work_date < b.work_date ? -1 : 1);
+      const scoped = rowsForModelScope2(worked);
+      const weightCfg = getResidualWeighting2();
+      residModelCache = fitVolumeTimeModel2(scoped, weightCfg.fn ? { weightFn: weightCfg.fn } : void 0);
+      return residModelCache;
+    }
+    function renderModelStrip(model) {
+      const el = document.getElementById("liveModelStrip");
+      if (!el) return;
+      if (!model) {
+        el.style.display = "none";
+        return;
+      }
+      const bp = document.getElementById("lm-bp");
+      const bl = document.getElementById("lm-bl");
+      const wv = document.getElementById("lm-w");
+      const r2 = document.getElementById("lm-r2");
+      const weight = model.bp && isFinite(model.bp) ? model.bl / model.bp : NaN;
+      if (bp) bp.textContent = model.bp.toFixed(2);
+      if (bl) bl.textContent = model.bl.toFixed(3);
+      if (wv) wv.textContent = isFinite(weight) ? weight.toFixed(2) : "\u2014";
+      if (r2) r2.textContent = `${(Math.max(0, Math.min(1, model.r2)) * 100).toFixed(0)}%`;
+      el.style.display = "flex";
+    }
+    function buildDiagnostics2(rows) {
+      var _a5, _b, _c, _d, _e;
+      const filteredRows = filterRowsForView2(rows || []);
+      const card = document.getElementById("diagnosticsCard");
+      if (!card) return;
+      card.style.display = "block";
+      residModelCache = null;
+      const worked = filteredRows.filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0).sort((a, b) => a.work_date < b.work_date ? -1 : 1);
+      const scoped = rowsForModelScope2(worked);
+      const weightCfg = getResidualWeighting2();
+      const model = fitVolumeTimeModel2(scoped, weightCfg.fn ? { weightFn: weightCfg.fn } : void 0);
+      renderModelStrip(model);
+      const badge = document.getElementById("diagModelBadge");
+      const summaryEl = document.getElementById("diagSummary");
+      const weightBtn = document.getElementById("diagHolidayWeightBtn");
+      const weightNote = document.getElementById("diagWeightNote");
+      const manageDismissBtn = document.getElementById("diagManageDismissed");
+      const tbody = document.getElementById("diagTableBody");
+      const toggleBtn = document.getElementById("toggleDiagDetails");
+      const details = document.getElementById("diagDetails");
+      if (weightBtn) {
+        if (!weightBtn.dataset.bound) {
+          weightBtn.addEventListener("click", () => {
+            const next = !(isHolidayDownweightEnabled2 == null ? void 0 : isHolidayDownweightEnabled2());
+            setHolidayDownweightEnabled2 == null ? void 0 : setHolidayDownweightEnabled2(next);
+            residModelCache = null;
+            rebuildAll2();
+          });
+          weightBtn.dataset.bound = "1";
+        }
+        const enabled = !!weightCfg.enabled;
+        weightBtn.classList.toggle("active", enabled);
+        weightBtn.textContent = enabled ? "Downweight holiday catch-up \xB7 ON" : "Downweight holiday catch-up \xB7 OFF";
+      }
+      if (manageDismissBtn && !manageDismissBtn.dataset.bound) {
+        manageDismissBtn.addEventListener("click", () => {
+          const list = loadDismissedResiduals2();
+          if (!list.length) {
+            window.alert("No dismissed residuals yet.");
+            return;
+          }
+          const lines = list.map((item) => {
+            const tagSummary = (item.tags || []).map((tag) => tag.minutes != null ? `${tag.reason} ${tag.minutes}m` : tag.reason).join(", ");
+            return `${item.iso}${tagSummary ? ` \xB7 ${tagSummary}` : ""}`;
+          }).join("\n");
+          const input = window.prompt(`Dismissed residuals:
+${lines}
+
+Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
+          if (!input) return;
+          const trimmed = input.trim();
+          if (!trimmed) return;
+          const updated = list.filter((item) => item.iso !== trimmed);
+          if (updated.length === list.length) {
+            window.alert(`No dismissed entry found for ${trimmed}.`);
+            return;
+          }
+          saveDismissedResiduals2(updated);
+          buildDiagnostics2(rows);
+        });
+        manageDismissBtn.dataset.bound = "1";
+      }
+      if (!model) {
+        renderModelStrip(null);
+        if (badge) badge.textContent = "Insufficient data";
+        if (summaryEl) summaryEl.textContent = "Need more worked days with parcels/letters to estimate impact.";
+        if (tbody) tbody.innerHTML = "";
+        return;
+      }
+      const dismissedList = loadDismissedResiduals2();
+      const dismissedMap = buildDismissedMap(dismissedList);
+      const weight = learnedLetterWeight(model);
+      if (weight != null) {
+        const current = getCurrentLetterWeight();
+        const smoothed = +(0.7 * current + 0.3 * weight).toFixed(4);
+        setCurrentLetterWeight(smoothed);
+      }
+      if (badge) {
+        const wTxt = weight != null ? weight.toFixed(2) : "\u2014";
+        badge.innerHTML = `<small class="modelMetric">bp</small> <span>${model.bp.toFixed(2)}</span> \xB7 <small class="modelMetric">bl</small> <span>${model.bl.toFixed(3)}</span> \xB7 <small class="modelMetric">w</small> <span>${wTxt}</span>`;
+      }
+      const catchupSummary = summarizeHolidayCatchups2(filteredRows);
+      let summaryTextForContext = "";
+      if (summaryEl) {
+        const pct = Math.round(Math.max(0, Math.min(1, model.r2)) * 100);
+        let summaryText = `Fit on ${model.n} days \xB7 R\xB2 ${pct}% \xB7 Predicts route minutes from parcels & letters.`;
+        if (catchupSummary.count) {
+          const extraHours = catchupSummary.addedMinutes ? (catchupSummary.addedMinutes / 60).toFixed(1) : null;
+          const ratioTxt = catchupSummary.avgRouteRatio ? `${catchupSummary.avgRouteRatio.toFixed(2)}\xD7 route` : null;
+          const parts = [`${catchupSummary.count} holiday catch-up day${catchupSummary.count === 1 ? "" : "s"}`];
+          if (extraHours && extraHours !== "0.0") parts.push(`${extraHours}h extra`);
+          if (ratioTxt) parts.push(ratioTxt);
+          summaryText += ` \xB7 ${parts.join(" \u2022 ")}`;
+        }
+        if (weightCfg.enabled) {
+          const avgW = (_a5 = model.weighting) == null ? void 0 : _a5.averageWeight;
+          const avgTxt = avgW ? ` (~${avgW.toFixed(2)}\xD7 weight)` : "";
+          summaryText += ` \xB7 Holiday downweight ON${avgTxt}`;
+        }
+        if (dismissedList.length) {
+          summaryText += ` \xB7 ${dismissedList.length} dismissed`;
+        }
+        summaryEl.textContent = summaryText;
+        summaryTextForContext = summaryText;
+      }
+      if (weightNote) {
+        if (!model) {
+          weightNote.textContent = weightCfg.enabled ? "Need more data to apply weights." : "Weights off (full impact).";
+        } else if (!weightCfg.enabled) {
+          weightNote.textContent = "Weights off (full impact).";
+        } else if (model.weighting) {
+          const dw = model.weighting.downweighted || 0;
+          const avg = model.weighting.averageWeight || 1;
+          weightNote.textContent = dw ? `${dw} day${dw === 1 ? "" : "s"} at ~${avg.toFixed(2)}\xD7 weight` : "No holiday catch-up days in range.";
+        } else {
+          weightNote.textContent = "Weights off (full impact).";
+        }
+      }
+      if (toggleBtn && details && !toggleBtn.dataset.bound) {
+        const labelPill = toggleBtn.querySelector(".pill[aria-hidden]");
+        const setLabel = () => {
+          if (!labelPill) return;
+          const expanded = toggleBtn.getAttribute("aria-expanded") === "true";
+          labelPill.textContent = expanded ? "Hide" : "Details";
+        };
+        toggleBtn.dataset.bound = "1";
+        toggleBtn.addEventListener("click", () => {
+          const show = details.style.display === "none" || !details.style.display;
+          details.style.display = show ? "block" : "none";
+          toggleBtn.setAttribute("aria-expanded", show ? "true" : "false");
+          setLabel();
+        });
+        toggleBtn.setAttribute("aria-expanded", "false");
+        setLabel();
+      }
+      if (tbody) {
+        const residuals = model.residuals || [];
+        const stats = (() => {
+          const pool = residuals.filter((r) => !dismissedMap.has(r.iso));
+          if (!pool.length) return { mean: 0, std: 0 };
+          const mean = pool.reduce((acc, r) => acc + r.residMin, 0) / pool.length;
+          if (pool.length < 2) return { mean, std: 0 };
+          const variance = pool.reduce((acc, r) => {
+            const diff = r.residMin - mean;
+            return acc + diff * diff;
+          }, 0) / (pool.length - 1);
+          return { mean, std: Math.sqrt(Math.max(variance, 0)) };
+        })();
+        const visibleResiduals = residuals.filter((r) => !dismissedMap.has(r.iso));
+        const top = [...visibleResiduals].sort((a, b) => Math.abs(b.residMin) - Math.abs(a.residMin)).slice(0, 10);
+        const topContext = [];
+        tbody.innerHTML = top.map((d) => {
+          var _a6;
+          const rowSummary = summarizeEntry(d.row, model, stats, dismissedMap);
+          topContext.push({
+            iso: d.iso,
+            deltaMinutes: Math.round(d.residMin),
+            parcels: Math.round(d.parcels || 0),
+            letters: Math.round(d.letters || 0),
+            expectedMinutes: d.predMin,
+            actualMinutes: d.routeMin,
+            boxholders: inferBoxholderLabel2(d.row),
+            weather: rowSummary.weatherSnippet,
+            notes: rowSummary.notesPlain,
+            tags: Array.isArray((_a6 = d.row) == null ? void 0 : _a6._tags) ? d.row._tags : []
+          });
+          return `<tr>
+          <td class="text-left">${rowSummary.dt}</td>
+          <td>${rowSummary.parcels}</td>
+          <td>${rowSummary.letters}</td>
+          <td>${(d.predMin / 60).toFixed(2)}</td>
+          <td>${(d.routeMin / 60).toFixed(2)}</td>
+          <td>${rowSummary.deltaHtml}</td>
+          <td class="text-left">${rowSummary.boxholders}</td>
+          <td class="text-left weather-cell">${rowSummary.weatherCell}</td>
+          <td class="notes-cell">${rowSummary.notesHtml}</td>
+          <td><button class="ghost diag-dismiss" data-dismiss-iso="${d.iso}">Tag & dismiss</button></td>
+        </tr>`;
+        }).join("");
+        latestDiagnosticsContext = {
+          generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          residuals: topContext,
+          dismissed: dismissedList,
+          summaryText: summaryTextForContext,
+          stats: { mean: stats.mean, std: stats.std },
+          catchupSummary,
+          weight: {
+            enabled: weightCfg.enabled,
+            averageWeight: (_c = (_b = model.weighting) == null ? void 0 : _b.averageWeight) != null ? _c : null,
+            downweighted: (_e = (_d = model.weighting) == null ? void 0 : _d.downweighted) != null ? _e : 0
+          }
+        };
+        updateAiSummaryAvailability2 == null ? void 0 : updateAiSummaryAvailability2();
+        const dismissBtns = tbody.querySelectorAll(".diag-dismiss");
+        dismissBtns.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const iso = btn.dataset.dismissIso;
+            if (!iso) return;
+            const residual = residuals.find((r) => r.iso === iso);
+            const deltaMinutes = residual ? Math.round(residual.residMin) : null;
+            const parcels2 = residual ? Math.round(residual.parcels) : null;
+            const letters2 = residual ? Math.round(residual.letters) : null;
+            const defaultReason = (() => {
+              if (!residual) return "";
+              if (parcels2 != null && parcels2 > 0 && letters2 != null && letters2 === 0) return "parcels";
+              if (letters2 != null && letters2 > parcels2) return "letters";
+              return "";
+            })();
+            const hintParts = [];
+            if (deltaMinutes != null) hintParts.push(`Residual: ${deltaMinutes}m`);
+            if (parcels2 != null) hintParts.push(`Parcels: ${parcels2}`);
+            if (letters2 != null) hintParts.push(`Letters: ${letters2}`);
+            const basePrompt = hintParts.length ? `${hintParts.join(" \xB7 ")}
+Reason (e.g., Road closure, Weather, Extra parcels):` : "Reason (e.g., Road closure, Weather, Extra parcels):";
+            const reasonPrompt = window.prompt(`${basePrompt}
+You can append minutes like "+15" (e.g., "parcels+15") and separate multiple reasons with commas (e.g., "parcels+15, flats+30").`, defaultReason);
+            if (reasonPrompt === null) return;
+            const reasonInput = reasonPrompt.trim();
+            const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+            let tags = parseDismissReasonInput2(reasonInput);
+            if (!tags.length) {
+              let minutesFromReason = null;
+              let reason = reasonInput;
+              const reasonMatch = reasonInput.match(/(.+?)\s*\+\s*(\d+)/);
+              if (reasonMatch) {
+                reason = reasonMatch[1].trim();
+                minutesFromReason = parseFloat(reasonMatch[2]);
+              }
+              const minutesPrompt = window.prompt("Minutes attributable to this reason (optional, numbers only):", minutesFromReason != null ? String(minutesFromReason) : deltaMinutes != null ? String(deltaMinutes) : "");
+              let minutes = null;
+              if (minutesPrompt && minutesPrompt.trim()) {
+                const parsed = parseFloat(minutesPrompt.trim());
+                if (Number.isFinite(parsed)) minutes = parsed;
+              }
+              const fallbackReason = reason.replace(/\s+/g, " ").trim();
+              if (!fallbackReason) {
+                window.alert("No reason provided; dismissal cancelled.");
+                return;
+              }
+              tags = [{ reason: fallbackReason, minutes: minutes != null ? minutes : null }];
+            } else {
+              const tagsNeedingMinutes = tags.filter((tag) => tag.minutes == null);
+              if (tagsNeedingMinutes.length === 1) {
+                const minutesPrompt = window.prompt("Minutes attributable to this reason (optional, numbers only):", deltaMinutes != null ? String(deltaMinutes) : "");
+                if (minutesPrompt && minutesPrompt.trim()) {
+                  const parsed = parseFloat(minutesPrompt.trim());
+                  if (Number.isFinite(parsed)) tagsNeedingMinutes[0].minutes = parsed;
+                }
+              }
+            }
+            const existing = loadDismissedResiduals2().filter((item) => item && item.iso !== iso);
+            if (tags.length) {
+              const entry = {
+                iso,
+                tags: tags.map((t) => ({
+                  reason: t.reason,
+                  minutes: t.minutes,
+                  notedAt: Date.now()
+                })),
+                notedAt: nowIso
+              };
+              existing.push(entry);
+              saveDismissedResiduals2(existing);
+            } else {
+              saveDismissedResiduals2(existing);
+            }
+            buildDiagnostics2(rows);
+          });
+        });
+      }
+      const noteButtons = (tbody == null ? void 0 : tbody.querySelectorAll(".diag-note")) || [];
+      noteButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const note = btn.dataset.noteFull ? decodeURIComponent(btn.dataset.noteFull) : "";
+          if (!note) {
+            window.alert("No notes recorded for this day.");
+          } else {
+            window.alert(note);
+          }
+        });
+      });
+    }
+    function formatNumber(val, opts) {
+      var _a5;
+      const decimals = (_a5 = opts == null ? void 0 : opts.decimals) != null ? _a5 : 2;
+      const suffix = (opts == null ? void 0 : opts.suffix) || "";
+      const n = val == null ? null : Number(val);
+      if (n == null || !Number.isFinite(n)) return "\u2014";
+      return `${n.toFixed(decimals)}${suffix}`;
+    }
+    function buildDayCompare2(rows) {
+      var _a5;
+      const flags = getFlags();
+      const filteredRows = filterRowsForView2(rows || []);
+      const card = document.getElementById("dayCompareCard");
+      const dailyMovers = document.getElementById("dcDailyMovers");
+      if (!card) {
+        if (dailyMovers) dailyMovers.style.display = "none";
+        return;
+      }
+      if (!flags || !flags.dayCompare) {
+        card.style.display = "none";
+        if (dailyMovers) dailyMovers.style.display = "none";
+        return;
+      }
+      card.style.display = "block";
+      const subjectSelect = document.getElementById("dcSubjectSelect");
+      const referenceSelect = document.getElementById("dcReferenceMode");
+      const manualPicker = document.getElementById("dcManualPicker");
+      const manualSelect = document.getElementById("dcManualSelect");
+      const emptyState = document.getElementById("dcEmpty");
+      const compareState = document.getElementById("dcCompare");
+      const subjectLabel = document.getElementById("dcSubjectLabel");
+      const referenceLabel = document.getElementById("dcReferenceLabel");
+      const subjectPills = document.getElementById("dcSubjectPills");
+      const referencePills = document.getElementById("dcReferencePills");
+      const subjectNotes = document.getElementById("dcSubjectNotes");
+      const referenceNotes = document.getElementById("dcReferenceNotes");
+      const highlightsRow = document.getElementById("dcHighlights");
+      const reasoningEl = document.getElementById("dcReasoning");
+      const tableBody = document.getElementById("dcTableBody");
+      const toggleBtn = document.getElementById("dcToggleRef");
+      if (!subjectSelect || !referenceSelect || !manualSelect || !emptyState || !compareState || !tableBody) return;
+      const context = buildDayCompareContext(filteredRows, 365);
+      const worked = context.worked;
+      if (!worked.length) {
+        emptyState.textContent = "No worked days yet. Add an entry to compare.";
+        emptyState.style.display = "block";
+        compareState.style.display = "none";
+        if (toggleBtn) toggleBtn.style.display = "none";
+        if (dailyMovers) dailyMovers.style.display = "none";
+        return;
+      }
+      const storedSubject = localStorage.getItem(DAY_COMPARE_STORE.subject);
+      let storedMode = localStorage.getItem(DAY_COMPARE_STORE.mode) || "last";
+      const storedManualInitial = localStorage.getItem(DAY_COMPARE_STORE.manual);
+      function formatOption(row) {
+        try {
+          const dt = DateTime.fromISO(row.work_date, { zone: ZONE });
+          const weekday = dt.toFormat("ccc");
+          const label = dt.toFormat("LLL dd");
+          const total = Number(row.hours || row.totalHours || 0).toFixed(2);
+          const moon = moonPhaseEmoji(row.work_date);
+          return `${row.work_date} \xB7 ${weekday} ${label} \xB7 ${total}h ${moon}`;
+        } catch (_) {
+          return row.work_date;
+        }
+      }
+      subjectSelect.innerHTML = worked.map((row) => `<option value="${row.work_date}">${formatOption(row)}</option>`).join("");
+      subjectSelect.value = storedSubject && subjectSelect.querySelector(`option[value="${storedSubject}"]`) ? storedSubject : ((_a5 = worked[0]) == null ? void 0 : _a5.work_date) || "";
+      const manualOption = referenceSelect.querySelector('option[value="manual"]');
+      const manualAvailable = worked.length > 1;
+      if (manualOption) {
+        manualOption.disabled = !manualAvailable;
+        if (!manualAvailable && storedMode === "manual") storedMode = "last";
+      }
+      referenceSelect.value = storedMode;
+      function subjectIso() {
+        var _a6;
+        return subjectSelect.value || ((_a6 = worked[0]) == null ? void 0 : _a6.work_date);
+      }
+      function modeLabel(mode) {
+        if (mode === "last") return "Last weekday";
+        if (mode === "baseline") return "Baseline avg";
+        if (mode === "manual") return "Picked day";
+        return mode;
+      }
+      function populateManualOptions() {
+        const current = subjectIso();
+        const altRows = worked.filter((r) => r.work_date !== current);
+        manualSelect.innerHTML = altRows.map((row) => `<option value="${row.work_date}">${formatOption(row)}</option>`).join("");
+        if (!altRows.length) {
+          manualSelect.value = "";
+          return;
+        }
+        const latestStored = localStorage.getItem(DAY_COMPARE_STORE.manual) || storedManualInitial;
+        manualSelect.value = latestStored && manualSelect.querySelector(`option[value="${latestStored}"]`) ? latestStored : altRows[0].work_date;
+      }
+      populateManualOptions();
+      if (manualPicker) manualPicker.style.display = referenceSelect.value === "manual" ? "block" : "none";
+      function summarizeExtras(metric) {
+        if (!metric) return "";
+        const parts = [];
+        if (metric.mood) parts.push(`Mood: ${metric.mood}`);
+        if (metric.weather) parts.push(`Weather: ${metric.weather}`);
+        if (metric.reason) parts.push(`Reason: ${metric.reason}`);
+        if (metric.notes) parts.push(`Notes: ${metric.notes}`);
+        return parts.join(" \u2022 ");
+      }
+      function pillHtml(label, value) {
+        return `<span class="pill"><small>${label}</small> <b>${value}</b></span>`;
+      }
+      function deltaDetails(subject, reference) {
+        var _a6, _b, _c;
+        if (!subject || !reference) return { rows: [], highlights: [], reasoning: "" };
+        const metricDefs = [
+          { key: "totalHours", label: "Total hours", decimals: 2, suffix: "h" },
+          { key: "routeHours", label: "Route hours", decimals: 2, suffix: "h" },
+          { key: "officeHours", label: "Office hours", decimals: 2, suffix: "h" },
+          { key: "parcels", label: "Parcels", decimals: 0 },
+          { key: "letters", label: "Letters", decimals: 0 },
+          { key: "volume", label: "Volume (parcels + w\xD7letters)", decimals: 2 },
+          { key: "miles", label: "Miles", decimals: 1, suffix: "mi" },
+          { key: "efficiencyMinutes", label: "Route minutes per volume", decimals: 1, suffix: "m/vol", invert: true }
+        ];
+        const rowsOut = [];
+        const highlights = [];
+        for (const def of metricDefs) {
+          const subjVal = subject[def.key];
+          const refVal = reference[def.key];
+          const delta = subjVal != null && refVal != null ? subjVal - refVal : null;
+          const pct = refVal != null && refVal !== 0 && delta != null ? delta / refVal * 100 : null;
+          const colorDelta = def.invert && pct != null ? -pct : pct;
+          const displayDelta = delta == null ? "\u2014" : formatNumber(delta, { decimals: (_a6 = def.decimals) != null ? _a6 : 2, suffix: def.suffix ? def.suffix : "" });
+          const pctTxt = pct == null || !Number.isFinite(pct) ? "" : ` (${pct >= 0 ? "+" : ""}${Math.round(pct)}%)`;
+          rowsOut.push({
+            label: def.label,
+            subject: formatNumber(subjVal, { decimals: (_b = def.decimals) != null ? _b : 2, suffix: def.suffix || "" }),
+            reference: formatNumber(refVal, { decimals: (_c = def.decimals) != null ? _c : 2, suffix: def.suffix || "" }),
+            delta: delta == null ? "\u2014" : `${displayDelta}${pctTxt}`,
+            colorDelta
+          });
+          if (pct != null && Number.isFinite(pct) && Math.abs(pct) >= 10) {
+            highlights.push({ label: def.label, pct, delta });
+          }
+        }
+        highlights.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+        const reasoning = highlights.slice(0, 3).map((h) => `${h.label}: ${formatNumber(h.delta, { decimals: 2 })} (${h.pct >= 0 ? "+" : ""}${Math.round(h.pct)}%)`).join(" \xB7 ");
+        return { rows: rowsOut, highlights, reasoning };
+      }
+      function render() {
+        const subjectMetrics = getSubjectMetrics(context, subjectIso());
+        let referenceMetrics;
+        const mode = referenceSelect.value;
+        if (mode === "last") referenceMetrics = getLastSameWeekdayMetrics(context, subjectIso());
+        else if (mode === "baseline") referenceMetrics = getWeekdayBaselineMetrics(context, subjectIso());
+        else if (mode === "manual") referenceMetrics = getCustomReferenceMetrics(context, manualSelect.value);
+        else referenceMetrics = null;
+        if (!subjectMetrics || !referenceMetrics) {
+          emptyState.textContent = "Need more comparison data. Add more worked days.";
+          emptyState.style.display = "block";
+          compareState.style.display = "none";
+          if (dailyMovers) dailyMovers.style.display = "none";
+          return;
+        }
+        emptyState.style.display = "none";
+        compareState.style.display = "block";
+        if (dailyMovers) dailyMovers.style.display = "block";
+        subjectLabel.textContent = subjectMetrics.label || subjectMetrics.workDate;
+        referenceLabel.textContent = referenceMetrics.label || referenceMetrics.workDate;
+        const subjectPillData = [
+          { label: "Total", value: `${formatNumber(subjectMetrics.totalHours, { decimals: 2, suffix: "h" })}` },
+          { label: "Route", value: `${formatNumber(subjectMetrics.routeHours, { decimals: 2, suffix: "h" })}` },
+          { label: "Office", value: `${formatNumber(subjectMetrics.officeHours, { decimals: 2, suffix: "h" })}` },
+          { label: "Volume", value: `${formatNumber(subjectMetrics.volume, { decimals: 2 })}` }
+        ];
+        subjectPills.innerHTML = subjectPillData.map((p) => pillHtml(p.label, p.value)).join("");
+        const referencePillData = [
+          { label: "Total", value: `${formatNumber(referenceMetrics.totalHours, { decimals: 2, suffix: "h" })}` },
+          { label: "Route", value: `${formatNumber(referenceMetrics.routeHours, { decimals: 2, suffix: "h" })}` },
+          { label: "Office", value: `${formatNumber(referenceMetrics.officeHours, { decimals: 2, suffix: "h" })}` },
+          { label: "Volume", value: `${formatNumber(referenceMetrics.volume, { decimals: 2 })}` }
+        ];
+        referencePills.innerHTML = referencePillData.map((p) => pillHtml(p.label, p.value)).join("");
+        subjectNotes.textContent = summarizeExtras(subjectMetrics) || "\u2014";
+        referenceNotes.textContent = summarizeExtras(referenceMetrics) || "\u2014";
+        const { rows: tableRows, highlights, reasoning } = deltaDetails(subjectMetrics, referenceMetrics);
+        tableBody.innerHTML = tableRows.map((row) => {
+          const deltaClass = row.colorDelta == null ? "" : row.colorDelta > 0 ? "pos" : "neg";
+          return `<tr>
+            <td>${row.label}</td>
+            <td>${row.subject}</td>
+            <td>${row.reference}</td>
+            <td class="${deltaClass}">${row.delta}</td>
+          </tr>`;
+        }).join("");
+        highlightsRow.innerHTML = highlights.slice(0, 3).map((h) => `<span class="pill ${h.pct >= 0 ? "pos" : "neg"}"><small>${h.label}</small> <b>${h.delta >= 0 ? "+" : ""}${formatNumber(h.delta, { decimals: 2 })}</b></span>`).join("");
+        reasoningEl.textContent = reasoning || "No major differences detected.";
+        localStorage.setItem(DAY_COMPARE_STORE.subject, subjectIso());
+        localStorage.setItem(DAY_COMPARE_STORE.mode, mode);
+        if (mode === "manual" && manualSelect.value) {
+          localStorage.setItem(DAY_COMPARE_STORE.manual, manualSelect.value);
+        }
+      }
+      subjectSelect.addEventListener("change", () => {
+        populateManualOptions();
+        render();
+      });
+      referenceSelect.addEventListener("change", () => {
+        if (manualPicker) manualPicker.style.display = referenceSelect.value === "manual" ? "block" : "none";
+        render();
+      });
+      manualSelect.addEventListener("change", render);
+      if (toggleBtn) {
+        const available = ["last", "baseline", ...worked.length > 1 ? ["manual"] : []];
+        toggleBtn.style.display = available.length > 1 ? "" : "none";
+        toggleBtn.onclick = () => {
+          const current = referenceSelect.value;
+          const idx = available.indexOf(current);
+          const next = available[(idx + 1) % available.length];
+          referenceSelect.value = next;
+          referenceSelect.dispatchEvent(new Event("change"));
+        };
+      }
+      render();
+    }
+    function buildVolumeLeaderboard2(rows) {
+      const flags = getFlags();
+      const panel = document.getElementById("volumeLeaderboard");
+      const body = document.getElementById("volumeLeaderboardBody");
+      const note = document.getElementById("volumeLeaderboardNote");
+      if (!panel || !body) return;
+      if (!flags || !flags.mixViz) {
+        panel.style.display = "none";
+        return;
+      }
+      const worked = filterRowsForView2(rows || []).filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0);
+      if (!worked.length) {
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:8px;color:var(--muted)">No worked days yet.</td></tr>';
+        if (note) note.textContent = "\u2014";
+        return;
+      }
+      const weight = getCurrentLetterWeight();
+      const volumes = worked.map((r) => ({
+        date: r.work_date,
+        parcels: +r.parcels || 0,
+        letters: +r.letters || 0,
+        volume: combinedVolume2(r.parcels, r.letters, weight)
+      }));
+      const asc = [...volumes].sort((a, b) => a.volume - b.volume);
+      const percentileByDate = /* @__PURE__ */ new Map();
+      asc.forEach((item, idx) => {
+        const pct = Math.round((idx + 1) / asc.length * 100);
+        percentileByDate.set(item.date, pct);
+      });
+      const top = [...volumes].sort((a, b) => b.volume - a.volume).slice(0, Math.min(10, volumes.length));
+      body.innerHTML = top.map((item) => {
+        const dt = DateTime.fromISO(item.date, { zone: ZONE });
+        const pct = percentileByDate.get(item.date);
+        const pctText = pct != null ? `${pct}%` : "\u2014";
+        return `<tr>
+        <td>${dt.toFormat("ccc LLL dd")}</td>
+        <td>${item.parcels}</td>
+        <td>${item.letters}</td>
+        <td>${item.volume.toFixed(1)}</td>
+        <td>${pctText}</td>
+      </tr>`;
+      }).join("");
+      if (note) note.textContent = `Combined volume = parcels + ${(weight || 0).toFixed(2)}\xD7letters`;
+    }
+    return {
+      buildDiagnostics: buildDiagnostics2,
+      buildDayCompare: buildDayCompare2,
+      buildVolumeLeaderboard: buildVolumeLeaderboard2,
+      fitVolumeTimeModel: fitVolumeTimeModel2,
+      getResidualModel: getResidualModel2,
+      getLatestDiagnosticsContext: () => latestDiagnosticsContext,
+      resetDiagnosticsCache: () => {
+        residModelCache = null;
+      }
+    };
+  }
+
+  // src/features/aiSummary.js
+  function loadLastSummary() {
+    try {
+      const raw = localStorage.getItem(AI_LAST_SUMMARY_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (_) {
+      return null;
+    }
+  }
+  function saveLastSummary(summary) {
+    try {
+      if (summary) {
+        localStorage.setItem(AI_LAST_SUMMARY_KEY, JSON.stringify(summary));
+      } else {
+        localStorage.removeItem(AI_LAST_SUMMARY_KEY);
+      }
+      return true;
+    } catch (err) {
+      console.error("[AI summary] failed to persist", err);
+      return false;
+    }
+  }
+  function isCollapsed() {
+    try {
+      return localStorage.getItem(AI_SUMMARY_COLLAPSED_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
+  }
+  function saveCollapsed(flag) {
+    try {
+      localStorage.setItem(AI_SUMMARY_COLLAPSED_KEY, flag ? "1" : "0");
+    } catch (_) {
+    }
+  }
+  function createAiSummary({
+    elements,
+    supabaseClient,
+    getCurrentUserId,
+    getDiagnosticsContext,
+    defaultPrompt
+  }) {
+    const {
+      card,
+      button,
+      toggleButton,
+      hint,
+      status,
+      output,
+      content,
+      tokenUsageCard: tokenUsageCard2,
+      tokenTodayEl: tokenTodayEl2,
+      tokenWeekEl: tokenWeekEl2,
+      tokenMonthEl: tokenMonthEl2,
+      tokenLimitEl: tokenLimitEl2,
+      tokenBarFill: tokenBarFill2,
+      tokenBarNote: tokenBarNote2,
+      tokenTodayInput: tokenTodayInput2,
+      tokenWeekInput: tokenWeekInput2,
+      tokenMonthInput: tokenMonthInput2,
+      tokenLimitInput: tokenLimitInput2
+    } = elements;
+    const promptFallback = defaultPrompt || "Provide an upbeat summary.";
+    function applyCollapsed(force) {
+      const collapsed = typeof force === "boolean" ? force : isCollapsed();
+      if (content) content.style.display = collapsed ? "none" : "block";
+      if (toggleButton) toggleButton.textContent = collapsed ? "Expand" : "Collapse";
+    }
+    function setCollapsed(flag) {
+      saveCollapsed(flag);
+      applyCollapsed(flag);
+    }
+    function toggleCollapsed() {
+      setCollapsed(!isCollapsed());
+    }
+    function updateTokenUsageCard(usage) {
+      if (!usage || !tokenUsageCard2) return;
+      const today = usage.today || 0;
+      const week = usage.week || 0;
+      const month = usage.month || 0;
+      const limit = usage.monthlyLimit;
+      if (tokenTodayEl2) tokenTodayEl2.textContent = today;
+      if (tokenWeekEl2) tokenWeekEl2.textContent = week;
+      if (tokenMonthEl2) tokenMonthEl2.textContent = month;
+      if (tokenLimitEl2) tokenLimitEl2.textContent = limit != null ? limit : "\u2014";
+      if (tokenBarFill2) {
+        let percent = 0;
+        if (limit && limit > 0) {
+          percent = Math.min(month / limit * 100, 100);
+        }
+        tokenBarFill2.style.width = `${percent}%`;
+        let color = "var(--brand)";
+        if (percent > 90) color = "#ff4d4d";
+        else if (percent > 60) color = "#ffcc00";
+        tokenBarFill2.style.background = color;
+      }
+      if (tokenBarNote2) {
+        tokenBarNote2.textContent = "Token totals update automatically after each AI summary.";
+      }
+      tokenUsageCard2.style.display = "block";
+    }
+    function populateTokenInputs(usage) {
+      if (!usage) return;
+      if (tokenTodayInput2) tokenTodayInput2.value = usage.today;
+      if (tokenWeekInput2) tokenWeekInput2.value = usage.week;
+      if (tokenMonthInput2) tokenMonthInput2.value = usage.month;
+      if (tokenLimitInput2) tokenLimitInput2.value = usage.monthlyLimit != null ? usage.monthlyLimit : "";
+    }
+    function readTokenInputs() {
+      const usage = loadTokenUsage();
+      if (tokenTodayInput2) usage.today = Number(tokenTodayInput2.value) || 0;
+      if (tokenWeekInput2) usage.week = Number(tokenWeekInput2.value) || 0;
+      if (tokenMonthInput2) usage.month = Number(tokenMonthInput2.value) || 0;
+      if (tokenLimitInput2) {
+        const val = tokenLimitInput2.value;
+        usage.monthlyLimit = val !== "" ? Number(val) : null;
+      }
+      saveTokenUsage(usage);
+      updateTokenUsageCard(usage);
+    }
+    function addTokenUsage(deltaTokens) {
+      if (!(deltaTokens > 0)) return;
+      const usage = loadTokenUsage();
+      usage.today += deltaTokens;
+      usage.week += deltaTokens;
+      usage.month += deltaTokens;
+      saveTokenUsage(usage);
+      updateTokenUsageCard(usage);
+      populateTokenInputs(usage);
+    }
+    async function fetchAiSummaryFromSupabase() {
+      const userId = getCurrentUserId();
+      if (!userId || !supabaseClient) return null;
+      try {
+        const today = todayIso();
+        const { data, error } = await supabaseClient.from("daily_reports").select("report,timestamp").eq("user_id", userId).eq("date", today).maybeSingle();
+        if (error && error.code !== "PGRST116") {
+          console.warn("[AI summary] load error", error.message);
+          return null;
+        }
+        if (!data || !data.report) return null;
+        let parsed;
+        try {
+          parsed = typeof data.report === "string" ? JSON.parse(data.report) : data.report;
+        } catch (_) {
+          parsed = { text: data.report };
+        }
+        if (!parsed || !parsed.text) return null;
+        if (!parsed.timestamp && data.timestamp) {
+          parsed.timestamp = data.timestamp;
+        }
+        saveLastSummary(parsed);
+        return parsed;
+      } catch (err) {
+        console.warn("[AI summary] load exception", err);
+        return null;
+      }
+    }
+    async function saveAiSummaryToSupabase(summary) {
+      const userId = getCurrentUserId();
+      if (!userId || !supabaseClient) return false;
+      try {
+        const payload = {
+          user_id: userId,
+          date: todayIso(),
+          report: JSON.stringify(summary || {})
+        };
+        const { error } = await supabaseClient.from("daily_reports").upsert(payload, { onConflict: ["user_id", "date"] });
+        if (error) {
+          console.warn("[AI summary] save error", error.message);
+          return false;
+        }
+        return true;
+      } catch (err) {
+        console.warn("[AI summary] save exception", err);
+        return false;
+      }
+    }
+    function updateAvailability() {
+      if (!card || !button || !hint) return;
+      card.style.display = "block";
+      const key = getOpenAiKey();
+      button.disabled = !key;
+      hint.textContent = key ? "AI summary uses OpenAI when you click the button. Data stays local until then." : "Set your OpenAI API key in Settings \u2192 AI Summary to enable.";
+      applyCollapsed();
+    }
+    function renderLastSummary() {
+      if (!output || !status) return;
+      const saved = loadLastSummary();
+      if (saved && saved.text) {
+        output.textContent = saved.text;
+        const stamp = saved.timestamp ? new Date(saved.timestamp) : null;
+        status.textContent = stamp ? `Last updated ${stamp.toLocaleString()}` : "Last summary loaded.";
+        return;
+      }
+      output.textContent = "";
+      status.textContent = "No AI summary yet.";
+      const userId = getCurrentUserId();
+      if (!userId) return;
+      fetchAiSummaryFromSupabase().then((remote) => {
+        if (remote && remote.text) {
+          output.textContent = remote.text;
+          const stamp = remote.timestamp ? new Date(remote.timestamp) : null;
+          status.textContent = stamp ? `Last updated ${stamp.toLocaleString()}` : "Loaded from cloud.";
+        }
+      });
+    }
+    function buildPrompt(ctx) {
+      const lines = [];
+      lines.push("You are helping a USPS route analyst interpret daily metrics.");
+      if (ctx.summaryText) {
+        lines.push(`Summary: ${ctx.summaryText}`);
+      }
+      if (ctx.catchupSummary && ctx.catchupSummary.count) {
+        const c = ctx.catchupSummary;
+        const extra = c.addedMinutes ? `${(c.addedMinutes / 60).toFixed(2)} extra hours tagged` : "";
+        const ratio = c.avgRouteRatio ? `avg route ratio ${c.avgRouteRatio.toFixed(2)}\xD7` : "";
+        const parts = [extra, ratio].filter(Boolean).join(" \xB7 ");
+        lines.push(`Holiday catch-up context: ${c.count} day(s)${parts ? ` ${parts}` : ""}`);
+      }
+      if (ctx.weight && ctx.weight.enabled) {
+        lines.push(`Holiday downweight applied: average weight ${(ctx.weight.averageWeight || 1).toFixed(2)}, ${ctx.weight.downweighted || 0} day(s) affected.`);
+      }
+      const residuals = ctx.residuals || [];
+      if (residuals.length) {
+        lines.push("Top residual days (actual - predicted route minutes):");
+        residuals.forEach((r, idx) => {
+          const tags = r.tags && r.tags.length ? ` tags: ${r.tags.join(", ")}` : "";
+          const weather2 = r.weather ? ` weather: ${r.weather}` : "";
+          const notes2 = r.notes ? ` notes: ${r.notes}` : "";
+          lines.push(`${idx + 1}. ${r.iso}: ${r.deltaMinutes >= 0 ? "+" : ""}${r.deltaMinutes}m; parcels ${r.parcels}; letters ${r.letters}; boxholders ${r.boxholders || "\u2014"}${tags}${weather2}${notes2}`);
+        });
+      }
+      const dismissed = ctx.dismissed || [];
+      if (dismissed.length) {
+        const list = dismissed.map((item) => {
+          const tags = (item.tags || []).map((tag) => tag.minutes != null ? `${tag.reason} ${tag.minutes}m` : tag.reason).join(", ");
+          return `${item.iso}${tags ? ": " + tags : ""}`;
+        }).join("; ");
+        lines.push(`Dismissed (already reviewed): ${list}`);
+      }
+      lines.push("Provide 3 concise bullet points: 1) root causes or contributing factors, 2) suggested actions or notes for tomorrow, 3) notable trends or items to watch. Keep it short and focused.");
+      return lines.join("\n");
+    }
+    async function generateSummary() {
+      var _a5, _b, _c, _d;
+      if (!button) return;
+      const key = getOpenAiKey();
+      if (!key) {
+        if (status) status.textContent = "Set your OpenAI API key in Settings first.";
+        updateAvailability();
+        return;
+      }
+      const ctx = typeof getDiagnosticsContext === "function" ? getDiagnosticsContext() : null;
+      if (!ctx || !(ctx.residuals || []).length) {
+        if (status) status.textContent = "Run diagnostics first so residuals are available.";
+        return;
+      }
+      const prompt2 = buildPrompt(ctx);
+      setCollapsed(false);
+      button.disabled = true;
+      if (status) status.textContent = "Generating summary\u2026";
+      if (output) output.textContent = "";
+      try {
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${key}`
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            temperature: 0.4,
+            messages: [
+              { role: "system", content: getAiBasePrompt(promptFallback) },
+              { role: "user", content: prompt2 }
+            ]
+          })
+        });
+        if (!response.ok) {
+          const text2 = await response.text();
+          throw new Error(text2 || `HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        let text = "";
+        const content2 = (_c = (_b = (_a5 = data == null ? void 0 : data.choices) == null ? void 0 : _a5[0]) == null ? void 0 : _b.message) == null ? void 0 : _c.content;
+        if (typeof content2 === "string") {
+          text = content2;
+        } else if (Array.isArray(content2)) {
+          text = content2.map((part) => typeof part === "string" ? part : (part == null ? void 0 : part.text) || "").join("");
+        } else if (content2 && typeof content2 === "object" && "text" in content2) {
+          text = content2.text;
+        }
+        text = (text || "").trim() || "(No summary returned)";
+        if (output) output.textContent = text;
+        const stamp = (/* @__PURE__ */ new Date()).toISOString();
+        if (status) status.textContent = `Updated ${new Date(stamp).toLocaleTimeString()}`;
+        const summaryPayload = { text, timestamp: stamp, prompt: prompt2 };
+        const persisted = saveLastSummary(summaryPayload);
+        await saveAiSummaryToSupabase(summaryPayload);
+        if (persisted) renderLastSummary();
+        const tokensUsed = (_d = data == null ? void 0 : data.usage) == null ? void 0 : _d.total_tokens;
+        if (Number.isFinite(tokensUsed) && tokensUsed > 0) {
+          addTokenUsage(tokensUsed);
+        }
+        setCollapsed(false);
+      } catch (err) {
+        console.error("[AI summary] error", err);
+        if (status) status.textContent = `AI summary failed: ${err.message || err}`;
+      } finally {
+        button.disabled = false;
+      }
+    }
+    return {
+      updateAvailability,
+      renderLastSummary,
+      generateSummary,
+      populateTokenInputs,
+      readTokenInputs,
+      setCollapsed,
+      toggleCollapsed,
+      addTokenUsage,
+      applyCollapsed,
+      fetchAiSummaryFromSupabase,
+      updateTokenUsageCard
+    };
+  }
+
+  // src/features/charts.js
+  function createCharts({
+    getFlags,
+    filterRowsForView: filterRowsForView2,
+    vacGlyph: vacGlyph2,
+    routeAdjustedHours: routeAdjustedHours2,
+    boxholderAdjMinutes: boxholderAdjMinutes2,
+    getLastNonEmptyWeek: getLastNonEmptyWeek2,
+    buildDayCompare: buildDayCompare2
+  }) {
+    let dowChart;
+    let parcelsChart;
+    let lettersChart;
+    function destroyCharts() {
+      [dowChart, parcelsChart, lettersChart].forEach((c) => {
+        if (c && typeof c.destroy === "function") {
+          try {
+            c.destroy();
+          } catch (_) {
+          }
+        }
+      });
+      dowChart = parcelsChart = lettersChart = null;
+    }
+    function enableChartTap(chart, canvas) {
+      if (!chart || !canvas) return;
+      const handler = (ev) => {
+        try {
+          const rect = canvas.getBoundingClientRect();
+          const touch = ev.touches && ev.touches[0];
+          const cx = touch ? touch.clientX : ev.clientX;
+          const cy = touch ? touch.clientY : ev.clientY;
+          const x = cx - rect.left;
+          const y = cy - rect.top;
+          const points = chart.getElementsAtEventForMode(ev, "nearest", { intersect: false }, true);
+          if (points && points.length) {
+            const active = [{ datasetIndex: points[0].datasetIndex, index: points[0].index }];
+            if (chart.setActiveElements) chart.setActiveElements(active);
+            if (chart.tooltip && chart.tooltip.setActiveElements) chart.tooltip.setActiveElements(active, { x, y });
+            chart.update();
+          }
+        } catch (_) {
+        }
+      };
+      ["click", "touchstart", "pointerdown"].forEach((type) => {
+        canvas.addEventListener(type, handler, { passive: true });
+      });
+    }
+    function buildCharts2(rows) {
+      rows = filterRowsForView2(rows || []);
+      if (!window.Chart) {
+        console.warn("Chart.js missing \u2014 skipping charts");
+        return;
+      }
+      destroyCharts();
+      const workRows = rows.filter((r) => r.status !== "off");
+      const byDow = Array.from({ length: 7 }, () => ({ h: 0, c: 0 }));
+      for (const r of workRows) {
+        const h = Number(r.hours || 0);
+        if (h > 0) {
+          const d = dowIndex(r.work_date);
+          byDow[d].h += h;
+          byDow[d].c++;
+        }
+      }
+      const dowLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+      const order = [1, 2, 3, 4, 5, 6, 0];
+      const perDow = byDow.map((x) => x.c ? +(x.h / x.c).toFixed(2) : 0);
+      const dowData = order.map((i) => perDow[i]);
+      dowChart = new Chart(document.getElementById("dowChart"), {
+        type: "bar",
+        data: { labels: dowLabels, datasets: [{ label: "Avg Total Hours", data: dowData }] },
+        options: { responsive: true, plugins: { legend: { display: false } } }
+      });
+      const sortedWork = [...workRows].sort((a, b) => a.work_date.localeCompare(b.work_date));
+      const labels = sortedWork.map((r) => r.work_date);
+      const parcelsCanvas = document.getElementById("parcelsChart");
+      parcelsChart = new Chart(parcelsCanvas, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{ label: "Parcels", data: sortedWork.map((r) => +r.parcels || 0), pointRadius: 3, pointHoverRadius: 8, pointHitRadius: 16 }]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: "nearest", intersect: false },
+          events: ["mousemove", "mouseout", "click", "touchstart", "touchmove", "touchend"],
+          animation: { duration: 0 },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              animation: { duration: 0 },
+              callbacks: {
+                title: (items) => {
+                  var _a5;
+                  const iso = (_a5 = items == null ? void 0 : items[0]) == null ? void 0 : _a5.label;
+                  if (!iso) return "";
+                  const d = DateTime.fromISO(iso, { zone: ZONE });
+                  return d.toFormat("cccc \u2022 MMM d, yyyy") + (vacGlyph2 ? vacGlyph2(iso) : "");
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: {
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 8,
+                callback: function(value) {
+                  const iso = this.getLabelForValue(value);
+                  const d = DateTime.fromISO(iso, { zone: ZONE });
+                  return [d.toFormat("ccc"), d.toFormat("M/d")];
+                }
+              }
+            }
+          }
+        }
+      });
+      const lettersCanvas = document.getElementById("lettersChart");
+      lettersChart = new Chart(lettersCanvas, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{ label: "Letters", data: sortedWork.map((r) => +r.letters || 0), pointRadius: 3, pointHoverRadius: 8, pointHitRadius: 16 }]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: "nearest", intersect: false },
+          events: ["mousemove", "mouseout", "click", "touchstart", "touchmove", "touchend"],
+          animation: { duration: 0 },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              animation: { duration: 0 },
+              callbacks: {
+                title: (items) => {
+                  var _a5;
+                  const iso = (_a5 = items == null ? void 0 : items[0]) == null ? void 0 : _a5.label;
+                  if (!iso) return "";
+                  const d = DateTime.fromISO(iso, { zone: ZONE });
+                  return d.toFormat("cccc \u2022 MMM d, yyyy") + (vacGlyph2 ? vacGlyph2(iso) : "");
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: {
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 8,
+                callback: function(value) {
+                  const iso = this.getLabelForValue(value);
+                  const d = DateTime.fromISO(iso, { zone: ZONE });
+                  return [d.toFormat("ccc"), d.toFormat("M/d")];
+                }
+              }
+            }
+          }
+        }
+      });
+      enableChartTap(parcelsChart, parcelsCanvas);
+      enableChartTap(lettersChart, lettersCanvas);
+    }
+    function buildMonthlyGlance2(rows) {
+      rows = filterRowsForView2(rows || []);
+      const today = DateTime.now().setZone(ZONE);
+      const weekStart0 = startOfWeekMonday(today);
+      const weekEnd0 = endOfWeekSunday(today);
+      const weekStart1 = startOfWeekMonday(today.minus({ weeks: 1 }));
+      const weekEnd1 = endOfWeekSunday(today.minus({ weeks: 1 }));
+      const weekStart2 = startOfWeekMonday(today.minus({ weeks: 2 }));
+      const weekEnd2 = endOfWeekSunday(today.minus({ weeks: 2 }));
+      const weekStart3 = startOfWeekMonday(today.minus({ weeks: 3 }));
+      const weekEnd3 = endOfWeekSunday(today.minus({ weeks: 3 }));
+      const inRange = (r, from, to) => {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        return d >= from && d <= to;
+      };
+      const worked = rows.filter((r) => r.status !== "off");
+      const totals = (from, to) => {
+        const arr = worked.filter((r) => inRange(r, from, to));
+        const h = arr.reduce((t, r) => t + (+r.hours || 0), 0);
+        const p = arr.reduce((t, r) => t + (+r.parcels || 0), 0);
+        const l = arr.reduce((t, r) => t + (+r.letters || 0), 0);
+        return { h, p, l };
+      };
+      const W3 = totals(weekStart3, weekEnd3);
+      const W2 = totals(weekStart2, weekEnd2);
+      const W1 = totals(weekStart1, weekEnd1);
+      const W0 = totals(weekStart0, weekEnd0);
+      const fmtH = (n) => (n || 0).toFixed(1);
+      const labels = [weekEnd3, weekEnd2, weekEnd1, weekEnd0].map((d) => d.toFormat("LLL dd"));
+      const hoursDiv = document.getElementById("mgHours");
+      const parcelsDiv = document.getElementById("mgParcels");
+      const lettersDiv = document.getElementById("mgLetters");
+      if (!hoursDiv || !parcelsDiv || !lettersDiv) return;
+      hoursDiv.textContent = `W4 ${fmtH(W3.h)} \u2022 W3 ${fmtH(W2.h)} \u2022 W2 ${fmtH(W1.h)} \u2022 W1 ${fmtH(W0.h)}`;
+      parcelsDiv.textContent = `W4 ${W3.p} \u2022 W3 ${W2.p} \u2022 W2 ${W1.p} \u2022 W1 ${W0.p}`;
+      lettersDiv.textContent = `W4 ${W3.l} \u2022 W3 ${W2.l} \u2022 W2 ${W1.l} \u2022 W1 ${W0.l}`;
+      if (window.Chart) {
+        try {
+          const renderSpark = (target, dataArr, color, metricName, starts2, ends2) => {
+            target.innerHTML = "";
+            const nums = (dataArr || []).filter((v) => v != null && isFinite(v));
+            const avg = nums.length ? nums.reduce((a, b) => a + Number(b), 0) / nums.length : null;
+            const fmtAvg = (v) => {
+              if (v == null) return "\u2014";
+              return metricName === "Hours" ? (Math.round(v * 10) / 10).toFixed(1) + "h" : String(Math.round(v));
+            };
+            const wrap = document.createElement("div");
+            wrap.style.display = "flex";
+            wrap.style.flexDirection = "column";
+            wrap.style.width = "100%";
+            const avgEl = document.createElement("span");
+            avgEl.className = "pill";
+            avgEl.style.fontSize = "11px";
+            avgEl.style.padding = "2px 6px";
+            avgEl.style.alignSelf = "flex-start";
+            avgEl.style.marginBottom = "4px";
+            avgEl.innerHTML = `<small>Avg</small> <b>${fmtAvg(avg)}</b>`;
+            wrap.appendChild(avgEl);
+            const canvas = document.createElement("canvas");
+            canvas.className = "sparkline";
+            try {
+              canvas.height = 56;
+            } catch (_) {
+            }
+            canvas.style.height = "56px";
+            canvas.style.maxHeight = "56px";
+            canvas.style.width = "100%";
+            canvas.style.cursor = "pointer";
+            wrap.appendChild(canvas);
+            const lbl = document.createElement("div");
+            lbl.className = "sparkline-labels";
+            lbl.textContent = labels.join(" \u2022 ");
+            wrap.appendChild(lbl);
+            const summary = document.createElement("div");
+            summary.className = "sparkline-summary";
+            summary.textContent = "Click a dot for details";
+            wrap.appendChild(summary);
+            target.appendChild(wrap);
+            const ctx = canvas.getContext("2d");
+            const chart = new Chart(ctx, {
+              type: "line",
+              data: { labels, datasets: [{
+                label: metricName,
+                data: dataArr,
+                borderColor: color,
+                backgroundColor: color,
+                tension: 0.25,
+                fill: false,
+                borderWidth: 1,
+                pointRadius: 3,
+                pointHoverRadius: 6,
+                pointHitRadius: 14
+              }] },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { top: 14, right: 24, bottom: 12, left: 24 } },
+                interaction: { mode: "nearest", intersect: false },
+                scales: { x: { display: false }, y: { display: false } },
+                plugins: { legend: { display: false }, tooltip: {
+                  enabled: true,
+                  callbacks: {
+                    title: (items) => {
+                      try {
+                        return fmtRange(items[0].dataIndex);
+                      } catch (_) {
+                        return "";
+                      }
+                    },
+                    label: (item) => {
+                      const v = item.parsed.y;
+                      if (metricName === "Hours") return `Hours: ${(+v).toFixed(1)}h`;
+                      return `${metricName}: ${Math.round(+v)}`;
+                    }
+                  }
+                } }
+              },
+              plugins: []
+            });
+            const fmtVal = (v) => {
+              if (v == null) return "\u2014";
+              if (metricName === "Hours") return (Math.round(v * 10) / 10).toFixed(1) + "h";
+              return String(Math.round(v));
+            };
+            const fmtRange = (i) => {
+              try {
+                const s = starts2[i];
+                const e = ends2[i];
+                if (s && e && s.toFormat && e.toFormat) {
+                  return `${s.toFormat("LLL dd")} \u2013 ${e.toFormat("LLL dd")}`;
+                }
+              } catch (_) {
+              }
+              return labels[i] || "";
+            };
+            canvas.addEventListener("click", (evt) => {
+              try {
+                const points = chart.getElementsAtEventForMode(evt, "nearest", { intersect: true }, false);
+                if (!points || !points.length) return;
+                const idx = points[0].index;
+                summary.textContent = `${metricName}: ${fmtVal(dataArr[idx])} \xB7 ${fmtRange(idx)}`;
+              } catch (_) {
+              }
+            });
+            canvas.tabIndex = 0;
+            canvas.addEventListener("keydown", (e) => {
+              var _a5;
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              const cur = (labels.indexOf((_a5 = (summary.textContent || "").split("\xB7").pop()) == null ? void 0 : _a5.trim()) + 1) % dataArr.length;
+              summary.textContent = `${metricName}: ${fmtVal(dataArr[cur])} \xB7 ${fmtRange(cur)}`;
+            });
+          };
+          const starts = [weekStart3, weekStart2, weekStart1, weekStart0];
+          const ends = [weekEnd3, weekEnd2, weekEnd1, weekEnd0];
+          const docStyle = getComputedStyle(document.documentElement);
+          renderSpark(hoursDiv, [W3.h, W2.h, W1.h, W0.h].map((n) => +(n || 0).toFixed(1)), docStyle.getPropertyValue("--good").trim() || "#7CE38B", "Hours", starts, ends);
+          renderSpark(parcelsDiv, [W3.p, W2.p, W1.p, W0.p], docStyle.getPropertyValue("--brand").trim() || "#2b7fff", "Parcels", starts, ends);
+          renderSpark(lettersDiv, [W3.l, W2.l, W1.l, W0.l], docStyle.getPropertyValue("--warn").trim() || "#FFD27A", "Letters", starts, ends);
+        } catch (e) {
+          console.warn("Monthly Glance charts failed; showing text fallback", e);
+        }
+      } else if (!window.__chartLoadAttempted) {
+        window.__chartLoadAttempted = true;
+        try {
+          const script = document.createElement("script");
+          script.src = "vendor/chart.umd.js";
+          script.async = true;
+          script.onload = () => {
+            try {
+              if (window.Chart) {
+                try {
+                  buildMonthlyGlance2(rows);
+                } catch (_) {
+                }
+                try {
+                  buildCharts2(rows);
+                } catch (_) {
+                }
+                try {
+                  buildMixViz2(rows);
+                } catch (_) {
+                }
+                try {
+                  buildOfficeCompare2(rows);
+                } catch (_) {
+                }
+                if (typeof buildDayCompare2 === "function") {
+                  try {
+                    buildDayCompare2(rows);
+                  } catch (_) {
+                  }
+                }
+                try {
+                  buildQuickFilter2(rows);
+                } catch (_) {
+                }
+              }
+            } catch (_) {
+            }
+          };
+          script.onerror = () => console.warn("Failed to load vendor/chart.umd.js; keeping text fallback");
+          document.head.appendChild(script);
+        } catch (e) {
+          console.warn("Error injecting Chart.js script", e);
+        }
+      }
+    }
+    function mixSum(arr, fn) {
+      let sum = 0;
+      for (const item of arr) sum += +fn(item) || 0;
+      return sum;
+    }
+    function mixRouteAdjustedMinutes(row) {
+      try {
+        if (typeof routeAdjustedHours2 === "function") {
+          const hours = routeAdjustedHours2(row);
+          if (isFinite(hours)) return hours * 60;
+        }
+      } catch (_) {
+      }
+      return Math.max(0, +row.route_minutes || 0);
+    }
+    function mixLoadLetterWeightFallback() {
+      const DEF = 0.33;
+      try {
+        const stored = parseFloat(localStorage.getItem("routeStats.letterWeight"));
+        if (isFinite(stored) && stored > 0) return stored;
+      } catch (_) {
+      }
+      return DEF;
+    }
+    function mixComputeLetterWeight(rows) {
+      const cleanRows = (rows || []).filter((r) => r && r.status !== "off");
+      const n = cleanRows.length;
+      if (!n) return mixLoadLetterWeightFallback();
+      const Sy = mixSum(cleanRows, (r) => mixRouteAdjustedMinutes(r));
+      const Sp = mixSum(cleanRows, (r) => +r.parcels || 0);
+      const Sl = mixSum(cleanRows, (r) => +r.letters || 0);
+      const Spp = mixSum(cleanRows, (r) => {
+        const v = +r.parcels || 0;
+        return v * v;
+      });
+      const Sll = mixSum(cleanRows, (r) => {
+        const v = +r.letters || 0;
+        return v * v;
+      });
+      const Spl = mixSum(cleanRows, (r) => {
+        const p = +r.parcels || 0, l = +r.letters || 0;
+        return p * l;
+      });
+      const Spy = mixSum(cleanRows, (r) => {
+        const p = +r.parcels || 0;
+        return p * mixRouteAdjustedMinutes(r);
+      });
+      const Sly = mixSum(cleanRows, (r) => {
+        const l = +r.letters || 0;
+        return l * mixRouteAdjustedMinutes(r);
+      });
+      const mp = Sp / n, ml = Sl / n, my = Sy / n;
+      let Cpp = 0, Cll = 0, Cpl = 0, Cpy = 0, Cly = 0;
+      for (const r of cleanRows) {
+        const p = (+r.parcels || 0) - mp;
+        const l = (+r.letters || 0) - ml;
+        const y = mixRouteAdjustedMinutes(r) - my;
+        Cpp += p * p;
+        Cll += l * l;
+        Cpl += p * l;
+        Cpy += p * y;
+        Cly += l * y;
+      }
+      const det = Cpp * Cll - Cpl * Cpl;
+      if (!isFinite(det) || Math.abs(det) < 1e-6) {
+        return mixLoadLetterWeightFallback();
+      }
+      const bp = (Cpy * Cll - Cpl * Cly) / det;
+      const bl = (Cpp * Cly - Cpl * Cpy) / det;
+      let w = isFinite(bp) && Math.abs(bp) > 1e-6 ? bl / bp : null;
+      if (!isFinite(w) || w < 0) w = 0;
+      if (w > 1.5) w = 1.5;
+      const prev = mixLoadLetterWeightFallback();
+      const alpha = 0.3;
+      const smoothed = prev != null && isFinite(prev) ? alpha * w + (1 - alpha) * prev : w;
+      try {
+        localStorage.setItem("routeStats.letterWeight", String(smoothed));
+      } catch (_) {
+      }
+      return smoothed;
+    }
+    function mixGetLetterWeight(rows) {
+      try {
+        const worked = (rows || []).filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0).sort((a, b) => a.work_date < b.work_date ? -1 : 1);
+        const sample = worked.slice(-60);
+        return mixComputeLetterWeight(sample);
+      } catch (_) {
+        return mixLoadLetterWeightFallback();
+      }
+    }
+    function mixCombinedVolume(p, l, w) {
+      const weight = w == null ? mixLoadLetterWeightFallback() : w;
+      const pp = +p || 0;
+      const ll = +l || 0;
+      return +(pp + weight * ll).toFixed(2);
+    }
+    function buildMixViz2(rows) {
+      rows = filterRowsForView2(rows || []);
+      const flags = getFlags();
+      const card = document.getElementById("mixVizCard");
+      if (!card) return;
+      if (!flags.mixViz) {
+        card.style.display = "none";
+        return;
+      }
+      card.style.display = "block";
+      const letterW = mixGetLetterWeight(rows);
+      const docStyle = getComputedStyle(document.documentElement);
+      const brand = docStyle.getPropertyValue("--brand").trim() || "#2b7fff";
+      const warnColor = docStyle.getPropertyValue("--warn").trim() || "#FFD27A";
+      const goodColor = docStyle.getPropertyValue("--good").trim() || "#7CE38B";
+      const text = document.getElementById("mixText");
+      const eff = document.getElementById("mixEff");
+      const overlay = document.getElementById("weekOverlay");
+      const culprits = document.getElementById("mixCulprits");
+      const details = document.getElementById("mixCompareDetails");
+      const btn = document.getElementById("mixCompareBtn");
+      const now = DateTime.now().setZone(ZONE);
+      const startThis = startOfWeekMonday(now);
+      const endThis = now.endOf("day");
+      const inRange = (r, from, to) => {
+        const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
+        return d2 >= from && d2 <= to;
+      };
+      const worked = rows.filter((r) => r.status !== "off");
+      const baseWeek = getLastNonEmptyWeek2(worked, now, { excludeVacation: true });
+      const startLast = baseWeek.start;
+      const endLastFull = baseWeek.end;
+      const lastEndSame = DateTime.min(endLastFull, baseWeek.start.plus({ days: Math.max(0, now.weekday - 1) }).endOf("day"));
+      const W0 = worked.filter((r) => inRange(r, startThis, endThis));
+      const W1 = baseWeek.rows.filter((r) => inRange(r, startLast, lastEndSame));
+      const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
+      const p0 = sum(W0, (r) => +r.parcels || 0), p1 = sum(W1, (r) => +r.parcels || 0);
+      const l0 = sum(W0, (r) => +r.letters || 0), l1 = sum(W1, (r) => +r.letters || 0);
+      const ln0 = +(letterW * l0).toFixed(1);
+      const ln1 = +(letterW * l1).toFixed(1);
+      try {
+        if (text) text.textContent = `W1: Parcels ${p0}, Letters ${l0} \u2022 W2: Parcels ${p1}, Letters ${l1}`;
+        const wBadge = document.getElementById("mixWeight");
+        if (wBadge) {
+          wBadge.style.display = "inline-flex";
+          wBadge.innerHTML = `<small class="modelMetric">Letter w</small> <span>${(Math.round(letterW * 100) / 100).toFixed(2)}</span>`;
+        }
+        const vol0 = mixCombinedVolume(p0, l0, letterW);
+        const vol1 = mixCombinedVolume(p1, l1, letterW);
+        const rm02 = sum(W0, (r) => routeAdjustedHours2(r));
+        const rm12 = sum(W1, (r) => routeAdjustedHours2(r));
+        const idx0 = vol0 > 0 && rm02 > 0 ? rm02 / vol0 : null;
+        const idx1 = vol1 > 0 && rm12 > 0 ? rm12 / vol1 : null;
+        let deltaStr = "\u2014";
+        let deltaStyle = "";
+        if (idx0 != null && idx1 != null && idx1 > 0) {
+          const imp = (idx1 - idx0) / idx1 * 100;
+          const s = Math.round(imp);
+          const fg = imp >= 0 ? "var(--good)" : "var(--bad)";
+          deltaStr = `${s >= 0 ? "\u2191" : "\u2193"} ${Math.abs(s)}%`;
+          deltaStyle = `color:${fg}`;
+        }
+        if (eff) {
+          const a = idx0 == null ? "\u2014" : (Math.round(idx0 * 100) / 100).toFixed(2);
+          const b = idx1 == null ? "\u2014" : (Math.round(idx1 * 100) / 100).toFixed(2);
+          eff.innerHTML = `Efficiency index (min/vol): ${a} vs ${b} <span style="${deltaStyle}">${deltaStr}</span>`;
+        }
+        try {
+          if (culprits) {
+            const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+            const routeByDow = (arr) => {
+              const a = Array.from({ length: 7 }, () => 0);
+              arr.forEach((r) => {
+                const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
+                const idx = (d2.weekday + 6) % 7;
+                a[idx] += Math.max(0, (+r.route_minutes || 0) - boxholderAdjMinutes2(r));
+              });
+              return a.map((n) => +(Math.round(n * 100) / 100).toFixed(2));
+            };
+            const thisBy = routeByDow(W0);
+            const lastBy = routeByDow(W1);
+            const out = [];
+            thisBy.forEach((val, idx) => {
+              const prev = lastBy[idx] || 0;
+              if (prev <= 0) return;
+              const diff = Math.round((val - prev) / prev * 100);
+              if (Math.abs(diff) >= 10) {
+                out.push(`${days[idx]}: ${diff >= 0 ? "\u2191" : "\u2193"}${Math.abs(diff)}%`);
+              }
+            });
+            culprits.textContent = out.length ? "Outliers: " + out.join(" \u2022 ") : "Outliers: \u2014";
+          }
+        } catch (_) {
+        }
+      } catch (_) {
+      }
+      const d = (a, b) => b > 0 ? Math.round((a - b) / b * 100) : null;
+      const dH = d(sum(W0, (r) => +r.hours || 0), sum(W1, (r) => +r.hours || 0));
+      let dP, dLx, lineLabelP = "Parcels", lineLabelL = "Letters";
+      let resP = { used: 0 };
+      let resL = { used: 0 };
+      const baselines = ensureWeeklyBaselines(rows) || getWeeklyBaselines();
+      const anchor = computeAnchorBaselines(rows, 8);
+      const nowDayIdx = (now.weekday + 6) % 7;
+      if (flags.baselineCompare) {
+        const mins = 5;
+        const byW = (arr, fn) => {
+          const out = Array.from({ length: 7 }, () => 0);
+          arr.forEach((r) => {
+            const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
+            const idx = (d2.weekday + 6) % 7;
+            out[idx] += fn(r) || 0;
+          });
+          return out;
+        };
+        const alignedDelta = (curArr, baseArr, upto, min) => {
+          let curSum = 0, baseSum = 0, used = 0;
+          for (let i = 0; i <= upto; i++) {
+            const base = baseArr ? baseArr[i] : null;
+            if (base != null && base >= min) {
+              curSum += curArr[i] || 0;
+              baseSum += base;
+              used++;
+            }
+          }
+          if (!used || baseSum <= 0) return { delta: null, used: 0 };
+          let delta = Math.round((curSum - baseSum) / baseSum * 100);
+          if (delta > 100) delta = 100;
+          if (delta < -100) delta = -100;
+          return { delta, used };
+        };
+        const pThisW = byW(W0, (r) => +r.parcels || 0);
+        const lThisW = byW(W0, (r) => +r.letters || 0);
+        const bp = baselines ? baselines.parcels : null;
+        const bl = baselines ? baselines.letters : null;
+        resP = alignedDelta(pThisW, bp, nowDayIdx, mins);
+        resL = alignedDelta(lThisW, bl, nowDayIdx, mins);
+        dP = resP.delta;
+        dLx = resL.delta;
+        lineLabelP = "Parcels (vs baseline)";
+        lineLabelL = "Letters (vs baseline)";
+      } else {
+        dP = d(p0, p1);
+        dLx = d(l0, l1);
+      }
+      const expectationStroke = "rgba(255,140,0,0.85)";
+      const expectationFill = "rgba(255,140,0,0.22)";
+      const dEff = p0 + ln0 > 0 && p1 + ln1 > 0 ? Math.round((rm1 / (p1 + ln1) - rm0 / (p0 + ln0)) / (rm1 / (p1 + ln1)) * 100) : null;
+      const arrow = (v) => v == null ? "\u2014" : v >= 0 ? "\u2191 " + v + "%" : "\u2193 " + Math.abs(v) + "%";
+      const color = (v) => v == null ? "var(--text)" : v >= 0 ? "var(--good)" : "var(--bad)";
+      const line = (label, v, ctx, colorOverride) => {
+        const labelHtml = colorOverride ? `<span style="color:${colorOverride};font-weight:600">${label}</span>` : label;
+        return `<div>${labelHtml}: <span style="color:${color(v)}">${arrow(v)}</span> ${ctx || ""}</div>`;
+      };
+      if (details) {
+        const usedP = resP && resP.used ? `, ${resP.used} day(s) used` : "";
+        const usedL = resL && resL.used ? `, ${resL.used} day(s) used` : "";
+        details.innerHTML = [
+          line("Efficiency", dEff, `(${(rm0 / (p0 + ln0) || 0).toFixed(2)} vs ${(rm1 / (p1 + ln1) || 0).toFixed(2)})`),
+          line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, warnColor || "#f97316"),
+          line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, "#60a5fa"),
+          line("Hours", dH, `(${sum(W0, (r) => +r.hours || 0).toFixed(1)}h vs ${sum(W1, (r) => +r.hours || 0).toFixed(1)}h)`)
+        ].join("");
+      }
+      try {
+        if (overlay && window.Chart && overlay.getContext) {
+          const ctx = overlay.getContext("2d");
+          if (overlay._chart) {
+            try {
+              overlay._chart.destroy();
+            } catch (_) {
+            }
+          }
+          const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+          const warn = warnColor;
+          const good = goodColor;
+          const volByDow = (arr) => {
+            const a = Array.from({ length: 7 }, () => 0);
+            arr.forEach((r) => {
+              const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
+              const idx = (d2.weekday + 6) % 7;
+              a[idx] += mixCombinedVolume(+r.parcels || 0, +r.letters || 0, letterW);
+            });
+            return a.map((n) => +(Math.round(n * 10) / 10).toFixed(1));
+          };
+          const routeByDow = (arr) => {
+            const a = Array.from({ length: 7 }, () => 0);
+            arr.forEach((r) => {
+              const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
+              const idx = (d2.weekday + 6) % 7;
+              a[idx] += Math.max(0, (+r.route_minutes || 0) - boxholderAdjMinutes2(r));
+            });
+            return a.map((n) => +(Math.round(n * 100) / 100).toFixed(2));
+          };
+          const thisBy = volByDow(W0);
+          const W1full = baseWeek.rows;
+          const lastBy = volByDow(W1full);
+          const thisRoute = routeByDow(W0);
+          const lastRoute = routeByDow(W1full);
+          const dayIdxToday = (now.weekday + 6) % 7;
+          const hasBand = !!(typeof bandMinData !== "undefined" && typeof bandMaxData !== "undefined" && bandMinData && bandMaxData);
+          const isoForPoint = (datasetIndex, idx) => {
+            try {
+              if (hasBand) {
+                if (datasetIndex === 0 || datasetIndex === 1) return startThis.plus({ days: idx }).toISODate();
+                if (datasetIndex === 2) return startLast.plus({ days: idx }).toISODate();
+                if (datasetIndex === 3 || datasetIndex === 4) return startThis.plus({ days: idx }).toISODate();
+              } else {
+                if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
+                if (datasetIndex === 1 || datasetIndex === 2) return startThis.plus({ days: idx }).toISODate();
+              }
+            } catch (_) {
+            }
+            return null;
+          };
+          const thisMasked = thisBy.map((v, i) => i <= dayIdxToday ? v : null);
+          const thisRouteMasked = thisRoute.map((v, i) => i <= dayIdxToday ? v : null);
+          const datasets = [];
+          if (hasBand) {
+            datasets.push({
+              label: "Vol expect min",
+              data: bandMinData,
+              borderColor: "rgba(255,140,0,0.85)",
+              borderWidth: 1,
+              borderDash: [6, 4],
+              backgroundColor: "transparent",
+              pointRadius: 0,
+              spanGaps: true,
+              fill: false
+            });
+            datasets.push({
+              label: "Vol expect max",
+              data: bandMaxData,
+              borderColor: "rgba(0,0,0,0)",
+              backgroundColor: "rgba(255,140,0,0.22)",
+              pointRadius: 0,
+              borderWidth: 0,
+              spanGaps: true,
+              fill: { target: "-1", above: "rgba(255,140,0,0.22)", below: "rgba(255,140,0,0.22)" }
+            });
+          }
+          datasets.push(
+            { label: "Vol last", data: lastBy, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
+            { label: "Vol this", data: thisMasked, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
+            { label: "Route h (this)", data: thisRouteMasked, borderColor: good, backgroundColor: "transparent", borderDash: [4, 3], tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true, yAxisID: "y2" }
+          );
+          overlay._chart = new Chart(ctx, {
+            type: "line",
+            data: { labels: days, datasets },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              layout: { padding: { top: 12, right: 16, bottom: 10, left: 16 } },
+              interaction: { mode: "nearest", intersect: false },
+              plugins: { legend: { display: false }, tooltip: {
+                callbacks: {
+                  title: (items) => {
+                    if (!items || !items.length) return "";
+                    const item = items[0];
+                    const iso = isoForPoint(item.datasetIndex, item.dataIndex);
+                    if (iso) {
+                      const dt = DateTime.fromISO(iso, { zone: ZONE });
+                      return dt.toFormat("ccc \u2022 MMM d, yyyy") + (vacGlyph2 ? vacGlyph2(iso) : "");
+                    }
+                    const lbl = item.label || "";
+                    return lbl + (vacGlyph2 ? vacGlyph2(lbl) : "");
+                  },
+                  label: (item) => {
+                    const i = item.dataIndex;
+                    const lw = lastBy[i];
+                    const tw = thisBy[i];
+                    const hasTw = i <= dayIdxToday && tw != null;
+                    const routeStr = thisRouteMasked[i] != null ? `, Route: ${thisRouteMasked[i]}m` : "";
+                    return hasTw ? `This: ${tw}${routeStr}` : `Last: ${lw}`;
+                  }
+                }
+              } },
+              scales: {
+                x: { display: true, grid: { display: false } },
+                y: { display: false },
+                y2: { display: false }
+              }
+            }
+          });
+        }
+      } catch (_) {
+      }
+      if (btn) {
+        btn.onclick = () => {
+          try {
+            const body = document.querySelector("#mixCompareDetails");
+            if (!body) return;
+            const expanded = body.style.display !== "block";
+            body.style.display = expanded ? "block" : "none";
+            btn.setAttribute("aria-expanded", expanded ? "true" : "false");
+          } catch (_) {
+          }
+        };
+      }
+    }
+    function buildOfficeCompare2(rows) {
+      rows = filterRowsForView2(rows || []);
+      try {
+        const card = document.getElementById("officeCompareCard");
+        if (!card) return;
+        const overlay = document.getElementById("officeOverlay");
+        const summary = document.getElementById("officeSummary");
+        const now = DateTime.now().setZone(ZONE);
+        const startThis = startOfWeekMonday(now);
+        const endThis = now.endOf("day");
+        const inRange = (r, from, to) => {
+          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+          return d >= from && d <= to;
+        };
+        const worked = (rows || []).filter((r) => r.status !== "off");
+        const baseWeek = getLastNonEmptyWeek2(worked, now, { excludeVacation: true });
+        const startLast = baseWeek.start;
+        const endLast = baseWeek.end;
+        const lastEndSame = DateTime.min(endLast, baseWeek.start.plus({ days: Math.max(0, now.weekday - 1) }).endOf("day"));
+        const W0 = worked.filter((r) => inRange(r, startThis, endThis));
+        const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
+        const offByDow = (arr) => {
+          const a = Array.from({ length: 7 }, () => 0);
+          arr.forEach((r) => {
+            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+            const idx = (d.weekday + 6) % 7;
+            a[idx] += +r.office_minutes || 0;
+          });
+          return a.map((n) => +(Math.round(n * 100) / 100).toFixed(2));
+        };
+        const thisBy = offByDow(W0);
+        const W1 = baseWeek.rows;
+        const lastBy = offByDow(W1);
+        const dayIdxToday = (now.weekday + 6) % 7;
+        const thisMasked = thisBy.map((v, i) => i <= dayIdxToday ? v : null);
+        const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        const off0 = sum(W0, (r) => +r.office_minutes || 0);
+        const off1same = sum(W1.filter((r) => inRange(r, startLast, lastEndSame)), (r) => +r.office_minutes || 0);
+        const dPct = off1same > 0 ? Math.round((off0 - off1same) / off1same * 100) : null;
+        if (summary) summary.textContent = `Office (so far): ${off0.toFixed(2)}h vs ${off1same.toFixed(2)}h (${dPct == null ? "\u2014" : dPct >= 0 ? "\u2191 " + dPct + "%" : "\u2193 " + Math.abs(dPct) + "%"})`;
+        card.style.display = "block";
+        if (overlay && window.Chart && overlay.getContext) {
+          const ctx = overlay.getContext("2d");
+          if (overlay._chart) {
+            try {
+              overlay._chart.destroy();
+            } catch (_) {
+            }
+          }
+          const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#2b7fff";
+          const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
+          const isoForPoint = (datasetIndex, idx) => {
+            try {
+              if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
+              if (datasetIndex === 1) return startThis.plus({ days: idx }).toISODate();
+            } catch (_) {
+            }
+            return null;
+          };
+          overlay._chart = new Chart(ctx, {
+            type: "line",
+            data: { labels: days, datasets: [
+              { label: "Last week", data: lastBy, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true },
+              { label: "This week", data: thisMasked, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true }
+            ] },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              layout: { padding: { top: 12, right: 16, bottom: 10, left: 16 } },
+              interaction: { mode: "nearest", intersect: false },
+              plugins: { legend: { display: false }, tooltip: {
+                callbacks: {
+                  title: (items) => {
+                    if (!items || !items.length) return "";
+                    const item = items[0];
+                    const iso = isoForPoint(item.datasetIndex, item.dataIndex);
+                    if (iso) {
+                      const dt = DateTime.fromISO(iso, { zone: ZONE });
+                      return dt.toFormat("ccc \u2022 MMM d, yyyy") + (vacGlyph2 ? vacGlyph2(iso) : "");
+                    }
+                    const lbl = item.label || "";
+                    return lbl + (vacGlyph2 ? vacGlyph2(lbl) : "");
+                  },
+                  label: (item) => {
+                    const i = item.dataIndex;
+                    const lw = lastBy[i];
+                    const tw = thisBy[i];
+                    const hasTw = i <= dayIdxToday && tw != null;
+                    return hasTw ? `This: ${tw}h (Last: ${lw}h)` : `Last: ${lw}h`;
+                  }
+                }
+              } },
+              scales: { x: { display: true, grid: { display: false } }, y: { display: false } }
+            }
+          });
+        }
+      } catch (_) {
+      }
+    }
+    function buildQuickFilter2(rows) {
+      rows = filterRowsForView2(rows || []);
+      const flags = getFlags();
+      const card = document.getElementById("quickFilterCard");
+      if (!card) return;
+      card.style.display = flags.quickFilter ? "block" : "none";
+      if (!flags.quickFilter) return;
+      const sel = document.getElementById("qfSelect");
+      const stats = document.getElementById("qfStats");
+      const spark = document.getElementById("qfSpark");
+      const text = document.getElementById("qfText");
+      const cbAll = document.getElementById("qfAllMetrics");
+      const cbP = document.getElementById("qfShowParcels");
+      const cbL = document.getElementById("qfShowLetters");
+      const cbH = document.getElementById("qfShowHours");
+      const selN = document.getElementById("qfLastN");
+      const cbRuler = document.getElementById("qfShowRuler");
+      const normBadge = document.getElementById("qfNormBadge");
+      if (!stats || !spark || !text) return;
+      const dayVal = sel && sel.value || "all";
+      const worked = (rows || []).filter((r) => r.status !== "off");
+      const filtered = worked.filter((r) => dayVal === "all" ? true : DateTime.fromISO(r.work_date, { zone: ZONE }).weekday % 7 == +dayVal);
+      const count = filtered.length;
+      const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
+      const avg = (arr, fn) => arr.length ? sum(arr, fn) / arr.length : null;
+      const avgH = avg(filtered, (r) => +r.hours || 0);
+      const avgP = avg(filtered, (r) => +r.parcels || 0);
+      const avgL = avg(filtered, (r) => +r.letters || 0);
+      const avgR = avg(filtered, (r) => +r.route_minutes || 0);
+      const pill = (label, val, fmt) => `<span class="pill"><small>${label}:</small> <b>${fmt(val)}</b></span>`;
+      const nf = (v) => v == null ? "\u2014" : typeof v === "number" ? (Math.round(v * 100) / 100).toString() : String(v);
+      stats.innerHTML = [
+        pill("Days", count, nf),
+        pill("Avg hours", avgH, (v) => v == null ? "\u2014" : (Math.round(v * 100) / 100).toFixed(2)),
+        pill("Avg parcels", avgP, (v) => v == null ? "\u2014" : Math.round(v)),
+        pill("Avg letters", avgL, (v) => v == null ? "\u2014" : Math.round(v)),
+        pill("Avg route min", avgR, (v) => v == null ? "\u2014" : Math.round(v))
+      ].join("");
+      const available = filtered.length;
+      const lastCount = selN && +selN.value || +(localStorage.getItem("routeStats.qf.lastN") || 12) || 12;
+      if (selN) selN.value = String(lastCount);
+      if (selN && selN.options) {
+        try {
+          Array.from(selN.options).forEach((o) => {
+            o.disabled = +o.value > available;
+          });
+        } catch (_) {
+        }
+      }
+      const lastN = filtered.slice().sort((a, b) => a.work_date < b.work_date ? -1 : 1).slice(-lastCount);
+      const labels = lastN.map((r) => DateTime.fromISO(r.work_date, { zone: ZONE }).toFormat("LLL d"));
+      try {
+        if (cbRuler && typeof buildQuickFilter2._rulerInit === "undefined") {
+          const pref = localStorage.getItem("routeStats.qf.ruler");
+          if (pref != null) cbRuler.checked = pref === "1";
+          buildQuickFilter2._rulerInit = true;
+        }
+      } catch (_) {
+      }
+      const availableMetrics = filtered.reduce((map, r) => {
+        const iso = r.work_date;
+        map.set(iso, {
+          parcels: +r.parcels || 0,
+          letters: +r.letters || 0,
+          hours: +r.hours || 0
+        });
+        return map;
+      }, /* @__PURE__ */ new Map());
+      const serP = lastN.map((r) => {
+        var _a5, _b;
+        return (_b = (_a5 = availableMetrics.get(r.work_date)) == null ? void 0 : _a5.parcels) != null ? _b : null;
+      });
+      const serL = lastN.map((r) => {
+        var _a5, _b;
+        return (_b = (_a5 = availableMetrics.get(r.work_date)) == null ? void 0 : _a5.letters) != null ? _b : null;
+      });
+      const serH = lastN.map((r) => {
+        var _a5, _b;
+        return (_b = (_a5 = availableMetrics.get(r.work_date)) == null ? void 0 : _a5.hours) != null ? _b : null;
+      });
+      const showP = !!(cbP ? cbP.checked : true);
+      const showL = !!(cbL ? cbL.checked : true);
+      const showH = !!(cbH ? cbH.checked : true);
+      const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#2b7fff";
+      const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
+      const good = getComputedStyle(document.documentElement).getPropertyValue("--good").trim() || "#2E7D32";
+      const datasets = [];
+      const needNormalize = [showP, showL, showH].filter(Boolean).length > 1;
+      const norm = (arr) => {
+        const vals = arr || [];
+        let min = Infinity, max = -Infinity;
+        for (const v of vals) {
+          if (v == null) continue;
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+        if (!isFinite(min) || !isFinite(max)) return vals.map((_) => null);
+        if (max === min) return vals.map((_) => 50);
+        return vals.map((v) => v == null ? null : Math.round((v - min) / (max - min) * 100));
+      };
+      const dataP = needNormalize ? norm(serP) : serP;
+      const dataL = needNormalize ? norm(serL) : serL;
+      const dataH = needNormalize ? norm(serH) : serH;
+      if (showP) datasets.push({ label: "Parcels", data: dataP, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
+      if (showL) datasets.push({ label: "Letters", data: dataL, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
+      if (showH) datasets.push({ label: "Hours", data: dataH, borderColor: good, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
+      const summary = [];
+      const fmtNum = (n) => (Math.round(n * 10) / 10).toFixed(1);
+      if (showP) summary.push(`P: ${serP.slice(-labels.length).map(fmtNum).join(", ")}`);
+      if (showL) summary.push(`L: ${serL.slice(-labels.length).map(fmtNum).join(", ")}`);
+      if (showH) summary.push(`H: ${serH.slice(-labels.length).map(fmtNum).join(", ")}`);
+      const showing = labels.length;
+      const note = needNormalize ? " (normalized)" : "";
+      if (normBadge) normBadge.style.display = needNormalize ? "inline-flex" : "none";
+      const coverage = `Showing ${showing} of ${lastCount} requested${available ? `, available ${available}` : ""}`;
+      text.textContent = datasets.length ? `${summary.join(" \u2022 ")} \u2014 ${coverage}${note}` : "\u2014";
+      const daysBadge = document.getElementById("qfDaysBadge");
+      if (daysBadge) {
+        daysBadge.style.display = "inline-flex";
+        daysBadge.innerHTML = `<small>Days</small> <b>${count}</b>`;
+      }
+      if (window.Chart && spark.getContext) {
+        try {
+          const ctx = spark.getContext("2d");
+          if (spark._chart) {
+            try {
+              spark._chart.destroy();
+            } catch (_) {
+            }
+          }
+          try {
+            spark.height = 64;
+          } catch (_) {
+          }
+          const wantRuler = (cbRuler ? !!cbRuler.checked : false) && needNormalize;
+          spark._chart = new Chart(ctx, {
+            type: "line",
+            data: { labels, datasets: datasets.map((d) => Object.assign({ tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true, fill: false }, d)) },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              layout: { padding: { top: 8, right: 6, bottom: 6, left: 6 } },
+              interaction: { mode: "nearest", intersect: false },
+              plugins: { legend: { display: false }, tooltip: { enabled: true } },
+              scales: {
+                x: { display: false, grid: { display: false } },
+                y: {
+                  display: wantRuler,
+                  min: needNormalize ? 0 : void 0,
+                  max: needNormalize ? 100 : void 0,
+                  ticks: { display: false, stepSize: 50 },
+                  grid: { display: wantRuler, color: "rgba(255,255,255,0.08)" }
+                }
+              }
+            }
+          });
+        } catch (_) {
+        }
+      }
+      const handler = () => buildQuickFilter2(rows);
+      sel == null ? void 0 : sel.removeEventListener("change", buildQuickFilter2._handlerSel || (() => {
+      }));
+      cbP == null ? void 0 : cbP.removeEventListener("change", buildQuickFilter2._handlerP || (() => {
+      }));
+      cbL == null ? void 0 : cbL.removeEventListener("change", buildQuickFilter2._handlerL || (() => {
+      }));
+      cbH == null ? void 0 : cbH.removeEventListener("change", buildQuickFilter2._handlerH || (() => {
+      }));
+      selN == null ? void 0 : selN.removeEventListener("change", buildQuickFilter2._handlerN || (() => {
+      }));
+      cbAll == null ? void 0 : cbAll.removeEventListener("change", buildQuickFilter2._handlerAll || (() => {
+      }));
+      cbRuler == null ? void 0 : cbRuler.removeEventListener("change", buildQuickFilter2._handlerRuler || (() => {
+      }));
+      buildQuickFilter2._handlerSel = (e) => {
+        try {
+          const flagsLocal = getFlags();
+          if (flagsLocal && flagsLocal.collapsedUi) {
+            const body = document.querySelector("#quickFilterCard > .__collapseBody");
+            if (body && body.style.display === "none") {
+              try {
+                (window.__collapse_set || (() => {
+                }))("quickFilterCard", false);
+              } catch (_) {
+              }
+            }
+          }
+        } catch (_) {
+        }
+        handler();
+      };
+      buildQuickFilter2._handlerP = handler;
+      buildQuickFilter2._handlerL = handler;
+      buildQuickFilter2._handlerH = handler;
+      buildQuickFilter2._handlerN = (e) => {
+        try {
+          localStorage.setItem("routeStats.qf.lastN", String(e.target.value));
+        } catch (_) {
+        }
+        handler();
+      };
+      buildQuickFilter2._handlerAll = () => {
+        const on = !!(cbAll == null ? void 0 : cbAll.checked);
+        if (cbP) cbP.checked = on;
+        if (cbL) cbL.checked = on;
+        if (cbH) cbH.checked = on;
+        handler();
+      };
+      buildQuickFilter2._handlerRuler = (e) => {
+        try {
+          localStorage.setItem("routeStats.qf.ruler", e.target.checked ? "1" : "0");
+        } catch (_) {
+        }
+        handler();
+      };
+      sel == null ? void 0 : sel.addEventListener("change", buildQuickFilter2._handlerSel);
+      cbP == null ? void 0 : cbP.addEventListener("change", handler);
+      cbL == null ? void 0 : cbL.addEventListener("change", handler);
+      cbH == null ? void 0 : cbH.addEventListener("change", handler);
+      selN == null ? void 0 : selN.addEventListener("change", buildQuickFilter2._handlerN);
+      cbAll == null ? void 0 : cbAll.addEventListener("change", buildQuickFilter2._handlerAll);
+      cbRuler == null ? void 0 : cbRuler.addEventListener("change", buildQuickFilter2._handlerRuler);
+    }
+    return {
+      buildCharts: buildCharts2,
+      buildMonthlyGlance: buildMonthlyGlance2,
+      buildMixViz: buildMixViz2,
+      buildOfficeCompare: buildOfficeCompare2,
+      buildQuickFilter: buildQuickFilter2
+    };
+  }
+
   // src/app.js
   (function() {
     function ready(fn) {
@@ -37,48 +2801,7 @@
     }, true);
   })();
   console.log("[RouteStats] boot start");
-  var SUPABASE_URL = "https://ouwkdtiixkaydrtfdhnh.supabase.co";
-  var SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91d2tkdGlpeGtheWRydGZkaG5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMDc0NDksImV4cCI6MjA3MDU4MzQ0OX0.KI-dYG5_A8jvPEHSog3wlnLbIGYIHQR_4ztXHL2SzIg";
-  var ZONE = "America/Detroit";
-  var FLAG_KEY = "routeStats.flags.v1";
-  var EVAL_KEY = "routeStats.uspsEval.v1";
-  var VACAY_KEY = "routeStats.vacation.v1";
-  var BASELINE_KEY = "routeStats.baseline.v1";
-  var MODEL_SCOPE_KEY = "routeStats.modelScope";
-  var DateTime = luxon.DateTime;
-  function loadFlags() {
-    try {
-      return Object.assign({ weekdayTicks: true, progressivePills: false, monthlyGlance: true, holidayAdjustments: true, trendPills: false, sameRangeTotals: true, quickFilter: true, headlineDigest: false, smartSummary: true, mixViz: true, baselineCompare: true, collapsedUi: false, focusMode: false, quickEntry: false, uspsEval: true, dayCompare: true }, JSON.parse(localStorage.getItem(FLAG_KEY) || "{}"));
-    } catch (_) {
-      return { weekdayTicks: true, progressivePills: false, monthlyGlance: true, holidayAdjustments: true, trendPills: false, sameRangeTotals: true, quickFilter: true, headlineDigest: false, smartSummary: true, mixViz: true, baselineCompare: true, collapsedUi: false, focusMode: false, quickEntry: false, uspsEval: true, dayCompare: true };
-    }
-  }
-  function loadEval() {
-    try {
-      return Object.assign({ routeId: "R1", evalCode: "44K", boxes: 670, stops: null, hoursPerDay: 9.4, officeHoursPerDay: 2, annualSalary: 68e3 }, JSON.parse(localStorage.getItem(EVAL_KEY) || "{}"));
-    } catch (_) {
-      return { routeId: "R1", evalCode: "44K", boxes: 670, stops: null, hoursPerDay: 9.4, officeHoursPerDay: 2, annualSalary: 68e3 };
-    }
-  }
-  function saveEval(cfg) {
-    localStorage.setItem(EVAL_KEY, JSON.stringify(cfg || {}));
-  }
   var USPS_EVAL = loadEval();
-  function loadVacation() {
-    try {
-      const v = JSON.parse(localStorage.getItem(VACAY_KEY) || "{}");
-      const ranges = Array.isArray(v == null ? void 0 : v.ranges) ? v.ranges : [];
-      return { ranges: ranges.filter((r) => (r == null ? void 0 : r.from) && (r == null ? void 0 : r.to)) };
-    } catch (_) {
-      return { ranges: [] };
-    }
-  }
-  function saveVacation(cfg) {
-    try {
-      localStorage.setItem(VACAY_KEY, JSON.stringify({ ranges: cfg.ranges || [] }));
-    } catch (_) {
-    }
-  }
   var VACATION = loadVacation();
   if (VACATION && Array.isArray(VACATION.ranges)) {
     const normalized = normalizeRanges(VACATION.ranges);
@@ -90,28 +2813,7 @@
       saveVacation(VACATION);
     }
   }
-  function normalizeRanges(ranges) {
-    try {
-      const parse = (iso) => DateTime.fromISO(iso, { zone: ZONE }).startOf("day");
-      const items = (ranges || []).map((r) => ({ from: r.from, to: r.to })).filter((r) => r.from && r.to).map((r) => ({ a: parse(r.from), b: DateTime.fromISO(r.to, { zone: ZONE }).endOf("day") })).sort((x, y) => x.a.toMillis() - y.a.toMillis());
-      const merged = [];
-      for (const it of items) {
-        if (!merged.length) {
-          merged.push({ ...it });
-          continue;
-        }
-        const last = merged[merged.length - 1];
-        if (it.a <= last.b.plus({ days: 0 })) {
-          if (it.b > last.b) last.b = it.b;
-        } else {
-          merged.push({ ...it });
-        }
-      }
-      return merged.map((x) => ({ from: x.a.toISODate(), to: x.b.toISODate() }));
-    } catch (_) {
-      return ranges || [];
-    }
-  }
+  var DEFAULT_AI_BASE_PROMPT = "You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.";
   function addVacationRange(fromIso, toIso) {
     if (!fromIso || !toIso) return;
     const next = { ranges: [...(VACATION == null ? void 0 : VACATION.ranges) || [], { from: fromIso, to: toIso }] };
@@ -151,17 +2853,6 @@
     }).join("");
     container.innerHTML = rows;
   }
-  function dateInRangeISO(iso, fromIso, toIso) {
-    try {
-      if (!iso || !fromIso || !toIso) return false;
-      const d = DateTime.fromISO(iso, { zone: ZONE }).startOf("day");
-      const a = DateTime.fromISO(fromIso, { zone: ZONE }).startOf("day");
-      const b = DateTime.fromISO(toIso, { zone: ZONE }).endOf("day");
-      return d >= a && d <= b;
-    } catch (_) {
-      return false;
-    }
-  }
   function isVacationDate(iso) {
     try {
       const cfg = VACATION || loadVacation();
@@ -180,99 +2871,6 @@
       return rows || [];
     }
   }
-  function ensureWeeklyBaselines(rows) {
-    try {
-      const now = DateTime.now().setZone(ZONE);
-      const weekStartIso = startOfWeekMonday(now).toISODate();
-      const savedRaw = localStorage.getItem(BASELINE_KEY);
-      if (savedRaw) {
-        const saved = JSON.parse(savedRaw);
-        if (saved && saved.weekStart === weekStartIso) return saved;
-      }
-      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const endLast = endOfWeekSunday(now.minus({ weeks: 1 }));
-      const startPrev = startOfWeekMonday(now.minus({ weeks: 2 }));
-      const endPrev = endOfWeekSunday(now.minus({ weeks: 2 }));
-      const inRange = (r, from, to) => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        return d >= from && d <= to;
-      };
-      const worked = rows.filter((r) => r.status !== "off");
-      const W1 = worked.filter((r) => inRange(r, startLast, endLast));
-      const W2 = worked.filter((r) => inRange(r, startPrev, endPrev));
-      const byW = (arr, fn) => {
-        const out = Array.from({ length: 7 }, () => []);
-        arr.forEach((r) => {
-          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-          const idx = (d.weekday + 6) % 7;
-          out[idx].push(fn(r) || 0);
-        });
-        return out;
-      };
-      const pW1 = byW(W1, (r) => +r.parcels || 0), pW2 = byW(W2, (r) => +r.parcels || 0);
-      const lW1 = byW(W1, (r) => +r.letters || 0), lW2 = byW(W2, (r) => +r.letters || 0);
-      const mean = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-      const parcels2 = Array.from({ length: 7 }, (_, i) => mean([...pW1[i] || [], ...pW2[i] || []]));
-      const letters2 = Array.from({ length: 7 }, (_, i) => mean([...lW1[i] || [], ...lW2[i] || []]));
-      const snap = { weekStart: weekStartIso, parcels: parcels2, letters: letters2 };
-      localStorage.setItem(BASELINE_KEY, JSON.stringify(snap));
-      return snap;
-    } catch (_) {
-      return null;
-    }
-  }
-  function getWeeklyBaselines() {
-    try {
-      return JSON.parse(localStorage.getItem(BASELINE_KEY) || "null");
-    } catch (_) {
-      return null;
-    }
-  }
-  function computeAnchorBaselines(rows, weeks = 8) {
-    try {
-      const now = DateTime.now().setZone(ZONE);
-      const worked = rows.filter((r) => r.status !== "off");
-      const weeksArr = [];
-      for (let w = 1; w <= weeks; w++) {
-        const s = startOfWeekMonday(now.minus({ weeks: w }));
-        const e = endOfWeekSunday(now.minus({ weeks: w }));
-        weeksArr.push({ s, e });
-      }
-      const perW = (fn) => {
-        const arrs = Array.from({ length: 7 }, () => []);
-        for (const wk of weeksArr) {
-          const set = worked.filter((r) => {
-            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-            return d >= wk.s && d <= wk.e;
-          });
-          const tmp = Array.from({ length: 7 }, () => 0);
-          set.forEach((r) => {
-            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-            const idx = (d.weekday + 6) % 7;
-            tmp[idx] += fn(r) || 0;
-          });
-          for (let i = 0; i < 7; i++) arrs[i].push(tmp[i]);
-        }
-        const med = arrs.map((a) => {
-          const b = [...a].sort((x, y) => x - y);
-          const n = b.length;
-          if (!n) return null;
-          const mid = Math.floor(n / 2);
-          return n % 2 ? b[mid] : (b[mid - 1] + b[mid]) / 2;
-        });
-        return med;
-      };
-      return {
-        parcels: perW((r) => +r.parcels || 0),
-        letters: perW((r) => +r.letters || 0)
-      };
-    } catch (_) {
-      return null;
-    }
-  }
-  function saveFlags(f) {
-    localStorage.setItem(FLAG_KEY, JSON.stringify(f));
-  }
   var FLAGS = loadFlags();
   var $ = (id) => document.getElementById(id);
   var dConn = $("dConn");
@@ -285,20 +2883,6 @@
     const isRolling = scope !== "all";
     el.classList.toggle("all", !isRolling);
     el.innerHTML = `<span class="dot" aria-hidden="true"></span>${isRolling ? "Rolling \xB7 120d" : "All-time"}`;
-  }
-  function getModelScope() {
-    try {
-      const v = localStorage.getItem(MODEL_SCOPE_KEY);
-      return v === "all" || v === "rolling" ? v : "rolling";
-    } catch (_) {
-      return "rolling";
-    }
-  }
-  function setModelScope(v) {
-    try {
-      localStorage.setItem(MODEL_SCOPE_KEY, v);
-    } catch (_) {
-    }
   }
   function rowsForModelScope(allRows2) {
     const rows = Array.isArray(allRows2) ? allRows2 : [];
@@ -359,29 +2943,11 @@
   }
   renderUspsEvalTag();
   renderVacationRanges();
-  function todayStr() {
-    return DateTime.now().setZone(ZONE).toISODate();
-  }
-  function hhmmNow() {
-    const d = DateTime.now().setZone(ZONE);
-    return `${String(d.hour).padStart(2, "0")}:${String(d.minute).padStart(2, "0")}`;
-  }
-  function dowIndex(dateStr) {
-    return DateTime.fromFormat(dateStr, "yyyy-MM-dd", { zone: ZONE }).weekday % 7;
-  }
-  function startOfWeekMonday(dt) {
-    const w = dt.weekday;
-    const shift = (w + 6) % 7;
-    return dt.startOf("day").minus({ days: shift });
-  }
-  function endOfWeekSunday(dt) {
-    return startOfWeekMonday(dt).plus({ days: 6 }).endOf("day");
-  }
   function getLastNonEmptyWeek(rows, now, { excludeVacation = true } = {}) {
     const worked = (rows || []).filter((r) => (+r.hours || 0) > 0);
     const weeksToScan = 12;
     const inRange = (r, from, to) => {
-      const d = luxon.DateTime.fromISO(r.work_date, { zone: ZONE });
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       return d >= from && d <= to;
     };
     for (let w = 1; w <= weeksToScan; w++) {
@@ -546,416 +3112,6 @@
       minutes: item.hasMinutes ? item.minutes : null
     }));
   }
-  function loadDismissedResiduals() {
-    try {
-      const raw = localStorage.getItem(RESIDUAL_DISMISS_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.map((item) => {
-        if (!item || !item.iso) return null;
-        let sourceTags = [];
-        if (Array.isArray(item.tags)) {
-          sourceTags = item.tags;
-        } else if (item.reason) {
-          const parsedReasonTags = parseDismissReasonInput(item.reason);
-          if (parsedReasonTags.length) {
-            sourceTags = parsedReasonTags.map((tag) => ({
-              reason: tag.reason,
-              minutes: tag.minutes,
-              notedAt: item.notedAt
-            }));
-          } else {
-            sourceTags = [{ reason: item.reason, minutes: item.minutes, notedAt: item.notedAt }];
-          }
-        }
-        const tags = sourceTags.map((tag) => {
-          if (!tag) return null;
-          const reason = String(tag.reason || "").trim();
-          if (!reason) return null;
-          const minutes = tag.minutes != null && tag.minutes !== "" ? Number(tag.minutes) : null;
-          const notedAt = tag.notedAt || item.notedAt || (/* @__PURE__ */ new Date()).toISOString();
-          return { reason, minutes: Number.isFinite(minutes) ? minutes : null, notedAt };
-        }).filter(Boolean);
-        return tags.length ? { iso: item.iso, tags } : null;
-      }).filter(Boolean);
-    } catch (_) {
-      return [];
-    }
-  }
-  function saveDismissedResiduals(list) {
-    try {
-      localStorage.setItem(RESIDUAL_DISMISS_KEY, JSON.stringify(list || []));
-    } catch (_) {
-    }
-  }
-  function buildDismissedMap(list) {
-    const map = /* @__PURE__ */ new Map();
-    (list || []).forEach((item) => {
-      if (item && item.iso) map.set(item.iso, item);
-    });
-    return map;
-  }
-  function getOpenAiKey() {
-    try {
-      const val = localStorage.getItem(OPENAI_KEY_STORAGE);
-      if (!val) return null;
-      const trimmed = val.trim();
-      return trimmed ? trimmed : null;
-    } catch (_) {
-      return null;
-    }
-  }
-  function setOpenAiKey(val) {
-    try {
-      if (val && val.trim()) localStorage.setItem(OPENAI_KEY_STORAGE, val.trim());
-      else localStorage.removeItem(OPENAI_KEY_STORAGE);
-    } catch (_) {
-    }
-  }
-  function getAiBasePrompt() {
-    try {
-      const val = localStorage.getItem(AI_BASE_PROMPT_KEY);
-      if (!val) return DEFAULT_AI_BASE_PROMPT;
-      const trimmed = val.trim();
-      return trimmed ? trimmed : DEFAULT_AI_BASE_PROMPT;
-    } catch (_) {
-      return DEFAULT_AI_BASE_PROMPT;
-    }
-  }
-  function setAiBasePrompt(val) {
-    try {
-      if (val && val.trim()) localStorage.setItem(AI_BASE_PROMPT_KEY, val.trim());
-      else localStorage.removeItem(AI_BASE_PROMPT_KEY);
-    } catch (_) {
-    }
-  }
-  function loadTokenUsage() {
-    try {
-      const raw = localStorage.getItem(TOKEN_USAGE_STORAGE);
-      const now = DateTime.now().setZone(ZONE);
-      const today = now.toISODate();
-      const weekStart = startOfWeekMonday(now).toISODate();
-      const monthKey = now.toFormat("yyyy-MM");
-      if (!raw) return { today: 0, week: 0, month: 0, monthlyLimit: null, todayDate: today, weekStart, monthKey };
-      const parsed = JSON.parse(raw) || {};
-      const usage = {
-        today: Number(parsed.today) || 0,
-        week: Number(parsed.week) || 0,
-        month: Number(parsed.month) || 0,
-        monthlyLimit: parsed.monthlyLimit !== void 0 && parsed.monthlyLimit !== null ? Number(parsed.monthlyLimit) : null,
-        todayDate: parsed.todayDate || today,
-        weekStart: parsed.weekStart || weekStart,
-        monthKey: parsed.monthKey || monthKey
-      };
-      if (usage.todayDate !== today) {
-        usage.today = 0;
-        usage.todayDate = today;
-      }
-      if (usage.weekStart !== weekStart) {
-        usage.week = 0;
-        usage.weekStart = weekStart;
-      }
-      if (usage.monthKey !== monthKey) {
-        usage.month = 0;
-        usage.monthKey = monthKey;
-      }
-      return usage;
-    } catch (_) {
-      const now = DateTime.now().setZone(ZONE);
-      return {
-        today: 0,
-        week: 0,
-        month: 0,
-        monthlyLimit: null,
-        todayDate: now.toISODate(),
-        weekStart: startOfWeekMonday(now).toISODate(),
-        monthKey: now.toFormat("yyyy-MM")
-      };
-    }
-  }
-  function saveTokenUsage(obj) {
-    try {
-      localStorage.setItem(TOKEN_USAGE_STORAGE, JSON.stringify(obj || {}));
-    } catch (_) {
-    }
-  }
-  function updateTokenUsageCard(usage) {
-    if (!usage || !tokenUsageCard) return;
-    const today = usage.today || 0;
-    const week = usage.week || 0;
-    const month = usage.month || 0;
-    const limit = usage.monthlyLimit;
-    if (tokenTodayEl) tokenTodayEl.textContent = today;
-    if (tokenWeekEl) tokenWeekEl.textContent = week;
-    if (tokenMonthEl) tokenMonthEl.textContent = month;
-    if (tokenLimitEl) tokenLimitEl.textContent = limit != null ? limit : "\u2014";
-    if (tokenBarFill) {
-      let percent = 0;
-      if (limit && limit > 0) {
-        percent = Math.min(month / limit * 100, 100);
-      }
-      tokenBarFill.style.width = `${percent}%`;
-      let color = "var(--brand)";
-      if (percent > 90) color = "#ff4d4d";
-      else if (percent > 60) color = "#ffcc00";
-      tokenBarFill.style.background = color;
-    }
-    if (tokenBarNote) tokenBarNote.textContent = "Token totals update automatically after each AI summary.";
-    tokenUsageCard.style.display = "block";
-  }
-  function populateTokenInputs(usage) {
-    if (!usage) return;
-    if (tokenTodayInput) tokenTodayInput.value = usage.today;
-    if (tokenWeekInput) tokenWeekInput.value = usage.week;
-    if (tokenMonthInput) tokenMonthInput.value = usage.month;
-    if (tokenLimitInput) tokenLimitInput.value = usage.monthlyLimit != null ? usage.monthlyLimit : "";
-  }
-  function readTokenInputs() {
-    const usage = loadTokenUsage();
-    if (tokenTodayInput) usage.today = Number(tokenTodayInput.value) || 0;
-    if (tokenWeekInput) usage.week = Number(tokenWeekInput.value) || 0;
-    if (tokenMonthInput) usage.month = Number(tokenMonthInput.value) || 0;
-    if (tokenLimitInput) {
-      const val = tokenLimitInput.value;
-      usage.monthlyLimit = val !== "" ? Number(val) : null;
-    }
-    saveTokenUsage(usage);
-    updateTokenUsageCard(usage);
-  }
-  function addTokenUsage(deltaTokens) {
-    if (!(deltaTokens > 0)) return;
-    const usage = loadTokenUsage();
-    usage.today += deltaTokens;
-    usage.week += deltaTokens;
-    usage.month += deltaTokens;
-    saveTokenUsage(usage);
-    updateTokenUsageCard(usage);
-    populateTokenInputs(usage);
-  }
-  function loadLastAiSummary() {
-    try {
-      const raw = localStorage.getItem(AI_LAST_SUMMARY_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" ? parsed : null;
-    } catch (_) {
-      return null;
-    }
-  }
-  function saveLastAiSummary(obj) {
-    try {
-      if (obj) localStorage.setItem(AI_LAST_SUMMARY_KEY, JSON.stringify(obj));
-      else localStorage.removeItem(AI_LAST_SUMMARY_KEY);
-      return true;
-    } catch (err) {
-      console.error("[AI summary] failed to persist", err);
-      if (aiSummaryStatus) aiSummaryStatus.textContent = "Saved summary could not be stored locally (private browsing or storage disabled).";
-      return false;
-    }
-  }
-  function isAiSummaryCollapsed() {
-    try {
-      return localStorage.getItem(AI_SUMMARY_COLLAPSED_KEY) === "1";
-    } catch (_) {
-      return false;
-    }
-  }
-  function setAiSummaryCollapsed(flag) {
-    try {
-      localStorage.setItem(AI_SUMMARY_COLLAPSED_KEY, flag ? "1" : "0");
-    } catch (_) {
-    }
-    applyAiSummaryCollapsed(flag);
-  }
-  function applyAiSummaryCollapsed(force) {
-    const collapsed = typeof force === "boolean" ? force : isAiSummaryCollapsed();
-    if (aiSummaryContent) aiSummaryContent.style.display = collapsed ? "none" : "block";
-    if (toggleAiSummaryBtn) toggleAiSummaryBtn.textContent = collapsed ? "Expand" : "Collapse";
-  }
-  function todayIso() {
-    return DateTime.now().setZone(ZONE).toISODate();
-  }
-  async function fetchAiSummaryFromSupabase() {
-    if (!CURRENT_USER_ID || !window.supabase) return null;
-    try {
-      const today = todayIso();
-      const { data, error } = await sb.from("daily_reports").select("report,timestamp").eq("user_id", CURRENT_USER_ID).eq("date", today).maybeSingle();
-      if (error && error.code !== "PGRST116") {
-        console.warn("[AI summary] load error", error.message);
-        return null;
-      }
-      if (!data || !data.report) return null;
-      let parsed;
-      try {
-        parsed = typeof data.report === "string" ? JSON.parse(data.report) : data.report;
-      } catch (_) {
-        parsed = { text: data.report };
-      }
-      if (!parsed || !parsed.text) return null;
-      if (!parsed.timestamp && data.timestamp) {
-        parsed.timestamp = data.timestamp;
-      }
-      saveLastAiSummary(parsed);
-      return parsed;
-    } catch (err) {
-      console.warn("[AI summary] load exception", err);
-      return null;
-    }
-  }
-  async function saveAiSummaryToSupabase(obj) {
-    if (!CURRENT_USER_ID || !window.supabase) return false;
-    try {
-      const today = todayIso();
-      const payload = {
-        user_id: CURRENT_USER_ID,
-        date: today,
-        report: JSON.stringify(obj || {})
-      };
-      const { error } = await sb.from("daily_reports").upsert(payload, { onConflict: ["user_id", "date"] });
-      if (error) {
-        console.warn("[AI summary] save error", error.message);
-        return false;
-      }
-      return true;
-    } catch (err) {
-      console.warn("[AI summary] save exception", err);
-      return false;
-    }
-  }
-  function updateAiSummaryAvailability() {
-    if (!aiSummaryCard || !aiSummaryBtn || !aiSummaryHint) return;
-    aiSummaryCard.style.display = "block";
-    const key = getOpenAiKey();
-    aiSummaryBtn.disabled = !key;
-    aiSummaryHint.textContent = key ? "AI summary uses OpenAI when you click the button. Data stays local until then." : "Set your OpenAI API key in Settings \u2192 AI Summary to enable.";
-    applyAiSummaryCollapsed();
-  }
-  function renderLastAiSummary() {
-    if (!aiSummaryOutput || !aiSummaryStatus) return;
-    const saved = loadLastAiSummary();
-    if (saved && saved.text) {
-      aiSummaryOutput.textContent = saved.text;
-      const stamp = saved.timestamp ? new Date(saved.timestamp) : null;
-      aiSummaryStatus.textContent = stamp ? `Last updated ${stamp.toLocaleString()}` : "Last summary loaded.";
-    } else {
-      aiSummaryOutput.textContent = "";
-      aiSummaryStatus.textContent = "No AI summary yet.";
-      if (CURRENT_USER_ID) {
-        fetchAiSummaryFromSupabase().then((remote) => {
-          if (remote && remote.text) {
-            aiSummaryOutput.textContent = remote.text;
-            const stamp = remote.timestamp ? new Date(remote.timestamp) : null;
-            aiSummaryStatus.textContent = stamp ? `Last updated ${stamp.toLocaleString()}` : "Loaded from cloud.";
-          }
-        });
-      }
-    }
-  }
-  function buildAiPrompt(ctx) {
-    const lines = [];
-    lines.push("You are helping a USPS route analyst interpret daily metrics.");
-    if (ctx.summaryText) {
-      lines.push(`Summary: ${ctx.summaryText}`);
-    }
-    if (ctx.catchupSummary && ctx.catchupSummary.count) {
-      const c = ctx.catchupSummary;
-      const gas = c.addedMinutes ? `${(c.addedMinutes / 60).toFixed(2)} extra hours tagged` : "";
-      const ratio = c.avgRouteRatio ? `avg route ratio ${c.avgRouteRatio.toFixed(2)}\xD7` : "";
-      lines.push(`Holiday catch-up context: ${c.count} day(s) ${[gas, ratio].filter(Boolean).join(" \xB7 ")}`);
-    }
-    if (ctx.weight && ctx.weight.enabled) {
-      lines.push(`Holiday downweight applied: average weight ${(ctx.weight.averageWeight || 1).toFixed(2)}, ${ctx.weight.downweighted || 0} day(s) affected.`);
-    }
-    const residuals = ctx.residuals || [];
-    if (residuals.length) {
-      lines.push("Top residual days (actual - predicted route minutes):");
-      residuals.forEach((r, idx) => {
-        const tags = r.tags && r.tags.length ? ` tags: ${r.tags.join(", ")}` : "";
-        const weather2 = r.weather ? ` weather: ${r.weather}` : "";
-        const notes2 = r.notes ? ` notes: ${r.notes}` : "";
-        lines.push(`${idx + 1}. ${r.iso}: ${r.deltaMinutes >= 0 ? "+" : ""}${r.deltaMinutes}m; parcels ${r.parcels}; letters ${r.letters}; boxholders ${r.boxholders || "\u2014"}${tags}${weather2}${notes2}`);
-      });
-    }
-    const dismissed = ctx.dismissed || [];
-    if (dismissed.length) {
-      const list = dismissed.map((item) => {
-        const tags = (item.tags || []).map((tag) => tag.minutes != null ? `${tag.reason} ${tag.minutes}m` : tag.reason).join(", ");
-        return `${item.iso}${tags ? ": " + tags : ""}`;
-      }).join("; ");
-      lines.push(`Dismissed (already reviewed): ${list}`);
-    }
-    lines.push("Provide 3 concise bullet points: 1) root causes or contributing factors, 2) suggested actions or notes for tomorrow, 3) notable trends or items to watch. Keep it short and focused.");
-    return lines.join("\n");
-  }
-  async function generateAiSummary() {
-    var _a5, _b, _c, _d;
-    if (!aiSummaryBtn) return;
-    const key = getOpenAiKey();
-    if (!key) {
-      if (aiSummaryStatus) aiSummaryStatus.textContent = "Set your OpenAI API key in Settings first.";
-      updateAiSummaryAvailability();
-      return;
-    }
-    if (!latestDiagnosticsContext || !(latestDiagnosticsContext.residuals || []).length) {
-      if (aiSummaryStatus) aiSummaryStatus.textContent = "Run diagnostics first so residuals are available.";
-      return;
-    }
-    const prompt2 = buildAiPrompt(latestDiagnosticsContext);
-    setAiSummaryCollapsed(false);
-    aiSummaryBtn.disabled = true;
-    if (aiSummaryStatus) aiSummaryStatus.textContent = "Generating summary\u2026";
-    if (aiSummaryOutput) aiSummaryOutput.textContent = "";
-    try {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${key}`
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          temperature: 0.4,
-          messages: [
-            { role: "system", content: getAiBasePrompt() },
-            { role: "user", content: prompt2 }
-          ]
-        })
-      });
-      if (!response.ok) {
-        const text2 = await response.text();
-        throw new Error(text2 || `HTTP ${response.status}`);
-      }
-      const data = await response.json();
-      let text = "";
-      const content = (_c = (_b = (_a5 = data == null ? void 0 : data.choices) == null ? void 0 : _a5[0]) == null ? void 0 : _b.message) == null ? void 0 : _c.content;
-      if (typeof content === "string") {
-        text = content;
-      } else if (Array.isArray(content)) {
-        text = content.map((part) => typeof part === "string" ? part : (part == null ? void 0 : part.text) || "").join("");
-      } else if (content && typeof content === "object" && "text" in content) {
-        text = content.text;
-      }
-      text = (text || "").trim() || "(No summary returned)";
-      if (aiSummaryOutput) aiSummaryOutput.textContent = text;
-      const stamp = (/* @__PURE__ */ new Date()).toISOString();
-      if (aiSummaryStatus) aiSummaryStatus.textContent = `Updated ${new Date(stamp).toLocaleTimeString()}`;
-      const summaryPayload = { text, timestamp: stamp, prompt: prompt2 };
-      const persisted = saveLastAiSummary(summaryPayload);
-      await saveAiSummaryToSupabase(summaryPayload);
-      if (persisted) renderLastAiSummary();
-      const tokensUsed = (_d = data == null ? void 0 : data.usage) == null ? void 0 : _d.total_tokens;
-      if (Number.isFinite(tokensUsed) && tokensUsed > 0) {
-        addTokenUsage(tokensUsed);
-      }
-      setAiSummaryCollapsed(false);
-    } catch (err) {
-      console.error("[AI summary] error", err);
-      if (aiSummaryStatus) aiSummaryStatus.textContent = `AI summary failed: ${err.message || err}`;
-    } finally {
-      aiSummaryBtn.disabled = false;
-    }
-  }
   function isHolidayDownweightEnabled() {
     try {
       return localStorage.getItem(RESIDUAL_WEIGHT_PREF_KEY) === "1";
@@ -982,61 +3138,58 @@
     };
     return { enabled: true, fn };
   }
-  function moonPhaseEmoji(dateStr) {
-    const d = DateTime.fromISO(dateStr, { zone: ZONE });
-    const lp = 25514428e-1;
-    const newMoon = DateTime.fromISO("2000-01-06T18:14:00Z").toSeconds();
-    const phase = ((d.toSeconds() - newMoon) % lp + lp) % lp / lp;
-    if (phase < 0.03 || phase > 0.97) return "\u{1F311}";
-    if (phase < 0.25) return "\u{1F312}";
-    if (phase < 0.27) return "\u{1F313}";
-    if (phase < 0.48) return "\u{1F314}";
-    if (phase < 0.52) return "\u{1F315}";
-    if (phase < 0.75) return "\u{1F316}";
-    if (phase < 0.77) return "\u{1F317}";
-    return "\u{1F318}";
-  }
-  function diffHours(d, t1, t2) {
-    if (!t1 || !t2) return null;
-    const a = DateTime.fromISO(`${d}T${t1}`, { zone: ZONE });
-    const b = DateTime.fromISO(`${d}T${t2}`, { zone: ZONE });
-    let h = (b.toMillis() - a.toMillis()) / 36e5;
-    if (h < 0) h += 24;
-    return Math.round(h * 100) / 100;
-  }
-  function routeEndTime() {
-    return $("returnTime").value || $("end").value || "";
-  }
-  var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: true } });
-  async function handleAuthCallback(sb2) {
-    try {
-      const url = new URL(window.location.href);
-      const hasHashToken = url.hash.includes("access_token=") || url.hash.includes("refresh_token=");
-      const code = url.searchParams.get("code");
-      let out = null;
-      if (hasHashToken) {
-        const { data, error } = await sb2.auth.exchangeCodeForSession(url.hash);
-        if (error) throw error;
-        out = data;
-      } else if (code) {
-        const { data, error } = await sb2.auth.exchangeCodeForSession(code);
-        if (error) throw error;
-        out = data;
-      } else {
-        const { data, error } = await sb2.auth.getSession();
-        if (error) console.warn("[Auth] getSession warning:", error.message);
-        out = data;
+  var diagnosticsFeature = createDiagnostics({
+    getFlags: () => FLAGS,
+    filterRowsForView,
+    rowsForModelScope,
+    getResidualWeighting,
+    setHolidayDownweightEnabled,
+    isHolidayDownweightEnabled,
+    loadDismissedResiduals: () => loadDismissedResiduals(parseDismissReasonInput),
+    saveDismissedResiduals,
+    parseDismissReasonInput,
+    rebuildAll,
+    updateAiSummaryAvailability,
+    inferBoxholderLabel,
+    hasTag,
+    summarizeHolidayCatchups,
+    getCurrentLetterWeight: () => CURRENT_LETTER_WEIGHT,
+    setCurrentLetterWeight: (value) => {
+      CURRENT_LETTER_WEIGHT = value;
+      try {
+        localStorage.setItem("routeStats.letterWeight", String(CURRENT_LETTER_WEIGHT));
+      } catch (_) {
       }
-      if (hasHashToken || code) {
-        window.history.replaceState({}, document.title, url.origin + url.pathname);
-      }
-      console.log("[Auth] session ready", (out == null ? void 0 : out.session) ? "(signed in)" : "(no session)");
-      return (out == null ? void 0 : out.session) || null;
-    } catch (err) {
-      console.warn("Auth callback error \u2013", err);
-      return null;
-    }
-  }
+    },
+    combinedVolume,
+    routeAdjustedMinutes
+  });
+  var {
+    buildDiagnostics,
+    buildDayCompare,
+    buildVolumeLeaderboard,
+    fitVolumeTimeModel,
+    getResidualModel,
+    getLatestDiagnosticsContext,
+    resetDiagnosticsCache
+  } = diagnosticsFeature;
+  var chartsFeature = createCharts({
+    getFlags: () => FLAGS,
+    filterRowsForView,
+    vacGlyph,
+    routeAdjustedHours,
+    boxholderAdjMinutes,
+    getLastNonEmptyWeek,
+    buildDayCompare
+  });
+  var {
+    buildCharts,
+    buildMonthlyGlance,
+    buildMixViz,
+    buildOfficeCompare,
+    buildQuickFilter
+  } = chartsFeature;
+  var sb = createSupabaseClient();
   var authReadyPromise = handleAuthCallback(sb);
   (async () => {
     const isRecoveryLink = /type=recovery/i.test(window.location.hash);
@@ -1214,6 +3367,32 @@
   var tokenLimitInput = document.getElementById("tokenUsageLimit");
   var aiPromptTextarea = document.getElementById("aiSummaryBasePrompt");
   var CURRENT_USER_ID = null;
+  var aiSummary = createAiSummary({
+    elements: {
+      card: aiSummaryCard,
+      button: aiSummaryBtn,
+      toggleButton: toggleAiSummaryBtn,
+      hint: aiSummaryHint,
+      status: aiSummaryStatus,
+      output: aiSummaryOutput,
+      content: aiSummaryContent,
+      tokenUsageCard,
+      tokenTodayEl,
+      tokenWeekEl,
+      tokenMonthEl,
+      tokenLimitEl,
+      tokenBarFill,
+      tokenBarNote,
+      tokenTodayInput,
+      tokenWeekInput,
+      tokenMonthInput,
+      tokenLimitInput
+    },
+    supabaseClient: sb,
+    getCurrentUserId: () => CURRENT_USER_ID,
+    getDiagnosticsContext: getLatestDiagnosticsContext,
+    defaultPrompt: DEFAULT_AI_BASE_PROMPT
+  });
   btnSettings == null ? void 0 : btnSettings.addEventListener("click", () => {
     flagWeekdayTicks.checked = !!FLAGS.weekdayTicks;
     flagProgressivePills.checked = !!FLAGS.progressivePills;
@@ -1259,10 +3438,10 @@
       settingsOpenAiKey.value = getOpenAiKey() || "";
     }
     if (aiPromptTextarea) {
-      aiPromptTextarea.value = getAiBasePrompt();
+      aiPromptTextarea.value = getAiBasePrompt(DEFAULT_AI_BASE_PROMPT);
       aiPromptTextarea.placeholder = DEFAULT_AI_BASE_PROMPT;
     }
-    populateTokenInputs(loadTokenUsage());
+    aiSummary.populateTokenInputs(loadTokenUsage());
     renderVacationRanges();
     settingsDlg.showModal();
   });
@@ -1339,7 +3518,7 @@
     } catch (_) {
     }
     try {
-      readTokenInputs();
+      aiSummary.readTokenInputs();
     } catch (_) {
     }
     saveFlags(FLAGS);
@@ -1350,25 +3529,24 @@
     applyTrendPillsVisibility();
     applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
-    updateAiSummaryAvailability();
-    renderLastAiSummary();
+    aiSummary.updateAvailability();
+    aiSummary.renderLastSummary();
   });
   clearOpenAiKeyBtn == null ? void 0 : clearOpenAiKeyBtn.addEventListener("click", () => {
     if (settingsOpenAiKey) settingsOpenAiKey.value = "";
     setOpenAiKey("");
-    updateAiSummaryAvailability();
+    aiSummary.updateAvailability();
     if (aiSummaryStatus) aiSummaryStatus.textContent = "OpenAI key cleared.";
   });
-  aiSummaryBtn == null ? void 0 : aiSummaryBtn.addEventListener("click", generateAiSummary);
+  aiSummaryBtn == null ? void 0 : aiSummaryBtn.addEventListener("click", aiSummary.generateSummary);
   toggleAiSummaryBtn == null ? void 0 : toggleAiSummaryBtn.addEventListener("click", () => {
-    const next = !isAiSummaryCollapsed();
-    setAiSummaryCollapsed(next);
+    aiSummary.toggleCollapsed();
   });
-  updateAiSummaryAvailability();
-  renderLastAiSummary();
+  aiSummary.updateAvailability();
+  aiSummary.renderLastSummary();
   var initialTokenUsage = loadTokenUsage();
-  updateTokenUsageCard(initialTokenUsage);
-  populateTokenInputs(initialTokenUsage);
+  aiSummary.updateTokenUsageCard(initialTokenUsage);
+  aiSummary.populateTokenInputs(initialTokenUsage);
   vacAdd == null ? void 0 : vacAdd.addEventListener("click", () => {
     try {
       const f = vacFrom == null ? void 0 : vacFrom.value;
@@ -1430,14 +3608,13 @@
   }
   function applyRecentEntriesAutoCollapse() {
     try {
-      let setCollapsed2 = function(c) {
+      let setCollapsed = function(c) {
         body.style.display = c ? "none" : "";
         try {
           localStorage.setItem(KEY, c ? "1" : "0");
         } catch (_) {
         }
       };
-      var setCollapsed = setCollapsed2;
       const sec = document.getElementById("recentEntriesCard");
       if (!sec) return;
       const headerEl = sec.firstElementChild;
@@ -1472,8 +3649,8 @@
       }
       const saved = localStorage.getItem(KEY);
       const initial = saved == null ? true : saved === "1";
-      setCollapsed2(initial);
-      const toggle = () => setCollapsed2(body.style.display !== "none" ? true : false);
+      setCollapsed(initial);
+      const toggle = () => setCollapsed(body.style.display !== "none" ? true : false);
       headerEl.style.cursor = "pointer";
       headerEl.addEventListener("click", (e) => {
         if (e.target.closest("button,a,input,select,textarea")) return;
@@ -1496,7 +3673,7 @@
     if (signOutBtn) signOutBtn.style.display = authed ? "inline-block" : "none";
     dAuth.textContent = authed ? "Session" : "No session";
     if (authed) {
-      renderLastAiSummary();
+      aiSummary.renderLastSummary();
     }
   });
   sb.auth.getSession().then(({ data }) => {
@@ -1504,13 +3681,10 @@
     const session = (data == null ? void 0 : data.session) || null;
     CURRENT_USER_ID = ((_a5 = session == null ? void 0 : session.user) == null ? void 0 : _a5.id) || null;
     if (CURRENT_USER_ID) {
-      renderLastAiSummary();
+      aiSummary.renderLastSummary();
     }
   }).catch(() => {
   });
-  function dowIndex(dateStr) {
-    return DateTime.fromFormat(dateStr, "yyyy-MM-dd", { zone: ZONE }).weekday % 7;
-  }
   function routeEndTime() {
     return $("returnTime").value || $("end").value || "";
   }
@@ -1534,14 +3708,6 @@
   var secondTripReimburseEl = $("secondTripReimburse");
   var secondTripEmaRateEl = $("secondTripEmaRate");
   var SECOND_TRIP_EMA_KEY = "routeStats.secondTrip.ema";
-  var RESIDUAL_WEIGHT_PREF_KEY = "routeStats.residual.downweightHoliday";
-  var RESIDUAL_DISMISS_KEY = "routeStats.diagnostics.dismissed";
-  var OPENAI_KEY_STORAGE = "routeStats.ai.openaiKey";
-  var AI_LAST_SUMMARY_KEY = "routeStats.ai.lastSummary";
-  var AI_SUMMARY_COLLAPSED_KEY = "routeStats.ai.summaryCollapsed";
-  var TOKEN_USAGE_STORAGE = "routeStats.ai.tokenUsage";
-  var AI_BASE_PROMPT_KEY = "routeStats.ai.basePrompt";
-  var DEFAULT_AI_BASE_PROMPT = "You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.";
   function readStoredEma() {
     try {
       const saved = parseFloat(localStorage.getItem(SECOND_TRIP_EMA_KEY));
@@ -1676,13 +3842,6 @@
     const token = match[1] ? match[1] : match[0];
     return formatBoxholderLabel(token.replace(/\s+/g, ""));
   }
-  var WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  function roundVal(val, decimals = 2) {
-    const n = Number(val);
-    if (!Number.isFinite(n)) return null;
-    const factor = Math.pow(10, decimals);
-    return Math.round(n * factor) / factor;
-  }
   function safeNumber(val) {
     const n = Number(val);
     return Number.isFinite(n) ? n : 0;
@@ -1753,14 +3912,6 @@
     const W = w == null ? CURRENT_LETTER_WEIGHT : w;
     return safeNumber(p) + W * safeNumber(l);
   }
-  function computeVolume(parcels2, letters2) {
-    return combinedVolume(parcels2, letters2);
-  }
-  function extractReasonTag(weatherStr) {
-    if (!weatherStr) return null;
-    const match = /Reason:\s*([^·]+)/i.exec(String(weatherStr));
-    return match ? match[1].trim() : null;
-  }
   function colorForDelta(pct) {
     if (pct == null) return { fg: "var(--muted)", bg: "transparent", bc: "var(--border)" };
     if (!FLAGS || !FLAGS.progressivePills) {
@@ -1773,876 +3924,6 @@
     const step = t < 0.17 ? 0 : t < 0.42 ? 1 : 2;
     const fg = clamp >= 0 ? green[step] : red[step];
     return { fg, bg: "transparent", bc: "transparent" };
-  }
-  function dayMetricsFromRow(row, opts) {
-    var _a5, _b, _c, _d, _e;
-    if (!row || row.status === "off") return null;
-    const iso = row.work_date;
-    const parcelsRaw = safeNumber(row.parcels);
-    const lettersRaw = safeNumber(row.letters);
-    const officeRaw = safeNumber(row.office_minutes);
-    const routeRaw = routeAdjustedHours(row);
-    const totalRaw = row.hours != null ? safeNumber(row.hours) : roundVal(officeRaw + routeRaw, 2);
-    const milesRaw = safeNumber(row.miles);
-    const volumeRaw = computeVolume(parcelsRaw, lettersRaw);
-    const efficiencyMinutes = routeRaw > 0 && volumeRaw > 0 ? roundVal(routeRaw * 60 / volumeRaw, 1) : null;
-    return {
-      type: (opts == null ? void 0 : opts.type) || "day",
-      source: (opts == null ? void 0 : opts.source) || "day",
-      iso,
-      dow: dowIndex(iso),
-      label: (opts == null ? void 0 : opts.label) || iso,
-      count: 1,
-      officeHours: (_a5 = roundVal(officeRaw, 2)) != null ? _a5 : 0,
-      routeHours: (_b = roundVal(routeRaw, 2)) != null ? _b : 0,
-      totalHours: (_c = roundVal(totalRaw, 2)) != null ? _c : 0,
-      parcels: Math.round(parcelsRaw),
-      letters: Math.round(lettersRaw),
-      miles: (_d = roundVal(milesRaw, 1)) != null ? _d : 0,
-      volume: (_e = roundVal(volumeRaw, 2)) != null ? _e : 0,
-      efficiencyMinutes,
-      mood: row.mood || null,
-      notes: row.notes || null,
-      weather: row.weather_json || null,
-      reason: extractReasonTag(row.weather_json),
-      raw: row
-    };
-  }
-  function aggregateDayMetrics(rows, opts) {
-    var _a5, _b, _c, _d, _e, _f;
-    const valid = (rows || []).filter((r) => r && r.status !== "off");
-    if (!valid.length) return null;
-    const totals = valid.reduce((acc, row) => {
-      const office = safeNumber(row.office_minutes);
-      const route2 = routeAdjustedHours(row);
-      const total = row.hours != null ? safeNumber(row.hours) : office + route2;
-      const parcels2 = safeNumber(row.parcels);
-      const letters2 = safeNumber(row.letters);
-      const miles2 = safeNumber(row.miles);
-      const volume = computeVolume(parcels2, letters2);
-      acc.office += office;
-      acc.route += route2;
-      acc.total += total;
-      acc.parcels += parcels2;
-      acc.letters += letters2;
-      acc.miles += miles2;
-      acc.volume += volume;
-      return acc;
-    }, { office: 0, route: 0, total: 0, parcels: 0, letters: 0, miles: 0, volume: 0 });
-    const count = valid.length;
-    const officeAvg = (_a5 = roundVal(totals.office / count, 2)) != null ? _a5 : 0;
-    const routeAvg = (_b = roundVal(totals.route / count, 2)) != null ? _b : 0;
-    const totalAvg = (_c = roundVal(totals.total / count, 2)) != null ? _c : 0;
-    const parcelsAvg = Math.round(totals.parcels / count);
-    const lettersAvg = Math.round(totals.letters / count);
-    const milesAvg = (_d = roundVal(totals.miles / count, 1)) != null ? _d : 0;
-    const volumeAvg = (_e = roundVal(totals.volume / count, 2)) != null ? _e : 0;
-    const efficiencyMinutes = routeAvg > 0 && volumeAvg > 0 ? roundVal(routeAvg * 60 / volumeAvg, 1) : null;
-    return {
-      type: (opts == null ? void 0 : opts.type) || "average",
-      source: (opts == null ? void 0 : opts.source) || "average",
-      iso: null,
-      dow: (_f = opts == null ? void 0 : opts.dow) != null ? _f : null,
-      label: (opts == null ? void 0 : opts.label) || "Average",
-      count,
-      officeHours: officeAvg,
-      routeHours: routeAvg,
-      totalHours: totalAvg,
-      parcels: parcelsAvg,
-      letters: lettersAvg,
-      miles: milesAvg,
-      volume: volumeAvg,
-      efficiencyMinutes,
-      mood: null,
-      notes: null,
-      weather: null,
-      reason: null,
-      raw: { rows: valid, totals }
-    };
-  }
-  function collectWorkedDays(rows, limit = 365) {
-    const all = filterRowsForView(rows || []).filter((r) => r && r.status !== "off" && r.work_date);
-    const sorted = [...all].sort((a, b) => a.work_date < b.work_date ? 1 : -1);
-    return limit && sorted.length > limit ? sorted.slice(0, limit) : sorted;
-  }
-  function buildDayCompareContext(rows, limit = 365) {
-    const worked = collectWorkedDays(rows, limit);
-    const byDate = /* @__PURE__ */ new Map();
-    worked.forEach((r) => byDate.set(r.work_date, r));
-    return { worked, byDate };
-  }
-  function getSubjectMetrics(context, iso) {
-    if (!context) return null;
-    const row = iso && context.byDate.get(iso) || context.worked[0];
-    return row ? dayMetricsFromRow(row, { source: "subject", label: row.work_date }) : null;
-  }
-  function getLastSameWeekdayMetrics(context, iso) {
-    if (!context || !iso) return null;
-    const targetDow = dowIndex(iso);
-    for (const row of context.worked) {
-      if (row.work_date === iso) continue;
-      if (row.work_date < iso && dowIndex(row.work_date) === targetDow) {
-        const label = `Last ${WEEKDAY_NAMES[targetDow]} (${row.work_date})`;
-        return dayMetricsFromRow(row, { source: "lastSameWeekday", label });
-      }
-    }
-    return null;
-  }
-  function getWeekdayBaselineMetrics(context, iso) {
-    if (!context || !iso) return null;
-    const targetDow = dowIndex(iso);
-    const candidates = context.worked.filter((r) => r.work_date !== iso && dowIndex(r.work_date) === targetDow);
-    if (!candidates.length) return null;
-    const label = `Typical ${WEEKDAY_NAMES[targetDow]}`;
-    return aggregateDayMetrics(candidates, { source: "weekdayAverage", type: "average", dow: targetDow, label });
-  }
-  function getCustomReferenceMetrics(context, iso) {
-    if (!context || !iso) return null;
-    const row = context.byDate.get(iso);
-    return row ? dayMetricsFromRow(row, { source: "manualReference", label: row.work_date }) : null;
-  }
-  function buildVolumeLeaderboard(rows) {
-    const panel = document.getElementById("volumeLeaderboard");
-    const body = document.getElementById("volumeLeaderboardBody");
-    const note = document.getElementById("volumeLeaderboardNote");
-    if (!panel || !body) return;
-    const worked = filterRowsForView(rows || []).filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0);
-    if (!worked.length) {
-      body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:8px;color:var(--muted)">No worked days yet.</td></tr>';
-      if (note) note.textContent = "\u2014";
-      return;
-    }
-    const weight = CURRENT_LETTER_WEIGHT;
-    const volumes = worked.map((r) => ({
-      date: r.work_date,
-      parcels: +r.parcels || 0,
-      letters: +r.letters || 0,
-      volume: combinedVolume(r.parcels, r.letters, weight)
-    }));
-    const asc = [...volumes].sort((a, b) => a.volume - b.volume);
-    const percentileByDate = /* @__PURE__ */ new Map();
-    asc.forEach((item, idx) => {
-      const pct = Math.round((idx + 1) / asc.length * 100);
-      percentileByDate.set(item.date, pct);
-    });
-    const top = [...volumes].sort((a, b) => b.volume - a.volume).slice(0, Math.min(10, volumes.length));
-    body.innerHTML = top.map((item) => {
-      const dt = DateTime.fromISO(item.date, { zone: ZONE });
-      const pct = percentileByDate.get(item.date);
-      const pctText = pct != null ? `${pct}%` : "\u2014";
-      return `<tr>
-        <td>${dt.toFormat("ccc LLL dd")}</td>
-        <td>${item.parcels}</td>
-        <td>${item.letters}</td>
-        <td>${item.volume.toFixed(1)}</td>
-        <td>${pctText}</td>
-      </tr>`;
-    }).join("");
-    if (note) note.textContent = `Combined volume = parcels + ${(weight || 0).toFixed(2)}\xD7letters`;
-  }
-  function fitVolumeTimeModel(rows, opts) {
-    const weightFn = typeof (opts == null ? void 0 : opts.weightFn) === "function" ? opts.weightFn : null;
-    const prepared = (rows || []).filter((r) => r && r.status !== "off").map((row) => {
-      const parcels2 = +row.parcels || 0;
-      const letters2 = +row.letters || 0;
-      const minutes = routeAdjustedMinutes(row);
-      const raw = weightFn ? Number(weightFn(row)) : 1;
-      const weight = Number.isFinite(raw) && raw > 0 ? raw : 0;
-      return { row, parcels: parcels2, letters: letters2, minutes, weight };
-    }).filter((entry) => entry.weight > 0);
-    if (!prepared.length) return null;
-    const sumW = prepared.reduce((t, e) => t + e.weight, 0);
-    if (!(sumW > 0)) return null;
-    const mp = prepared.reduce((t, e) => t + e.weight * e.parcels, 0) / sumW;
-    const ml = prepared.reduce((t, e) => t + e.weight * e.letters, 0) / sumW;
-    const my = prepared.reduce((t, e) => t + e.weight * e.minutes, 0) / sumW;
-    let Cpp = 0, Cll = 0, Cpl = 0, Cpy = 0, Cly = 0, SST = 0, SSR = 0;
-    for (const e of prepared) {
-      const p = e.parcels - mp;
-      const l = e.letters - ml;
-      const y = e.minutes - my;
-      const w = e.weight;
-      Cpp += w * p * p;
-      Cll += w * l * l;
-      Cpl += w * p * l;
-      Cpy += w * p * y;
-      Cly += w * l * y;
-      SST += w * y * y;
-    }
-    const det = Cpp * Cll - Cpl * Cpl;
-    if (!isFinite(det) || Math.abs(det) < 1e-6) return null;
-    const bp = (Cpy * Cll - Cpl * Cly) / det;
-    const bl = (Cpp * Cly - Cpl * Cpy) / det;
-    const a = my - bp * mp - bl * ml;
-    const residuals = [];
-    for (const e of prepared) {
-      const yhat = a + bp * e.parcels + bl * e.letters;
-      const resid = e.minutes - yhat;
-      residuals.push({
-        iso: e.row.work_date,
-        parcels: e.parcels,
-        letters: e.letters,
-        routeMin: e.minutes,
-        predMin: yhat,
-        residMin: resid,
-        weight: e.weight,
-        row: e.row
-      });
-      SSR += e.weight * resid * resid;
-    }
-    const r2 = SST > 0 ? 1 - SSR / SST : 0;
-    const downweighted = prepared.filter((e) => e.weight < 0.999).length;
-    return {
-      a,
-      bp,
-      bl,
-      r2,
-      n: prepared.length,
-      residuals,
-      weighting: {
-        enabled: !!weightFn,
-        sumWeights: sumW,
-        averageWeight: sumW / prepared.length,
-        downweighted
-      }
-    };
-  }
-  function learnedLetterWeight(model) {
-    if (!model || !isFinite(model.bp) || Math.abs(model.bp) < 1e-6) return null;
-    const w = model.bl / model.bp;
-    return isFinite(w) && w >= 0 && w <= 1.5 ? w : null;
-  }
-  var __residModelCache = null;
-  var latestDiagnosticsContext = null;
-  function escapeHtml(s = "") {
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  }
-  function minutesDelta(actualMinutes, expectedMinutes) {
-    if (actualMinutes == null || expectedMinutes == null) return 0;
-    return actualMinutes - expectedMinutes;
-  }
-  function formatMinutesDelta(deltaMinutes, zScore) {
-    const isZeroish = Math.abs(deltaMinutes) < 0.5;
-    let cls = "delta zero";
-    let text = "0";
-    if (!isZeroish) {
-      const sign = deltaMinutes > 0 ? "+" : "\u2212";
-      cls = `delta ${deltaMinutes > 0 ? "pos" : "neg"}`;
-      text = `${sign}${Math.round(Math.abs(deltaMinutes))}m`;
-    }
-    if (typeof zScore === "number" && Math.abs(zScore) >= 1.5) {
-      cls += " outlier";
-    }
-    return `<span class="${cls}">${text}</span>`;
-  }
-  function buildDiagnostics(rows) {
-    var _a5, _b, _c, _d, _e;
-    rows = filterRowsForView(rows || []);
-    const card = document.getElementById("diagnosticsCard");
-    if (!card) return;
-    card.style.display = "block";
-    __residModelCache = null;
-    const worked = rows.filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0).sort((a, b) => a.work_date < b.work_date ? -1 : 1);
-    const scoped = rowsForModelScope(worked);
-    const weightCfg = getResidualWeighting();
-    const model = fitVolumeTimeModel(scoped, weightCfg.fn ? { weightFn: weightCfg.fn } : void 0);
-    renderModelStrip(model);
-    const badge = document.getElementById("diagModelBadge");
-    const summaryEl = document.getElementById("diagSummary");
-    const weightBtn = document.getElementById("diagHolidayWeightBtn");
-    const weightNote = document.getElementById("diagWeightNote");
-    const manageDismissBtn = document.getElementById("diagManageDismissed");
-    const tbody = document.getElementById("diagTableBody");
-    const toggleBtn = document.getElementById("toggleDiagDetails");
-    const details = document.getElementById("diagDetails");
-    if (weightBtn) {
-      if (!weightBtn.dataset.bound) {
-        weightBtn.addEventListener("click", () => {
-          const next = !isHolidayDownweightEnabled();
-          setHolidayDownweightEnabled(next);
-          __residModelCache = null;
-          rebuildAll();
-        });
-        weightBtn.dataset.bound = "1";
-      }
-      weightBtn.classList.toggle("active", !!weightCfg.enabled);
-      weightBtn.textContent = weightCfg.enabled ? "Downweight holiday catch-up \xB7 ON" : "Downweight holiday catch-up \xB7 OFF";
-    }
-    if (manageDismissBtn && !manageDismissBtn.dataset.bound) {
-      manageDismissBtn.addEventListener("click", () => {
-        const list = loadDismissedResiduals();
-        if (!list.length) {
-          window.alert("No dismissed residuals yet.");
-          return;
-        }
-        const lines = list.map((item) => {
-          const tagSummary = (item.tags || []).map((tag) => tag.minutes != null ? `${tag.reason} ${tag.minutes}m` : tag.reason).join(", ");
-          return `${item.iso}${tagSummary ? " \xB7 " + tagSummary : ""}`;
-        }).join("\n");
-        const input = window.prompt(`Dismissed residuals:
-${lines}
-
-Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
-        if (!input) return;
-        const trimmed = input.trim();
-        if (!trimmed) return;
-        const updated = list.filter((item) => item.iso !== trimmed);
-        if (updated.length === list.length) {
-          window.alert(`No dismissed entry found for ${trimmed}.`);
-          return;
-        }
-        saveDismissedResiduals(updated);
-        buildDiagnostics(rows);
-      });
-      manageDismissBtn.dataset.bound = "1";
-    }
-    if (weightNote) {
-      if (!model) {
-        weightNote.textContent = weightCfg.enabled ? "Need more data to apply weights." : "Weights off (full impact).";
-      } else if (!weightCfg.enabled) {
-        weightNote.textContent = "Weights off (full impact).";
-      } else if (model.weighting) {
-        const dw = model.weighting.downweighted || 0;
-        const avg = model.weighting.averageWeight || 1;
-        weightNote.textContent = dw ? `${dw} day${dw === 1 ? "" : "s"} at ~${avg.toFixed(2)}\xD7 weight` : "No holiday catch-up days in range.";
-      } else {
-        weightNote.textContent = "Weights off (full impact).";
-      }
-    }
-    if (!model) {
-      renderModelStrip(null);
-      if (badge) badge.textContent = "Insufficient data";
-      if (summaryEl) summaryEl.textContent = "Need more worked days with parcels/letters to estimate impact.";
-      if (tbody) tbody.innerHTML = "";
-      return;
-    }
-    const dismissedList = loadDismissedResiduals();
-    const dismissedMap = buildDismissedMap(dismissedList);
-    const w = learnedLetterWeight(model);
-    if (w != null) {
-      CURRENT_LETTER_WEIGHT = +(0.7 * CURRENT_LETTER_WEIGHT + 0.3 * w).toFixed(4);
-      try {
-        localStorage.setItem("routeStats.letterWeight", String(CURRENT_LETTER_WEIGHT));
-      } catch (_) {
-      }
-    }
-    if (badge) {
-      badge.innerHTML = `<small class="modelMetric">bp</small> <span>${model.bp.toFixed(2)}</span> \xB7 <small class="modelMetric">bl</small> <span>${model.bl.toFixed(3)}</span> \xB7 <small class="modelMetric">w</small> <span>${w != null ? w.toFixed(2) : "\u2014"}</span>`;
-    }
-    const catchupSummary = summarizeHolidayCatchups(rows);
-    let summaryTextForContext = "";
-    if (summaryEl) {
-      const pct = Math.round(Math.max(0, Math.min(1, model.r2)) * 100);
-      let summaryText = `Fit on ${model.n} days \xB7 R\xB2 ${pct}% \xB7 Predicts route minutes from parcels & letters.`;
-      if (catchupSummary.count) {
-        const extraHours = catchupSummary.addedMinutes ? (catchupSummary.addedMinutes / 60).toFixed(1) : null;
-        const ratioTxt = catchupSummary.avgRouteRatio ? `${catchupSummary.avgRouteRatio.toFixed(2)}\xD7 route` : null;
-        const parts = [`${catchupSummary.count} holiday catch-up day${catchupSummary.count === 1 ? "" : "s"}`];
-        if (extraHours && extraHours !== "0.0") parts.push(`${extraHours}h extra`);
-        if (ratioTxt) parts.push(ratioTxt);
-        summaryText += ` \xB7 ${parts.join(" \u2022 ")}`;
-      }
-      if (weightCfg.enabled) {
-        const avgW = (_a5 = model.weighting) == null ? void 0 : _a5.averageWeight;
-        const avgTxt = avgW ? ` (~${avgW.toFixed(2)}\xD7 weight)` : "";
-        summaryText += ` \xB7 Holiday downweight ON${avgTxt}`;
-      }
-      if (dismissedList.length) {
-        summaryText += ` \xB7 ${dismissedList.length} dismissed`;
-      }
-      summaryEl.textContent = summaryText;
-      summaryTextForContext = summaryText;
-    }
-    if (toggleBtn && details && !toggleBtn.dataset.bound) {
-      const labelPill = toggleBtn.querySelector(".pill[aria-hidden]");
-      const setLabel = () => {
-        if (!labelPill) return;
-        const expanded = toggleBtn.getAttribute("aria-expanded") === "true";
-        labelPill.textContent = expanded ? "Hide" : "Details";
-      };
-      toggleBtn.dataset.bound = "1";
-      toggleBtn.addEventListener("click", () => {
-        const show = details.style.display === "none" || !details.style.display;
-        details.style.display = show ? "block" : "none";
-        toggleBtn.setAttribute("aria-expanded", show ? "true" : "false");
-        setLabel();
-      });
-      toggleBtn.setAttribute("aria-expanded", "false");
-      setLabel();
-    }
-    if (tbody) {
-      const ZONE2 = "America/Detroit";
-      const residuals = model.residuals || [];
-      const stats = (() => {
-        const pool = residuals.filter((r) => !dismissedMap.has(r.iso));
-        if (!pool.length) return { mean: 0, std: 0 };
-        const mean = pool.reduce((acc, r) => acc + r.residMin, 0) / pool.length;
-        if (pool.length < 2) return { mean, std: 0 };
-        const variance = pool.reduce((acc, r) => {
-          const diff = r.residMin - mean;
-          return acc + diff * diff;
-        }, 0) / (pool.length - 1);
-        return { mean, std: Math.sqrt(Math.max(variance, 0)) };
-      })();
-      const visibleResiduals = residuals.filter((r) => !dismissedMap.has(r.iso));
-      const top = [...visibleResiduals].sort((a, b) => Math.abs(b.residMin) - Math.abs(a.residMin)).slice(0, 10);
-      const topContext = [];
-      tbody.innerHTML = top.map((d) => {
-        var _a6;
-        const dt = luxon.DateTime.fromISO(d.iso, { zone: ZONE2 }).toFormat("ccc LLL dd");
-        const actualMinutes = d.routeMin;
-        const expectedMinutes = d.predMin;
-        const expectedHours = (expectedMinutes / 60).toFixed(2);
-        const actualHours = (actualMinutes / 60).toFixed(2);
-        const deltaMinutes = minutesDelta(actualMinutes, expectedMinutes);
-        const zScore = stats.std > 0 ? (d.residMin - stats.mean) / stats.std : null;
-        const deltaHtml = formatMinutesDelta(deltaMinutes, zScore);
-        const parcels2 = +d.parcels || 0;
-        const letters2 = +d.letters || 0;
-        const boxholders2 = escapeHtml(inferBoxholderLabel(d.row));
-        const weatherRaw = String(d.row.weather_json || "");
-        const weatherPieces = weatherRaw.split("\xB7").map((s) => s.trim()).filter(Boolean);
-        const weatherDisplayParts = weatherPieces.filter((p) => !/^Reason:/i.test(p) && !/^SecondTrip:/i.test(p) && !/^Box:/i.test(p) && !/^Break:/i.test(p)).map((p) => p.replace(/partly\s+cloudy/i, "PC"));
-        const weatherSnippet = weatherRaw.replace(/Reason:\s*[^·]+/ig, "").trim();
-        const weatherShort = weatherDisplayParts.length ? weatherDisplayParts.slice(0, 2).join(" \xB7 ") : "\u2014";
-        const weather2 = escapeHtml(weatherShort);
-        const badges = [];
-        if (hasTag(d.row, "holiday_catchup")) {
-          const ctx = d.row._holidayCatchup || {};
-          const formatRatio = (ratio) => ratio != null && isFinite(ratio) ? `${ratio.toFixed(2)}\xD7` : "\u2014";
-          const fmt = (val, decimals) => val != null && isFinite(val) ? Number(val).toFixed(decimals) : "\u2014";
-          const tipParts = [];
-          if (ctx.prevHoliday) tipParts.push(`Holiday on ${ctx.prevHoliday}`);
-          if (ctx.baselineParcels != null) tipParts.push(`Parcels ${fmt(ctx.parcels, 0)} vs avg ${fmt(ctx.baselineParcels, 1)} (${formatRatio(ctx.ratioParcels)})`);
-          if (ctx.baselineRouteMinutes != null) tipParts.push(`Route ${fmt((ctx.routeMinutes || 0) / 60, 2)}h vs avg ${fmt((ctx.baselineRouteMinutes || 0) / 60, 2)}h (${formatRatio(ctx.ratioRoute)})`);
-          const badgeTitle = escapeHtml(tipParts.join(" \u2022 ") || "Follows holiday off-day with higher-than-baseline load");
-          badges.push(`<span class="pill badge-holiday" title="${badgeTitle}">Holiday catch-up</span>`);
-        }
-        const weatherCell = badges.length ? `${weather2} ${badges.join(" ")}` : weather2;
-        const rawNotes = (d.row.notes || "").trim();
-        const notePlainFull = rawNotes.replace(/\s+/g, " ").trim();
-        const hasNotes = !!notePlainFull;
-        const noteFullEncoded = encodeURIComponent(notePlainFull);
-        const notesHtml = hasNotes ? `<button class="ghost diag-note" data-note-full="${noteFullEncoded}">Read full</button>` : "\u2014";
-        const notesPlain = notePlainFull;
-        topContext.push({
-          iso: d.iso,
-          deltaMinutes: Math.round(d.residMin),
-          parcels: parcels2,
-          letters: letters2,
-          expectedMinutes,
-          actualMinutes,
-          boxholders: inferBoxholderLabel(d.row),
-          weather: weatherSnippet,
-          notes: notesPlain,
-          tags: Array.isArray((_a6 = d.row) == null ? void 0 : _a6._tags) ? d.row._tags : []
-        });
-        return `<tr>
-          <td class="text-left">${dt}</td>
-          <td>${parcels2}</td>
-          <td>${letters2}</td>
-          <td>${expectedHours}</td>
-          <td>${actualHours}</td>
-          <td>${deltaHtml}</td>
-          <td class="text-left">${boxholders2}</td>
-          <td class="text-left weather-cell">${weatherCell}</td>
-          <td class="notes-cell">${notesHtml}</td>
-          <td><button class="ghost diag-dismiss" data-dismiss-iso="${d.iso}">Tag & dismiss</button></td>
-        </tr>`;
-      }).join("");
-      latestDiagnosticsContext = {
-        generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        residuals: topContext,
-        dismissed: dismissedList,
-        summaryText: summaryTextForContext,
-        stats: { mean: stats.mean, std: stats.std },
-        catchupSummary,
-        weight: {
-          enabled: weightCfg.enabled,
-          averageWeight: (_c = (_b = model.weighting) == null ? void 0 : _b.averageWeight) != null ? _c : null,
-          downweighted: (_e = (_d = model.weighting) == null ? void 0 : _d.downweighted) != null ? _e : 0
-        }
-      };
-      updateAiSummaryAvailability();
-      const dismissBtns = tbody.querySelectorAll(".diag-dismiss");
-      dismissBtns.forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const iso = btn.dataset.dismissIso;
-          if (!iso) return;
-          const residual = residuals.find((r) => r.iso === iso);
-          const deltaMinutes = residual ? Math.round(residual.residMin) : null;
-          const vol = residual ? Math.round(residual.parcels) : null;
-          const letterCount = residual ? Math.round(residual.letters) : null;
-          const defaultReason = (() => {
-            if (!residual) return "";
-            if (vol != null && vol > 0 && letterCount != null && letterCount === 0) return "parcels";
-            if (letterCount != null && letterCount > vol) return "letters";
-            return "";
-          })();
-          const defaultMinutes = deltaMinutes != null ? String(deltaMinutes) : "";
-          const hintParts = [];
-          if (deltaMinutes != null) hintParts.push(`Residual: ${deltaMinutes}m`);
-          if (vol != null) hintParts.push(`Parcels: ${vol}`);
-          if (letterCount != null) hintParts.push(`Letters: ${letterCount}`);
-          const basePrompt = hintParts.length ? `${hintParts.join(" \xB7 ")}
-Reason (e.g., Road closure, Weather, Extra parcels):` : "Reason (e.g., Road closure, Weather, Extra parcels):";
-          const reasonPrompt = window.prompt(`${basePrompt}
-You can append minutes like "+15" (e.g., "parcels+15") and separate multiple reasons with commas (e.g., "parcels+15, flats+30").`, defaultReason);
-          if (reasonPrompt === null) return;
-          const reasonInput = reasonPrompt.trim();
-          const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-          let tags = parseDismissReasonInput(reasonInput);
-          if (!tags.length) {
-            let minutesFromReason = null;
-            let reason = reasonInput;
-            const reasonMatch = reasonInput.match(/(.+?)\s*\+\s*(\d+)/);
-            if (reasonMatch) {
-              reason = reasonMatch[1].trim();
-              minutesFromReason = parseFloat(reasonMatch[2]);
-            }
-            const minutesPrompt = window.prompt("Minutes attributable to this reason (optional, numbers only):", minutesFromReason != null ? String(minutesFromReason) : defaultMinutes);
-            let minutes = null;
-            if (minutesPrompt && minutesPrompt.trim()) {
-              const parsed = parseFloat(minutesPrompt.trim());
-              if (Number.isFinite(parsed)) minutes = parsed;
-            }
-            const fallbackReason = reason.replace(/\s+/g, " ").trim();
-            if (!fallbackReason) {
-              window.alert("No reason provided; dismissal cancelled.");
-              return;
-            }
-            tags = [{ reason: fallbackReason, minutes: minutes != null ? minutes : null }];
-          } else {
-            const tagsNeedingMinutes = tags.filter((tag) => tag.minutes == null);
-            if (tagsNeedingMinutes.length === 1) {
-              const minutesPrompt = window.prompt("Minutes attributable to this reason (optional, numbers only):", defaultMinutes);
-              if (minutesPrompt && minutesPrompt.trim()) {
-                const parsed = parseFloat(minutesPrompt.trim());
-                if (Number.isFinite(parsed)) tagsNeedingMinutes[0].minutes = parsed;
-              }
-            }
-          }
-          const existing = loadDismissedResiduals().filter((item) => item && item.iso !== iso);
-          if (tags.length) {
-            const entry = {
-              iso,
-              tags: tags.map((t) => ({
-                reason: t.reason,
-                minutes: t.minutes,
-                notedAt: Date.now()
-              })),
-              notedAt: nowIso
-            };
-            existing.push(entry);
-            saveDismissedResiduals(existing);
-          }
-          buildDiagnostics(rows);
-        });
-      });
-      const noteBtns = tbody.querySelectorAll(".diag-note");
-      noteBtns.forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const fullEncoded = btn.dataset.noteFull || "";
-          const full = decodeURIComponent(fullEncoded);
-          window.alert(full || "No additional notes.");
-        });
-      });
-    }
-  }
-  function getResidualModel(rows) {
-    if (__residModelCache) return __residModelCache;
-    const worked = (rows || []).filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0).sort((a, b) => a.work_date < b.work_date ? -1 : 1);
-    const scoped = rowsForModelScope(worked);
-    const weightCfg = getResidualWeighting();
-    __residModelCache = fitVolumeTimeModel(scoped, weightCfg.fn ? { weightFn: weightCfg.fn } : void 0);
-    return __residModelCache;
-  }
-  function renderModelStrip(model) {
-    const el = document.getElementById("liveModelStrip");
-    if (!el) return;
-    if (!model) {
-      el.style.display = "none";
-      return;
-    }
-    const bp = document.getElementById("lm-bp");
-    const bl = document.getElementById("lm-bl");
-    const wv = document.getElementById("lm-w");
-    const r2 = document.getElementById("lm-r2");
-    const w = model.bp && isFinite(model.bp) ? model.bl / model.bp : NaN;
-    if (bp) bp.textContent = model.bp.toFixed(2);
-    if (bl) bl.textContent = model.bl.toFixed(3);
-    if (wv) wv.textContent = isFinite(w) ? w.toFixed(2) : "\u2014";
-    if (r2) r2.textContent = (Math.max(0, Math.min(1, model.r2)) * 100).toFixed(0) + "%";
-    el.style.display = "flex";
-  }
-  var DAY_COMPARE_STORE = {
-    subject: "routeStats.dayCompare.subject",
-    mode: "routeStats.dayCompare.mode",
-    manual: "routeStats.dayCompare.manual"
-  };
-  function buildDayCompare(rows) {
-    var _a5;
-    rows = filterRowsForView(rows || []);
-    const card = document.getElementById("dayCompareCard");
-    const dailyMovers = document.getElementById("dcDailyMovers");
-    if (!card) {
-      if (dailyMovers) dailyMovers.style.display = "none";
-      return;
-    }
-    if (!FLAGS || !FLAGS.dayCompare) {
-      card.style.display = "none";
-      if (dailyMovers) dailyMovers.style.display = "none";
-      return;
-    }
-    card.style.display = "block";
-    const subjectSelect = document.getElementById("dcSubjectSelect");
-    const referenceSelect = document.getElementById("dcReferenceMode");
-    const manualPicker = document.getElementById("dcManualPicker");
-    const manualSelect = document.getElementById("dcManualSelect");
-    const emptyState = document.getElementById("dcEmpty");
-    const compareState = document.getElementById("dcCompare");
-    const subjectLabel = document.getElementById("dcSubjectLabel");
-    const referenceLabel = document.getElementById("dcReferenceLabel");
-    const subjectPills = document.getElementById("dcSubjectPills");
-    const referencePills = document.getElementById("dcReferencePills");
-    const subjectNotes = document.getElementById("dcSubjectNotes");
-    const referenceNotes = document.getElementById("dcReferenceNotes");
-    const highlightsRow = document.getElementById("dcHighlights");
-    const reasoningEl = document.getElementById("dcReasoning");
-    const tableBody = document.getElementById("dcTableBody");
-    const toggleBtn = document.getElementById("dcToggleRef");
-    if (!subjectSelect || !referenceSelect || !manualSelect || !emptyState || !compareState || !tableBody) return;
-    const context = buildDayCompareContext(rows, 365);
-    const worked = context.worked;
-    if (!worked.length) {
-      emptyState.textContent = "No worked days yet. Add an entry to compare.";
-      emptyState.style.display = "block";
-      compareState.style.display = "none";
-      if (toggleBtn) toggleBtn.style.display = "none";
-      if (dailyMovers) dailyMovers.style.display = "none";
-      return;
-    }
-    const storedSubject = localStorage.getItem(DAY_COMPARE_STORE.subject);
-    let storedMode = localStorage.getItem(DAY_COMPARE_STORE.mode) || "last";
-    const storedManualInitial = localStorage.getItem(DAY_COMPARE_STORE.manual);
-    function formatOption(row) {
-      var _a6;
-      try {
-        const dt = DateTime.fromISO(row.work_date, { zone: ZONE });
-        const day = dt.toFormat("ccc");
-        const date2 = dt.toFormat("LLL dd");
-        const total = row.hours != null ? row.hours : safeNumber(row.office_minutes) + routeAdjustedHours(row);
-        const totalTxt = total == null ? "\u2014" : `${((_a6 = roundVal(total, 2)) == null ? void 0 : _a6.toFixed(2)) || "\u2014"}h`;
-        const glyph = vacGlyph(row.work_date);
-        return `${row.work_date}${glyph} \xB7 ${day} ${date2} \xB7 ${totalTxt}`;
-      } catch (_) {
-        return row.work_date;
-      }
-    }
-    function formatNumber(val, opts) {
-      var _a6;
-      const decimals = (_a6 = opts == null ? void 0 : opts.decimals) != null ? _a6 : 2;
-      const suffix = (opts == null ? void 0 : opts.suffix) || "";
-      const n = val == null ? null : roundVal(val, decimals);
-      if (n == null || !Number.isFinite(n)) return "\u2014";
-      return `${n.toFixed(decimals)}${suffix}`;
-    }
-    subjectSelect.innerHTML = worked.map((row) => `<option value="${row.work_date}">${formatOption(row)}</option>`).join("");
-    subjectSelect.value = storedSubject && subjectSelect.querySelector(`option[value="${storedSubject}"]`) ? storedSubject : ((_a5 = worked[0]) == null ? void 0 : _a5.work_date) || "";
-    const manualOption = referenceSelect.querySelector('option[value="manual"]');
-    const manualAvailable = worked.length > 1;
-    if (manualOption) {
-      manualOption.disabled = !manualAvailable;
-      if (!manualAvailable && storedMode === "manual") storedMode = "last";
-    }
-    referenceSelect.value = storedMode;
-    function subjectIso() {
-      var _a6;
-      return subjectSelect.value || ((_a6 = worked[0]) == null ? void 0 : _a6.work_date);
-    }
-    function modeLabel(mode) {
-      return mode === "last" ? "Last weekday" : mode === "baseline" ? "Baseline avg" : mode === "manual" ? "Picked day" : mode;
-    }
-    function populateManualOptions() {
-      const current = subjectIso();
-      const altRows = worked.filter((r) => r.work_date !== current);
-      manualSelect.innerHTML = altRows.map((row) => `<option value="${row.work_date}">${formatOption(row)}</option>`).join("");
-      if (!altRows.length) {
-        manualSelect.value = "";
-        return;
-      }
-      const latestStored = localStorage.getItem(DAY_COMPARE_STORE.manual) || storedManualInitial;
-      manualSelect.value = latestStored && manualSelect.querySelector(`option[value="${latestStored}"]`) ? latestStored : altRows[0].work_date;
-    }
-    populateManualOptions();
-    manualPicker.style.display = referenceSelect.value === "manual" ? "block" : "none";
-    function formatLabel(metric) {
-      if (!metric) return "\u2014";
-      if (metric.source === "weekdayAverage") {
-        const countTxt = metric.count ? `avg of ${metric.count} day${metric.count === 1 ? "" : "s"}` : "avg";
-        return `${metric.label} (${countTxt})`;
-      }
-      if (metric.iso) {
-        try {
-          const dt = DateTime.fromISO(metric.iso, { zone: ZONE });
-          return dt.toFormat("cccc, LLL dd");
-        } catch (_) {
-          return metric.iso;
-        }
-      }
-      return metric.label || "\u2014";
-    }
-    function summarizeExtras(metric) {
-      if (!metric) return "";
-      const parts = [];
-      if (metric.mood) parts.push(`Mood: ${metric.mood}`);
-      if (metric.weather) parts.push(`Weather: ${metric.weather}`);
-      if (metric.reason) parts.push(`Reason: ${metric.reason}`);
-      if (metric.notes) parts.push(`Notes: ${metric.notes}`);
-      return parts.join(" \u2022 ");
-    }
-    function pillHtml(label, value) {
-      return `<span class="pill"><small>${label}</small> <b>${value}</b></span>`;
-    }
-    function deltaDetails(subject, reference) {
-      var _a6, _b, _c, _d, _e;
-      if (!subject || !reference) return { rows: [], highlights: [], reasoning: "" };
-      const metricDefs = [
-        { key: "totalHours", label: "Total hours", decimals: 2, suffix: "h" },
-        { key: "routeHours", label: "Route hours", decimals: 2, suffix: "h" },
-        { key: "officeHours", label: "Office hours", decimals: 2, suffix: "h" },
-        { key: "parcels", label: "Parcels", decimals: 0 },
-        { key: "letters", label: "Letters", decimals: 0 },
-        { key: "volume", label: "Volume (parcels + w\xD7letters)", decimals: 2 },
-        { key: "miles", label: "Miles", decimals: 1, suffix: "mi" },
-        { key: "efficiencyMinutes", label: "Route minutes per volume", decimals: 1, suffix: "m/vol" }
-      ];
-      const rowsOut = [];
-      const highlights = [];
-      for (const def of metricDefs) {
-        const subjVal = subject[def.key];
-        const refVal = reference[def.key];
-        const delta = subjVal != null && refVal != null ? subjVal - refVal : null;
-        const pct = refVal != null && refVal !== 0 && delta != null ? delta / refVal * 100 : null;
-        const colorDelta = def.invert && pct != null ? -pct : pct;
-        const displayDelta = delta == null ? "\u2014" : formatNumber(delta, { decimals: (_a6 = def.decimals) != null ? _a6 : 2, suffix: def.suffix ? def.suffix : "" });
-        const pctTxt = pct == null || !Number.isFinite(pct) ? "" : ` (${pct >= 0 ? "+" : ""}${Math.round(pct)}%)`;
-        const deltaTxt = delta == null ? "\u2014" : `${displayDelta}${pctTxt}`;
-        const subjTxt = subjVal == null ? "\u2014" : formatNumber(subjVal, { decimals: (_b = def.decimals) != null ? _b : 2, suffix: def.suffix ? def.suffix : "" });
-        const refTxt = refVal == null ? "\u2014" : formatNumber(refVal, { decimals: (_c = def.decimals) != null ? _c : 2, suffix: def.suffix ? def.suffix : "" });
-        const color = colorForDelta(colorDelta != null ? colorDelta : 0).fg;
-        rowsOut.push({ key: def.key, label: def.label, subjTxt, refTxt, deltaTxt, color, delta, score: Math.abs((_d = pct != null ? pct : delta) != null ? _d : 0) });
-        if (delta != null) highlights.push({ key: def.key, label: def.label, deltaText: deltaTxt, color, score: Math.abs((_e = pct != null ? pct : delta) != null ? _e : 0) });
-      }
-      highlights.sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
-      const reasoningBits = [];
-      if (subject.reason) reasoningBits.push(`Subject reason: ${subject.reason}`);
-      if (reference.reason) reasoningBits.push(`Reference reason: ${reference.reason}`);
-      const reasoning = reasoningBits.join(" \u2022 ");
-      return { rows: rowsOut, highlights, reasoning };
-    }
-    function render() {
-      const subjIso = subjectIso();
-      if (!subjIso) {
-        emptyState.textContent = "No worked day selected.";
-        emptyState.style.display = "block";
-        compareState.style.display = "none";
-        if (dailyMovers) dailyMovers.style.display = "none";
-        return;
-      }
-      const subjectMetrics = getSubjectMetrics(context, subjIso);
-      const mode = referenceSelect.value;
-      let referenceMetrics = null;
-      if (mode === "last") referenceMetrics = getLastSameWeekdayMetrics(context, subjIso);
-      else if (mode === "baseline") referenceMetrics = getWeekdayBaselineMetrics(context, subjIso);
-      else if (mode === "manual") referenceMetrics = getCustomReferenceMetrics(context, manualSelect.value);
-      if (toggleBtn) toggleBtn.textContent = `Cycle reference (${modeLabel(mode)})`;
-      emptyState.style.display = "none";
-      if (!referenceMetrics) {
-        compareState.style.display = "none";
-        emptyState.textContent = "Not enough history for that comparison yet. Try a different reference.";
-        emptyState.style.display = "block";
-        if (dailyMovers) dailyMovers.style.display = "none";
-        return;
-      }
-      compareState.style.display = "block";
-      if (subjectLabel) {
-        const subjText = formatLabel(subjectMetrics);
-        subjectLabel.innerHTML = (subjectMetrics == null ? void 0 : subjectMetrics.iso) ? `${subjText}${vacMark(subjectMetrics.iso)}` : subjText;
-      }
-      if (referenceLabel) {
-        const refText = formatLabel(referenceMetrics);
-        referenceLabel.innerHTML = (referenceMetrics == null ? void 0 : referenceMetrics.iso) ? `${refText}${vacMark(referenceMetrics.iso)}` : refText;
-      }
-      subjectPills.innerHTML = [
-        pillHtml("Total", formatNumber(subjectMetrics.totalHours, { decimals: 2, suffix: "h" })),
-        pillHtml("Route", formatNumber(subjectMetrics.routeHours, { decimals: 2, suffix: "h" })),
-        pillHtml("Office", formatNumber(subjectMetrics.officeHours, { decimals: 2, suffix: "h" })),
-        pillHtml("Volume", formatNumber(subjectMetrics.volume, { decimals: 2 })),
-        pillHtml("Eff.", formatNumber(subjectMetrics.efficiencyMinutes, { decimals: 1, suffix: "m/vol" }))
-      ].join(" ");
-      referencePills.innerHTML = [
-        pillHtml("Total", formatNumber(referenceMetrics.totalHours, { decimals: 2, suffix: "h" })),
-        pillHtml("Route", formatNumber(referenceMetrics.routeHours, { decimals: 2, suffix: "h" })),
-        pillHtml("Office", formatNumber(referenceMetrics.officeHours, { decimals: 2, suffix: "h" })),
-        pillHtml("Volume", formatNumber(referenceMetrics.volume, { decimals: 2 })),
-        pillHtml("Eff.", formatNumber(referenceMetrics.efficiencyMinutes, { decimals: 1, suffix: "m/vol" }))
-      ].join(" ");
-      subjectNotes.textContent = summarizeExtras(subjectMetrics) || "\u2014";
-      referenceNotes.textContent = summarizeExtras(referenceMetrics) || "\u2014";
-      const { rows: tableRows, highlights, reasoning } = deltaDetails(subjectMetrics, referenceMetrics);
-      tableBody.innerHTML = tableRows.map((r) => `<tr>
-        <td style="padding:6px 4px">${r.label}</td>
-        <td style="padding:6px 4px;text-align:right">${r.subjTxt}</td>
-        <td style="padding:6px 4px;text-align:right">${r.refTxt}</td>
-        <td style="padding:6px 4px;text-align:right;color:${r.color}">${r.deltaTxt}</td>
-      </tr>`).join("");
-      if (dailyMovers) {
-        const moverKeys = ["totalHours", "routeHours", "officeHours"];
-        dailyMovers.innerHTML = moverKeys.map((key) => {
-          const row = tableRows.find((r) => r.key === key);
-          const hasDelta = row && row.delta != null;
-          const label = key === "totalHours" ? "Total" : key === "routeHours" ? "Route" : "Office";
-          const text = hasDelta ? row.deltaTxt : "\u2014";
-          const color = hasDelta ? row.color : "var(--muted)";
-          return `<span class="pill" style="border-color:var(--border);color:${color}"><small>${label}</small> <b>${text}</b></span>`;
-        }).join(" ");
-        dailyMovers.style.display = "flex";
-      }
-      const candidateHighlights = highlights.length ? highlights : tableRows.map((r) => ({ key: r.key, label: r.label, deltaText: r.deltaTxt, color: r.color }));
-      const highlightHtml = candidateHighlights.slice(0, 3).map((h) => `<span class="pill" style="border-color:var(--border);color:${h.color}"><small>${h.label}</small> <b>${h.deltaText}</b></span>`).join(" ");
-      highlightsRow.innerHTML = highlightHtml || '<span class="pill"><small>\u0394</small> <b style="color:var(--muted)">Similar</b></span>';
-      reasoningEl.textContent = reasoning || "";
-      localStorage.setItem(DAY_COMPARE_STORE.subject, subjIso);
-      localStorage.setItem(DAY_COMPARE_STORE.mode, mode);
-      if (mode === "manual" && manualSelect.value) {
-        localStorage.setItem(DAY_COMPARE_STORE.manual, manualSelect.value);
-      }
-    }
-    subjectSelect.onchange = () => {
-      populateManualOptions();
-      render();
-    };
-    referenceSelect.onchange = () => {
-      manualPicker.style.display = referenceSelect.value === "manual" ? "block" : "none";
-      render();
-    };
-    manualSelect.onchange = () => {
-      render();
-    };
-    if (toggleBtn) {
-      const sequence = ["last", "baseline", "manual"];
-      const available = manualAvailable ? sequence : sequence.slice(0, 2);
-      toggleBtn.style.display = available.length > 1 ? "" : "none";
-      toggleBtn.onclick = () => {
-        const current = referenceSelect.value;
-        const idx = available.indexOf(current);
-        const next = available[(idx + 1) % available.length];
-        referenceSelect.value = next;
-        referenceSelect.dispatchEvent(new Event("change"));
-      };
-    }
-    render();
   }
   function setNow(el) {
     el.value = hhmmNow();
@@ -3114,7 +4395,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     rows = rows || [];
     const tbody = document.querySelector("#tbl tbody");
     tbody.innerHTML = "";
-    __residModelCache = null;
+    resetDiagnosticsCache();
     const model = getResidualModel(rows);
     const byDow = Array.from({ length: 7 }, () => []);
     rows.forEach((r) => {
@@ -3247,149 +4528,6 @@ Entries are filtered by this id.`);
     rebuildAll();
     alert(`Imported ${rows.length} rows into this account.`);
   });
-  var dowChart;
-  var parcelsChart;
-  var lettersChart;
-  function destroyCharts() {
-    [dowChart, parcelsChart, lettersChart].forEach((c) => c && c.destroy());
-  }
-  function enableChartTap(chart, canvas) {
-    if (!chart || !canvas) return;
-    const handler = (ev) => {
-      try {
-        const rect = canvas.getBoundingClientRect();
-        const cx = ev.touches && ev.touches[0] ? ev.touches[0].clientX : ev.clientX;
-        const cy = ev.touches && ev.touches[0] ? ev.touches[0].clientY : ev.clientY;
-        const x = cx - rect.left, y = cy - rect.top;
-        const points = chart.getElementsAtEventForMode(ev, "nearest", { intersect: false }, true);
-        if (points && points.length) {
-          const a = [{ datasetIndex: points[0].datasetIndex, index: points[0].index }];
-          if (chart.setActiveElements) chart.setActiveElements(a);
-          if (chart.tooltip && chart.tooltip.setActiveElements) chart.tooltip.setActiveElements(a, { x, y });
-          chart.update();
-        }
-      } catch (_) {
-      }
-    };
-    ["click", "touchstart", "pointerdown"].forEach((t) => canvas.addEventListener(t, handler, { passive: true }));
-  }
-  function buildCharts(rows) {
-    rows = filterRowsForView(rows || []);
-    if (!window.Chart) {
-      console.warn("Chart.js missing \u2014 skipping charts");
-      return;
-    }
-    destroyCharts();
-    const workRows = rows.filter((r) => r.status !== "off");
-    const byDow = Array.from({ length: 7 }, () => ({ h: 0, c: 0 }));
-    for (const r of workRows) {
-      const h = Number(r.hours || 0);
-      if (h > 0) {
-        const d = dowIndex(r.work_date);
-        byDow[d].h += h;
-        byDow[d].c++;
-      }
-    }
-    const dowLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    const order = [1, 2, 3, 4, 5, 6, 0];
-    const perDow = byDow.map((x) => x.c ? +(x.h / x.c).toFixed(2) : 0);
-    const dowData = order.map((i) => perDow[i]);
-    dowChart = new Chart(document.getElementById("dowChart"), {
-      type: "bar",
-      data: { labels: dowLabels, datasets: [{ label: "Avg Total Hours", data: dowData }] },
-      options: { responsive: true, plugins: { legend: { display: false } } }
-    });
-    const sortedWork = [...workRows].sort((a, b) => a.work_date.localeCompare(b.work_date));
-    const labels = sortedWork.map((r) => r.work_date);
-    const parcelsCanvas = document.getElementById("parcelsChart");
-    parcelsChart = new Chart(parcelsCanvas, {
-      type: "line",
-      data: {
-        labels,
-        datasets: [{ label: "Parcels", data: sortedWork.map((r) => +r.parcels || 0), pointRadius: 3, pointHoverRadius: 8, pointHitRadius: 16 }]
-      },
-      options: {
-        responsive: true,
-        interaction: { mode: "nearest", intersect: false },
-        events: ["mousemove", "mouseout", "click", "touchstart", "touchmove", "touchend"],
-        animation: { duration: 0 },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            animation: { duration: 0 },
-            callbacks: {
-              title: (items) => {
-                var _a5;
-                const iso = (_a5 = items == null ? void 0 : items[0]) == null ? void 0 : _a5.label;
-                if (!iso) return "";
-                const d = DateTime.fromISO(iso, { zone: ZONE });
-                return d.toFormat("cccc \u2022 MMM d, yyyy") + vacGlyph(iso);
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            ticks: {
-              maxRotation: 0,
-              autoSkip: true,
-              maxTicksLimit: 8,
-              callback: function(value) {
-                const iso = this.getLabelForValue(value);
-                const d = DateTime.fromISO(iso, { zone: ZONE });
-                return [d.toFormat("ccc"), d.toFormat("M/d")];
-              }
-            }
-          }
-        }
-      }
-    });
-    const lettersCanvas = document.getElementById("lettersChart");
-    lettersChart = new Chart(lettersCanvas, {
-      type: "line",
-      data: {
-        labels,
-        datasets: [{ label: "Letters", data: sortedWork.map((r) => +r.letters || 0), pointRadius: 3, pointHoverRadius: 8, pointHitRadius: 16 }]
-      },
-      options: {
-        responsive: true,
-        interaction: { mode: "nearest", intersect: false },
-        events: ["mousemove", "mouseout", "click", "touchstart", "touchmove", "touchend"],
-        animation: { duration: 0 },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            animation: { duration: 0 },
-            callbacks: {
-              title: (items) => {
-                var _a5;
-                const iso = (_a5 = items == null ? void 0 : items[0]) == null ? void 0 : _a5.label;
-                if (!iso) return "";
-                const d = DateTime.fromISO(iso, { zone: ZONE });
-                return d.toFormat("cccc \u2022 MMM d, yyyy") + vacGlyph(iso);
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            ticks: {
-              maxRotation: 0,
-              autoSkip: true,
-              maxTicksLimit: 8,
-              callback: function(value) {
-                const iso = this.getLabelForValue(value);
-                const d = DateTime.fromISO(iso, { zone: ZONE });
-                return [d.toFormat("ccc"), d.toFormat("M/d")];
-              }
-            }
-          }
-        }
-      }
-    });
-    enableChartTap(parcelsChart, parcelsCanvas);
-    enableChartTap(lettersChart, lettersCanvas);
-  }
   function hhmmFrom(baseDateStr, hours) {
     if (hours == null) return "\u2014";
     const d = DateTime.fromISO(baseDateStr, { zone: ZONE }).set({ hour: 8, minute: 0 });
@@ -4249,12 +5387,12 @@ Score: ${overallScore}/10 (higher is better)`;
     }
     updateQuickEntryVisibility(localStorage.getItem("routeStats.collapse.addEntryCard") === "1");
   }
-  function updateQuickEntryVisibility(isCollapsed) {
+  function updateQuickEntryVisibility(isCollapsed2) {
     const bar = document.getElementById("quickEntryBar");
     if (!bar) {
       return;
     }
-    const show = !!FLAGS.quickEntry && !!isCollapsed;
+    const show = !!FLAGS.quickEntry && !!isCollapsed2;
     bar.style.display = show ? "inline-flex" : "none";
   }
   (function bindVolumeLeaderboard() {
@@ -4379,842 +5517,15 @@ Score: ${overallScore}/10 (higher is better)`;
       });
     });
   }
-  function buildMonthlyGlance(rows) {
-    rows = filterRowsForView(rows || []);
-    const card = document.getElementById("monthlyGlanceCard");
-    if (!card) return;
-    card.style.display = "block";
-    const today = DateTime.now().setZone(ZONE);
-    const weekStart0 = startOfWeekMonday(today);
-    const weekEnd0 = today.endOf("day");
-    const weekStart1 = startOfWeekMonday(today.minus({ weeks: 1 }));
-    const weekEnd1 = endOfWeekSunday(today.minus({ weeks: 1 }));
-    const weekStart2 = startOfWeekMonday(today.minus({ weeks: 2 }));
-    const weekEnd2 = endOfWeekSunday(today.minus({ weeks: 2 }));
-    const weekStart3 = startOfWeekMonday(today.minus({ weeks: 3 }));
-    const weekEnd3 = endOfWeekSunday(today.minus({ weeks: 3 }));
-    const inRange = (r, from, to) => {
-      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-      return d >= from && d <= to;
-    };
-    const worked = rows.filter((r) => r.status !== "off");
-    function totals(from, to) {
-      const arr = worked.filter((r) => inRange(r, from, to));
-      const h = arr.reduce((t, r) => t + (+r.hours || 0), 0);
-      const p = arr.reduce((t, r) => t + (+r.parcels || 0), 0);
-      const l = arr.reduce((t, r) => t + (+r.letters || 0), 0);
-      return { h, p, l };
-    }
-    const W3 = totals(weekStart3, weekEnd3);
-    const W2 = totals(weekStart2, weekEnd2);
-    const W1 = totals(weekStart1, weekEnd1);
-    const W0 = totals(weekStart0, weekEnd0);
-    const fmtH = (n) => (n || 0).toFixed(1);
-    const labels = [weekEnd3, weekEnd2, weekEnd1, weekEnd0].map((d) => d.toFormat("LLL dd"));
-    const hoursDiv = document.getElementById("mgHours");
-    const parcelsDiv = document.getElementById("mgParcels");
-    const lettersDiv = document.getElementById("mgLetters");
-    hoursDiv.textContent = `W4 ${fmtH(W3.h)} \u2022 W3 ${fmtH(W2.h)} \u2022 W2 ${fmtH(W1.h)} \u2022 W1 ${fmtH(W0.h)}`;
-    parcelsDiv.textContent = `W4 ${W3.p} \u2022 W3 ${W2.p} \u2022 W2 ${W1.p} \u2022 W1 ${W0.p}`;
-    lettersDiv.textContent = `W4 ${W3.l} \u2022 W3 ${W2.l} \u2022 W2 ${W1.l} \u2022 W1 ${W0.l}`;
-    if (window.Chart) {
-      try {
-        let renderSpark2 = function(target, dataArr, color, metricName, starts2, ends2) {
-          target.innerHTML = "";
-          const nums = (dataArr || []).filter((v) => v != null && isFinite(v));
-          const avg = nums.length ? nums.reduce((a, b) => a + Number(b), 0) / nums.length : null;
-          const fmtAvg = (v) => {
-            if (v == null) return "\u2014";
-            return metricName === "Hours" ? (Math.round(v * 10) / 10).toFixed(1) + "h" : String(Math.round(v));
-          };
-          const wrap = document.createElement("div");
-          wrap.style.display = "flex";
-          wrap.style.flexDirection = "column";
-          wrap.style.width = "100%";
-          const avgEl = document.createElement("span");
-          avgEl.className = "pill";
-          avgEl.style.fontSize = "11px";
-          avgEl.style.padding = "2px 6px";
-          avgEl.style.alignSelf = "flex-start";
-          avgEl.style.marginBottom = "4px";
-          avgEl.innerHTML = `<small>Avg</small> <b>${fmtAvg(avg)}</b>`;
-          wrap.appendChild(avgEl);
-          const canvas = document.createElement("canvas");
-          canvas.className = "sparkline";
-          try {
-            canvas.height = 56;
-          } catch (_) {
-          }
-          canvas.style.height = "56px";
-          canvas.style.maxHeight = "56px";
-          canvas.style.width = "100%";
-          canvas.style.cursor = "pointer";
-          wrap.appendChild(canvas);
-          const lbl = document.createElement("div");
-          lbl.className = "sparkline-labels";
-          lbl.textContent = labels.join(" \u2022 ");
-          wrap.appendChild(lbl);
-          const summary = document.createElement("div");
-          summary.className = "sparkline-summary";
-          summary.textContent = "Click a dot for details";
-          wrap.appendChild(summary);
-          target.appendChild(wrap);
-          const ctx = canvas.getContext("2d");
-          const chart = new Chart(ctx, {
-            type: "line",
-            data: {
-              labels,
-              datasets: [{
-                label: metricName,
-                data: dataArr,
-                borderColor: color,
-                backgroundColor: color,
-                tension: 0.25,
-                fill: false,
-                borderWidth: 1,
-                pointRadius: 3,
-                pointHoverRadius: 6,
-                pointHitRadius: 14
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              layout: {
-                // Extra breathing room so end dots/labels do not clip
-                padding: { top: 14, right: 24, bottom: 12, left: 24 }
-              },
-              interaction: { mode: "nearest", intersect: false },
-              scales: {
-                x: { display: false },
-                y: { display: false }
-              },
-              plugins: {
-                legend: { display: false },
-                tooltip: {
-                  enabled: true,
-                  callbacks: {
-                    title: (items) => {
-                      try {
-                        return fmtRange(items[0].dataIndex);
-                      } catch (_) {
-                        return "";
-                      }
-                    },
-                    label: (item) => {
-                      const v = item.parsed.y;
-                      if (metricName === "Hours") return `Hours: ${(+v).toFixed(1)}h`;
-                      return `${metricName}: ${Math.round(+v)}`;
-                    }
-                  }
-                }
-              },
-              elements: {
-                point: { pointStyle: "circle" }
-              }
-            },
-            plugins: []
-          });
-          function fmtVal(v) {
-            if (v == null) return "\u2014";
-            if (metricName === "Hours") return (Math.round(v * 10) / 10).toFixed(1) + "h";
-            return String(Math.round(v));
-          }
-          function fmtRange(i) {
-            try {
-              const s = starts2[i];
-              const e = ends2[i];
-              if (s && e && s.toFormat && e.toFormat) {
-                return s.toFormat("LLL dd") + " \u2013 " + e.toFormat("LLL dd");
-              }
-            } catch (_) {
-            }
-            return labels[i] || "";
-          }
-          canvas.addEventListener("click", (evt) => {
-            try {
-              const points = chart.getElementsAtEventForMode(evt, "nearest", { intersect: true }, false);
-              if (!points || !points.length) return;
-              const idx = points[0].index;
-              const msg = `${metricName}: ${fmtVal(dataArr[idx])} \xB7 ${fmtRange(idx)}`;
-              summary.textContent = msg;
-            } catch (_) {
-            }
-          });
-          canvas.tabIndex = 0;
-          canvas.addEventListener("keydown", (e) => {
-            var _a5;
-            if (e.key !== "Enter" && e.key !== " ") return;
-            e.preventDefault();
-            const cur = (labels.indexOf((_a5 = (summary.textContent || "").split("\xB7").pop()) == null ? void 0 : _a5.trim()) + 1) % dataArr.length;
-            const msg = `${metricName}: ${fmtVal(dataArr[cur])} \xB7 ${fmtRange(cur)}`;
-            summary.textContent = msg;
-          });
-        };
-        var renderSpark = renderSpark2;
-        const starts = [weekStart3, weekStart2, weekStart1, weekStart0];
-        const ends = [weekEnd3, weekEnd2, weekEnd1, weekEnd0];
-        renderSpark2(hoursDiv, [W3.h, W2.h, W1.h, W0.h].map((n) => +(n || 0).toFixed(1)), getComputedStyle(document.documentElement).getPropertyValue("--good").trim() || "#7CE38B", "Hours", starts, ends);
-        renderSpark2(parcelsDiv, [W3.p, W2.p, W1.p, W0.p], getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#2b7fff", "Parcels", starts, ends);
-        renderSpark2(lettersDiv, [W3.l, W2.l, W1.l, W0.l], getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A", "Letters", starts, ends);
-      } catch (e) {
-        console.warn("Monthly Glance charts failed; showing text fallback", e);
-      }
-    } else if (!window.__chartLoadAttempted) {
-      window.__chartLoadAttempted = true;
-      try {
-        const script = document.createElement("script");
-        script.src = "vendor/chart.umd.js";
-        script.async = true;
-        script.onload = () => {
-          try {
-            if (window.Chart) {
-              try {
-                buildMonthlyGlance(allRows || rows || []);
-              } catch (_) {
-              }
-              try {
-                buildCharts(allRows || rows || []);
-              } catch (_) {
-              }
-              try {
-                buildMixViz(allRows || rows || []);
-              } catch (_) {
-              }
-              try {
-                buildOfficeCompare(allRows || rows || []);
-              } catch (_) {
-              }
-              try {
-                buildDayCompare(allRows || rows || []);
-              } catch (_) {
-              }
-              try {
-                buildQuickFilter(allRows || rows || []);
-              } catch (_) {
-              }
-            }
-          } catch (_) {
-          }
-        };
-        script.onerror = () => console.warn("Failed to load vendor/chart.umd.js; keeping text fallback");
-        document.head.appendChild(script);
-      } catch (e) {
-        console.warn("Error injecting Chart.js script", e);
-      }
-    }
-  }
-  function buildHeadlineDigest(rows) {
-    rows = filterRowsForView(rows || []);
+  function getLetterWeightForSummary(rows) {
     try {
-      const el = document.getElementById("headlineDigest");
-      if (!el) return;
-      const now = DateTime.now().setZone(ZONE);
-      const isWed = now.weekday === 3;
-      const isEvening = now.hour >= 17;
-      const show = !!FLAGS.headlineDigest && isWed && isEvening;
-      if (!show) {
-        el.style.display = "none";
-        return;
-      }
-      const startOfWeek = startOfWeekMonday(now);
-      const endToday = now.endOf("day");
-      const prevStart = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const prevEnd = endOfWeekSunday(now.minus({ weeks: 1 }));
-      const priorStart = startOfWeekMonday(now.minus({ weeks: 2 }));
-      const priorEnd = endOfWeekSunday(now.minus({ weeks: 2 }));
-      const inRange = (r, from, to) => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        return d >= from && d <= to;
-      };
-      const worked = rows.filter((r) => r.status !== "off");
-      const thisW = worked.filter((r) => inRange(r, startOfWeek, endToday));
-      const lastW = worked.filter((r) => inRange(r, prevStart, prevEnd));
-      const priorW = worked.filter((r) => inRange(r, priorStart, priorEnd));
-      const daysWorked = (arr) => arr.filter((r) => (+r.hours || 0) > 0).length;
-      const dThis = daysWorked(thisW), dLast = daysWorked(lastW), dPrior = daysWorked(priorW);
-      const sumH = (arr) => arr.reduce((t, r) => t + (+r.hours || 0), 0);
-      const avgOrNull = (tot, days) => days ? tot / days : null;
-      const pct = (a, b) => a == null || b == null || b === 0 ? null : (a - b) / b * 100;
-      const hCarry = pct(avgOrNull(sumH(lastW), dLast), avgOrNull(sumH(priorW), dPrior));
-      const hTarget = pct(avgOrNull(sumH(thisW), dThis), avgOrNull(sumH(lastW), dLast));
-      const progress = Math.min(1, dThis / 5);
-      const blended = hCarry == null && hTarget == null ? null : hCarry == null ? hTarget : hTarget == null ? hCarry : hCarry * (1 - progress) + hTarget * progress;
-      const val = blended == null ? 0 : Math.round(blended);
-      let msg;
-      if (val <= -15) msg = "Much lighter than last week.";
-      else if (val < -5) msg = "A bit lighter than last week.";
-      else if (val <= 5) msg = "Similar to last week \u2014 average days.";
-      else if (val < 15) msg = "A bit heavier than last week.";
-      else msg = "Much more intense than last week. Deep breath.";
-      el.textContent = msg;
-      el.style.display = "block";
+      const worked = filterRowsForView(rows || []).filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0).sort((a, b) => a.work_date < b.work_date ? -1 : 1);
+      const sample = worked.slice(-60);
+      const w = computeLetterWeight(sample);
+      if (w != null) return w;
     } catch (_) {
     }
-  }
-  function __sum(arr, fn) {
-    let s = 0;
-    for (const x of arr) s += +fn(x) || 0;
-    return s;
-  }
-  function routeAdjustedMinutes(row) {
-    try {
-      if (typeof routeAdjustedHours === "function") {
-        const h = routeAdjustedHours(row);
-        return isFinite(h) ? h * 60 : +row.route_minutes || 0;
-      }
-    } catch (_) {
-    }
-    return Math.max(0, +row.route_minutes || 0);
-  }
-  function computeLetterWeight(rows) {
-    rows = (rows || []).filter((r) => r && r.status !== "off");
-    const n = rows.length;
-    if (!n) return loadLetterWeightFallback();
-    const Sy = __sum(rows, (r) => routeAdjustedMinutes(r));
-    const Sp = __sum(rows, (r) => +r.parcels || 0);
-    const Sl = __sum(rows, (r) => +r.letters || 0);
-    const Spp = __sum(rows, (r) => {
-      const v = +r.parcels || 0;
-      return v * v;
-    });
-    const Sll = __sum(rows, (r) => {
-      const v = +r.letters || 0;
-      return v * v;
-    });
-    const Spl = __sum(rows, (r) => {
-      const p = +r.parcels || 0, l = +r.letters || 0;
-      return p * l;
-    });
-    const Spy = __sum(rows, (r) => {
-      const p = +r.parcels || 0;
-      return p * routeAdjustedMinutes(r);
-    });
-    const Sly = __sum(rows, (r) => {
-      const l = +r.letters || 0;
-      return l * routeAdjustedMinutes(r);
-    });
-    const mp = Sp / n, ml = Sl / n, my = Sy / n;
-    let Cpp = 0, Cll = 0, Cpl = 0, Cpy = 0, Cly = 0;
-    for (const r of rows) {
-      const p = (+r.parcels || 0) - mp, l = (+r.letters || 0) - ml, y = routeAdjustedMinutes(r) - my;
-      Cpp += p * p;
-      Cll += l * l;
-      Cpl += p * l;
-      Cpy += p * y;
-      Cly += l * y;
-    }
-    const det = Cpp * Cll - Cpl * Cpl;
-    if (!isFinite(det) || Math.abs(det) < 1e-6) {
-      return loadLetterWeightFallback();
-    }
-    const bp = (Cpy * Cll - Cpl * Cly) / det;
-    const bl = (Cpp * Cly - Cpl * Cpy) / det;
-    let w = isFinite(bp) && Math.abs(bp) > 1e-6 ? bl / bp : null;
-    if (!isFinite(w) || w < 0) w = 0;
-    if (w > 1.5) w = 1.5;
-    const prev = loadLetterWeightFallback();
-    const alpha = 0.3;
-    const smoothed = prev != null && isFinite(prev) ? alpha * w + (1 - alpha) * prev : w;
-    try {
-      localStorage.setItem("routeStats.letterWeight", String(smoothed));
-    } catch (_) {
-    }
-    return smoothed;
-  }
-  function loadLetterWeightFallback() {
-    const DEF = 0.33;
-    try {
-      const v = parseFloat(localStorage.getItem("routeStats.letterWeight"));
-      if (isFinite(v) && v > 0) return v;
-    } catch (_) {
-    }
-    return DEF;
-  }
-  function getLetterWeight(rows) {
-    try {
-      const worked = (rows || []).filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0);
-      const sorted = worked.slice().sort((a, b) => a.work_date < b.work_date ? -1 : 1);
-      const sample = sorted.slice(-60);
-      return computeLetterWeight(sample);
-    } catch (_) {
-      return loadLetterWeightFallback();
-    }
-  }
-  function combinedVolume(p, l, w) {
-    w = w == null ? loadLetterWeightFallback() : w;
-    const pp = +p || 0, ll = +l || 0;
-    return +(pp + w * ll).toFixed(2);
-  }
-  function buildMixViz(rows) {
-    var _a5;
-    rows = filterRowsForView(rows || []);
-    const letterW = getLetterWeight(rows);
-    const card = document.getElementById("mixVizCard");
-    if (!card) return;
-    if (!FLAGS.mixViz) {
-      card.style.display = "none";
-      return;
-    }
-    card.style.display = "block";
-    const docStyle = getComputedStyle(document.documentElement);
-    const brand = docStyle.getPropertyValue("--brand").trim() || "#2b7fff";
-    const warnColor = docStyle.getPropertyValue("--warn").trim() || "#FFD27A";
-    const goodColor = docStyle.getPropertyValue("--good").trim() || "#7CE38B";
-    const text = document.getElementById("mixText");
-    const eff = document.getElementById("mixEff");
-    const overlay = document.getElementById("weekOverlay");
-    const culprits = document.getElementById("mixCulprits");
-    const details = document.getElementById("mixCompareDetails");
-    const btn = document.getElementById("mixCompareBtn");
-    const now = DateTime.now().setZone(ZONE);
-    const startThis = startOfWeekMonday(now);
-    const endThis = now.endOf("day");
-    const inRange = (r, from, to) => {
-      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-      return d >= from && d <= to;
-    };
-    const worked = rows.filter((r) => r.status !== "off");
-    const baseWeek = getLastNonEmptyWeek(worked, now, { excludeVacation: true });
-    const startLast = baseWeek.start;
-    const endLastFull = baseWeek.end;
-    const lastEndSame = luxon.DateTime.min(
-      endLastFull,
-      baseWeek.start.plus({ days: Math.max(0, now.weekday - 1) }).endOf("day")
-    );
-    const W0 = worked.filter((r) => inRange(r, startThis, endThis));
-    const W1 = baseWeek.rows.filter((r) => inRange(r, startLast, lastEndSame));
-    const dayIdxToday = (now.weekday + 6) % 7;
-    const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-    const p0 = sum(W0, (r) => +r.parcels || 0), p1 = sum(W1, (r) => +r.parcels || 0);
-    const l0 = sum(W0, (r) => +r.letters || 0), l1 = sum(W1, (r) => +r.letters || 0);
-    const ln0 = +(letterW * l0).toFixed(1);
-    const ln1 = +(letterW * l1).toFixed(1);
-    try {
-      if (text) text.textContent = `W1: Parcels ${p0}, Letters ${l0} \u2022 W2: Parcels ${p1}, Letters ${l1}`;
-      const wBadge = document.getElementById("mixWeight");
-      if (wBadge) {
-        wBadge.style.display = "inline-flex";
-        wBadge.innerHTML = `<small class="modelMetric">Letter w</small> <span>${(Math.round(letterW * 100) / 100).toFixed(2)}</span>`;
-      }
-      const vol0 = combinedVolume(p0, l0, letterW);
-      const vol1 = combinedVolume(p1, l1, letterW);
-      const rm0 = sum(W0, (r) => routeAdjustedHours(r));
-      const rm1 = sum(W1, (r) => routeAdjustedHours(r));
-      const idx0 = vol0 > 0 && rm0 > 0 ? rm0 / vol0 : null;
-      const idx1 = vol1 > 0 && rm1 > 0 ? rm1 / vol1 : null;
-      let deltaStr = "\u2014", deltaStyle = "";
-      if (idx0 != null && idx1 != null && idx1 > 0) {
-        const imp = (idx1 - idx0) / idx1 * 100;
-        const s = Math.round(imp);
-        const fg = imp >= 0 ? "var(--good)" : "var(--bad)";
-        deltaStr = `${s >= 0 ? "\u2191" : "\u2193"} ${Math.abs(s)}%`;
-        deltaStyle = `color:${fg}`;
-      }
-      if (eff) {
-        const a = idx0 == null ? "\u2014" : (Math.round(idx0 * 100) / 100).toFixed(2);
-        const b = idx1 == null ? "\u2014" : (Math.round(idx1 * 100) / 100).toFixed(2);
-        eff.innerHTML = `Efficiency index (min/vol): ${a} vs ${b} <span style="${deltaStyle}">${deltaStr}</span>`;
-      }
-      try {
-        if (culprits) {
-          const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-          const routeByDow = (arr) => {
-            const a = Array.from({ length: 7 }, () => 0);
-            arr.forEach((r) => {
-              const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
-              const idx = (d2.weekday + 6) % 7;
-              a[idx] += routeAdjustedHours(r);
-            });
-            return a;
-          };
-          const thisRoute = routeByDow(W0);
-          const lastRoute = routeByDow(baseWeek.rows);
-          const out = [];
-          for (let i = 0; i <= dayIdxToday && i < 7; i++) {
-            const base = lastRoute[i] || 0, cur = thisRoute[i] || 0;
-            if (base > 0) {
-              const d2 = Math.round((cur - base) / base * 100);
-              if (d2 >= 10) {
-                const dayIso = ((_a5 = W0.find((r) => (DateTime.fromISO(r.work_date, { zone: ZONE }).weekday + 6) % 7 === i)) == null ? void 0 : _a5.weather_json) || "";
-                let reason = "";
-                try {
-                  const m = /Reason:\s*([^·]+)/i.exec(dayIso);
-                  if (m) reason = m[1].trim();
-                } catch (_) {
-                }
-                out.push(`${days[i]} (+${d2}%)${reason ? " \u2014 " + reason : ""}`);
-              }
-            }
-          }
-          culprits.textContent = out.length ? "Outliers: " + out.join(" \u2022 ") : "Outliers: \u2014";
-        }
-      } catch (_) {
-      }
-      const d = (a, b) => b > 0 ? Math.round((a - b) / b * 100) : null;
-      const dH = d(sum(W0, (r) => +r.hours || 0), sum(W1, (r) => +r.hours || 0));
-      let dP, dLx, lineLabelP = "Parcels", lineLabelL = "Letters";
-      let resP = { used: 0 };
-      let resL = { used: 0 };
-      const baselines = ensureWeeklyBaselines(rows) || getWeeklyBaselines();
-      const anchor = computeAnchorBaselines(rows, 8);
-      if (FLAGS.baselineCompare) {
-        const dayIdxToday2 = (now.weekday + 6) % 7;
-        const mins = 5;
-        const sumRange = (arr, upto) => {
-          let s = 0;
-          for (let i = 0; i <= upto; i++) {
-            const v = arr[i];
-            s += v != null ? v : 0;
-          }
-          return s;
-        };
-        const byW = (arr, fn) => {
-          const out = Array.from({ length: 7 }, () => 0);
-          arr.forEach((r) => {
-            const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
-            const idx = (d2.weekday + 6) % 7;
-            out[idx] += fn(r) || 0;
-          });
-          return out;
-        };
-        const alignedDelta = (curArr, baseArr, upto, min) => {
-          let curSum = 0, baseSum = 0, used = 0;
-          for (let i = 0; i <= upto; i++) {
-            const base = baseArr ? baseArr[i] : null;
-            if (base != null && base >= min) {
-              curSum += curArr[i] || 0;
-              baseSum += base;
-              used++;
-            }
-          }
-          if (!used || baseSum <= 0) return { delta: null, used: 0 };
-          let d2 = Math.round((curSum - baseSum) / baseSum * 100);
-          if (d2 > 100) d2 = 100;
-          if (d2 < -100) d2 = -100;
-          return { delta: d2, used };
-        };
-        const pThisW = byW(W0, (r) => +r.parcels || 0);
-        const lThisW = byW(W0, (r) => +r.letters || 0);
-        const bp = baselines ? baselines.parcels : null;
-        const bl = baselines ? baselines.letters : null;
-        resP = alignedDelta(pThisW, bp, dayIdxToday2, mins);
-        resL = alignedDelta(lThisW, bl, dayIdxToday2, mins);
-        dP = resP.delta;
-        dLx = resL.delta;
-        lineLabelP = "Parcels (vs baseline)";
-        lineLabelL = "Letters (vs baseline)";
-        let driftLine = "";
-        if (anchor && anchor.parcels && anchor.letters) {
-          const ap = sumRange(anchor.parcels, dayIdxToday2);
-          const al = sumRange(anchor.letters, dayIdxToday2);
-          const sumAligned = (arr, upto, min) => {
-            let s = 0;
-            let used = 0;
-            for (let i = 0; i <= upto; i++) {
-              const v = arr ? arr[i] : null;
-              if (v != null && v >= min) {
-                s += v;
-                used++;
-              }
-            }
-            return used ? s : null;
-          };
-          const bpAligned = sumAligned(bp, dayIdxToday2, mins);
-          const blAligned = sumAligned(bl, dayIdxToday2, mins);
-          const driftP = ap > 0 && bpAligned != null ? Math.round((bpAligned - ap) / ap * 100) : null;
-          const driftL = al > 0 && blAligned != null ? Math.round((blAligned - al) / al * 100) : null;
-          driftLine = `Baseline drift vs anchor \u2014 Parcels: ${driftP == null ? "\u2014" : driftP >= 0 ? "\u2191 " + driftP + "%" : "\u2193 " + Math.abs(driftP) + "%"} \u2022 Letters: ${driftL == null ? "\u2014" : driftL >= 0 ? "\u2191 " + driftL + "%" : "\u2193 " + Math.abs(driftL) + "%"}`;
-          if (details && !details._driftInjected) {
-            const div = document.createElement("div");
-            div.className = "sparkline-labels";
-            div.textContent = driftLine;
-            details.parentNode.insertBefore(div, details);
-            details._driftInjected = true;
-          }
-        }
-      } else {
-        dP = d(p0, p1);
-        dLx = d(l0, l1);
-      }
-      const expectationStroke2 = "rgba(255,140,0,0.85)";
-      const expectationFill2 = "rgba(255,140,0,0.22)";
-      const dEff = p0 + ln0 > 0 && p1 + ln1 > 0 ? Math.round((rm1 / (p1 + ln1) - rm0 / (p0 + ln0)) / (rm1 / (p1 + ln1)) * 100) : null;
-      const arrow = (v) => v == null ? "\u2014" : v >= 0 ? "\u2191 " + v + "%" : "\u2193 " + Math.abs(v) + "%";
-      const color = (v) => v == null ? "var(--text)" : v >= 0 ? "var(--good)" : "var(--bad)";
-      const line = (label, v, ctx, colorOverride) => {
-        const labelHtml = colorOverride ? `<span style="color:${colorOverride};font-weight:600">${label}</span>` : label;
-        return `<div>${labelHtml}: <span style="color:${color(v)}">${arrow(v)}</span> ${ctx || ""}</div>`;
-      };
-      if (details) {
-        const usedP = typeof resP !== "undefined" && resP && resP.used ? `, ${resP.used} day(s) used` : "";
-        const usedL = typeof resL !== "undefined" && resL && resL.used ? `, ${resL.used} day(s) used` : "";
-        details.innerHTML = [
-          line("Efficiency", dEff, `(min/vol ${(rm0 / (p0 + ln0) || 0).toFixed(2)} vs ${(rm1 / (p1 + ln1) || 0).toFixed(2)})`),
-          line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, warnColor || "#f97316"),
-          line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, "#60a5fa"),
-          line("Hours", dH, `(${sum(W0, (r) => +r.hours || 0).toFixed(1)}h vs ${sum(W1, (r) => +r.hours || 0).toFixed(1)}h)`)
-        ].join("");
-      }
-    } catch (e) {
-      console.error("[MixViz] render error", e);
-      if (details) details.innerHTML = "<div>Compare unavailable \u2014 data not ready.</div>";
-    }
-    try {
-      if (overlay && window.Chart && overlay.getContext) {
-        const ctx = overlay.getContext("2d");
-        if (overlay._chart) {
-          try {
-            overlay._chart.destroy();
-          } catch (_) {
-          }
-        }
-        const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-        const warn = warnColor;
-        const good = goodColor;
-        const volByDow = (arr) => {
-          const a = Array.from({ length: 7 }, () => 0);
-          arr.forEach((r) => {
-            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-            const idx = (d.weekday + 6) % 7;
-            a[idx] += combinedVolume(+r.parcels || 0, +r.letters || 0, letterW);
-          });
-          return a.map((n) => +(Math.round(n * 10) / 10).toFixed(1));
-        };
-        const routeByDow = (arr) => {
-          const a = Array.from({ length: 7 }, () => 0);
-          arr.forEach((r) => {
-            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-            const idx = (d.weekday + 6) % 7;
-            a[idx] += Math.max(0, (+r.route_minutes || 0) - boxholderAdjMinutes(r));
-          });
-          return a.map((n) => +(Math.round(n * 100) / 100).toFixed(2));
-        };
-        const thisBy = volByDow(W0);
-        const W1full2 = baseWeek.rows;
-        const lastBy = volByDow(W1full2);
-        const thisRoute = routeByDow(W0);
-        const lastRoute = routeByDow(W1full2);
-        const dayIdxToday2 = (now.weekday + 6) % 7;
-        const hasBand = !!(bandMinData && bandMaxData);
-        const isoForPoint = (datasetIndex, idx) => {
-          try {
-            if (hasBand) {
-              if (datasetIndex === 0 || datasetIndex === 1) return startThis.plus({ days: idx }).toISODate();
-              if (datasetIndex === 2) return startLast.plus({ days: idx }).toISODate();
-              if (datasetIndex === 3 || datasetIndex === 4) return startThis.plus({ days: idx }).toISODate();
-            } else {
-              if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
-              if (datasetIndex === 1 || datasetIndex === 2) return startThis.plus({ days: idx }).toISODate();
-            }
-          } catch (_) {
-          }
-          return null;
-        };
-        const thisMasked = thisBy.map((v, i) => i <= dayIdxToday2 ? v : null);
-        const thisRouteMasked = thisRoute.map((v, i) => i <= dayIdxToday2 ? v : null);
-        const datasets = [];
-        if (bandMinData && bandMaxData) {
-          datasets.push({
-            label: "Vol expect min",
-            data: bandMinData,
-            borderColor: expectationStroke,
-            borderWidth: 1,
-            borderDash: [6, 4],
-            backgroundColor: "transparent",
-            pointRadius: 0,
-            spanGaps: true,
-            fill: false
-          });
-          datasets.push({
-            label: "Vol expect max",
-            data: bandMaxData,
-            borderColor: "rgba(0,0,0,0)",
-            backgroundColor: expectationFill,
-            pointRadius: 0,
-            borderWidth: 0,
-            spanGaps: true,
-            fill: { target: "-1", above: expectationFill, below: expectationFill }
-          });
-        }
-        datasets.push(
-          { label: "Vol last", data: lastBy, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
-          { label: "Vol this", data: thisMasked, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
-          { label: "Route h (this)", data: thisRouteMasked, borderColor: good, backgroundColor: "transparent", borderDash: [4, 3], tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true, yAxisID: "y2" }
-        );
-        overlay._chart = new Chart(ctx, {
-          type: "line",
-          data: { labels: days, datasets },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            layout: { padding: { top: 12, right: 16, bottom: 10, left: 16 } },
-            interaction: { mode: "nearest", intersect: false },
-            plugins: { legend: { display: false }, tooltip: {
-              callbacks: {
-                title: (items) => {
-                  if (!items || !items.length) return "";
-                  const item = items[0];
-                  const iso = isoForPoint(item.datasetIndex, item.dataIndex);
-                  if (iso) {
-                    const dt = DateTime.fromISO(iso, { zone: ZONE });
-                    return dt.toFormat("ccc \u2022 MMM d, yyyy") + vacGlyph(iso);
-                  }
-                  const lbl = item.label || "";
-                  return lbl + vacGlyph(lbl);
-                },
-                label: (item) => {
-                  var _a6, _b, _c;
-                  const i = item.dataIndex;
-                  const lw = lastBy[i];
-                  const tw = thisBy[i];
-                  const hasTw = i <= dayIdxToday2 && tw != null;
-                  if (((_a6 = item.dataset) == null ? void 0 : _a6.label) === "Vol expect min") return "";
-                  if (((_b = item.dataset) == null ? void 0 : _b.label) === "Vol expect max") {
-                    const min = bandMinData == null ? void 0 : bandMinData[i];
-                    const max = bandMaxData == null ? void 0 : bandMaxData[i];
-                    const fmt = (n) => n == null ? "\u2014" : n.toFixed(1);
-                    return `Expectation: ${fmt(min)} \u2013 ${fmt(max)}`;
-                  }
-                  if (((_c = item.dataset) == null ? void 0 : _c.label) === "Route h (this)") {
-                    const rw = thisRoute[i];
-                    const rl = lastRoute[i];
-                    const fmt = (n) => n == null ? "\u2014" : (Math.round(n * 100) / 100).toFixed(2);
-                    return hasTw ? `This route: ${fmt(rw)}h (Last: ${fmt(rl)}h)` : `Last route: ${fmt(rl)}h`;
-                  }
-                  return hasTw ? `This vol: ${tw} (Last: ${lw})` : `Last vol: ${lw}`;
-                }
-              }
-            } },
-            scales: { x: { display: true, grid: { display: false } }, y: { display: false }, y2: { display: false, position: "right" } }
-          }
-        });
-      }
-    } catch (_) {
-    }
-    try {
-      const effCanvas = document.getElementById("effOverlay");
-      if (effCanvas && window.Chart && effCanvas.getContext) {
-        const ctx = effCanvas.getContext("2d");
-        if (effCanvas._chart) {
-          try {
-            effCanvas._chart.destroy();
-          } catch (_) {
-          }
-        }
-        const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-        const brand2 = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#2b7fff";
-        const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
-        const routeByDow = (arr) => {
-          const a = Array.from({ length: 7 }, () => 0);
-          arr.forEach((r) => {
-            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-            const idx = (d.weekday + 6) % 7;
-            a[idx] += Math.max(0, (+r.route_minutes || 0) - boxholderAdjMinutes(r));
-          });
-          return a.map((n) => +(Math.round(n * 100) / 100).toFixed(2));
-        };
-        const volByDow = (arr) => {
-          const a = Array.from({ length: 7 }, () => 0);
-          arr.forEach((r) => {
-            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-            const idx = (d.weekday + 6) % 7;
-            a[idx] += combinedVolume(+r.parcels || 0, +r.letters || 0, letterW);
-          });
-          return a.map((n) => +(Math.round(n * 10) / 10).toFixed(1));
-        };
-        const thisRoute = routeByDow(W0);
-        const thisVol = volByDow(W0);
-        const lastRoute = routeByDow(W1full);
-        const lastVol = volByDow(W1full);
-        const eff2 = (r, v) => v > 0 ? r / v : null;
-        const thisEff = thisRoute.map((r, i) => eff2(r, thisVol[i] || 0));
-        const lastEff = lastRoute.map((r, i) => eff2(r, lastVol[i] || 0));
-        const dayIdxToday2 = (now.weekday + 6) % 7;
-        const thisMasked = thisEff.map((v, i) => i <= dayIdxToday2 ? v != null ? +(Math.round(v * 100) / 100).toFixed(2) : null : null);
-        const lastVals = lastEff.map((v) => v != null ? +(Math.round(v * 100) / 100).toFixed(2) : null);
-        effCanvas._chart = new Chart(ctx, {
-          type: "line",
-          data: { labels: days, datasets: [
-            { label: "Last week", data: lastVals, borderColor: brand2, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true },
-            { label: "This week", data: thisMasked, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true }
-          ] },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            layout: { padding: { top: 8, right: 16, bottom: 6, left: 16 } },
-            interaction: { mode: "nearest", intersect: false },
-            plugins: { legend: { display: false }, tooltip: {
-              callbacks: {
-                title: (items) => items && items[0] ? items[0].label : "",
-                label: (item) => {
-                  const i = item.dataIndex;
-                  const lw = lastVals[i];
-                  const tw = thisEff[i];
-                  const hasTw = i <= dayIdxToday2 && tw != null;
-                  const fmt = (n) => n == null ? "\u2014" : (Math.round(n * 100) / 100).toFixed(2);
-                  return hasTw ? `This: ${fmt(tw)} (Last: ${fmt(lw)})` : `Last: ${fmt(lw)}`;
-                }
-              }
-            } },
-            scales: { x: { display: true, grid: { display: false } }, y: { display: false } }
-          }
-        });
-      }
-    } catch (_) {
-    }
-    try {
-      const driftCanvas = document.getElementById("mixDrift");
-      const driftText = document.getElementById("mixDriftText");
-      if (driftCanvas && driftText) {
-        const weeksBack = 5;
-        const weeksArr = [];
-        for (let w = weeksBack; w >= 1; w--) {
-          const s = startOfWeekMonday(now.minus({ weeks: w }));
-          const e = endOfWeekSunday(now.minus({ weeks: w }));
-          weeksArr.push({ s, e });
-        }
-        const weekSum = (wk, fn) => worked.filter((r) => {
-          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-          return d >= wk.s && d <= wk.e;
-        }).reduce((t, r) => t + (fn(r) || 0), 0);
-        const combSer = weeksArr.map((wk) => {
-          const p = weekSum(wk, (r) => +r.parcels || 0);
-          const l = weekSum(wk, (r) => +r.letters || 0);
-          return +combinedVolume(p, l, letterW).toFixed(1);
-        }).filter((v) => v > 0);
-        const labels = weeksArr.slice(-combSer.length).map((wk, i) => `W${combSer.length - i}`);
-        const sorted = [...combSer].sort((a, b) => a - b);
-        const n = sorted.length;
-        const anchorVal = n ? n % 2 ? sorted[Math.floor(n / 2)] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2 : 0;
-        driftText.textContent = `Combined vol (P + ${letterW.toFixed(2)}\xD7L): ${combSer.join(", ")} \u2022 Anchor: ${anchorVal}`;
-        if (window.Chart && driftCanvas.getContext) {
-          const ctx = driftCanvas.getContext("2d");
-          if (driftCanvas._chart) {
-            try {
-              driftCanvas._chart.destroy();
-            } catch (_) {
-            }
-          }
-          const brand2 = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#2b7fff";
-          const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
-          driftCanvas._chart = new Chart(ctx, {
-            type: "line",
-            data: { labels, datasets: [
-              { label: "Combined", data: combSer, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 1 },
-              { label: "Anchor", type: "line", data: combSer.map(() => anchorVal), borderColor: brand2, backgroundColor: "transparent", borderDash: [4, 2], pointRadius: 0, tension: 0 }
-            ] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } } }
-          });
-        }
-      }
-    } catch (_) {
-    }
-    btn == null ? void 0 : btn.addEventListener("click", () => {
-      if (!details) return;
-      const show = details.style.display === "none";
-      details.style.display = show ? "block" : "none";
-    });
+    return CURRENT_LETTER_WEIGHT;
   }
   function buildSmartSummary(rows) {
     rows = filterRowsForView(rows || []);
@@ -5247,24 +5558,24 @@ Score: ${overallScore}/10 (higher is better)`;
       const h0 = sum(W0, (r) => +r.hours || 0), h1 = sum(W1, (r) => +r.hours || 0);
       const p0 = sum(W0, (r) => +r.parcels || 0), p1 = sum(W1, (r) => +r.parcels || 0);
       const l0 = sum(W0, (r) => +r.letters || 0), l1 = sum(W1, (r) => +r.letters || 0);
-      const letterW = getLetterWeight(rows);
+      const letterW = getLetterWeightForSummary(rows);
       const vol = (p, l) => p + letterW * l;
       const v0 = vol(p0, l0), v1 = vol(p1, l1);
-      const rm0 = sum(W0, (r) => routeAdjustedHours(r)), rm1 = sum(W1, (r) => routeAdjustedHours(r));
+      const rm02 = sum(W0, (r) => routeAdjustedHours(r));
+      const rm12 = sum(W1, (r) => routeAdjustedHours(r));
       const idx = (rm, vv) => rm > 0 && vv > 0 ? rm / vv : null;
-      const i0 = idx(rm0, v0), i1 = idx(rm1, v1);
+      const i0 = idx(rm02, v0), i1 = idx(rm12, v1);
       const pct = (a, b) => b > 0 ? Math.round((a - b) / b * 100) : null;
       const dh = pct(h0, h1);
       const dv = pct(v0, v1);
       const di = i0 != null && i1 != null && i1 > 0 ? Math.round((i1 - i0) / i1 * 100) : null;
-      const items = [];
-      if (dh != null && Math.abs(dh) >= 5) items.push({ k: "Hours", v: dh });
-      if (dv != null && Math.abs(dv) >= 5) items.push({ k: "Volume", v: dv });
-      if (di != null && Math.abs(di) >= 5) items.push({ k: "Efficiency", v: di });
-      items.sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
-      const top = items.slice(0, 2);
-      const parts = top.map((it) => `${it.k} ${it.v >= 0 ? `\u2191 ${it.v}%` : `\u2193 ${Math.abs(it.v)}%`}`);
-      const line = parts.length ? parts.join(" \u2022 ") : "Similar to last week";
+      const movers = [];
+      if (dh != null && Math.abs(dh) >= 5) movers.push({ k: "Hours", v: dh });
+      if (dv != null && Math.abs(dv) >= 5) movers.push({ k: "Volume", v: dv });
+      if (di != null && Math.abs(di) >= 5) movers.push({ k: "Efficiency", v: di });
+      movers.sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
+      const top = movers.slice(0, 2).map((it) => `${it.k} ${it.v >= 0 ? `\u2191 ${it.v}%` : `\u2193 ${Math.abs(it.v)}%`}`);
+      const line = top.length ? top.join(" \u2022 ") : "Similar to last week";
       el.textContent = `${line} \u2014 ${daysThisWeek} day(s) this week.`;
       el.style.display = "block";
     } catch (_) {
@@ -5292,9 +5603,10 @@ Score: ${overallScore}/10 (higher is better)`;
         return;
       }
       const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-      const off0 = sum(W0, (r) => +r.office_minutes || 0), off1 = sum(W1, (r) => +r.office_minutes || 0);
-      const rm0 = sum(W0, (r) => routeAdjustedHours(r));
-      const rm1 = sum(W1, (r) => routeAdjustedHours(r));
+      const off0 = sum(W0, (r) => +r.office_minutes || 0);
+      const off1 = sum(W1, (r) => +r.office_minutes || 0);
+      const rm02 = sum(W0, (r) => routeAdjustedHours(r));
+      const rm12 = sum(W1, (r) => routeAdjustedHours(r));
       const vol = (arr) => sum(arr, (r) => (+r.parcels || 0) + 0.33 * (+r.letters || 0));
       const v0 = vol(W0), v1 = vol(W1);
       const pct = (a, b) => b > 0 ? Math.round((a - b) / b * 100) : null;
@@ -5303,7 +5615,7 @@ Score: ${overallScore}/10 (higher is better)`;
         if (d != null && Math.abs(d) >= 5) items.push({ k, v: d });
       };
       pushIf("Office", pct(off0, off1));
-      pushIf("Route", pct(rm0, rm1));
+      pushIf("Route", pct(rm02, rm12));
       pushIf("Volume", pct(v0, v1));
       items.sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
       const top = items.slice(0, 2);
@@ -5411,108 +5723,6 @@ Score: ${overallScore}/10 (higher is better)`;
     } catch (_) {
     }
   }
-  function buildOfficeCompare(rows) {
-    rows = filterRowsForView(rows || []);
-    try {
-      const card = document.getElementById("officeCompareCard");
-      if (!card) return;
-      const overlay = document.getElementById("officeOverlay");
-      const summary = document.getElementById("officeSummary");
-      const now = DateTime.now().setZone(ZONE);
-      const startThis = startOfWeekMonday(now);
-      const endThis = now.endOf("day");
-      const inRange = (r, from, to) => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        return d >= from && d <= to;
-      };
-      const worked = (rows || []).filter((r) => r.status !== "off");
-      const baseWeek = getLastNonEmptyWeek(worked, now, { excludeVacation: true });
-      const startLast = baseWeek.start;
-      const endLast = baseWeek.end;
-      const lastEndSame = luxon.DateTime.min(
-        endLast,
-        baseWeek.start.plus({ days: Math.max(0, now.weekday - 1) }).endOf("day")
-      );
-      const W0 = worked.filter((r) => inRange(r, startThis, endThis));
-      const W1 = baseWeek.rows;
-      const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-      const offByDow = (arr) => {
-        const a = Array.from({ length: 7 }, () => 0);
-        arr.forEach((r) => {
-          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-          const idx = (d.weekday + 6) % 7;
-          a[idx] += +r.office_minutes || 0;
-        });
-        return a.map((n) => +(Math.round(n * 100) / 100).toFixed(2));
-      };
-      const thisBy = offByDow(W0);
-      const lastBy = offByDow(W1);
-      const dayIdxToday = (now.weekday + 6) % 7;
-      const thisMasked = thisBy.map((v, i) => i <= dayIdxToday ? v : null);
-      const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-      const off0 = sum(W0.filter((r) => inRange(r, startThis, endThis && DateTime.fromJSDate(/* @__PURE__ */ new Date()).setZone(ZONE))), (r) => +r.office_minutes || 0);
-      const off1same = sum(baseWeek.rows.filter((r) => inRange(r, startLast, lastEndSame)), (r) => +r.office_minutes || 0);
-      const dPct = off1same > 0 ? Math.round((off0 - off1same) / off1same * 100) : null;
-      if (summary) summary.textContent = `Office (so far): ${off0.toFixed(2)}h vs ${off1same.toFixed(2)}h (${dPct == null ? "\u2014" : dPct >= 0 ? "\u2191 " + dPct + "%" : "\u2193 " + Math.abs(dPct) + "%"})`;
-      card.style.display = "block";
-      if (overlay && window.Chart && overlay.getContext) {
-        const ctx = overlay.getContext("2d");
-        if (overlay._chart) {
-          try {
-            overlay._chart.destroy();
-          } catch (_) {
-          }
-        }
-        const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#2b7fff";
-        const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
-        const isoForPoint = (datasetIndex, idx) => {
-          try {
-            if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
-            if (datasetIndex === 1) return startThis.plus({ days: idx }).toISODate();
-          } catch (_) {
-          }
-          return null;
-        };
-        overlay._chart = new Chart(ctx, {
-          type: "line",
-          data: { labels: days, datasets: [
-            { label: "Last week", data: lastBy, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true },
-            { label: "This week", data: thisMasked, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true }
-          ] },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            layout: { padding: { top: 12, right: 16, bottom: 10, left: 16 } },
-            interaction: { mode: "nearest", intersect: false },
-            plugins: { legend: { display: false }, tooltip: {
-              callbacks: {
-                title: (items) => {
-                  if (!items || !items.length) return "";
-                  const item = items[0];
-                  const iso = isoForPoint(item.datasetIndex, item.dataIndex);
-                  if (iso) {
-                    const dt = DateTime.fromISO(iso, { zone: ZONE });
-                    return dt.toFormat("ccc \u2022 MMM d, yyyy") + vacGlyph(iso);
-                  }
-                  const lbl = item.label || "";
-                  return lbl + vacGlyph(lbl);
-                },
-                label: (item) => {
-                  const i = item.dataIndex;
-                  const lw = lastBy[i];
-                  const tw = thisBy[i];
-                  const hasTw = i <= dayIdxToday && tw != null;
-                  return hasTw ? `This: ${tw}h (Last: ${lw}h)` : `Last: ${lw}h`;
-                }
-              }
-            } },
-            scales: { x: { display: true, grid: { display: false } }, y: { display: false } }
-          }
-        });
-      }
-    } catch (_) {
-    }
-  }
   function buildUspsTiles(rows) {
     try {
       rows = filterRowsForView(rows || []);
@@ -5593,210 +5803,5 @@ Score: ${overallScore}/10 (higher is better)`;
       }
     } catch (_) {
     }
-  }
-  function buildQuickFilter(rows) {
-    rows = filterRowsForView(rows || []);
-    const card = document.getElementById("quickFilterCard");
-    if (!card) return;
-    card.style.display = FLAGS.quickFilter ? "block" : "none";
-    if (!FLAGS.quickFilter) return;
-    const sel = document.getElementById("qfSelect");
-    const stats = document.getElementById("qfStats");
-    const spark = document.getElementById("qfSpark");
-    const text = document.getElementById("qfText");
-    const cbAll = document.getElementById("qfAllMetrics");
-    const cbP = document.getElementById("qfShowParcels");
-    const cbL = document.getElementById("qfShowLetters");
-    const cbH = document.getElementById("qfShowHours");
-    const selN = document.getElementById("qfLastN");
-    const cbRuler = document.getElementById("qfShowRuler");
-    const normBadge = document.getElementById("qfNormBadge");
-    if (!stats || !spark || !text) return;
-    const dayVal = sel && sel.value || "all";
-    const worked = (rows || []).filter((r) => r.status !== "off");
-    const filtered = worked.filter((r) => dayVal === "all" ? true : DateTime.fromISO(r.work_date, { zone: ZONE }).weekday % 7 == +dayVal);
-    const count = filtered.length;
-    const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-    const avg = (arr, fn) => arr.length ? sum(arr, fn) / arr.length : null;
-    const avgH = avg(filtered, (r) => +r.hours || 0);
-    const avgP = avg(filtered, (r) => +r.parcels || 0);
-    const avgL = avg(filtered, (r) => +r.letters || 0);
-    const avgR = avg(filtered, (r) => +r.route_minutes || 0);
-    const pill = (label, val, fmt) => `<span class="pill"><small>${label}:</small> <b>${fmt(val)}</b></span>`;
-    const nf = (v) => v == null ? "\u2014" : typeof v === "number" ? (Math.round(v * 100) / 100).toString() : String(v);
-    stats.innerHTML = [
-      pill("Days", count, nf),
-      pill("Avg hours", avgH, (v) => v == null ? "\u2014" : (Math.round(v * 100) / 100).toFixed(2)),
-      pill("Avg parcels", avgP, (v) => v == null ? "\u2014" : Math.round(v)),
-      pill("Avg letters", avgL, (v) => v == null ? "\u2014" : Math.round(v)),
-      pill("Avg route min", avgR, (v) => v == null ? "\u2014" : Math.round(v))
-    ].join("");
-    const available = filtered.length;
-    const lastCount = selN && +selN.value || +(localStorage.getItem("routeStats.qf.lastN") || 12) || 12;
-    if (selN) selN.value = String(lastCount);
-    if (selN && selN.options) {
-      try {
-        Array.from(selN.options).forEach((o) => {
-          o.disabled = +o.value > available;
-        });
-      } catch (_) {
-      }
-    }
-    const lastN = filtered.slice().sort((a, b) => a.work_date < b.work_date ? -1 : 1).slice(-lastCount);
-    const labels = lastN.map((r) => DateTime.fromISO(r.work_date, { zone: ZONE }).toFormat("LLL d"));
-    try {
-      if (cbRuler && typeof buildQuickFilter._rulerInit === "undefined") {
-        const pref = localStorage.getItem("routeStats.qf.ruler");
-        if (pref != null) cbRuler.checked = pref === "1";
-        buildQuickFilter._rulerInit = true;
-      }
-    } catch (_) {
-    }
-    const showP = cbP ? !!cbP.checked : true;
-    const showL = cbL ? !!cbL.checked : true;
-    const showH = cbH ? !!cbH.checked : true;
-    if (cbAll) cbAll.checked = !!(showP && showL && showH);
-    const serP = lastN.map((r) => +r.parcels || 0);
-    const serL = lastN.map((r) => +r.letters || 0);
-    const serH = lastN.map((r) => +r.hours || 0);
-    const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#2b7fff";
-    const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
-    const good = getComputedStyle(document.documentElement).getPropertyValue("--good").trim() || "#2E7D32";
-    const datasets = [];
-    const needNormalize = [showP, showL, showH].filter(Boolean).length > 1;
-    const norm = (arr) => {
-      const vals = arr || [];
-      let min = Infinity, max = -Infinity;
-      for (const v of vals) {
-        if (v == null) continue;
-        if (v < min) min = v;
-        if (v > max) max = v;
-      }
-      if (!isFinite(min) || !isFinite(max)) return vals.map((_) => null);
-      if (max === min) return vals.map((_) => 50);
-      return vals.map((v) => v == null ? null : Math.round((v - min) / (max - min) * 100));
-    };
-    const dataP = needNormalize ? norm(serP) : serP;
-    const dataL = needNormalize ? norm(serL) : serL;
-    const dataH = needNormalize ? norm(serH) : serH;
-    if (showP) datasets.push({ label: "Parcels", data: dataP, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
-    if (showL) datasets.push({ label: "Letters", data: dataL, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
-    if (showH) datasets.push({ label: "Hours", data: dataH, borderColor: good, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
-    const summary = [];
-    const fmtNum = (n) => (Math.round(n * 10) / 10).toFixed(1);
-    if (showP) summary.push(`P: ${serP.slice(-labels.length).map(fmtNum).join(", ")}`);
-    if (showL) summary.push(`L: ${serL.slice(-labels.length).map(fmtNum).join(", ")}`);
-    if (showH) summary.push(`H: ${serH.slice(-labels.length).map(fmtNum).join(", ")}`);
-    const showing = labels.length;
-    const requested = lastCount;
-    const note = needNormalize ? " (normalized)" : "";
-    if (normBadge) normBadge.style.display = needNormalize ? "inline-flex" : "none";
-    const coverage = `Showing ${showing} of ${requested} requested${available ? `, available ${available}` : ""}`;
-    text.textContent = datasets.length ? `${summary.join(" \u2022 ")} \u2014 ${coverage}${note}` : "\u2014";
-    const daysBadge = document.getElementById("qfDaysBadge");
-    if (daysBadge) {
-      daysBadge.style.display = "inline-flex";
-      daysBadge.innerHTML = `<small>Days</small> <b>${count}</b>`;
-    }
-    if (window.Chart && spark.getContext) {
-      try {
-        const ctx = spark.getContext("2d");
-        if (spark._chart) {
-          try {
-            spark._chart.destroy();
-          } catch (_) {
-          }
-        }
-        try {
-          spark.height = 64;
-        } catch (_) {
-        }
-        const wantRuler = (cbRuler ? !!cbRuler.checked : false) && needNormalize;
-        spark._chart = new Chart(ctx, {
-          type: "line",
-          data: { labels, datasets: datasets.map((d) => Object.assign({ tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true, fill: false }, d)) },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            layout: { padding: { top: 8, right: 6, bottom: 6, left: 6 } },
-            interaction: { mode: "nearest", intersect: false },
-            plugins: { legend: { display: false }, tooltip: { enabled: true } },
-            scales: {
-              x: { display: false, grid: { display: false } },
-              y: {
-                display: wantRuler,
-                min: needNormalize ? 0 : void 0,
-                max: needNormalize ? 100 : void 0,
-                ticks: { display: false, stepSize: 50 },
-                grid: { display: wantRuler, color: "rgba(255,255,255,0.08)" }
-              }
-            }
-          }
-        });
-      } catch (_) {
-      }
-    }
-    const handler = () => buildQuickFilter(rows);
-    sel == null ? void 0 : sel.removeEventListener("change", buildQuickFilter._handlerSel || (() => {
-    }));
-    cbP == null ? void 0 : cbP.removeEventListener("change", buildQuickFilter._handlerP || (() => {
-    }));
-    cbL == null ? void 0 : cbL.removeEventListener("change", buildQuickFilter._handlerL || (() => {
-    }));
-    cbH == null ? void 0 : cbH.removeEventListener("change", buildQuickFilter._handlerH || (() => {
-    }));
-    selN == null ? void 0 : selN.removeEventListener("change", buildQuickFilter._handlerN || (() => {
-    }));
-    cbAll == null ? void 0 : cbAll.removeEventListener("change", buildQuickFilter._handlerAll || (() => {
-    }));
-    cbRuler == null ? void 0 : cbRuler.removeEventListener("change", buildQuickFilter._handlerRuler || (() => {
-    }));
-    buildQuickFilter._handlerSel = (e) => {
-      try {
-        if (FLAGS && FLAGS.collapsedUi) {
-          const body = document.querySelector("#quickFilterCard > .__collapseBody");
-          if (body && body.style.display === "none") {
-            try {
-              (window.__collapse_set || (() => {
-              }))("quickFilterCard", false);
-            } catch (_) {
-            }
-          }
-        }
-      } catch (_) {
-      }
-      handler();
-    };
-    buildQuickFilter._handlerP = handler;
-    buildQuickFilter._handlerL = handler;
-    buildQuickFilter._handlerH = handler;
-    buildQuickFilter._handlerN = (e) => {
-      try {
-        localStorage.setItem("routeStats.qf.lastN", String(e.target.value));
-      } catch (_) {
-      }
-      handler();
-    };
-    buildQuickFilter._handlerAll = () => {
-      const on = !!cbAll.checked;
-      if (cbP) cbP.checked = on;
-      if (cbL) cbL.checked = on;
-      if (cbH) cbH.checked = on;
-      handler();
-    };
-    buildQuickFilter._handlerRuler = (e) => {
-      try {
-        localStorage.setItem("routeStats.qf.ruler", e.target.checked ? "1" : "0");
-      } catch (_) {
-      }
-      handler();
-    };
-    sel == null ? void 0 : sel.addEventListener("change", buildQuickFilter._handlerSel);
-    cbP == null ? void 0 : cbP.addEventListener("change", handler);
-    cbL == null ? void 0 : cbL.addEventListener("change", handler);
-    cbH == null ? void 0 : cbH.addEventListener("change", handler);
-    selN == null ? void 0 : selN.addEventListener("change", buildQuickFilter._handlerN);
-    cbAll == null ? void 0 : cbAll.addEventListener("change", buildQuickFilter._handlerAll);
-    cbRuler == null ? void 0 : cbRuler.addEventListener("change", buildQuickFilter._handlerRuler);
   }
 })();

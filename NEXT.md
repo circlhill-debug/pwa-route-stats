@@ -2,6 +2,8 @@
 
 Milestone tag: v2.0.4-phase3-qf
 
+Snapshot note (Oct 25, 2025): modular baseline captured after diagnostics + AI summary extraction (`refactor/modularize-ui` branch — "v2025-10-25_modular-baseline").
+
 Scope: Phase 3 — Quick Filter and weekly compares are in place; Mix Compare removed by design. Focus on correctness, clarity, and small UX polish.
 
 Immediate Tasks

@@ -41,6 +41,7 @@ export function createDiagnostics({
 
   let residModelCache = null;
   let latestDiagnosticsContext = null;
+  const __testApi = {};
 
   const DAY_COMPARE_STORE = {
     subject: 'routeStats.dayCompare.subject',
@@ -137,9 +138,10 @@ export function createDiagnostics({
     const parcels = +row.parcels || 0;
     const letters = +row.letters || 0;
     const volume = combinedVolume(parcels, letters);
-    const routeHours = Number(row.route_minutes || row.routeMinutes || 0) / 60;
-    const officeHours = Number(row.office_minutes || row.officeMinutes || 0) / 60;
-    const totalHours = Number(row.hours || row.totalHours || (routeHours + officeHours)) || 0;
+    const routeHours = normalizeHours(row.route_minutes ?? row.routeMinutes);
+    const officeHours = normalizeHours(row.office_minutes ?? row.officeMinutes);
+    const storedHours = Number(row.hours ?? row.totalHours);
+    const totalHours = Number.isFinite(storedHours) ? storedHours : (routeHours + officeHours);
     const miles = Number(row.miles) || 0;
     const efficiencyMinutes = volume > 0 ? (routeHours * 60) / volume : null;
     return {
@@ -164,9 +166,12 @@ export function createDiagnostics({
     const valid = rows.filter(Boolean);
     if (!valid.length) return null;
     const totals = valid.reduce((acc, row) => {
-      acc.totalHours += Number(row.route_minutes || row.routeMinutes || 0) / 60 + Number(row.office_minutes || row.officeMinutes || 0) / 60;
-      acc.routeHours += Number(row.route_minutes || row.routeMinutes || 0) / 60;
-      acc.officeHours += Number(row.office_minutes || row.officeMinutes || 0) / 60;
+      const routeHours = normalizeHours(row.route_minutes ?? row.routeMinutes);
+      const officeHours = normalizeHours(row.office_minutes ?? row.officeMinutes);
+      const storedHours = Number(row.hours ?? row.totalHours);
+      acc.totalHours += Number.isFinite(storedHours) ? storedHours : (routeHours + officeHours);
+      acc.routeHours += routeHours;
+      acc.officeHours += officeHours;
       acc.parcels += +row.parcels || 0;
       acc.letters += +row.letters || 0;
       acc.miles += +row.miles || 0;
@@ -188,6 +193,60 @@ export function createDiagnostics({
       raw: { rows: valid, totals }
     };
   }
+
+  __testApi.dayMetricsFromRow = dayMetricsFromRow;
+  __testApi.aggregateDayMetrics = aggregateDayMetrics;
+
+  function computeDeltaDetails(subject, reference) {
+    if (!subject || !reference) return { rows: [], highlights: [], reasoning: '' };
+    const metricDefs = [
+      { key: 'totalHours', label: 'Total hours', decimals: 2, suffix: 'h' },
+      { key: 'routeHours', label: 'Route hours', decimals: 2, suffix: 'h' },
+      { key: 'officeHours', label: 'Office hours', decimals: 2, suffix: 'h' },
+      { key: 'parcels', label: 'Parcels', decimals: 0 },
+      { key: 'letters', label: 'Letters', decimals: 0 },
+      { key: 'volume', label: 'Volume (parcels + w×letters)', decimals: 2 },
+      { key: 'miles', label: 'Miles', decimals: 1, suffix: 'mi' },
+      { key: 'efficiencyMinutes', label: 'Route minutes per volume', decimals: 1, suffix: 'm/vol', invert: true }
+    ];
+    const rowsOut = [];
+    const highlights = [];
+
+    for (const def of metricDefs) {
+      const subjVal = subject[def.key];
+      const refVal = reference[def.key];
+      const delta = (subjVal != null && refVal != null) ? subjVal - refVal : null;
+      const pct = (refVal != null && refVal !== 0 && delta != null) ? (delta / refVal) * 100 : null;
+      const colorDelta = def.invert && pct != null ? -pct : pct;
+      const baseDisplay = delta == null ? null : formatNumber(delta, {
+        decimals: def.decimals ?? 2,
+        suffix: def.suffix ? def.suffix : '',
+        withSign: true
+      });
+      const pctTxt = pct == null || !Number.isFinite(pct) ? '' : ` (${pct >= 0 ? '+' : ''}${Math.round(pct)}%)`;
+      const deltaText = delta == null ? '—' : `${baseDisplay}${pctTxt}`;
+      const colorToken = colorDelta == null ? null : colorForDelta(colorDelta || 0).fg;
+      rowsOut.push({
+        key: def.key,
+        label: def.label,
+        subject: formatNumber(subjVal, { decimals: def.decimals ?? 2, suffix: def.suffix || '' }),
+        reference: formatNumber(refVal, { decimals: def.decimals ?? 2, suffix: def.suffix || '' }),
+        deltaText,
+        colorDelta,
+        color: colorToken,
+        pct
+      });
+      if (pct != null && Number.isFinite(pct) && Math.abs(pct) >= 10) {
+        highlights.push({ key: def.key, label: def.label, deltaText, color: colorToken, pct });
+      }
+    }
+
+    highlights.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+    const reasoning = highlights.slice(0, 3).map(h => `${h.label}: ${h.deltaText}`).join(' · ');
+    return { rows: rowsOut, highlights, reasoning };
+  }
+
+  __testApi.deltaDetails = computeDeltaDetails;
 
   function inferWeather(row) {
     const raw = String(row.weather_json || '');
@@ -686,9 +745,21 @@ export function createDiagnostics({
   function formatNumber(val, opts) {
     const decimals = opts?.decimals ?? 2;
     const suffix = opts?.suffix || '';
+    const withSign = opts?.withSign || false;
     const n = val == null ? null : Number(val);
     if (n == null || !Number.isFinite(n)) return '—';
+    if (withSign){
+      const abs = Math.abs(n).toFixed(decimals);
+      const prefix = n > 0 ? '+' : (n < 0 ? '-' : '');
+      return `${prefix}${abs}${suffix}`;
+    }
     return `${n.toFixed(decimals)}${suffix}`;
+  }
+  function normalizeHours(value){
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    if (Math.abs(n) > 24) return n / 60;
+    return n;
   }
 
   function buildDayCompare(rows) {
@@ -805,51 +876,6 @@ export function createDiagnostics({
     return `<span class="pill"${style}><small>${label}</small> <b>${value}</b></span>`;
   }
 
-    function deltaDetails(subject, reference) {
-      if (!subject || !reference) return { rows: [], highlights: [], reasoning: '' };
-      const metricDefs = [
-        { key: 'totalHours', label: 'Total hours', decimals: 2, suffix: 'h' },
-        { key: 'routeHours', label: 'Route hours', decimals: 2, suffix: 'h' },
-        { key: 'officeHours', label: 'Office hours', decimals: 2, suffix: 'h' },
-        { key: 'parcels', label: 'Parcels', decimals: 0 },
-        { key: 'letters', label: 'Letters', decimals: 0 },
-        { key: 'volume', label: 'Volume (parcels + w×letters)', decimals: 2 },
-        { key: 'miles', label: 'Miles', decimals: 1, suffix: 'mi' },
-        { key: 'efficiencyMinutes', label: 'Route minutes per volume', decimals: 1, suffix: 'm/vol', invert: true }
-      ];
-      const rowsOut = [];
-      const highlights = [];
-
-      for (const def of metricDefs) {
-        const subjVal = subject[def.key];
-        const refVal = reference[def.key];
-        const delta = (subjVal != null && refVal != null) ? subjVal - refVal : null;
-        const pct = (refVal != null && refVal !== 0 && delta != null) ? (delta / refVal) * 100 : null;
-        const colorDelta = def.invert && pct != null ? -pct : pct;
-        const baseDisplay = formatNumber(delta, { decimals: def.decimals ?? 2, suffix: def.suffix ? def.suffix : '' });
-        const pctTxt = pct == null || !Number.isFinite(pct) ? '' : ` (${pct >= 0 ? '+' : ''}${Math.round(pct)}%)`;
-        const deltaText = delta == null ? '—' : `${baseDisplay}${pctTxt}`;
-        const colorToken = colorDelta == null ? null : colorForDelta(colorDelta || 0).fg;
-        rowsOut.push({
-          key: def.key,
-          label: def.label,
-          subject: formatNumber(subjVal, { decimals: def.decimals ?? 2, suffix: def.suffix || '' }),
-          reference: formatNumber(refVal, { decimals: def.decimals ?? 2, suffix: def.suffix || '' }),
-          deltaText,
-          colorDelta,
-          color: colorToken,
-          pct
-        });
-        if (pct != null && Number.isFinite(pct) && Math.abs(pct) >= 10) {
-          highlights.push({ key: def.key, label: def.label, deltaText, color: colorToken, pct });
-        }
-      }
-
-      highlights.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
-      const reasoning = highlights.slice(0, 3).map(h => `${h.label}: ${h.deltaText}`).join(' · ');
-      return { rows: rowsOut, highlights, reasoning };
-    }
-
     function render() {
       const subjectMetrics = getSubjectMetrics(context, subjectIso());
       let referenceMetrics;
@@ -874,7 +900,7 @@ export function createDiagnostics({
       subjectLabel.textContent = subjectMetrics.label || subjectMetrics.workDate;
       referenceLabel.textContent = referenceMetrics.label || referenceMetrics.workDate;
 
-      const { rows: tableRows, highlights, reasoning } = deltaDetails(subjectMetrics, referenceMetrics);
+      const { rows: tableRows, highlights, reasoning } = computeDeltaDetails(subjectMetrics, referenceMetrics);
 
       const rowsByKey = new Map(tableRows.map(row => [row.key, row]));
 
@@ -1020,6 +1046,7 @@ export function createDiagnostics({
     getLatestDiagnosticsContext: () => latestDiagnosticsContext,
     resetDiagnosticsCache: () => {
       residModelCache = null;
-    }
+    },
+    __test: __testApi
   };
 }

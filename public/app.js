@@ -471,6 +471,7 @@
     if (typeof colorForDelta2 !== "function") throw new Error("createDiagnostics: colorForDelta is required");
     let residModelCache = null;
     let latestDiagnosticsContext = null;
+    const __testApi = {};
     const DAY_COMPARE_STORE = {
       subject: "routeStats.dayCompare.subject",
       mode: "routeStats.dayCompare.mode",
@@ -546,13 +547,15 @@
       return row ? dayMetricsFromRow(row, { source: "manualReference", label: row.work_date }) : null;
     }
     function dayMetricsFromRow(row, meta) {
+      var _a5, _b, _c;
       if (!row) return null;
       const parcels2 = +row.parcels || 0;
       const letters2 = +row.letters || 0;
       const volume = combinedVolume2(parcels2, letters2);
-      const routeHours = Number(row.route_minutes || row.routeMinutes || 0) / 60;
-      const officeHours = Number(row.office_minutes || row.officeMinutes || 0) / 60;
-      const totalHours = Number(row.hours || row.totalHours || routeHours + officeHours) || 0;
+      const routeHours = normalizeHours((_a5 = row.route_minutes) != null ? _a5 : row.routeMinutes);
+      const officeHours = normalizeHours((_b = row.office_minutes) != null ? _b : row.officeMinutes);
+      const storedHours = Number((_c = row.hours) != null ? _c : row.totalHours);
+      const totalHours = Number.isFinite(storedHours) ? storedHours : routeHours + officeHours;
       const miles2 = Number(row.miles) || 0;
       const efficiencyMinutes = volume > 0 ? routeHours * 60 / volume : null;
       return {
@@ -576,9 +579,13 @@
       const valid = rows.filter(Boolean);
       if (!valid.length) return null;
       const totals = valid.reduce((acc, row) => {
-        acc.totalHours += Number(row.route_minutes || row.routeMinutes || 0) / 60 + Number(row.office_minutes || row.officeMinutes || 0) / 60;
-        acc.routeHours += Number(row.route_minutes || row.routeMinutes || 0) / 60;
-        acc.officeHours += Number(row.office_minutes || row.officeMinutes || 0) / 60;
+        var _a5, _b, _c;
+        const routeHours = normalizeHours((_a5 = row.route_minutes) != null ? _a5 : row.routeMinutes);
+        const officeHours = normalizeHours((_b = row.office_minutes) != null ? _b : row.officeMinutes);
+        const storedHours = Number((_c = row.hours) != null ? _c : row.totalHours);
+        acc.totalHours += Number.isFinite(storedHours) ? storedHours : routeHours + officeHours;
+        acc.routeHours += routeHours;
+        acc.officeHours += officeHours;
         acc.parcels += +row.parcels || 0;
         acc.letters += +row.letters || 0;
         acc.miles += +row.miles || 0;
@@ -600,6 +607,56 @@
         raw: { rows: valid, totals }
       };
     }
+    __testApi.dayMetricsFromRow = dayMetricsFromRow;
+    __testApi.aggregateDayMetrics = aggregateDayMetrics;
+    function computeDeltaDetails(subject, reference) {
+      var _a5, _b, _c;
+      if (!subject || !reference) return { rows: [], highlights: [], reasoning: "" };
+      const metricDefs = [
+        { key: "totalHours", label: "Total hours", decimals: 2, suffix: "h" },
+        { key: "routeHours", label: "Route hours", decimals: 2, suffix: "h" },
+        { key: "officeHours", label: "Office hours", decimals: 2, suffix: "h" },
+        { key: "parcels", label: "Parcels", decimals: 0 },
+        { key: "letters", label: "Letters", decimals: 0 },
+        { key: "volume", label: "Volume (parcels + w\xD7letters)", decimals: 2 },
+        { key: "miles", label: "Miles", decimals: 1, suffix: "mi" },
+        { key: "efficiencyMinutes", label: "Route minutes per volume", decimals: 1, suffix: "m/vol", invert: true }
+      ];
+      const rowsOut = [];
+      const highlights = [];
+      for (const def of metricDefs) {
+        const subjVal = subject[def.key];
+        const refVal = reference[def.key];
+        const delta = subjVal != null && refVal != null ? subjVal - refVal : null;
+        const pct = refVal != null && refVal !== 0 && delta != null ? delta / refVal * 100 : null;
+        const colorDelta = def.invert && pct != null ? -pct : pct;
+        const baseDisplay = delta == null ? null : formatNumber(delta, {
+          decimals: (_a5 = def.decimals) != null ? _a5 : 2,
+          suffix: def.suffix ? def.suffix : "",
+          withSign: true
+        });
+        const pctTxt = pct == null || !Number.isFinite(pct) ? "" : ` (${pct >= 0 ? "+" : ""}${Math.round(pct)}%)`;
+        const deltaText = delta == null ? "\u2014" : `${baseDisplay}${pctTxt}`;
+        const colorToken = colorDelta == null ? null : colorForDelta2(colorDelta || 0).fg;
+        rowsOut.push({
+          key: def.key,
+          label: def.label,
+          subject: formatNumber(subjVal, { decimals: (_b = def.decimals) != null ? _b : 2, suffix: def.suffix || "" }),
+          reference: formatNumber(refVal, { decimals: (_c = def.decimals) != null ? _c : 2, suffix: def.suffix || "" }),
+          deltaText,
+          colorDelta,
+          color: colorToken,
+          pct
+        });
+        if (pct != null && Number.isFinite(pct) && Math.abs(pct) >= 10) {
+          highlights.push({ key: def.key, label: def.label, deltaText, color: colorToken, pct });
+        }
+      }
+      highlights.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+      const reasoning = highlights.slice(0, 3).map((h) => `${h.label}: ${h.deltaText}`).join(" \xB7 ");
+      return { rows: rowsOut, highlights, reasoning };
+    }
+    __testApi.deltaDetails = computeDeltaDetails;
     function inferWeather(row) {
       const raw = String(row.weather_json || "");
       const parts = raw.split("\xB7").map((s) => s.trim()).filter(Boolean);
@@ -1058,9 +1115,21 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       var _a5;
       const decimals = (_a5 = opts == null ? void 0 : opts.decimals) != null ? _a5 : 2;
       const suffix = (opts == null ? void 0 : opts.suffix) || "";
+      const withSign = (opts == null ? void 0 : opts.withSign) || false;
       const n = val == null ? null : Number(val);
       if (n == null || !Number.isFinite(n)) return "\u2014";
+      if (withSign) {
+        const abs = Math.abs(n).toFixed(decimals);
+        const prefix = n > 0 ? "+" : n < 0 ? "-" : "";
+        return `${prefix}${abs}${suffix}`;
+      }
       return `${n.toFixed(decimals)}${suffix}`;
+    }
+    function normalizeHours(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return 0;
+      if (Math.abs(n) > 24) return n / 60;
+      return n;
     }
     function buildDayCompare2(rows) {
       var _a5;
@@ -1165,49 +1234,6 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         const style = colorToken ? ` style="color:${colorToken}"` : "";
         return `<span class="pill"${style}><small>${label}</small> <b>${value}</b></span>`;
       }
-      function deltaDetails(subject, reference) {
-        var _a6, _b, _c;
-        if (!subject || !reference) return { rows: [], highlights: [], reasoning: "" };
-        const metricDefs = [
-          { key: "totalHours", label: "Total hours", decimals: 2, suffix: "h" },
-          { key: "routeHours", label: "Route hours", decimals: 2, suffix: "h" },
-          { key: "officeHours", label: "Office hours", decimals: 2, suffix: "h" },
-          { key: "parcels", label: "Parcels", decimals: 0 },
-          { key: "letters", label: "Letters", decimals: 0 },
-          { key: "volume", label: "Volume (parcels + w\xD7letters)", decimals: 2 },
-          { key: "miles", label: "Miles", decimals: 1, suffix: "mi" },
-          { key: "efficiencyMinutes", label: "Route minutes per volume", decimals: 1, suffix: "m/vol", invert: true }
-        ];
-        const rowsOut = [];
-        const highlights = [];
-        for (const def of metricDefs) {
-          const subjVal = subject[def.key];
-          const refVal = reference[def.key];
-          const delta = subjVal != null && refVal != null ? subjVal - refVal : null;
-          const pct = refVal != null && refVal !== 0 && delta != null ? delta / refVal * 100 : null;
-          const colorDelta = def.invert && pct != null ? -pct : pct;
-          const baseDisplay = formatNumber(delta, { decimals: (_a6 = def.decimals) != null ? _a6 : 2, suffix: def.suffix ? def.suffix : "" });
-          const pctTxt = pct == null || !Number.isFinite(pct) ? "" : ` (${pct >= 0 ? "+" : ""}${Math.round(pct)}%)`;
-          const deltaText = delta == null ? "\u2014" : `${baseDisplay}${pctTxt}`;
-          const colorToken = colorDelta == null ? null : colorForDelta2(colorDelta || 0).fg;
-          rowsOut.push({
-            key: def.key,
-            label: def.label,
-            subject: formatNumber(subjVal, { decimals: (_b = def.decimals) != null ? _b : 2, suffix: def.suffix || "" }),
-            reference: formatNumber(refVal, { decimals: (_c = def.decimals) != null ? _c : 2, suffix: def.suffix || "" }),
-            deltaText,
-            colorDelta,
-            color: colorToken,
-            pct
-          });
-          if (pct != null && Number.isFinite(pct) && Math.abs(pct) >= 10) {
-            highlights.push({ key: def.key, label: def.label, deltaText, color: colorToken, pct });
-          }
-        }
-        highlights.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
-        const reasoning = highlights.slice(0, 3).map((h) => `${h.label}: ${h.deltaText}`).join(" \xB7 ");
-        return { rows: rowsOut, highlights, reasoning };
-      }
       function render() {
         const subjectMetrics = getSubjectMetrics(context, subjectIso());
         let referenceMetrics;
@@ -1228,7 +1254,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         if (dailyMovers) dailyMovers.style.display = "block";
         subjectLabel.textContent = subjectMetrics.label || subjectMetrics.workDate;
         referenceLabel.textContent = referenceMetrics.label || referenceMetrics.workDate;
-        const { rows: tableRows, highlights, reasoning } = deltaDetails(subjectMetrics, referenceMetrics);
+        const { rows: tableRows, highlights, reasoning } = computeDeltaDetails(subjectMetrics, referenceMetrics);
         const rowsByKey = new Map(tableRows.map((row) => [row.key, row]));
         const pillColorFor = (key) => {
           const row = rowsByKey.get(key);
@@ -1344,7 +1370,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       getLatestDiagnosticsContext: () => latestDiagnosticsContext,
       resetDiagnosticsCache: () => {
         residModelCache = null;
-      }
+      },
+      __test: __testApi
     };
   }
 

@@ -19,7 +19,8 @@ export function createDiagnostics({
   getCurrentLetterWeight,
   setCurrentLetterWeight,
   combinedVolume,
-  routeAdjustedMinutes
+  routeAdjustedMinutes,
+  colorForDelta
 }) {
   if (typeof getFlags !== 'function') throw new Error('createDiagnostics: getFlags is required');
   if (typeof filterRowsForView !== 'function') throw new Error('createDiagnostics: filterRowsForView is required');
@@ -36,6 +37,7 @@ export function createDiagnostics({
   if (typeof setCurrentLetterWeight !== 'function') throw new Error('createDiagnostics: setCurrentLetterWeight is required');
   if (typeof combinedVolume !== 'function') throw new Error('createDiagnostics: combinedVolume is required');
   if (typeof routeAdjustedMinutes !== 'function') throw new Error('createDiagnostics: routeAdjustedMinutes is required');
+  if (typeof colorForDelta !== 'function') throw new Error('createDiagnostics: colorForDelta is required');
 
   let residModelCache = null;
   let latestDiagnosticsContext = null;

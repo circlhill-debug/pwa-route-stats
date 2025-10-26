@@ -417,7 +417,8 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
       try{ localStorage.setItem('routeStats.letterWeight', String(CURRENT_LETTER_WEIGHT)); }catch(_){ }
     },
     combinedVolume,
-    routeAdjustedMinutes
+    routeAdjustedMinutes,
+    colorForDelta
   });
 
   const {

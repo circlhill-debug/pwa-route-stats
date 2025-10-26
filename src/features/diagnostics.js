@@ -869,8 +869,10 @@ export function createDiagnostics({
 
       const { rows: tableRows, highlights, reasoning } = deltaDetails(subjectMetrics, referenceMetrics);
 
+      const rowsByKey = new Map(tableRows.map(row => [row.key, row]));
+
       const pillColorFor = (key) => {
-        const row = tableRows.find(r => r.key === key);
+        const row = rowsByKey.get(key);
         if (!row || row.colorDelta == null) return null;
         const { fg } = colorForDelta(row.colorDelta || 0);
         return fg;

@@ -1222,8 +1222,9 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         subjectLabel.textContent = subjectMetrics.label || subjectMetrics.workDate;
         referenceLabel.textContent = referenceMetrics.label || referenceMetrics.workDate;
         const { rows: tableRows, highlights, reasoning } = deltaDetails(subjectMetrics, referenceMetrics);
+        const rowsByKey = new Map(tableRows.map((row) => [row.key, row]));
         const pillColorFor = (key) => {
-          const row = tableRows.find((r) => r.key === key);
+          const row = rowsByKey.get(key);
           if (!row || row.colorDelta == null) return null;
           const { fg } = colorForDelta(row.colorDelta || 0);
           return fg;

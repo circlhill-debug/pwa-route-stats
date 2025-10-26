@@ -20,7 +20,7 @@
     const shift = (w + 6) % 7;
     return dt.startOf("day").minus({ days: shift });
   }
-  function endOfWeekSunday(dt) {
+  function endOfWeekSunday2(dt) {
     return startOfWeekMonday(dt).plus({ days: 6 }).endOf("day");
   }
   function dateInRangeISO(iso, fromIso, toIso) {
@@ -165,9 +165,9 @@
         if (saved && saved.weekStart === weekStartIso) return saved;
       }
       const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const endLast = endOfWeekSunday(now.minus({ weeks: 1 }));
+      const endLast = endOfWeekSunday2(now.minus({ weeks: 1 }));
       const startPrev = startOfWeekMonday(now.minus({ weeks: 2 }));
-      const endPrev = endOfWeekSunday(now.minus({ weeks: 2 }));
+      const endPrev = endOfWeekSunday2(now.minus({ weeks: 2 }));
       const inRange = (r, from, to) => {
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
         return d >= from && d <= to;
@@ -212,7 +212,7 @@
       const weeksArr = [];
       for (let w = 1; w <= weeks; w++) {
         const s = startOfWeekMonday(now.minus({ weeks: w }));
-        const e = endOfWeekSunday(now.minus({ weeks: w }));
+        const e = endOfWeekSunday2(now.minus({ weeks: w }));
         weeksArr.push({ s, e });
       }
       const perW = (fn) => {
@@ -1127,12 +1127,6 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       if (Math.abs(n) > 24) return n / 60;
       return n;
     }
-    function normalizeHours(value) {
-      const n = Number(value);
-      if (!Number.isFinite(n)) return 0;
-      if (Math.abs(n) > 24) return n / 60;
-      return n;
-    }
     function buildDayCompare2(rows) {
       var _a5;
       const flags = getFlags();
@@ -1889,13 +1883,13 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       rows = filterRowsForView2(rows || []);
       const today = DateTime.now().setZone(ZONE);
       const weekStart0 = startOfWeekMonday(today);
-      const weekEnd0 = endOfWeekSunday(today);
+      const weekEnd0 = endOfWeekSunday2(today);
       const weekStart1 = startOfWeekMonday(today.minus({ weeks: 1 }));
-      const weekEnd1 = endOfWeekSunday(today.minus({ weeks: 1 }));
+      const weekEnd1 = endOfWeekSunday2(today.minus({ weeks: 1 }));
       const weekStart2 = startOfWeekMonday(today.minus({ weeks: 2 }));
-      const weekEnd2 = endOfWeekSunday(today.minus({ weeks: 2 }));
+      const weekEnd2 = endOfWeekSunday2(today.minus({ weeks: 2 }));
       const weekStart3 = startOfWeekMonday(today.minus({ weeks: 3 }));
-      const weekEnd3 = endOfWeekSunday(today.minus({ weeks: 3 }));
+      const weekEnd3 = endOfWeekSunday2(today.minus({ weeks: 3 }));
       const inRange = (r, from, to) => {
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
         return d >= from && d <= to;
@@ -3116,68 +3110,54 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           el.style.display = "none";
           return;
         }
+        const now = DateTime.now().setZone(ZONE);
+        const isWednesday = now.weekday === 3;
+        const isEvening = now.hour >= 17;
+        if (!(isWednesday && isEvening)) {
+          el.style.display = "none";
+          return;
+        }
         const scoped = filterRowsForView2(rows || []).filter((r) => r && r.status !== "off");
         if (!scoped.length) {
           el.style.display = "none";
           el.textContent = "\u2014";
           return;
         }
-        const now = DateTime.now().setZone(ZONE);
         const startThis = startOfWeekMonday(now);
-        const endThis = now.endOf("day");
-        const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-        const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf("day");
+        const endToday = now.endOf("day");
+        const lastStart = startOfWeekMonday(now.minus({ weeks: 1 }));
+        const lastEnd = endOfWeekSunday(now.minus({ weeks: 1 }));
+        const priorStart = startOfWeekMonday(now.minus({ weeks: 2 }));
+        const priorEnd = endOfWeekSunday(now.minus({ weeks: 2 }));
         const inRange = (row, from, to) => {
           const d = DateTime.fromISO(row.work_date, { zone: ZONE });
           return d >= from && d <= to;
         };
-        const W0 = scoped.filter((r) => inRange(r, startThis, endThis));
-        const W1 = scoped.filter((r) => inRange(r, startLast, lastEndSame));
-        if (!W0.length || !W1.length) {
-          el.style.display = "none";
-          el.textContent = "\u2014";
-          return;
-        }
-        const sum = (arr, fn) => arr.reduce((total, item) => total + (fn(item) || 0), 0);
-        const hours0 = sum(W0, (r) => +r.hours || 0);
-        const hours1 = sum(W1, (r) => +r.hours || 0);
-        const parcels0 = sum(W0, (r) => +r.parcels || 0);
-        const parcels1 = sum(W1, (r) => +r.parcels || 0);
-        const letters0 = sum(W0, (r) => +r.letters || 0);
-        const letters1 = sum(W1, (r) => +r.letters || 0);
-        const letterWeight = getLetterWeightForSummary2(scoped);
-        const volume = (p, l) => p + letterWeight * l;
-        const volume0 = volume(parcels0, letters0);
-        const volume1 = volume(parcels1, letters1);
-        const route0 = sum(W0, (r) => routeAdjustedHours2(r));
-        const route1 = sum(W1, (r) => routeAdjustedHours2(r));
-        const efficiency0 = volume0 > 0 && route0 > 0 ? route0 / volume0 : null;
-        const efficiency1 = volume1 > 0 && route1 > 0 ? route1 / volume1 : null;
-        const pct = (current, baseline) => baseline > 0 ? Math.round((current - baseline) / baseline * 100) : null;
-        const format = (label, delta) => {
-          if (delta == null) return null;
-          const clamped = Math.max(-99, Math.min(99, delta));
-          const arrow = clamped >= 0 ? "\u2191" : "\u2193";
-          return `${label} ${arrow} ${Math.abs(clamped)}%`;
-        };
-        const parts = [];
-        const hoursDelta = pct(hours0, hours1);
-        const volumeDelta = pct(volume0, volume1);
-        const efficiencyDelta = efficiency0 != null && efficiency1 != null && efficiency1 > 0 ? Math.round((efficiency0 - efficiency1) / efficiency1 * 100) : null;
-        const pushIf = (label, delta) => {
-          const text = format(label, delta);
-          if (text) parts.push(text);
-        };
-        pushIf("Hours", hoursDelta);
-        pushIf("Volume", volumeDelta);
-        pushIf("Efficiency", efficiencyDelta);
-        if (!parts.length) {
-          el.textContent = "Similar to last week.";
-        } else {
-          el.textContent = parts.join(" \u2022 ");
-        }
+        const worked = scoped.filter((r) => inRange(r, priorStart, endToday));
+        const thisWeek = worked.filter((r) => inRange(r, startThis, endToday));
+        const lastWeek = worked.filter((r) => inRange(r, lastStart, lastEnd));
+        const priorWeek = worked.filter((r) => inRange(r, priorStart, priorEnd));
+        const daysWorked = (arr) => arr.filter((row) => (+row.hours || 0) > 0).length;
+        const sumHours = (arr) => arr.reduce((total, row) => total + (+row.hours || 0), 0);
+        const avg = (total, days) => days ? total / days : null;
+        const pct = (current, baseline) => current == null || baseline == null || baseline === 0 ? null : (current - baseline) / baseline * 100;
+        const thisDays = daysWorked(thisWeek);
+        const lastDays = daysWorked(lastWeek);
+        const priorDays = daysWorked(priorWeek);
+        const carryDelta = pct(avg(sumHours(lastWeek), lastDays), avg(sumHours(priorWeek), priorDays));
+        const targetDelta = pct(avg(sumHours(thisWeek), thisDays), avg(sumHours(lastWeek), lastDays));
+        const progress = Math.min(1, thisDays / 5);
+        const blended = carryDelta == null && targetDelta == null ? null : carryDelta == null ? targetDelta : targetDelta == null ? carryDelta : carryDelta * (1 - progress) + targetDelta * progress;
+        const rounded = blended == null ? null : Math.round(blended);
+        let message;
+        if (rounded == null || Math.abs(rounded) <= 5) message = "Similar to last week \u2014 average days.";
+        else if (rounded > 15) message = "Much more intense than last week. Deep breath.";
+        else if (rounded > 5) message = "A bit heavier than last week.";
+        else if (rounded < -15) message = "Much lighter than last week.";
+        else message = "A bit lighter than last week.";
+        el.textContent = message;
         el.style.display = "block";
-        el.title = `W1 vs W2 \u2014 Hours: ${hours0.toFixed(1)}h vs ${hours1.toFixed(1)}h \xB7 Volume: ${Math.round(volume0)} vs ${Math.round(volume1)} \xB7 Efficiency: ${efficiency0 != null ? efficiency0.toFixed(2) : "\u2014"} vs ${efficiency1 != null ? efficiency1.toFixed(2) : "\u2014"}`;
+        el.removeAttribute("title");
       } catch (_err) {
         el.style.display = "none";
       }
@@ -3424,12 +3404,12 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     };
     for (let w = 1; w <= weeksToScan; w++) {
       const start2 = startOfWeekMonday(now.minus({ weeks: w }));
-      const end2 = endOfWeekSunday(now.minus({ weeks: w }));
+      const end2 = endOfWeekSunday2(now.minus({ weeks: w }));
       const bucket = worked.filter((r) => inRange(r, start2, end2) && (!excludeVacation || !isVacationDate(r.work_date)));
       if (bucket.length) return { start: start2, end: end2, rows: bucket };
     }
     const fallbackStart = startOfWeekMonday(now.minus({ weeks: 1 }));
-    const fallbackEnd = endOfWeekSunday(now.minus({ weeks: 1 }));
+    const fallbackEnd = endOfWeekSunday2(now.minus({ weeks: 1 }));
     return {
       start: fallbackStart,
       end: fallbackEnd,
@@ -5199,9 +5179,9 @@ Score: ${overallScore}/10 (higher is better)`;
     const weekStart = startOfWeekMonday(today);
     const weekEnd = today.endOf("day");
     const prevWeekStart = startOfWeekMonday(today.minus({ weeks: 1 }));
-    const prevWeekEnd = endOfWeekSunday(today.minus({ weeks: 1 }));
+    const prevWeekEnd = endOfWeekSunday2(today.minus({ weeks: 1 }));
     const priorWeekStart = startOfWeekMonday(today.minus({ weeks: 2 }));
-    const priorWeekEnd = endOfWeekSunday(today.minus({ weeks: 2 }));
+    const priorWeekEnd = endOfWeekSunday2(today.minus({ weeks: 2 }));
     const inRange = (r, from, to) => {
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       return d >= from && d <= to;
@@ -6017,7 +5997,7 @@ Score: ${overallScore}/10 (higher is better)`;
         const weeksBack = 4;
         const ranges = [];
         for (let w = 1; w <= weeksBack; w++) {
-          ranges.push({ s: startOfWeekMonday(now.minus({ weeks: w })), e: endOfWeekSunday(now.minus({ weeks: w })) });
+          ranges.push({ s: startOfWeekMonday(now.minus({ weeks: w })), e: endOfWeekSunday2(now.minus({ weeks: w })) });
         }
         const val = document.getElementById("uspsHourlyRateVal");
         if (!cfg || cfg.annualSalary == null) {

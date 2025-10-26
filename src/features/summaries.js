@@ -279,6 +279,14 @@ export function createSummariesFeature({
         return;
       }
 
+      const now = DateTime.now().setZone(ZONE);
+      const isWednesday = now.weekday === 3;
+      const isEvening = now.hour >= 17;
+      if (!(isWednesday && isEvening)) {
+        el.style.display = 'none';
+        return;
+      }
+
       const scoped = filterRowsForView(rows || []).filter(r => r && r.status !== 'off');
       if (!scoped.length) {
         el.style.display = 'none';
@@ -286,78 +294,58 @@ export function createSummariesFeature({
         return;
       }
 
-      const now = DateTime.now().setZone(ZONE);
       const startThis = startOfWeekMonday(now);
-      const endThis = now.endOf('day');
-      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf('day');
+      const endToday = now.endOf('day');
+      const lastStart = startOfWeekMonday(now.minus({ weeks: 1 }));
+      const lastEnd = endOfWeekSunday(now.minus({ weeks: 1 }));
+      const priorStart = startOfWeekMonday(now.minus({ weeks: 2 }));
+      const priorEnd = endOfWeekSunday(now.minus({ weeks: 2 }));
       const inRange = (row, from, to) => {
         const d = DateTime.fromISO(row.work_date, { zone: ZONE });
         return d >= from && d <= to;
       };
 
-      const W0 = scoped.filter(r => inRange(r, startThis, endThis));
-      const W1 = scoped.filter(r => inRange(r, startLast, lastEndSame));
-      if (!W0.length || !W1.length) {
-        el.style.display = 'none';
-        el.textContent = '—';
-        return;
-      }
+      const worked = scoped.filter(r => inRange(r, priorStart, endToday));
+      const thisWeek = worked.filter(r => inRange(r, startThis, endToday));
+      const lastWeek = worked.filter(r => inRange(r, lastStart, lastEnd));
+      const priorWeek = worked.filter(r => inRange(r, priorStart, priorEnd));
 
-      const sum = (arr, fn) => arr.reduce((total, item) => total + (fn(item) || 0), 0);
-      const hours0 = sum(W0, r => +r.hours || 0);
-      const hours1 = sum(W1, r => +r.hours || 0);
-      const parcels0 = sum(W0, r => +r.parcels || 0);
-      const parcels1 = sum(W1, r => +r.parcels || 0);
-      const letters0 = sum(W0, r => +r.letters || 0);
-      const letters1 = sum(W1, r => +r.letters || 0);
-      const letterWeight = getLetterWeightForSummary(scoped);
-      const volume = (p, l) => p + letterWeight * l;
-      const volume0 = volume(parcels0, letters0);
-      const volume1 = volume(parcels1, letters1);
-      const route0 = sum(W0, r => routeAdjustedHours(r));
-      const route1 = sum(W1, r => routeAdjustedHours(r));
-      const efficiency0 = volume0 > 0 && route0 > 0 ? route0 / volume0 : null;
-      const efficiency1 = volume1 > 0 && route1 > 0 ? route1 / volume1 : null;
+      const daysWorked = arr => arr.filter(row => (+row.hours || 0) > 0).length;
+      const sumHours = arr => arr.reduce((total, row) => total + (+row.hours || 0), 0);
+      const avg = (total, days) => (days ? total / days : null);
+      const pct = (current, baseline) => (current == null || baseline == null || baseline === 0 ? null : ((current - baseline) / baseline) * 100);
 
-      const pct = (current, baseline) => (baseline > 0 ? Math.round(((current - baseline) / baseline) * 100) : null);
-      const format = (label, delta) => {
-        if (delta == null) return null;
-        const clamped = Math.max(-99, Math.min(99, delta));
-        const arrow = clamped >= 0 ? '↑' : '↓';
-        return `${label} ${arrow} ${Math.abs(clamped)}%`;
-      };
+      const thisDays = daysWorked(thisWeek);
+      const lastDays = daysWorked(lastWeek);
+      const priorDays = daysWorked(priorWeek);
+      const carryDelta = pct(avg(sumHours(lastWeek), lastDays), avg(sumHours(priorWeek), priorDays));
+      const targetDelta = pct(avg(sumHours(thisWeek), thisDays), avg(sumHours(lastWeek), lastDays));
+      const progress = Math.min(1, thisDays / 5);
 
-      const parts = [];
-      const hoursDelta = pct(hours0, hours1);
-      const volumeDelta = pct(volume0, volume1);
-      const efficiencyDelta = efficiency0 != null && efficiency1 != null && efficiency1 > 0
-        ? Math.round(((efficiency0 - efficiency1) / efficiency1) * 100)
-        : null;
+      const blended =
+        carryDelta == null && targetDelta == null
+          ? null
+          : carryDelta == null
+            ? targetDelta
+            : targetDelta == null
+              ? carryDelta
+              : (carryDelta * (1 - progress)) + (targetDelta * progress);
 
-      const pushIf = (label, delta) => {
-        const text = format(label, delta);
-        if (text) parts.push(text);
-      };
+      const rounded = blended == null ? null : Math.round(blended);
+      let message;
+      if (rounded == null || Math.abs(rounded) <= 5) message = 'Similar to last week — average days.';
+      else if (rounded > 15) message = 'Much more intense than last week. Deep breath.';
+      else if (rounded > 5) message = 'A bit heavier than last week.';
+      else if (rounded < -15) message = 'Much lighter than last week.';
+      else message = 'A bit lighter than last week.';
 
-      pushIf('Hours', hoursDelta);
-      pushIf('Volume', volumeDelta);
-      pushIf('Efficiency', efficiencyDelta);
-
-      if (!parts.length) {
-        el.textContent = 'Similar to last week.';
-      } else {
-        el.textContent = parts.join(' • ');
-      }
+      el.textContent = message;
       el.style.display = 'block';
-      el.title = `W1 vs W2 — Hours: ${hours0.toFixed(1)}h vs ${hours1.toFixed(1)}h · Volume: ${Math.round(volume0)} vs ${Math.round(volume1)} · Efficiency: ${
-        efficiency0 != null ? efficiency0.toFixed(2) : '—'
-      } vs ${efficiency1 != null ? efficiency1.toFixed(2) : '—'}`;
+      el.removeAttribute('title');
     } catch (_err) {
       el.style.display = 'none';
     }
   }
-
   return {
     getLetterWeightForSummary,
     buildSmartSummary,

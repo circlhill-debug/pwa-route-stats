@@ -610,7 +610,7 @@
     __testApi.dayMetricsFromRow = dayMetricsFromRow;
     __testApi.aggregateDayMetrics = aggregateDayMetrics;
     function computeDeltaDetails(subject, reference) {
-      var _a5, _b, _c;
+      var _a5, _b, _c, _d, _e;
       if (!subject || !reference) return { rows: [], highlights: [], reasoning: "" };
       const metricDefs = [
         { key: "totalHours", label: "Total hours", decimals: 2, suffix: "h" },
@@ -630,30 +630,32 @@
         const delta = subjVal != null && refVal != null ? subjVal - refVal : null;
         const pct = refVal != null && refVal !== 0 && delta != null ? delta / refVal * 100 : null;
         const colorDelta = def.invert && pct != null ? -pct : pct;
-        const baseDisplay = delta == null ? null : formatNumber(delta, {
-          decimals: (_a5 = def.decimals) != null ? _a5 : 2,
-          suffix: def.suffix ? def.suffix : "",
-          withSign: true
-        });
+        const displayDelta = delta == null ? "\u2014" : formatNumber(delta, { decimals: (_a5 = def.decimals) != null ? _a5 : 2, suffix: def.suffix || "" });
         const pctTxt = pct == null || !Number.isFinite(pct) ? "" : ` (${pct >= 0 ? "+" : ""}${Math.round(pct)}%)`;
-        const deltaText = delta == null ? "\u2014" : `${baseDisplay}${pctTxt}`;
-        const colorToken = colorDelta == null ? null : colorForDelta2(colorDelta || 0).fg;
+        const deltaText = delta == null ? "\u2014" : `${displayDelta}${pctTxt}`;
+        const subjectText = formatNumber(subjVal, { decimals: (_b = def.decimals) != null ? _b : 2, suffix: def.suffix || "" });
+        const referenceText = formatNumber(refVal, { decimals: (_c = def.decimals) != null ? _c : 2, suffix: def.suffix || "" });
+        const color = colorForDelta2(colorDelta != null ? colorDelta : 0).fg;
         rowsOut.push({
           key: def.key,
           label: def.label,
-          subject: formatNumber(subjVal, { decimals: (_b = def.decimals) != null ? _b : 2, suffix: def.suffix || "" }),
-          reference: formatNumber(refVal, { decimals: (_c = def.decimals) != null ? _c : 2, suffix: def.suffix || "" }),
+          subjectText,
+          referenceText,
           deltaText,
-          colorDelta,
-          color: colorToken,
-          pct
+          color,
+          delta,
+          pct,
+          score: Math.abs((_d = pct != null ? pct : delta) != null ? _d : 0)
         });
-        if (pct != null && Number.isFinite(pct) && Math.abs(pct) >= 10) {
-          highlights.push({ key: def.key, label: def.label, deltaText, color: colorToken, pct });
+        if (delta != null) {
+          highlights.push({ key: def.key, label: def.label, deltaText, color, score: Math.abs((_e = pct != null ? pct : delta) != null ? _e : 0) });
         }
       }
-      highlights.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
-      const reasoning = highlights.slice(0, 3).map((h) => `${h.label}: ${h.deltaText}`).join(" \xB7 ");
+      highlights.sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
+      const reasoningBits = [];
+      if (subject.reason) reasoningBits.push(`Subject reason: ${subject.reason}`);
+      if (reference.reason) reasoningBits.push(`Reference reason: ${reference.reason}`);
+      const reasoning = reasoningBits.join(" \xB7 ");
       return { rows: rowsOut, highlights, reasoning };
     }
     __testApi.deltaDetails = computeDeltaDetails;
@@ -1115,15 +1117,15 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       var _a5;
       const decimals = (_a5 = opts == null ? void 0 : opts.decimals) != null ? _a5 : 2;
       const suffix = (opts == null ? void 0 : opts.suffix) || "";
-      const withSign = (opts == null ? void 0 : opts.withSign) || false;
       const n = val == null ? null : Number(val);
       if (n == null || !Number.isFinite(n)) return "\u2014";
-      if (withSign) {
-        const abs = Math.abs(n).toFixed(decimals);
-        const prefix = n > 0 ? "+" : n < 0 ? "-" : "";
-        return `${prefix}${abs}${suffix}`;
-      }
       return `${n.toFixed(decimals)}${suffix}`;
+    }
+    function normalizeHours(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return 0;
+      if (Math.abs(n) > 24) return n / 60;
+      return n;
     }
     function normalizeHours(value) {
       const n = Number(value);
@@ -1230,9 +1232,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         if (metric.notes) parts.push(`Notes: ${metric.notes}`);
         return parts.join(" \u2022 ");
       }
-      function pillHtml(label, value, colorToken) {
-        const style = colorToken ? ` style="color:${colorToken}"` : "";
-        return `<span class="pill"${style}><small>${label}</small> <b>${value}</b></span>`;
+      function pillHtml(label, value) {
+        return `<span class="pill"><small>${label}</small> <b>${value}</b></span>`;
       }
       function render() {
         const subjectMetrics = getSubjectMetrics(context, subjectIso());
@@ -1255,40 +1256,54 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         subjectLabel.textContent = subjectMetrics.label || subjectMetrics.workDate;
         referenceLabel.textContent = referenceMetrics.label || referenceMetrics.workDate;
         const { rows: tableRows, highlights, reasoning } = computeDeltaDetails(subjectMetrics, referenceMetrics);
-        const rowsByKey = new Map(tableRows.map((row) => [row.key, row]));
-        const pillColorFor = (key) => {
-          const row = rowsByKey.get(key);
-          if (!row || row.colorDelta == null) return null;
-          const { fg } = colorForDelta2(row.colorDelta || 0);
-          return fg;
-        };
-        const subjectPillData = [
-          { key: "totalHours", label: "Total", value: `${formatNumber(subjectMetrics.totalHours, { decimals: 2, suffix: "h" })}` },
-          { key: "routeHours", label: "Route", value: `${formatNumber(subjectMetrics.routeHours, { decimals: 2, suffix: "h" })}` },
-          { key: "officeHours", label: "Office", value: `${formatNumber(subjectMetrics.officeHours, { decimals: 2, suffix: "h" })}` },
-          { key: "volume", label: "Volume", value: `${formatNumber(subjectMetrics.volume, { decimals: 2 })}` }
-        ];
-        subjectPills.innerHTML = subjectPillData.map((p) => pillHtml(p.label, p.value, pillColorFor(p.key))).join("");
-        const referencePillData = [
-          { key: "totalHours", label: "Total", value: `${formatNumber(referenceMetrics.totalHours, { decimals: 2, suffix: "h" })}` },
-          { key: "routeHours", label: "Route", value: `${formatNumber(referenceMetrics.routeHours, { decimals: 2, suffix: "h" })}` },
-          { key: "officeHours", label: "Office", value: `${formatNumber(referenceMetrics.officeHours, { decimals: 2, suffix: "h" })}` },
-          { key: "volume", label: "Volume", value: `${formatNumber(referenceMetrics.volume, { decimals: 2 })}` }
-        ];
-        referencePills.innerHTML = referencePillData.map((p) => pillHtml(p.label, p.value, pillColorFor(p.key))).join("");
+        subjectPills.innerHTML = [
+          pillHtml("Total", formatNumber(subjectMetrics.totalHours, { decimals: 2, suffix: "h" })),
+          pillHtml("Route", formatNumber(subjectMetrics.routeHours, { decimals: 2, suffix: "h" })),
+          pillHtml("Office", formatNumber(subjectMetrics.officeHours, { decimals: 2, suffix: "h" })),
+          pillHtml("Volume", formatNumber(subjectMetrics.volume, { decimals: 2 })),
+          pillHtml("Eff.", formatNumber(subjectMetrics.efficiencyMinutes, { decimals: 1, suffix: "m/vol" }))
+        ].join(" ");
+        referencePills.innerHTML = [
+          pillHtml("Total", formatNumber(referenceMetrics.totalHours, { decimals: 2, suffix: "h" })),
+          pillHtml("Route", formatNumber(referenceMetrics.routeHours, { decimals: 2, suffix: "h" })),
+          pillHtml("Office", formatNumber(referenceMetrics.officeHours, { decimals: 2, suffix: "h" })),
+          pillHtml("Volume", formatNumber(referenceMetrics.volume, { decimals: 2 })),
+          pillHtml("Eff.", formatNumber(referenceMetrics.efficiencyMinutes, { decimals: 1, suffix: "m/vol" }))
+        ].join(" ");
         subjectNotes.textContent = summarizeExtras(subjectMetrics) || "\u2014";
         referenceNotes.textContent = summarizeExtras(referenceMetrics) || "\u2014";
         tableBody.innerHTML = tableRows.map((row) => {
-          const deltaClass = row.colorDelta == null ? "" : row.colorDelta > 0 ? "pos" : "neg";
+          const color = row.color || "var(--muted)";
           return `<tr>
-            <td>${row.label}</td>
-            <td>${row.subject}</td>
-            <td>${row.reference}</td>
-            <td class="${deltaClass}"${row.color ? ` style="color:${row.color}"` : ""}>${row.deltaText}</td>
+            <td style="padding:6px 4px">${row.label}</td>
+            <td style="padding:6px 4px;text-align:right">${row.subjectText}</td>
+            <td style="padding:6px 4px;text-align:right">${row.referenceText}</td>
+            <td style="padding:6px 4px;text-align:right;color:${color}">${row.deltaText}</td>
           </tr>`;
         }).join("");
-        highlightsRow.innerHTML = highlights.slice(0, 3).map((h) => `<span class="pill ${h.pct >= 0 ? "pos" : "neg"}"${h.color ? ` style="color:${h.color}"` : ""}><small>${h.label}</small> <b>${h.deltaText}</b></span>`).join("");
-        reasoningEl.textContent = reasoning || "No major differences detected.";
+        if (dailyMovers) {
+          if (tableRows.length) {
+            const moverKeys = ["totalHours", "routeHours", "officeHours"];
+            const moverLabels = {
+              totalHours: "Total",
+              routeHours: "Route",
+              officeHours: "Office"
+            };
+            dailyMovers.innerHTML = moverKeys.map((key) => {
+              const row = tableRows.find((r) => r.key === key);
+              const text = row ? row.deltaText : "\u2014";
+              const color = row ? row.color || "var(--muted)" : "var(--muted)";
+              return `<span class="pill" style="border-color:var(--border);color:${color}"><small>${moverLabels[key]}</small> <b>${text}</b></span>`;
+            }).join(" ");
+            dailyMovers.style.display = "flex";
+          } else {
+            dailyMovers.style.display = "none";
+            dailyMovers.innerHTML = "";
+          }
+        }
+        const candidateHighlights = highlights.length ? highlights : tableRows.map((row) => ({ label: row.label, deltaText: row.deltaText, color: row.color || "var(--muted)" }));
+        highlightsRow.innerHTML = candidateHighlights.slice(0, 3).map((h) => `<span class="pill" style="border-color:var(--border);color:${h.color || "var(--muted)"}"><small>${h.label}</small> <b>${h.deltaText}</b></span>`).join(" ") || '<span class="pill"><small>\u0394</small> <b style="color:var(--muted)">Similar</b></span>';
+        reasoningEl.textContent = reasoning || "";
         localStorage.setItem(DAY_COMPARE_STORE.subject, subjectIso());
         localStorage.setItem(DAY_COMPARE_STORE.mode, mode);
         if (mode === "manual" && manualSelect.value) {

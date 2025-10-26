@@ -66,14 +66,15 @@ describe('day metrics normalization', () => {
 });
 
 describe('delta details formatting', () => {
-  it('includes signed deltas and percent change', () => {
+  it('includes delta value and percent change', () => {
     const testApi = harness();
     const subject = testApi.dayMetricsFromRow(createSubject(120, 60, 6, 2, 8), {});
     const reference = testApi.dayMetricsFromRow(createSubject(100, 50, 5, 1.5, 6.5), {});
     const { rows } = testApi.deltaDetails(subject, reference);
     const totalRow = rows.find(r => r.key === 'totalHours');
     expect(totalRow).toBeTruthy();
-    expect(totalRow.deltaText).toContain('+');
+    expect(totalRow.deltaText).toMatch(/^\d/);
+    expect(totalRow.deltaText).toContain('(+');
     expect(totalRow.deltaText).toContain('%');
     expect(totalRow.deltaText).toMatch(/h/);
   });

@@ -21,7 +21,7 @@ Immediate Tasks
 Quality/Reliability
 - Keep headers/text visible before charts; charts use text fallbacks.
 - Maintain service worker cache bumps on user‑visible changes.
-  - Bumped to rs-pwa-v2025-10-25-07
+  - Bumped to rs-pwa-v2025-10-25-08
 
 ---
 

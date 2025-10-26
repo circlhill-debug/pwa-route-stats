@@ -1184,21 +1184,26 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           const delta = subjVal != null && refVal != null ? subjVal - refVal : null;
           const pct = refVal != null && refVal !== 0 && delta != null ? delta / refVal * 100 : null;
           const colorDelta = def.invert && pct != null ? -pct : pct;
-          const displayDelta = delta == null ? "\u2014" : formatNumber(delta, { decimals: (_a6 = def.decimals) != null ? _a6 : 2, suffix: def.suffix ? def.suffix : "" });
+          const baseDisplay = formatNumber(delta, { decimals: (_a6 = def.decimals) != null ? _a6 : 2, suffix: def.suffix ? def.suffix : "" });
           const pctTxt = pct == null || !Number.isFinite(pct) ? "" : ` (${pct >= 0 ? "+" : ""}${Math.round(pct)}%)`;
+          const deltaText = delta == null ? "\u2014" : `${baseDisplay}${pctTxt}`;
+          const colorToken = colorDelta == null ? null : colorForDelta(colorDelta || 0).fg;
           rowsOut.push({
+            key: def.key,
             label: def.label,
             subject: formatNumber(subjVal, { decimals: (_b = def.decimals) != null ? _b : 2, suffix: def.suffix || "" }),
             reference: formatNumber(refVal, { decimals: (_c = def.decimals) != null ? _c : 2, suffix: def.suffix || "" }),
-            delta: delta == null ? "\u2014" : `${displayDelta}${pctTxt}`,
-            colorDelta
+            deltaText,
+            colorDelta,
+            color: colorToken,
+            pct
           });
           if (pct != null && Number.isFinite(pct) && Math.abs(pct) >= 10) {
-            highlights.push({ label: def.label, pct, delta });
+            highlights.push({ key: def.key, label: def.label, deltaText, color: colorToken, pct });
           }
         }
         highlights.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
-        const reasoning = highlights.slice(0, 3).map((h) => `${h.label}: ${formatNumber(h.delta, { decimals: 2 })} (${h.pct >= 0 ? "+" : ""}${Math.round(h.pct)}%)`).join(" \xB7 ");
+        const reasoning = highlights.slice(0, 3).map((h) => `${h.label}: ${h.deltaText}`).join(" \xB7 ");
         return { rows: rowsOut, highlights, reasoning };
       }
       function render() {
@@ -1251,10 +1256,10 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             <td>${row.label}</td>
             <td>${row.subject}</td>
             <td>${row.reference}</td>
-            <td class="${deltaClass}">${row.delta}</td>
+            <td class="${deltaClass}"${row.color ? ` style="color:${row.color}"` : ""}>${row.deltaText}</td>
           </tr>`;
         }).join("");
-        highlightsRow.innerHTML = highlights.slice(0, 3).map((h) => `<span class="pill ${h.pct >= 0 ? "pos" : "neg"}"><small>${h.label}</small> <b>${h.delta >= 0 ? "+" : ""}${formatNumber(h.delta, { decimals: 2 })}</b></span>`).join("");
+        highlightsRow.innerHTML = highlights.slice(0, 3).map((h) => `<span class="pill ${h.pct >= 0 ? "pos" : "neg"}"${h.color ? ` style="color:${h.color}"` : ""}><small>${h.label}</small> <b>${h.deltaText}</b></span>`).join("");
         reasoningEl.textContent = reasoning || "No major differences detected.";
         localStorage.setItem(DAY_COMPARE_STORE.subject, subjectIso());
         localStorage.setItem(DAY_COMPARE_STORE.mode, mode);

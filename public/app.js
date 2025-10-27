@@ -82,6 +82,8 @@
   // src/utils/storage.js
   var FLAG_KEY = "routeStats.flags.v1";
   var EVAL_KEY = "routeStats.uspsEval.v1";
+  var EVAL_PROFILES_KEY = "routeStats.uspsEvalProfiles.v1";
+  var ACTIVE_EVAL_ID_KEY = "routeStats.uspsEval.activeId.v1";
   var VACAY_KEY = "routeStats.vacation.v1";
   var BASELINE_KEY = "routeStats.baseline.v1";
   var MODEL_SCOPE_KEY = "routeStats.modelScope";
@@ -110,16 +112,111 @@
     uspsEval: true,
     dayCompare: true
   };
-  var DEFAULT_EVAL = {
+  var DEFAULT_EVAL_PROFILE = {
+    profileId: "eval-default",
+    label: "Default Evaluation",
     routeId: "R1",
     evalCode: "44K",
     boxes: 670,
     stops: null,
     hoursPerDay: 9.4,
     officeHoursPerDay: 2,
-    annualSalary: 68e3
+    annualSalary: 68e3,
+    effectiveFrom: null,
+    effectiveTo: null
   };
   var EMPTY_VACATION = { ranges: [] };
+  var evalProfileCounter = 0;
+  function generateEvalProfileId() {
+    evalProfileCounter = (evalProfileCounter + 1) % Number.MAX_SAFE_INTEGER;
+    return `eval-${Date.now().toString(36)}-${evalProfileCounter.toString(36)}`;
+  }
+  function toNumberOrNull(value) {
+    if (value === "" || value === null || value === void 0) return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  }
+  function normalizeDateValue(value) {
+    if (value === "" || value === null || value === void 0) return null;
+    try {
+      const iso = String(value).trim();
+      if (!iso) return null;
+      const dt = DateTime.fromISO(iso, { zone: ZONE });
+      if (!dt.isValid) return null;
+      return dt.toISODate();
+    } catch (_) {
+      return null;
+    }
+  }
+  function sanitizeEvalProfile(input, fallback) {
+    var _a5, _b;
+    const base = { ...DEFAULT_EVAL_PROFILE, ...fallback || {} };
+    const merged = { ...base, ...input || {} };
+    const providedId = typeof merged.profileId === "string" && merged.profileId.trim() ? merged.profileId.trim() : typeof merged.id === "string" && merged.id.trim() ? merged.id.trim() : null;
+    const profileId = providedId || generateEvalProfileId();
+    const routeId = typeof merged.routeId === "string" && merged.routeId.trim() ? merged.routeId.trim() : base.routeId;
+    const evalCode2 = typeof merged.evalCode === "string" && merged.evalCode.trim() ? merged.evalCode.trim() : base.evalCode;
+    const labelSource = typeof merged.label === "string" && merged.label.trim() ? merged.label.trim() : typeof merged.name === "string" && merged.name.trim() ? merged.name.trim() : null;
+    const fallbackLabelPieces = [routeId, evalCode2].filter(Boolean);
+    const label = labelSource || (fallbackLabelPieces.length ? fallbackLabelPieces.join(" ") : "Evaluation");
+    return {
+      profileId,
+      label,
+      routeId,
+      evalCode: evalCode2,
+      boxes: toNumberOrNull(merged.boxes),
+      stops: toNumberOrNull(merged.stops),
+      hoursPerDay: toNumberOrNull(merged.hoursPerDay),
+      officeHoursPerDay: toNumberOrNull(merged.officeHoursPerDay),
+      annualSalary: toNumberOrNull(merged.annualSalary),
+      effectiveFrom: normalizeDateValue((_a5 = merged.effectiveFrom) != null ? _a5 : merged.from),
+      effectiveTo: normalizeDateValue((_b = merged.effectiveTo) != null ? _b : merged.to)
+    };
+  }
+  function sanitizeEvalProfileList(list) {
+    if (!Array.isArray(list) || !list.length) {
+      return [sanitizeEvalProfile(DEFAULT_EVAL_PROFILE)];
+    }
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    for (const item of list) {
+      const sanitized = sanitizeEvalProfile(item);
+      if (seen.has(sanitized.profileId)) continue;
+      seen.add(sanitized.profileId);
+      out.push(sanitized);
+    }
+    if (!out.length) out.push(sanitizeEvalProfile(DEFAULT_EVAL_PROFILE));
+    return out;
+  }
+  function legacyEvalPayload(profile) {
+    if (!profile) return {};
+    const {
+      routeId,
+      evalCode: evalCode2,
+      boxes,
+      stops,
+      hoursPerDay,
+      officeHoursPerDay,
+      annualSalary,
+      effectiveFrom,
+      effectiveTo,
+      profileId,
+      label
+    } = profile;
+    return {
+      routeId,
+      evalCode: evalCode2,
+      boxes,
+      stops,
+      hoursPerDay,
+      officeHoursPerDay,
+      annualSalary,
+      effectiveFrom,
+      effectiveTo,
+      profileId,
+      label
+    };
+  }
   function loadFlags() {
     try {
       return Object.assign({}, DEFAULT_FLAGS, JSON.parse(localStorage.getItem(FLAG_KEY) || "{}"));
@@ -130,15 +227,115 @@
   function saveFlags(flags) {
     localStorage.setItem(FLAG_KEY, JSON.stringify(flags));
   }
+  function loadEvalProfiles() {
+    try {
+      const raw = localStorage.getItem(EVAL_PROFILES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const list = sanitizeEvalProfileList(parsed);
+        if (list.length) {
+          return list.map((p) => ({ ...p }));
+        }
+      }
+    } catch (_) {
+    }
+    try {
+      const legacyRaw = localStorage.getItem(EVAL_KEY);
+      if (legacyRaw) {
+        const legacyParsed = JSON.parse(legacyRaw);
+        return sanitizeEvalProfileList([legacyParsed]).map((p) => ({ ...p }));
+      }
+    } catch (_) {
+    }
+    return sanitizeEvalProfileList([DEFAULT_EVAL_PROFILE]).map((p) => ({ ...p }));
+  }
+  function saveEvalProfiles(profiles) {
+    try {
+      const sanitized = sanitizeEvalProfileList(profiles);
+      localStorage.setItem(EVAL_PROFILES_KEY, JSON.stringify(sanitized));
+    } catch (_) {
+    }
+  }
+  function getActiveEvalId() {
+    try {
+      const raw = localStorage.getItem(ACTIVE_EVAL_ID_KEY);
+      if (typeof raw === "string") {
+        const trimmed = raw.trim();
+        return trimmed ? trimmed : null;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+  function setActiveEvalId(id) {
+    try {
+      if (!id) {
+        localStorage.removeItem(ACTIVE_EVAL_ID_KEY);
+      } else {
+        localStorage.setItem(ACTIVE_EVAL_ID_KEY, id);
+      }
+    } catch (_) {
+    }
+  }
   function loadEval() {
     try {
-      return Object.assign({}, DEFAULT_EVAL, JSON.parse(localStorage.getItem(EVAL_KEY) || "{}"));
+      const profiles = loadEvalProfiles();
+      let activeId = getActiveEvalId();
+      let active = profiles.find((p) => p.profileId === activeId);
+      if (!active) {
+        active = profiles[0] || sanitizeEvalProfile(DEFAULT_EVAL_PROFILE);
+        if (active) setActiveEvalId(active.profileId);
+      }
+      return active ? { ...active } : { ...sanitizeEvalProfile(DEFAULT_EVAL_PROFILE) };
     } catch (_) {
-      return { ...DEFAULT_EVAL };
+      return { ...sanitizeEvalProfile(DEFAULT_EVAL_PROFILE) };
     }
   }
   function saveEval(cfg) {
-    localStorage.setItem(EVAL_KEY, JSON.stringify(cfg || {}));
+    try {
+      const sanitized = sanitizeEvalProfile(cfg);
+      const profiles = loadEvalProfiles();
+      const idx = profiles.findIndex((p) => p.profileId === sanitized.profileId);
+      if (idx >= 0) profiles[idx] = sanitized;
+      else profiles.push(sanitized);
+      saveEvalProfiles(profiles);
+      setActiveEvalId(sanitized.profileId);
+      localStorage.setItem(EVAL_KEY, JSON.stringify(legacyEvalPayload(sanitized)));
+    } catch (_) {
+      try {
+        localStorage.setItem(EVAL_KEY, JSON.stringify(cfg || {}));
+      } catch (__) {
+      }
+    }
+  }
+  function deleteEvalProfile(profileId) {
+    var _a5;
+    if (!profileId) return loadEvalProfiles();
+    try {
+      let profiles = loadEvalProfiles().filter((p) => p.profileId !== profileId);
+      if (!profiles.length) {
+        profiles = [sanitizeEvalProfile(DEFAULT_EVAL_PROFILE)];
+      }
+      saveEvalProfiles(profiles);
+      const activeId = getActiveEvalId();
+      if (activeId === profileId) {
+        const nextActive = ((_a5 = profiles[0]) == null ? void 0 : _a5.profileId) || null;
+        if (nextActive) {
+          setActiveEvalId(nextActive);
+          localStorage.setItem(EVAL_KEY, JSON.stringify(legacyEvalPayload(profiles[0])));
+        } else {
+          setActiveEvalId(null);
+          localStorage.removeItem(EVAL_KEY);
+        }
+      }
+      return profiles.map((p) => ({ ...p }));
+    } catch (_) {
+      return loadEvalProfiles();
+    }
+  }
+  function createEvalProfile(partial = {}) {
+    return sanitizeEvalProfile({ ...DEFAULT_EVAL_PROFILE, profileId: null, ...partial || {} });
   }
   function loadVacation() {
     try {
@@ -630,11 +827,11 @@
         const delta = subjVal != null && refVal != null ? subjVal - refVal : null;
         const pct = refVal != null && refVal !== 0 && delta != null ? delta / refVal * 100 : null;
         const colorDelta = def.invert && pct != null ? -pct : pct;
-        const displayDelta = delta == null ? "\u2014" : formatNumber(delta, { decimals: (_a5 = def.decimals) != null ? _a5 : 2, suffix: def.suffix || "" });
+        const displayDelta = delta == null ? "\u2014" : formatNumber2(delta, { decimals: (_a5 = def.decimals) != null ? _a5 : 2, suffix: def.suffix || "" });
         const pctTxt = pct == null || !Number.isFinite(pct) ? "" : ` (${pct >= 0 ? "+" : ""}${Math.round(pct)}%)`;
         const deltaText = delta == null ? "\u2014" : `${displayDelta}${pctTxt}`;
-        const subjectText = formatNumber(subjVal, { decimals: (_b = def.decimals) != null ? _b : 2, suffix: def.suffix || "" });
-        const referenceText = formatNumber(refVal, { decimals: (_c = def.decimals) != null ? _c : 2, suffix: def.suffix || "" });
+        const subjectText = formatNumber2(subjVal, { decimals: (_b = def.decimals) != null ? _b : 2, suffix: def.suffix || "" });
+        const referenceText = formatNumber2(refVal, { decimals: (_c = def.decimals) != null ? _c : 2, suffix: def.suffix || "" });
         const color = colorForDelta2(colorDelta != null ? colorDelta : 0).fg;
         rowsOut.push({
           key: def.key,
@@ -1113,7 +1310,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         });
       });
     }
-    function formatNumber(val, opts) {
+    function formatNumber2(val, opts) {
       var _a5;
       const decimals = (_a5 = opts == null ? void 0 : opts.decimals) != null ? _a5 : 2;
       const suffix = (opts == null ? void 0 : opts.suffix) || "";
@@ -1251,18 +1448,18 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         referenceLabel.textContent = referenceMetrics.label || referenceMetrics.workDate;
         const { rows: tableRows, highlights, reasoning } = computeDeltaDetails(subjectMetrics, referenceMetrics);
         subjectPills.innerHTML = [
-          pillHtml("Total", formatNumber(subjectMetrics.totalHours, { decimals: 2, suffix: "h" })),
-          pillHtml("Route", formatNumber(subjectMetrics.routeHours, { decimals: 2, suffix: "h" })),
-          pillHtml("Office", formatNumber(subjectMetrics.officeHours, { decimals: 2, suffix: "h" })),
-          pillHtml("Volume", formatNumber(subjectMetrics.volume, { decimals: 2 })),
-          pillHtml("Eff.", formatNumber(subjectMetrics.efficiencyMinutes, { decimals: 1, suffix: "m/vol" }))
+          pillHtml("Total", formatNumber2(subjectMetrics.totalHours, { decimals: 2, suffix: "h" })),
+          pillHtml("Route", formatNumber2(subjectMetrics.routeHours, { decimals: 2, suffix: "h" })),
+          pillHtml("Office", formatNumber2(subjectMetrics.officeHours, { decimals: 2, suffix: "h" })),
+          pillHtml("Volume", formatNumber2(subjectMetrics.volume, { decimals: 2 })),
+          pillHtml("Eff.", formatNumber2(subjectMetrics.efficiencyMinutes, { decimals: 1, suffix: "m/vol" }))
         ].join(" ");
         referencePills.innerHTML = [
-          pillHtml("Total", formatNumber(referenceMetrics.totalHours, { decimals: 2, suffix: "h" })),
-          pillHtml("Route", formatNumber(referenceMetrics.routeHours, { decimals: 2, suffix: "h" })),
-          pillHtml("Office", formatNumber(referenceMetrics.officeHours, { decimals: 2, suffix: "h" })),
-          pillHtml("Volume", formatNumber(referenceMetrics.volume, { decimals: 2 })),
-          pillHtml("Eff.", formatNumber(referenceMetrics.efficiencyMinutes, { decimals: 1, suffix: "m/vol" }))
+          pillHtml("Total", formatNumber2(referenceMetrics.totalHours, { decimals: 2, suffix: "h" })),
+          pillHtml("Route", formatNumber2(referenceMetrics.routeHours, { decimals: 2, suffix: "h" })),
+          pillHtml("Office", formatNumber2(referenceMetrics.officeHours, { decimals: 2, suffix: "h" })),
+          pillHtml("Volume", formatNumber2(referenceMetrics.volume, { decimals: 2 })),
+          pillHtml("Eff.", formatNumber2(referenceMetrics.efficiencyMinutes, { decimals: 1, suffix: "m/vol" }))
         ].join(" ");
         subjectNotes.textContent = summarizeExtras(subjectMetrics) || "\u2014";
         referenceNotes.textContent = summarizeExtras(referenceMetrics) || "\u2014";
@@ -3253,6 +3450,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     }, true);
   })();
   console.log("[RouteStats] boot start");
+  var EVAL_PROFILES = loadEvalProfiles();
   var USPS_EVAL = loadEval();
   var VACATION = loadVacation();
   if (VACATION && Array.isArray(VACATION.ranges)) {
@@ -3323,7 +3521,246 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       return rows || [];
     }
   }
+  function syncEvalGlobals() {
+    EVAL_PROFILES = loadEvalProfiles();
+    USPS_EVAL = loadEval();
+  }
+  function getEvalProfileById(profileId) {
+    if (!profileId) return null;
+    return (EVAL_PROFILES || []).find((p) => p.profileId === profileId) || null;
+  }
+  function getEvalProfileDisplayName(profile) {
+    if (!profile) return "Evaluation";
+    if (profile.label) return profile.label;
+    const parts = [profile.routeId, profile.evalCode].filter(Boolean);
+    return parts.length ? parts.join(" ") : "Evaluation";
+  }
+  function applyEvalProfileToInputs(profileId) {
+    const profile = getEvalProfileById(profileId) || USPS_EVAL || EVAL_PROFILES && EVAL_PROFILES[0] || null;
+    if (!profile) return;
+    if (evalProfileSelect && profile.profileId) evalProfileSelect.value = profile.profileId;
+    if (evalProfileLabelInput) evalProfileLabelInput.value = profile.label || "";
+    if (evalRouteId) evalRouteId.value = profile.routeId || "";
+    if (evalCode) evalCode.value = profile.evalCode || "";
+    if (evalBoxesIn) evalBoxesIn.value = profile.boxes != null ? profile.boxes : "";
+    if (evalStopsIn) evalStopsIn.value = profile.stops != null ? profile.stops : "";
+    if (evalHoursIn) evalHoursIn.value = profile.hoursPerDay != null ? profile.hoursPerDay : "";
+    if (evalOfficeHoursIn) evalOfficeHoursIn.value = profile.officeHoursPerDay != null ? profile.officeHoursPerDay : "";
+    if (evalSalaryIn) evalSalaryIn.value = profile.annualSalary != null ? profile.annualSalary : "";
+    if (evalEffectiveFromInput) evalEffectiveFromInput.value = profile.effectiveFrom || "";
+    if (evalEffectiveToInput) evalEffectiveToInput.value = profile.effectiveTo || "";
+  }
+  function populateEvalProfileSelectUI(selectedId) {
+    var _a5;
+    if (!evalProfileSelect) return;
+    syncEvalGlobals();
+    evalProfileSelect.innerHTML = "";
+    (EVAL_PROFILES || []).forEach((profile) => {
+      const opt = document.createElement("option");
+      opt.value = profile.profileId;
+      opt.textContent = getEvalProfileDisplayName(profile);
+      evalProfileSelect.appendChild(opt);
+    });
+    const fallbackId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || EVAL_PROFILES && ((_a5 = EVAL_PROFILES[0]) == null ? void 0 : _a5.profileId) || null;
+    const targetId = selectedId && getEvalProfileById(selectedId) ? selectedId : fallbackId;
+    if (targetId) evalProfileSelect.value = targetId;
+    applyEvalProfileToInputs(targetId);
+    if (evalProfileDeleteBtn) {
+      evalProfileDeleteBtn.disabled = ((EVAL_PROFILES == null ? void 0 : EVAL_PROFILES.length) || 0) <= 1;
+    }
+  }
+  function readNumberInput(el) {
+    if (!el) return null;
+    const raw = el.value;
+    if (raw === "" || raw == null) return null;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+  }
+  function collectEvalFormValues(profileId) {
+    const base = getEvalProfileById(profileId) || USPS_EVAL || {};
+    const routeIdVal = ((evalRouteId == null ? void 0 : evalRouteId.value) || "").trim();
+    const evalCodeVal = ((evalCode == null ? void 0 : evalCode.value) || "").trim();
+    const labelVal = ((evalProfileLabelInput == null ? void 0 : evalProfileLabelInput.value) || "").trim();
+    const label = labelVal || getEvalProfileDisplayName({ ...base, routeId: routeIdVal, evalCode: evalCodeVal });
+    return {
+      ...base,
+      profileId: base.profileId || profileId || null,
+      label,
+      routeId: routeIdVal || base.routeId || "R1",
+      evalCode: evalCodeVal || base.evalCode || "",
+      boxes: readNumberInput(evalBoxesIn),
+      stops: readNumberInput(evalStopsIn),
+      hoursPerDay: readNumberInput(evalHoursIn),
+      officeHoursPerDay: readNumberInput(evalOfficeHoursIn),
+      annualSalary: readNumberInput(evalSalaryIn),
+      effectiveFrom: ((evalEffectiveFromInput == null ? void 0 : evalEffectiveFromInput.value) || "").trim() || null,
+      effectiveTo: ((evalEffectiveToInput == null ? void 0 : evalEffectiveToInput.value) || "").trim() || null
+    };
+  }
+  function rowsForEvaluationRange(rows, profile) {
+    if (!profile) return [];
+    let from = null;
+    let to = null;
+    try {
+      if (profile.effectiveFrom) {
+        const dt = DateTime.fromISO(profile.effectiveFrom, { zone: ZONE });
+        if (dt.isValid) from = dt.startOf("day");
+      }
+      if (profile.effectiveTo) {
+        const dt = DateTime.fromISO(profile.effectiveTo, { zone: ZONE });
+        if (dt.isValid) to = dt.endOf("day");
+      }
+    } catch (_) {
+    }
+    return (rows || []).filter((r) => {
+      if (!r || !r.work_date) return false;
+      try {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        if (!d.isValid) return false;
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      } catch (_) {
+        return false;
+      }
+    });
+  }
+  function groupRowsByTimeframeForEval(rows, timeframe) {
+    const buckets = /* @__PURE__ */ new Map();
+    (rows || []).forEach((row) => {
+      if (!row || row.status === "off") return;
+      if (!row.work_date) return;
+      let dt;
+      try {
+        dt = DateTime.fromISO(row.work_date, { zone: ZONE });
+      } catch (_) {
+        return;
+      }
+      if (!dt || !dt.isValid) return;
+      let key, label;
+      if (timeframe === "day") {
+        key = dt.toISODate();
+        label = dt.toFormat("LLL dd, yyyy");
+      } else if (timeframe === "month") {
+        key = dt.toFormat("yyyy-MM");
+        label = dt.toFormat("LLLL yyyy");
+      } else {
+        const start2 = startOfWeekMonday(dt);
+        const end2 = endOfWeekSunday2(dt);
+        key = start2.toISODate();
+        label = `${start2.toFormat("LLL dd")} \u2192 ${end2.toFormat("LLL dd")}`;
+      }
+      const bucket = buckets.get(key) || { key, label, count: 0, hours: 0, parcels: 0, letters: 0, miles: 0 };
+      bucket.count += 1;
+      bucket.hours += Number(row.hours || 0);
+      bucket.parcels += Number(row.parcels || 0);
+      bucket.letters += Number(row.letters || 0);
+      bucket.miles += Number(row.miles || 0);
+      buckets.set(key, bucket);
+    });
+    return Array.from(buckets.values()).map((b) => ({
+      ...b,
+      volume: b.parcels + b.letters
+    }));
+  }
+  function combineEvalGroups(groupsA, groupsB) {
+    const mapA = new Map((groupsA || []).map((g) => [g.key, g]));
+    const mapB = new Map((groupsB || []).map((g) => [g.key, g]));
+    const keys = /* @__PURE__ */ new Set([...mapA.keys(), ...mapB.keys()]);
+    const merged = [];
+    keys.forEach((key) => {
+      const a = mapA.get(key);
+      const b = mapB.get(key);
+      merged.push({
+        key,
+        label: a && a.label || b && b.label || key,
+        volumeA: a ? a.volume : 0,
+        volumeB: b ? b.volume : 0,
+        deltaVolume: (b ? b.volume : 0) - (a ? a.volume : 0),
+        hoursA: a ? a.hours : 0,
+        hoursB: b ? b.hours : 0,
+        deltaHours: (b ? b.hours : 0) - (a ? a.hours : 0),
+        countA: a ? a.count : 0,
+        countB: b ? b.count : 0
+      });
+    });
+    return merged;
+  }
+  function summarizeEvalGroups(groups) {
+    return (groups || []).reduce((acc, g) => {
+      acc.volume += g.volume || 0;
+      acc.hours += g.hours || 0;
+      acc.parcels += g.parcels || 0;
+      acc.letters += g.letters || 0;
+      acc.miles += g.miles || 0;
+      acc.days += g.count || 0;
+      acc.periods += 1;
+      return acc;
+    }, { volume: 0, hours: 0, parcels: 0, letters: 0, miles: 0, days: 0, periods: 0 });
+  }
+  function formatNumber(value, digits = 0) {
+    const num = Number(value || 0);
+    if (!Number.isFinite(num)) return "0";
+    return num.toLocaleString(void 0, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+  function formatSigned(value, digits = 0) {
+    const num = Number(value || 0);
+    const prefix = num > 0 ? "+" : "";
+    return `${prefix}${formatNumber(num, digits)}`;
+  }
+  function formatDeltaCell(value, digits) {
+    const num = Number(value || 0);
+    const cls = num > 0 ? "delta pos" : num < 0 ? "delta neg" : "delta zero";
+    const prefix = num > 0 ? "+" : "";
+    return `<span class="${cls}">${prefix}${formatNumber(num, digits)}</span>`;
+  }
+  function populateEvalCompareSelect(selectEl, selectedId) {
+    if (!selectEl) return;
+    selectEl.innerHTML = "";
+    (EVAL_PROFILES || []).forEach((profile) => {
+      const opt = document.createElement("option");
+      opt.value = profile.profileId;
+      opt.textContent = getEvalProfileDisplayName(profile);
+      selectEl.appendChild(opt);
+    });
+    if (selectedId && getEvalProfileById(selectedId)) {
+      selectEl.value = selectedId;
+    } else if (EVAL_PROFILES && EVAL_PROFILES[0]) {
+      selectEl.value = EVAL_PROFILES[0].profileId;
+    }
+  }
+  function renderEvalCompareRow(row) {
+    return `<tr>
+      <td>${row.label}</td>
+      <td class="right">${formatNumber(row.volumeA, 0)}</td>
+      <td class="right">${formatNumber(row.volumeB, 0)}</td>
+      <td class="right">${formatDeltaCell(row.deltaVolume, 0)}</td>
+      <td class="right">${formatNumber(row.hoursA, 1)}</td>
+      <td class="right">${formatNumber(row.hoursB, 1)}</td>
+      <td class="right">${formatDeltaCell(row.deltaHours, 1)}</td>
+      <td class="right">${row.countA}/${row.countB}</td>
+    </tr>`;
+  }
+  function formatEvalCompareSummary(profileA, summaryA, profileB, summaryB) {
+    const tf = evalCompareState.timeframe === "month" ? "month" : evalCompareState.timeframe === "week" ? "week" : "day";
+    const labelA = getEvalProfileDisplayName(profileA);
+    const labelB = getEvalProfileDisplayName(profileB);
+    const volumeDiff = summaryB.volume - summaryA.volume;
+    const hoursDiff = summaryB.hours - summaryA.hours;
+    const avgVolumeA = summaryA.periods ? summaryA.volume / summaryA.periods : 0;
+    const avgVolumeB = summaryB.periods ? summaryB.volume / summaryB.periods : 0;
+    const avgHoursA = summaryA.periods ? summaryA.hours / summaryA.periods : 0;
+    const avgHoursB = summaryB.periods ? summaryB.hours / summaryB.periods : 0;
+    return `${labelB} vs ${labelA} (${tf}s). Volume change ${formatSigned(volumeDiff, 0)} (${formatNumber(avgVolumeB, 1)} vs ${formatNumber(avgVolumeA, 1)} avg/${tf}). Hours change ${formatSigned(hoursDiff, 1)} (${formatNumber(avgHoursB, 1)} vs ${formatNumber(avgHoursA, 1)} avg/${tf}). Days logged ${summaryB.days} vs ${summaryA.days}.`;
+  }
   var FLAGS = loadFlags();
+  var evalCompareState = {
+    timeframe: "week",
+    sortKey: "deltaVolume",
+    sortDir: "desc",
+    aId: (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || null,
+    bId: null
+  };
   var $ = (id) => document.getElementById(id);
   var dConn = $("dConn");
   var dAuth = $("dAuth");
@@ -3759,6 +4196,12 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
   var evalHoursIn = document.getElementById("evalHoursIn");
   var evalOfficeHoursIn = document.getElementById("evalOfficeHoursIn");
   var evalSalaryIn = document.getElementById("evalSalaryIn");
+  var evalProfileSelect = document.getElementById("evalProfileSelect");
+  var evalProfileAddBtn = document.getElementById("evalProfileAdd");
+  var evalProfileDeleteBtn = document.getElementById("evalProfileDelete");
+  var evalProfileLabelInput = document.getElementById("evalProfileLabel");
+  var evalEffectiveFromInput = document.getElementById("evalEffectiveFrom");
+  var evalEffectiveToInput = document.getElementById("evalEffectiveTo");
   var vacFrom = document.getElementById("vacFrom");
   var vacTo = document.getElementById("vacTo");
   var vacAdd = document.getElementById("vacAdd");
@@ -3785,6 +4228,13 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
   var tokenMonthInput = document.getElementById("tokenUsageMonth");
   var tokenLimitInput = document.getElementById("tokenUsageLimit");
   var aiPromptTextarea = document.getElementById("aiSummaryBasePrompt");
+  var evalCompareCard = document.getElementById("evalCompareCard");
+  var evalCompareSelectA = document.getElementById("evalCompareSelectA");
+  var evalCompareSelectB = document.getElementById("evalCompareSelectB");
+  var evalCompareSummary = document.getElementById("evalCompareSummary");
+  var evalCompareBody = document.getElementById("evalCompareBody");
+  var evalCompareTable = document.getElementById("evalCompareTable");
+  var evalCompareTfButtons = Array.from(document.querySelectorAll("#evalCompareCard .eval-tf-btn"));
   var CURRENT_USER_ID = null;
   aiSummary = createAiSummary({
     elements: {
@@ -3829,14 +4279,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
     try {
-      const cfg = USPS_EVAL || loadEval();
-      if (evalRouteId) evalRouteId.value = cfg.routeId || "";
-      if (evalCode) evalCode.value = cfg.evalCode || "";
-      if (evalBoxesIn) evalBoxesIn.value = cfg.boxes != null ? cfg.boxes : "";
-      if (evalStopsIn) evalStopsIn.value = cfg.stops != null ? cfg.stops : "";
-      if (evalHoursIn) evalHoursIn.value = cfg.hoursPerDay != null ? cfg.hoursPerDay : "";
-      if (evalOfficeHoursIn) evalOfficeHoursIn.value = cfg.officeHoursPerDay != null ? cfg.officeHoursPerDay : "";
-      if (evalSalaryIn) evalSalaryIn.value = cfg.annualSalary != null ? cfg.annualSalary : "";
+      populateEvalProfileSelectUI(USPS_EVAL == null ? void 0 : USPS_EVAL.profileId);
     } catch (_) {
     }
     try {
@@ -3864,6 +4307,53 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     renderVacationRanges();
     settingsDlg.showModal();
   });
+  evalProfileSelect == null ? void 0 : evalProfileSelect.addEventListener("change", () => {
+    const nextId = evalProfileSelect.value;
+    applyEvalProfileToInputs(nextId);
+    if (evalProfileDeleteBtn) {
+      evalProfileDeleteBtn.disabled = ((EVAL_PROFILES == null ? void 0 : EVAL_PROFILES.length) || 0) <= 1;
+    }
+  });
+  evalProfileAddBtn == null ? void 0 : evalProfileAddBtn.addEventListener("click", () => {
+    var _a5, _b, _c, _d, _e;
+    try {
+      const base = getEvalProfileById(evalProfileSelect == null ? void 0 : evalProfileSelect.value) || USPS_EVAL || {};
+      const newProfile = createEvalProfile({
+        label: `Evaluation ${((EVAL_PROFILES == null ? void 0 : EVAL_PROFILES.length) || 0) + 1}`,
+        routeId: base.routeId || "R1",
+        evalCode: base.evalCode || "",
+        boxes: (_a5 = base.boxes) != null ? _a5 : null,
+        stops: (_b = base.stops) != null ? _b : null,
+        hoursPerDay: (_c = base.hoursPerDay) != null ? _c : null,
+        officeHoursPerDay: (_d = base.officeHoursPerDay) != null ? _d : null,
+        annualSalary: (_e = base.annualSalary) != null ? _e : null,
+        effectiveFrom: null,
+        effectiveTo: null
+      });
+      saveEval(newProfile);
+      syncEvalGlobals();
+      populateEvalProfileSelectUI(newProfile.profileId);
+      applyEvalProfileToInputs(newProfile.profileId);
+      buildEvalCompare(allRows || []);
+    } catch (_) {
+    }
+  });
+  evalProfileDeleteBtn == null ? void 0 : evalProfileDeleteBtn.addEventListener("click", () => {
+    var _a5;
+    const id = evalProfileSelect == null ? void 0 : evalProfileSelect.value;
+    if (!id) return;
+    if (((EVAL_PROFILES == null ? void 0 : EVAL_PROFILES.length) || 0) <= 1) {
+      alert("At least one evaluation profile is required.");
+      return;
+    }
+    if (!confirm("Delete this evaluation profile? You can recreate it later if needed.")) return;
+    deleteEvalProfile(id);
+    syncEvalGlobals();
+    const fallbackId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || EVAL_PROFILES && ((_a5 = EVAL_PROFILES[0]) == null ? void 0 : _a5.profileId) || null;
+    populateEvalProfileSelectUI(fallbackId);
+    applyEvalProfileToInputs(fallbackId);
+    buildEvalCompare(allRows || []);
+  });
   saveSettings == null ? void 0 : saveSettings.addEventListener("click", (e) => {
     e.preventDefault();
     if (modelScopeSelect) setModelScope(modelScopeSelect.value);
@@ -3883,16 +4373,15 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     if (flagDayCompare) FLAGS.dayCompare = !!flagDayCompare.checked;
     if (flagUspsEval) FLAGS.uspsEval = !!flagUspsEval.checked;
     try {
-      USPS_EVAL = {
-        routeId: ((evalRouteId == null ? void 0 : evalRouteId.value) || "").trim() || "R1",
-        evalCode: ((evalCode == null ? void 0 : evalCode.value) || "").trim() || "44K",
-        boxes: (evalBoxesIn == null ? void 0 : evalBoxesIn.value) !== "" ? +evalBoxesIn.value : null,
-        stops: (evalStopsIn == null ? void 0 : evalStopsIn.value) !== "" ? +evalStopsIn.value : null,
-        hoursPerDay: (evalHoursIn == null ? void 0 : evalHoursIn.value) !== "" ? +evalHoursIn.value : null,
-        officeHoursPerDay: (evalOfficeHoursIn == null ? void 0 : evalOfficeHoursIn.value) !== "" ? +evalOfficeHoursIn.value : null,
-        annualSalary: (evalSalaryIn == null ? void 0 : evalSalaryIn.value) !== "" ? +evalSalaryIn.value : null
-      };
-      saveEval(USPS_EVAL);
+      const selectedId = (evalProfileSelect == null ? void 0 : evalProfileSelect.value) || (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || null;
+      const updated = collectEvalFormValues(selectedId);
+      saveEval(updated);
+      syncEvalGlobals();
+      USPS_EVAL = getEvalProfileById(updated.profileId) || updated;
+      populateEvalProfileSelectUI(USPS_EVAL == null ? void 0 : USPS_EVAL.profileId);
+      if (!evalCompareState.aId || evalCompareState.aId === selectedId) {
+        evalCompareState.aId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || selectedId || evalCompareState.aId;
+      }
     } catch (_) {
     }
     try {
@@ -3950,6 +4439,50 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     applyRecentEntriesAutoCollapse();
     aiSummary.updateAvailability();
     aiSummary.renderLastSummary();
+  });
+  evalCompareSelectA == null ? void 0 : evalCompareSelectA.addEventListener("change", () => {
+    evalCompareState.aId = evalCompareSelectA.value;
+    if (evalCompareState.aId === evalCompareState.bId) {
+      const alternative = (EVAL_PROFILES || []).find((p) => p.profileId !== evalCompareState.aId);
+      if (alternative) {
+        evalCompareState.bId = alternative.profileId;
+        if (evalCompareSelectB) evalCompareSelectB.value = evalCompareState.bId;
+      }
+    }
+    buildEvalCompare(allRows || []);
+  });
+  evalCompareSelectB == null ? void 0 : evalCompareSelectB.addEventListener("change", () => {
+    evalCompareState.bId = evalCompareSelectB.value;
+    if (evalCompareState.bId === evalCompareState.aId) {
+      const alternative = (EVAL_PROFILES || []).find((p) => p.profileId !== evalCompareState.aId);
+      if (alternative) {
+        evalCompareState.aId = alternative.profileId;
+        if (evalCompareSelectA) evalCompareSelectA.value = evalCompareState.aId;
+      }
+    }
+    buildEvalCompare(allRows || []);
+  });
+  evalCompareTfButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tf = btn.dataset.tf || "week";
+      if (tf === evalCompareState.timeframe) return;
+      evalCompareState.timeframe = tf;
+      evalCompareTfButtons.forEach((b) => b.classList.toggle("active", b === btn));
+      buildEvalCompare(allRows || []);
+    });
+  });
+  evalCompareTable == null ? void 0 : evalCompareTable.addEventListener("click", (event) => {
+    const th = event.target.closest("th[data-sort]");
+    if (!th) return;
+    const key = th.getAttribute("data-sort");
+    if (!key) return;
+    if (evalCompareState.sortKey === key) {
+      evalCompareState.sortDir = evalCompareState.sortDir === "asc" ? "desc" : "asc";
+    } else {
+      evalCompareState.sortKey = key;
+      evalCompareState.sortDir = "desc";
+    }
+    buildEvalCompare(allRows || []);
   });
   clearOpenAiKeyBtn == null ? void 0 : clearOpenAiKeyBtn.addEventListener("click", () => {
     if (settingsOpenAiKey) settingsOpenAiKey.value = "";
@@ -4646,6 +5179,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     buildHeavinessToday(rawRows);
     buildWeekHeaviness(rawRows);
     buildUspsTiles(rawRows);
+    buildEvalCompare(rawRows);
     buildDiagnostics(normalRows);
     buildVolumeLeaderboard(rawRows);
   }
@@ -5598,6 +6132,74 @@ Score: ${overallScore}/10 (higher is better)`;
         to.style.borderColor = "transparent";
       }
     })();
+  }
+  function buildEvalCompare(rows) {
+    try {
+      if (!evalCompareCard) return;
+      syncEvalGlobals();
+      const profiles = EVAL_PROFILES || [];
+      const enabled = FLAGS.uspsEval && profiles.length >= 2;
+      evalCompareCard.style.display = enabled ? "" : "none";
+      if (!enabled) {
+        if (evalCompareSummary) evalCompareSummary.textContent = profiles.length ? "Add another evaluation profile to compare." : "Add evaluation profiles in Settings.";
+        if (evalCompareBody) evalCompareBody.innerHTML = "";
+        return;
+      }
+      if (!evalCompareState.aId || !getEvalProfileById(evalCompareState.aId)) {
+        evalCompareState.aId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || profiles[0].profileId;
+      }
+      if (!evalCompareState.bId || evalCompareState.bId === evalCompareState.aId || !getEvalProfileById(evalCompareState.bId)) {
+        const fallback = profiles.find((p) => p.profileId !== evalCompareState.aId);
+        evalCompareState.bId = fallback ? fallback.profileId : profiles[0].profileId;
+        if (evalCompareState.bId === evalCompareState.aId && profiles.length > 1) {
+          evalCompareState.bId = profiles[1].profileId;
+        }
+      }
+      populateEvalCompareSelect(evalCompareSelectA, evalCompareState.aId);
+      populateEvalCompareSelect(evalCompareSelectB, evalCompareState.bId);
+      evalCompareTfButtons.forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.tf === evalCompareState.timeframe);
+      });
+      const profileA = getEvalProfileById(evalCompareState.aId);
+      const profileB = getEvalProfileById(evalCompareState.bId);
+      if (!profileA || !profileB) {
+        if (evalCompareSummary) evalCompareSummary.textContent = "Select two evaluation profiles to compare.";
+        if (evalCompareBody) evalCompareBody.innerHTML = "";
+        return;
+      }
+      const scopedRows = filterRowsForView(rows || []);
+      const rowsA = rowsForEvaluationRange(scopedRows, profileA);
+      const rowsB = rowsForEvaluationRange(scopedRows, profileB);
+      const groupsA = groupRowsByTimeframeForEval(rowsA, evalCompareState.timeframe);
+      const groupsB = groupRowsByTimeframeForEval(rowsB, evalCompareState.timeframe);
+      const combined = combineEvalGroups(groupsA, groupsB);
+      const summaryA = summarizeEvalGroups(groupsA);
+      const summaryB = summarizeEvalGroups(groupsB);
+      if (evalCompareSummary) {
+        evalCompareSummary.textContent = formatEvalCompareSummary(profileA, summaryA, profileB, summaryB);
+      }
+      const sortKey = evalCompareState.sortKey;
+      const sortDir = evalCompareState.sortDir === "asc" ? 1 : -1;
+      combined.sort((a, b) => {
+        if (sortKey === "label") {
+          const cmp = (a.label || "").localeCompare(b.label || "");
+          return sortDir * cmp;
+        }
+        const valA = Number(a[sortKey] || 0);
+        const valB = Number(b[sortKey] || 0);
+        return sortDir * (valA - valB);
+      });
+      if (evalCompareBody) {
+        if (!combined.length) {
+          evalCompareBody.innerHTML = `<tr><td colspan="8" class="muted">No worked entries for these evaluations in the selected window.</td></tr>`;
+        } else {
+          evalCompareBody.innerHTML = combined.map(renderEvalCompareRow).join("");
+        }
+      }
+    } catch (err) {
+      console.warn("buildEvalCompare error", err);
+      if (evalCompareSummary) evalCompareSummary.textContent = "Unable to render evaluation comparison.";
+    }
   }
   try {
     sb.channel("entries-feed").on("postgres_changes", { event: "*", schema: "public", table: "entries" }, async () => {

@@ -199,6 +199,7 @@
   .delta.neg{ color:var(--rs-neg); }
   .delta.zero{ color:var(--rs-mute); }
   .delta.outlier{ box-shadow:0 0 0 1.5px currentColor inset; }
+  .eval-tf-btn.active{ background:var(--brand); color:#fff; border-color:var(--brand); }
   .num, .delta{ font-variant-numeric:tabular-nums; font-size:clamp(1rem, 3.4vw, 1.15rem); }
   .scope-badge{
     display:inline-flex;
@@ -775,6 +776,46 @@
     <div id="officeSummary" class="sparkline-labels">—</div>
   </section>
 
+  <!-- Evaluation Compare -->
+  <section class="card" id="evalCompareCard" style="grid-column:1/-1; display:none">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">Evaluation Compare</h3>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Baseline</small>
+          <select id="evalCompareSelectA" style="min-width:150px"></select>
+        </label>
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Compare to</small>
+          <select id="evalCompareSelectB" style="min-width:150px"></select>
+        </label>
+        <div class="pill" style="gap:4px;align-items:center;padding:4px 6px">
+          <button type="button" class="ghost eval-tf-btn" data-tf="day" style="font-size:12px;padding:6px 10px">Days</button>
+          <button type="button" class="ghost eval-tf-btn active" data-tf="week" style="font-size:12px;padding:6px 10px">Weeks</button>
+          <button type="button" class="ghost eval-tf-btn" data-tf="month" style="font-size:12px;padding:6px 10px">Months</button>
+        </div>
+      </div>
+    </div>
+    <div class="sparkline-labels" id="evalCompareSummary">—</div>
+    <div style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px">
+      <table id="evalCompareTable" style="min-width:640px">
+        <thead>
+          <tr>
+            <th data-sort="label">Period</th>
+            <th class="right" data-sort="volumeA">Baseline volume</th>
+            <th class="right" data-sort="volumeB">Compare volume</th>
+            <th class="right" data-sort="deltaVolume">Δ volume</th>
+            <th class="right" data-sort="hoursA">Baseline hours</th>
+            <th class="right" data-sort="hoursB">Compare hours</th>
+            <th class="right" data-sort="deltaHours">Δ hours</th>
+            <th class="right" data-sort="countB">Days A/B</th>
+          </tr>
+        </thead>
+        <tbody id="evalCompareBody"></tbody>
+      </table>
+    </div>
+  </section>
+ 
   
 
   <!-- Diagnostics: Volume→Time model & outliers -->
@@ -964,7 +1005,29 @@
     <!-- USPS Evaluation configuration -->
     <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
       <h4 style="margin:0 0 6px 0">USPS Evaluation</h4>
-      <small class="muted">Used for comparison metrics; stored locally.</small>
+      <small class="muted">Used for comparison metrics; profiles are stored locally on this device.</small>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Profile</small>
+          <select id="evalProfileSelect" style="min-width:160px"></select>
+        </label>
+        <button id="evalProfileAdd" type="button" class="ghost" style="font-size:12px">Add</button>
+        <button id="evalProfileDelete" type="button" class="ghost" style="font-size:12px">Delete</button>
+      </div>
+      <label class="pill" style="margin-top:6px">
+        <small>Display name</small>
+        <input id="evalProfileLabel" placeholder="e.g., Spring 2024 Eval">
+      </label>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Effective from</small>
+          <input id="evalEffectiveFrom" type="date" style="width:160px">
+        </label>
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Effective to</small>
+          <input id="evalEffectiveTo" type="date" style="width:160px">
+        </label>
+      </div>
       <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
         <div>
           <label>Route label</label>

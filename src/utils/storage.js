@@ -3,6 +3,8 @@ import { DateTime, ZONE, startOfWeekMonday, endOfWeekSunday } from './date.js';
 
 export const FLAG_KEY = 'routeStats.flags.v1';
 export const EVAL_KEY = 'routeStats.uspsEval.v1';
+export const EVAL_PROFILES_KEY = 'routeStats.uspsEvalProfiles.v1';
+export const ACTIVE_EVAL_ID_KEY = 'routeStats.uspsEval.activeId.v1';
 export const VACAY_KEY = 'routeStats.vacation.v1';
 export const BASELINE_KEY = 'routeStats.baseline.v1';
 export const MODEL_SCOPE_KEY = 'routeStats.modelScope';
@@ -33,17 +35,127 @@ const DEFAULT_FLAGS = {
   dayCompare:true
 };
 
-const DEFAULT_EVAL = {
+const DEFAULT_EVAL_PROFILE = {
+  profileId:'eval-default',
+  label:'Default Evaluation',
   routeId:'R1',
   evalCode:'44K',
   boxes:670,
   stops:null,
   hoursPerDay:9.4,
   officeHoursPerDay:2.0,
-  annualSalary:68000
+  annualSalary:68000,
+  effectiveFrom:null,
+  effectiveTo:null
 };
 
 const EMPTY_VACATION = { ranges: [] };
+
+let evalProfileCounter = 0;
+
+function generateEvalProfileId(){
+  evalProfileCounter = (evalProfileCounter + 1) % Number.MAX_SAFE_INTEGER;
+  return `eval-${Date.now().toString(36)}-${evalProfileCounter.toString(36)}`;
+}
+
+function toNumberOrNull(value){
+  if (value === '' || value === null || value === undefined) return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function normalizeDateValue(value){
+  if (value === '' || value === null || value === undefined) return null;
+  try{
+    const iso = String(value).trim();
+    if (!iso) return null;
+    const dt = DateTime.fromISO(iso, { zone: ZONE });
+    if (!dt.isValid) return null;
+    return dt.toISODate();
+  }catch(_){
+    return null;
+  }
+}
+
+function sanitizeEvalProfile(input, fallback){
+  const base = { ...DEFAULT_EVAL_PROFILE, ...(fallback || {}) };
+  const merged = { ...base, ...(input || {}) };
+  const providedId = typeof merged.profileId === 'string' && merged.profileId.trim()
+    ? merged.profileId.trim()
+    : (typeof merged.id === 'string' && merged.id.trim() ? merged.id.trim() : null);
+  const profileId = providedId || generateEvalProfileId();
+  const routeId = typeof merged.routeId === 'string' && merged.routeId.trim()
+    ? merged.routeId.trim()
+    : base.routeId;
+  const evalCode = typeof merged.evalCode === 'string' && merged.evalCode.trim()
+    ? merged.evalCode.trim()
+    : base.evalCode;
+  const labelSource = typeof merged.label === 'string' && merged.label.trim()
+    ? merged.label.trim()
+    : (typeof merged.name === 'string' && merged.name.trim() ? merged.name.trim() : null);
+  const fallbackLabelPieces = [routeId, evalCode].filter(Boolean);
+  const label = labelSource || (fallbackLabelPieces.length ? fallbackLabelPieces.join(' ') : 'Evaluation');
+
+  return {
+    profileId,
+    label,
+    routeId,
+    evalCode,
+    boxes: toNumberOrNull(merged.boxes),
+    stops: toNumberOrNull(merged.stops),
+    hoursPerDay: toNumberOrNull(merged.hoursPerDay),
+    officeHoursPerDay: toNumberOrNull(merged.officeHoursPerDay),
+    annualSalary: toNumberOrNull(merged.annualSalary),
+    effectiveFrom: normalizeDateValue(merged.effectiveFrom ?? merged.from),
+    effectiveTo: normalizeDateValue(merged.effectiveTo ?? merged.to)
+  };
+}
+
+function sanitizeEvalProfileList(list){
+  if (!Array.isArray(list) || !list.length){
+    return [sanitizeEvalProfile(DEFAULT_EVAL_PROFILE)];
+  }
+  const seen = new Set();
+  const out = [];
+  for (const item of list){
+    const sanitized = sanitizeEvalProfile(item);
+    if (seen.has(sanitized.profileId)) continue;
+    seen.add(sanitized.profileId);
+    out.push(sanitized);
+  }
+  if (!out.length) out.push(sanitizeEvalProfile(DEFAULT_EVAL_PROFILE));
+  return out;
+}
+
+function legacyEvalPayload(profile){
+  if (!profile) return {};
+  const {
+    routeId,
+    evalCode,
+    boxes,
+    stops,
+    hoursPerDay,
+    officeHoursPerDay,
+    annualSalary,
+    effectiveFrom,
+    effectiveTo,
+    profileId,
+    label
+  } = profile;
+  return {
+    routeId,
+    evalCode,
+    boxes,
+    stops,
+    hoursPerDay,
+    officeHoursPerDay,
+    annualSalary,
+    effectiveFrom,
+    effectiveTo,
+    profileId,
+    label
+  };
+}
 
 export function loadFlags(){
   try{
@@ -57,16 +169,122 @@ export function saveFlags(flags){
   localStorage.setItem(FLAG_KEY, JSON.stringify(flags));
 }
 
+export function loadEvalProfiles(){
+  try{
+    const raw = localStorage.getItem(EVAL_PROFILES_KEY);
+    if (raw){
+      const parsed = JSON.parse(raw);
+      const list = sanitizeEvalProfileList(parsed);
+      if (list.length){
+        return list.map(p => ({ ...p }));
+      }
+    }
+  }catch(_){ /* ignore parse error */ }
+  try{
+    const legacyRaw = localStorage.getItem(EVAL_KEY);
+    if (legacyRaw){
+      const legacyParsed = JSON.parse(legacyRaw);
+      return sanitizeEvalProfileList([legacyParsed]).map(p => ({ ...p }));
+    }
+  }catch(_){ /* ignore legacy parse */ }
+  return sanitizeEvalProfileList([DEFAULT_EVAL_PROFILE]).map(p => ({ ...p }));
+}
+
+export function saveEvalProfiles(profiles){
+  try{
+    const sanitized = sanitizeEvalProfileList(profiles);
+    localStorage.setItem(EVAL_PROFILES_KEY, JSON.stringify(sanitized));
+  }catch(_){
+    // ignore storage errors
+  }
+}
+
+export function getActiveEvalId(){
+  try{
+    const raw = localStorage.getItem(ACTIVE_EVAL_ID_KEY);
+    if (typeof raw === 'string'){
+      const trimmed = raw.trim();
+      return trimmed ? trimmed : null;
+    }
+    return null;
+  }catch(_){
+    return null;
+  }
+}
+
+export function setActiveEvalId(id){
+  try{
+    if (!id){
+      localStorage.removeItem(ACTIVE_EVAL_ID_KEY);
+    } else {
+      localStorage.setItem(ACTIVE_EVAL_ID_KEY, id);
+    }
+  }catch(_){
+    // ignore storage errors
+  }
+}
+
 export function loadEval(){
   try{
-    return Object.assign({}, DEFAULT_EVAL, JSON.parse(localStorage.getItem(EVAL_KEY) || '{}'));
+    const profiles = loadEvalProfiles();
+    let activeId = getActiveEvalId();
+    let active = profiles.find(p => p.profileId === activeId);
+    if (!active){
+      active = profiles[0] || sanitizeEvalProfile(DEFAULT_EVAL_PROFILE);
+      if (active) setActiveEvalId(active.profileId);
+    }
+    return active ? { ...active } : { ...sanitizeEvalProfile(DEFAULT_EVAL_PROFILE) };
   }catch(_){
-    return { ...DEFAULT_EVAL };
+    return { ...sanitizeEvalProfile(DEFAULT_EVAL_PROFILE) };
   }
 }
 
 export function saveEval(cfg){
-  localStorage.setItem(EVAL_KEY, JSON.stringify(cfg || {}));
+  try{
+    const sanitized = sanitizeEvalProfile(cfg);
+    const profiles = loadEvalProfiles();
+    const idx = profiles.findIndex(p => p.profileId === sanitized.profileId);
+    if (idx >= 0) profiles[idx] = sanitized;
+    else profiles.push(sanitized);
+    saveEvalProfiles(profiles);
+    setActiveEvalId(sanitized.profileId);
+    localStorage.setItem(EVAL_KEY, JSON.stringify(legacyEvalPayload(sanitized)));
+  }catch(_){
+    try{
+      localStorage.setItem(EVAL_KEY, JSON.stringify(cfg || {}));
+    }catch(__){
+      // ignore storage errors
+    }
+  }
+}
+
+export function deleteEvalProfile(profileId){
+  if (!profileId) return loadEvalProfiles();
+  try{
+    let profiles = loadEvalProfiles().filter(p => p.profileId !== profileId);
+    if (!profiles.length){
+      profiles = [sanitizeEvalProfile(DEFAULT_EVAL_PROFILE)];
+    }
+    saveEvalProfiles(profiles);
+    const activeId = getActiveEvalId();
+    if (activeId === profileId){
+      const nextActive = profiles[0]?.profileId || null;
+      if (nextActive){
+        setActiveEvalId(nextActive);
+        localStorage.setItem(EVAL_KEY, JSON.stringify(legacyEvalPayload(profiles[0])));
+      } else {
+        setActiveEvalId(null);
+        localStorage.removeItem(EVAL_KEY);
+      }
+    }
+    return profiles.map(p => ({ ...p }));
+  }catch(_){
+    return loadEvalProfiles();
+  }
+}
+
+export function createEvalProfile(partial={}){
+  return sanitizeEvalProfile({ ...DEFAULT_EVAL_PROFILE, profileId:null, ...(partial || {}) });
 }
 
 export function loadVacation(){

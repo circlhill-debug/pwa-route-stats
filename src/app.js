@@ -19,6 +19,9 @@ import {
   saveFlags,
   loadEval,
   saveEval,
+  loadEvalProfiles,
+  deleteEvalProfile,
+  createEvalProfile,
   loadVacation,
   saveVacation,
   ensureWeeklyBaselines,
@@ -84,6 +87,7 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
 
 // ==== SUPABASE CONFIG ====
   console.log('[RouteStats] boot start');
+  let EVAL_PROFILES = loadEvalProfiles();
   let USPS_EVAL = loadEval();
 
   // Vacation Mode config
@@ -156,8 +160,258 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
     }catch(_){ return rows||[]; }
   }
 
+  function syncEvalGlobals(){
+    EVAL_PROFILES = loadEvalProfiles();
+    USPS_EVAL = loadEval();
+  }
+
+  function getEvalProfileById(profileId){
+    if (!profileId) return null;
+    return (EVAL_PROFILES || []).find(p => p.profileId === profileId) || null;
+  }
+
+  function getEvalProfileDisplayName(profile){
+    if (!profile) return 'Evaluation';
+    if (profile.label) return profile.label;
+    const parts = [profile.routeId, profile.evalCode].filter(Boolean);
+    return parts.length ? parts.join(' ') : 'Evaluation';
+  }
+
+  function applyEvalProfileToInputs(profileId){
+    const profile = getEvalProfileById(profileId) || USPS_EVAL || (EVAL_PROFILES && EVAL_PROFILES[0]) || null;
+    if (!profile) return;
+    if (evalProfileSelect && profile.profileId) evalProfileSelect.value = profile.profileId;
+    if (evalProfileLabelInput) evalProfileLabelInput.value = profile.label || '';
+    if (evalRouteId) evalRouteId.value = profile.routeId || '';
+    if (evalCode) evalCode.value = profile.evalCode || '';
+    if (evalBoxesIn) evalBoxesIn.value = profile.boxes != null ? profile.boxes : '';
+    if (evalStopsIn) evalStopsIn.value = profile.stops != null ? profile.stops : '';
+    if (evalHoursIn) evalHoursIn.value = profile.hoursPerDay != null ? profile.hoursPerDay : '';
+    if (evalOfficeHoursIn) evalOfficeHoursIn.value = profile.officeHoursPerDay != null ? profile.officeHoursPerDay : '';
+    if (evalSalaryIn) evalSalaryIn.value = profile.annualSalary != null ? profile.annualSalary : '';
+    if (evalEffectiveFromInput) evalEffectiveFromInput.value = profile.effectiveFrom || '';
+    if (evalEffectiveToInput) evalEffectiveToInput.value = profile.effectiveTo || '';
+  }
+
+  function populateEvalProfileSelectUI(selectedId){
+    if (!evalProfileSelect) return;
+    syncEvalGlobals();
+    evalProfileSelect.innerHTML = '';
+    (EVAL_PROFILES || []).forEach(profile=>{
+      const opt = document.createElement('option');
+      opt.value = profile.profileId;
+      opt.textContent = getEvalProfileDisplayName(profile);
+      evalProfileSelect.appendChild(opt);
+    });
+    const fallbackId = USPS_EVAL?.profileId || (EVAL_PROFILES && EVAL_PROFILES[0]?.profileId) || null;
+    const targetId = (selectedId && getEvalProfileById(selectedId)) ? selectedId : fallbackId;
+    if (targetId) evalProfileSelect.value = targetId;
+    applyEvalProfileToInputs(targetId);
+    if (evalProfileDeleteBtn){
+      evalProfileDeleteBtn.disabled = (EVAL_PROFILES?.length || 0) <= 1;
+    }
+  }
+
+  function readNumberInput(el){
+    if (!el) return null;
+    const raw = el.value;
+    if (raw === '' || raw == null) return null;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  function collectEvalFormValues(profileId){
+    const base = getEvalProfileById(profileId) || USPS_EVAL || {};
+    const routeIdVal = (evalRouteId?.value || '').trim();
+    const evalCodeVal = (evalCode?.value || '').trim();
+    const labelVal = (evalProfileLabelInput?.value || '').trim();
+    const label = labelVal || getEvalProfileDisplayName({ ...base, routeId: routeIdVal, evalCode: evalCodeVal });
+    return {
+      ...base,
+      profileId: base.profileId || profileId || null,
+      label,
+      routeId: routeIdVal || base.routeId || 'R1',
+      evalCode: evalCodeVal || base.evalCode || '',
+      boxes: readNumberInput(evalBoxesIn),
+      stops: readNumberInput(evalStopsIn),
+      hoursPerDay: readNumberInput(evalHoursIn),
+      officeHoursPerDay: readNumberInput(evalOfficeHoursIn),
+      annualSalary: readNumberInput(evalSalaryIn),
+      effectiveFrom: (evalEffectiveFromInput?.value || '').trim() || null,
+      effectiveTo: (evalEffectiveToInput?.value || '').trim() || null
+    };
+  }
+
+  function rowsForEvaluationRange(rows, profile){
+    if (!profile) return [];
+    let from = null;
+    let to = null;
+    try{
+      if (profile.effectiveFrom){
+        const dt = DateTime.fromISO(profile.effectiveFrom, { zone: ZONE });
+        if (dt.isValid) from = dt.startOf('day');
+      }
+      if (profile.effectiveTo){
+        const dt = DateTime.fromISO(profile.effectiveTo, { zone: ZONE });
+        if (dt.isValid) to = dt.endOf('day');
+      }
+    }catch(_){ /* ignore parse errors */ }
+    return (rows||[]).filter(r=>{
+      if (!r || !r.work_date) return false;
+      try{
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        if (!d.isValid) return false;
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      }catch(_){ return false; }
+    });
+  }
+
+  function groupRowsByTimeframeForEval(rows, timeframe){
+    const buckets = new Map();
+    (rows||[]).forEach(row=>{
+      if (!row || row.status === 'off') return;
+      if (!row.work_date) return;
+      let dt;
+      try{
+        dt = DateTime.fromISO(row.work_date, { zone: ZONE });
+      }catch(_){ return; }
+      if (!dt || !dt.isValid) return;
+      let key, label;
+      if (timeframe === 'day'){
+        key = dt.toISODate();
+        label = dt.toFormat('LLL dd, yyyy');
+      }else if (timeframe === 'month'){
+        key = dt.toFormat('yyyy-MM');
+        label = dt.toFormat('LLLL yyyy');
+      }else{
+        const start = startOfWeekMonday(dt);
+        const end = endOfWeekSunday(dt);
+        key = start.toISODate();
+        label = `${start.toFormat('LLL dd')} → ${end.toFormat('LLL dd')}`;
+      }
+      const bucket = buckets.get(key) || { key, label, count:0, hours:0, parcels:0, letters:0, miles:0 };
+      bucket.count += 1;
+      bucket.hours += Number(row.hours || 0);
+      bucket.parcels += Number(row.parcels || 0);
+      bucket.letters += Number(row.letters || 0);
+      bucket.miles += Number(row.miles || 0);
+      buckets.set(key, bucket);
+    });
+    return Array.from(buckets.values()).map(b=>({
+      ...b,
+      volume: b.parcels + b.letters
+    }));
+  }
+
+  function combineEvalGroups(groupsA, groupsB){
+    const mapA = new Map((groupsA||[]).map(g=> [g.key, g]));
+    const mapB = new Map((groupsB||[]).map(g=> [g.key, g]));
+    const keys = new Set([...mapA.keys(), ...mapB.keys()]);
+    const merged = [];
+    keys.forEach(key=>{
+      const a = mapA.get(key);
+      const b = mapB.get(key);
+      merged.push({
+        key,
+        label: (a && a.label) || (b && b.label) || key,
+        volumeA: a ? a.volume : 0,
+        volumeB: b ? b.volume : 0,
+        deltaVolume: (b ? b.volume : 0) - (a ? a.volume : 0),
+        hoursA: a ? a.hours : 0,
+        hoursB: b ? b.hours : 0,
+        deltaHours: (b ? b.hours : 0) - (a ? a.hours : 0),
+        countA: a ? a.count : 0,
+        countB: b ? b.count : 0
+      });
+    });
+    return merged;
+  }
+
+  function summarizeEvalGroups(groups){
+    return (groups||[]).reduce((acc, g)=>{
+      acc.volume += g.volume || 0;
+      acc.hours += g.hours || 0;
+      acc.parcels += g.parcels || 0;
+      acc.letters += g.letters || 0;
+      acc.miles += g.miles || 0;
+      acc.days += g.count || 0;
+      acc.periods += 1;
+      return acc;
+    }, { volume:0, hours:0, parcels:0, letters:0, miles:0, days:0, periods:0 });
+  }
+
+  function formatNumber(value, digits=0){
+    const num = Number(value || 0);
+    if (!Number.isFinite(num)) return '0';
+    return num.toLocaleString(undefined, { minimumFractionDigits:digits, maximumFractionDigits:digits });
+  }
+
+  function formatSigned(value, digits=0){
+    const num = Number(value || 0);
+    const prefix = num > 0 ? '+' : '';
+    return `${prefix}${formatNumber(num, digits)}`;
+  }
+
+  function formatDeltaCell(value, digits){
+    const num = Number(value || 0);
+    const cls = num > 0 ? 'delta pos' : num < 0 ? 'delta neg' : 'delta zero';
+    const prefix = num > 0 ? '+' : '';
+    return `<span class="${cls}">${prefix}${formatNumber(num, digits)}</span>`;
+  }
+
+  function populateEvalCompareSelect(selectEl, selectedId){
+    if (!selectEl) return;
+    selectEl.innerHTML = '';
+    (EVAL_PROFILES || []).forEach(profile=>{
+      const opt = document.createElement('option');
+      opt.value = profile.profileId;
+      opt.textContent = getEvalProfileDisplayName(profile);
+      selectEl.appendChild(opt);
+    });
+    if (selectedId && getEvalProfileById(selectedId)){
+      selectEl.value = selectedId;
+    }else if (EVAL_PROFILES && EVAL_PROFILES[0]){
+      selectEl.value = EVAL_PROFILES[0].profileId;
+    }
+  }
+
+  function renderEvalCompareRow(row){
+    return `<tr>
+      <td>${row.label}</td>
+      <td class="right">${formatNumber(row.volumeA, 0)}</td>
+      <td class="right">${formatNumber(row.volumeB, 0)}</td>
+      <td class="right">${formatDeltaCell(row.deltaVolume, 0)}</td>
+      <td class="right">${formatNumber(row.hoursA, 1)}</td>
+      <td class="right">${formatNumber(row.hoursB, 1)}</td>
+      <td class="right">${formatDeltaCell(row.deltaHours, 1)}</td>
+      <td class="right">${row.countA}/${row.countB}</td>
+    </tr>`;
+  }
+
+  function formatEvalCompareSummary(profileA, summaryA, profileB, summaryB){
+    const tf = evalCompareState.timeframe === 'month' ? 'month' : (evalCompareState.timeframe === 'week' ? 'week' : 'day');
+    const labelA = getEvalProfileDisplayName(profileA);
+    const labelB = getEvalProfileDisplayName(profileB);
+    const volumeDiff = summaryB.volume - summaryA.volume;
+    const hoursDiff = summaryB.hours - summaryA.hours;
+    const avgVolumeA = summaryA.periods ? summaryA.volume / summaryA.periods : 0;
+    const avgVolumeB = summaryB.periods ? summaryB.volume / summaryB.periods : 0;
+    const avgHoursA = summaryA.periods ? summaryA.hours / summaryA.periods : 0;
+    const avgHoursB = summaryB.periods ? summaryB.hours / summaryB.periods : 0;
+    return `${labelB} vs ${labelA} (${tf}s). Volume change ${formatSigned(volumeDiff, 0)} (${formatNumber(avgVolumeB, 1)} vs ${formatNumber(avgVolumeA, 1)} avg/${tf}). Hours change ${formatSigned(hoursDiff, 1)} (${formatNumber(avgHoursB, 1)} vs ${formatNumber(avgHoursA, 1)} avg/${tf}). Days logged ${summaryB.days} vs ${summaryA.days}.`;
+  }
+
   // === Feature Flags (localStorage) ===
   let FLAGS = loadFlags();
+  let evalCompareState = {
+    timeframe:'week',
+    sortKey:'deltaVolume',
+    sortDir:'desc',
+    aId: USPS_EVAL?.profileId || null,
+    bId: null
+  };
 
   // === Helpers ===
   const $ = id => document.getElementById(id);
@@ -596,6 +850,12 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
   const evalHoursIn = document.getElementById('evalHoursIn');
   const evalOfficeHoursIn = document.getElementById('evalOfficeHoursIn');
   const evalSalaryIn = document.getElementById('evalSalaryIn');
+  const evalProfileSelect = document.getElementById('evalProfileSelect');
+  const evalProfileAddBtn = document.getElementById('evalProfileAdd');
+  const evalProfileDeleteBtn = document.getElementById('evalProfileDelete');
+  const evalProfileLabelInput = document.getElementById('evalProfileLabel');
+  const evalEffectiveFromInput = document.getElementById('evalEffectiveFrom');
+  const evalEffectiveToInput = document.getElementById('evalEffectiveTo');
   // Vacation mode inputs
   const vacFrom    = document.getElementById('vacFrom');
   const vacTo      = document.getElementById('vacTo');
@@ -624,6 +884,13 @@ const tokenWeekInput = document.getElementById('tokenUsageWeek');
 const tokenMonthInput = document.getElementById('tokenUsageMonth');
 const tokenLimitInput = document.getElementById('tokenUsageLimit');
 const aiPromptTextarea = document.getElementById('aiSummaryBasePrompt');
+const evalCompareCard = document.getElementById('evalCompareCard');
+const evalCompareSelectA = document.getElementById('evalCompareSelectA');
+const evalCompareSelectB = document.getElementById('evalCompareSelectB');
+const evalCompareSummary = document.getElementById('evalCompareSummary');
+const evalCompareBody = document.getElementById('evalCompareBody');
+const evalCompareTable = document.getElementById('evalCompareTable');
+const evalCompareTfButtons = Array.from(document.querySelectorAll('#evalCompareCard .eval-tf-btn'));
 let CURRENT_USER_ID = null;
 
 aiSummary = createAiSummary({
@@ -672,14 +939,7 @@ aiSummary = createAiSummary({
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
     // populate USPS eval fields
     try{
-      const cfg = USPS_EVAL || loadEval();
-      if (evalRouteId) evalRouteId.value = cfg.routeId || '';
-      if (evalCode)    evalCode.value    = cfg.evalCode || '';
-      if (evalBoxesIn) evalBoxesIn.value = (cfg.boxes!=null? cfg.boxes : '');
-      if (evalStopsIn) evalStopsIn.value = (cfg.stops!=null? cfg.stops : '');
-      if (evalHoursIn) evalHoursIn.value = (cfg.hoursPerDay!=null? cfg.hoursPerDay : '');
-      if (evalOfficeHoursIn) evalOfficeHoursIn.value = (cfg.officeHoursPerDay!=null? cfg.officeHoursPerDay : '');
-      if (evalSalaryIn) evalSalaryIn.value = (cfg.annualSalary!=null? cfg.annualSalary : '');
+      populateEvalProfileSelectUI(USPS_EVAL?.profileId);
     }catch(_){ }
     // populate Vacation Mode
     try{
@@ -702,9 +962,56 @@ aiSummary = createAiSummary({
       aiPromptTextarea.placeholder = DEFAULT_AI_BASE_PROMPT;
     }
     aiSummary.populateTokenInputs(loadTokenUsage());
-  renderVacationRanges();
-  settingsDlg.showModal();
-});
+    renderVacationRanges();
+    settingsDlg.showModal();
+  });
+
+  evalProfileSelect?.addEventListener('change', ()=>{
+    const nextId = evalProfileSelect.value;
+    applyEvalProfileToInputs(nextId);
+    if (evalProfileDeleteBtn){
+      evalProfileDeleteBtn.disabled = (EVAL_PROFILES?.length || 0) <= 1;
+    }
+  });
+
+  evalProfileAddBtn?.addEventListener('click', ()=>{
+    try{
+      const base = getEvalProfileById(evalProfileSelect?.value) || USPS_EVAL || {};
+      const newProfile = createEvalProfile({
+        label: `Evaluation ${(EVAL_PROFILES?.length || 0) + 1}`,
+        routeId: base.routeId || 'R1',
+        evalCode: base.evalCode || '',
+        boxes: base.boxes ?? null,
+        stops: base.stops ?? null,
+        hoursPerDay: base.hoursPerDay ?? null,
+        officeHoursPerDay: base.officeHoursPerDay ?? null,
+        annualSalary: base.annualSalary ?? null,
+        effectiveFrom: null,
+        effectiveTo: null
+      });
+      saveEval(newProfile);
+      syncEvalGlobals();
+      populateEvalProfileSelectUI(newProfile.profileId);
+      applyEvalProfileToInputs(newProfile.profileId);
+      buildEvalCompare(allRows || []);
+    }catch(_){ }
+  });
+
+  evalProfileDeleteBtn?.addEventListener('click', ()=>{
+    const id = evalProfileSelect?.value;
+    if (!id) return;
+    if ((EVAL_PROFILES?.length || 0) <= 1){
+      alert('At least one evaluation profile is required.');
+      return;
+    }
+    if (!confirm('Delete this evaluation profile? You can recreate it later if needed.')) return;
+    deleteEvalProfile(id);
+    syncEvalGlobals();
+    const fallbackId = USPS_EVAL?.profileId || (EVAL_PROFILES && EVAL_PROFILES[0]?.profileId) || null;
+    populateEvalProfileSelectUI(fallbackId);
+    applyEvalProfileToInputs(fallbackId);
+    buildEvalCompare(allRows || []);
+  });
 
   saveSettings?.addEventListener('click', (e)=>{
     e.preventDefault();
@@ -726,16 +1033,15 @@ aiSummary = createAiSummary({
     if (flagUspsEval) FLAGS.uspsEval = !!flagUspsEval.checked;
     // read USPS eval fields
     try{
-      USPS_EVAL = {
-        routeId: (evalRouteId?.value||'').trim() || 'R1',
-        evalCode: (evalCode?.value||'').trim() || '44K',
-        boxes:    evalBoxesIn?.value!=='' ? +evalBoxesIn.value : null,
-        stops:    evalStopsIn?.value!=='' ? +evalStopsIn.value : null,
-        hoursPerDay: evalHoursIn?.value!=='' ? +evalHoursIn.value : null,
-        officeHoursPerDay: evalOfficeHoursIn?.value!=='' ? +evalOfficeHoursIn.value : null,
-        annualSalary: evalSalaryIn?.value!=='' ? +evalSalaryIn.value : null
-      };
-      saveEval(USPS_EVAL);
+      const selectedId = evalProfileSelect?.value || USPS_EVAL?.profileId || null;
+      const updated = collectEvalFormValues(selectedId);
+      saveEval(updated);
+      syncEvalGlobals();
+      USPS_EVAL = getEvalProfileById(updated.profileId) || updated;
+      populateEvalProfileSelectUI(USPS_EVAL?.profileId);
+      if (!evalCompareState.aId || evalCompareState.aId === selectedId){
+        evalCompareState.aId = USPS_EVAL?.profileId || selectedId || evalCompareState.aId;
+      }
     }catch(_){ }
     // read Vacation Mode
     try{
@@ -782,6 +1088,54 @@ aiSummary = createAiSummary({
     applyRecentEntriesAutoCollapse();
     aiSummary.updateAvailability();
     aiSummary.renderLastSummary();
+  });
+
+  evalCompareSelectA?.addEventListener('change', ()=>{
+    evalCompareState.aId = evalCompareSelectA.value;
+    if (evalCompareState.aId === evalCompareState.bId){
+      const alternative = (EVAL_PROFILES || []).find(p => p.profileId !== evalCompareState.aId);
+      if (alternative){
+        evalCompareState.bId = alternative.profileId;
+        if (evalCompareSelectB) evalCompareSelectB.value = evalCompareState.bId;
+      }
+    }
+    buildEvalCompare(allRows || []);
+  });
+
+  evalCompareSelectB?.addEventListener('change', ()=>{
+    evalCompareState.bId = evalCompareSelectB.value;
+    if (evalCompareState.bId === evalCompareState.aId){
+      const alternative = (EVAL_PROFILES || []).find(p => p.profileId !== evalCompareState.aId);
+      if (alternative){
+        evalCompareState.aId = alternative.profileId;
+        if (evalCompareSelectA) evalCompareSelectA.value = evalCompareState.aId;
+      }
+    }
+    buildEvalCompare(allRows || []);
+  });
+
+  evalCompareTfButtons.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const tf = btn.dataset.tf || 'week';
+      if (tf === evalCompareState.timeframe) return;
+      evalCompareState.timeframe = tf;
+      evalCompareTfButtons.forEach(b => b.classList.toggle('active', b === btn));
+      buildEvalCompare(allRows || []);
+    });
+  });
+
+  evalCompareTable?.addEventListener('click', (event)=>{
+    const th = event.target.closest('th[data-sort]');
+    if (!th) return;
+    const key = th.getAttribute('data-sort');
+    if (!key) return;
+    if (evalCompareState.sortKey === key){
+      evalCompareState.sortDir = evalCompareState.sortDir === 'asc' ? 'desc' : 'asc';
+    }else{
+      evalCompareState.sortKey = key;
+      evalCompareState.sortDir = 'desc';
+    }
+    buildEvalCompare(allRows || []);
   });
 
   clearOpenAiKeyBtn?.addEventListener('click', ()=>{
@@ -1379,6 +1733,7 @@ function getHourlyRateFromEval(){
     buildHeavinessToday(rawRows);
     buildWeekHeaviness(rawRows);
     buildUspsTiles(rawRows);
+    buildEvalCompare(rawRows);
     buildDiagnostics(normalRows);
     buildVolumeLeaderboard(rawRows);
   }
@@ -2145,6 +2500,75 @@ function getHourlyRateFromEval(){
       if (to) { to.className='pill statDelta'; to.style.color=fgO; to.style.background='transparent'; to.style.borderColor='transparent'; }
     })();
 }
+
+  function buildEvalCompare(rows){
+    try{
+      if (!evalCompareCard) return;
+      syncEvalGlobals();
+      const profiles = EVAL_PROFILES || [];
+      const enabled = FLAGS.uspsEval && profiles.length >= 2;
+      evalCompareCard.style.display = enabled ? '' : 'none';
+      if (!enabled){
+        if (evalCompareSummary) evalCompareSummary.textContent = profiles.length ? 'Add another evaluation profile to compare.' : 'Add evaluation profiles in Settings.';
+        if (evalCompareBody) evalCompareBody.innerHTML = '';
+        return;
+      }
+      if (!evalCompareState.aId || !getEvalProfileById(evalCompareState.aId)){
+        evalCompareState.aId = USPS_EVAL?.profileId || profiles[0].profileId;
+      }
+      if (!evalCompareState.bId || evalCompareState.bId === evalCompareState.aId || !getEvalProfileById(evalCompareState.bId)){
+        const fallback = profiles.find(p => p.profileId !== evalCompareState.aId);
+        evalCompareState.bId = fallback ? fallback.profileId : profiles[0].profileId;
+        if (evalCompareState.bId === evalCompareState.aId && profiles.length > 1){
+          evalCompareState.bId = profiles[1].profileId;
+        }
+      }
+      populateEvalCompareSelect(evalCompareSelectA, evalCompareState.aId);
+      populateEvalCompareSelect(evalCompareSelectB, evalCompareState.bId);
+      evalCompareTfButtons.forEach(btn=>{
+        btn.classList.toggle('active', btn.dataset.tf === evalCompareState.timeframe);
+      });
+      const profileA = getEvalProfileById(evalCompareState.aId);
+      const profileB = getEvalProfileById(evalCompareState.bId);
+      if (!profileA || !profileB){
+        if (evalCompareSummary) evalCompareSummary.textContent = 'Select two evaluation profiles to compare.';
+        if (evalCompareBody) evalCompareBody.innerHTML = '';
+        return;
+      }
+      const scopedRows = filterRowsForView(rows || []);
+      const rowsA = rowsForEvaluationRange(scopedRows, profileA);
+      const rowsB = rowsForEvaluationRange(scopedRows, profileB);
+      const groupsA = groupRowsByTimeframeForEval(rowsA, evalCompareState.timeframe);
+      const groupsB = groupRowsByTimeframeForEval(rowsB, evalCompareState.timeframe);
+      const combined = combineEvalGroups(groupsA, groupsB);
+      const summaryA = summarizeEvalGroups(groupsA);
+      const summaryB = summarizeEvalGroups(groupsB);
+      if (evalCompareSummary){
+        evalCompareSummary.textContent = formatEvalCompareSummary(profileA, summaryA, profileB, summaryB);
+      }
+      const sortKey = evalCompareState.sortKey;
+      const sortDir = evalCompareState.sortDir === 'asc' ? 1 : -1;
+      combined.sort((a,b)=>{
+        if (sortKey === 'label'){
+          const cmp = (a.label||'').localeCompare(b.label||'');
+          return sortDir * cmp;
+        }
+        const valA = Number(a[sortKey] || 0);
+        const valB = Number(b[sortKey] || 0);
+        return sortDir * (valA - valB);
+      });
+      if (evalCompareBody){
+        if (!combined.length){
+          evalCompareBody.innerHTML = `<tr><td colspan="8" class="muted">No worked entries for these evaluations in the selected window.</td></tr>`;
+        }else{
+          evalCompareBody.innerHTML = combined.map(renderEvalCompareRow).join('');
+        }
+      }
+    }catch(err){
+      console.warn('buildEvalCompare error', err);
+      if (evalCompareSummary) evalCompareSummary.textContent = 'Unable to render evaluation comparison.';
+    }
+  }
 
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{

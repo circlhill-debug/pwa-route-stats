@@ -1,6 +1,6 @@
 // Route Stats PWA Service Worker (safe)
 // Bump when user-visible changes land to force fresh assets
-const CACHE_VERSION = 'rs-pwa-v2025-10-25-11';
+const CACHE_VERSION = 'rs-pwa-v2025-10-25-12';
 const STATIC_CACHE = CACHE_VERSION + '-static';
 
 const SAME_ORIGIN = self.location.origin;
@@ -9,76 +9,43 @@ const SAME_ORIGIN = self.location.origin;
 const PRECACHE_URLS = [
   './',
   './index.html',
+  './public/app.js',
   './manifest.json',
   './icon-180.png',
   './icon-192.jpg',
   './icon-512.jpg'
 ];
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(STATIC_CACHE).then(cache => cache.addAll(PRECACHE_URLS)).then(() => self.skipWaiting())
-  );
-});
-
-// Allow page to ask SW to activate immediately
-self.addEventListener('message', (event) => {
-  const data = event && event.data;
-  if (data && data.type === 'SKIP_WAITING') {
+self.addEventListener('install', event => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(STATIC_CACHE);
+    await cache.addAll(PRECACHE_URLS);
     self.skipWaiting();
-  }
-});
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.map(k => {
-      if (!k.startsWith(CACHE_VERSION)) return caches.delete(k);
-    }))).then(() => self.clients.claim())
-  );
-});
-
-function isSupabase(url) {
-  return /supabase\.co/i.test(url);
-}
-
-// Only handle same-origin GET requests. Never intercept Supabase or other cross-origin calls.
-self.addEventListener('fetch', (event) => {
-  const req = event.request;
-  const url = new URL(req.url);
-
-  if (req.method !== 'GET') return;
-  if (isSupabase(req.url)) return;
-
-  // Only same-origin
-  if (url.origin !== SAME_ORIGIN) return;
-
-  // For navigation requests: network-first with cache fallback
-  if (req.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        const fresh = await fetch(req);
-        const cache = await caches.open(STATIC_CACHE);
-        cache.put(req, fresh.clone());
-        return fresh;
-      } catch (e) {
-        const cached = await caches.match(req);
-        return cached || caches.match('./index.html');
-      }
-    })());
-    return;
-  }
-
-  // For static assets: cache-first
-  event.respondWith((async () => {
-    const cached = await caches.match(req);
-    if (cached) return cached;
-    try {
-      const fresh = await fetch(req);
-      const cache = await caches.open(STATIC_CACHE);
-      cache.put(req, fresh.clone());
-      return fresh;
-    } catch (e) {
-      return new Response('Offline', { status: 503, statusText: 'Offline' });
-    }
   })());
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(key => {
+      if (!key.startsWith(CACHE_VERSION)) return caches.delete(key);
+    }));
+    self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch', event => {
+  const { request } = event;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  if (url.origin === SAME_ORIGIN) {
+    event.respondWith((async () => {
+      const cache = await caches.open(STATIC_CACHE);
+      const cached = await cache.match(request);
+      if (cached) return cached;
+      const response = await fetch(request).catch(() => null);
+      if (response && response.ok) cache.put(request, response.clone());
+      return response;
+    })());
+  }
 });

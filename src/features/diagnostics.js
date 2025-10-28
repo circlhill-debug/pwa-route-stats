@@ -677,40 +677,26 @@ export function createDiagnostics({
             : 'Reason (e.g., Road closure, Weather, Extra parcels):';
           const reasonPrompt = window.prompt(`${basePrompt}\nYou can append minutes like "+15" (e.g., "parcels+15") and separate multiple reasons with commas (e.g., "parcels+15, flats+30").`, defaultReason);
           if (reasonPrompt === null) return;
-          const reasonInput = reasonPrompt.trim();
-          const nowIso = new Date().toISOString();
-          let tags = parseDismissReasonInput(reasonInput);
+          let reasonText = reasonPrompt.trim();
+          if (!reasonText) {
+            window.alert('No reason provided; dismissal cancelled.');
+            return;
+          }
 
-          if (!tags.length) {
-            let minutesFromReason = null;
-            let reason = reasonInput;
-            const reasonMatch = reasonInput.match(/(.+?)\s*\+\s*(\d+)/);
-            if (reasonMatch) {
-              reason = reasonMatch[1].trim();
-              minutesFromReason = parseFloat(reasonMatch[2]);
-            }
-            const minutesPrompt = window.prompt('Minutes attributable to this reason (optional, numbers only):', minutesFromReason != null ? String(minutesFromReason) : (deltaMinutes != null ? String(deltaMinutes) : ''));
-            let minutes = null;
-            if (minutesPrompt && minutesPrompt.trim()) {
-              const parsed = parseFloat(minutesPrompt.trim());
-              if (Number.isFinite(parsed)) minutes = parsed;
-            }
-            const fallbackReason = reason.replace(/\s+/g, ' ').trim();
-            if (!fallbackReason) {
-              window.alert('No reason provided; dismissal cancelled.');
-              return;
-            }
-            tags = [{ reason: fallbackReason, minutes: minutes != null ? minutes : null }];
-          } else {
-            const tagsNeedingMinutes = tags.filter(tag => tag.minutes == null);
-            if (tagsNeedingMinutes.length === 1) {
-              const minutesPrompt = window.prompt('Minutes attributable to this reason (optional, numbers only):', deltaMinutes != null ? String(deltaMinutes) : '');
-              if (minutesPrompt && minutesPrompt.trim()) {
-                const parsed = parseFloat(minutesPrompt.trim());
-                if (Number.isFinite(parsed)) tagsNeedingMinutes[0].minutes = parsed;
-              }
+          if (!/[+:]/.test(reasonText)) {
+            const minutesPrompt = window.prompt('Minutes attributable to this reason (optional, numbers only):', deltaMinutes != null ? String(deltaMinutes) : '');
+            const minutesInput = minutesPrompt != null ? minutesPrompt.trim() : '';
+            if (minutesInput) {
+              reasonText = `${reasonText}+${minutesInput}`;
             }
           }
+
+          const tags = parseDismissReasonInput(reasonText);
+          if (!tags.length) {
+            window.alert('No reason provided; dismissal cancelled.');
+            return;
+          }
+          const nowIso = new Date().toISOString();
 
           const existing = loadDismissedResiduals().filter(item => item && item.iso !== iso);
           if (tags.length) {

@@ -19,6 +19,9 @@ import {
   saveFlags,
   loadEval,
   saveEval,
+  saveEvalProfiles,
+  setActiveEvalId,
+  getActiveEvalId,
   loadEvalProfiles,
   deleteEvalProfile,
   createEvalProfile,
@@ -101,6 +104,7 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
   }
 
   const DEFAULT_AI_BASE_PROMPT = 'You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.';
+  const SECOND_TRIP_EMA_KEY = 'routeStats.secondTrip.ema';
 
   function addVacationRange(fromIso, toIso){
     if (!fromIso || !toIso) return;
@@ -108,6 +112,7 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
     next.ranges = normalizeRanges(next.ranges);
     VACATION = next;
     saveVacation(VACATION);
+    scheduleUserSettingsSave();
   }
 
   function removeVacationRange(index){
@@ -116,6 +121,7 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
     ranges.splice(index, 1);
     VACATION = { ranges: normalizeRanges(ranges) };
     saveVacation(VACATION);
+    scheduleUserSettingsSave();
   }
 
   function listVacationRanges(){
@@ -163,6 +169,130 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
   function syncEvalGlobals(){
     EVAL_PROFILES = loadEvalProfiles();
     USPS_EVAL = loadEval();
+  }
+
+  const USER_SETTINGS_TABLE = 'user_settings';
+  let userSettingsSynced = false;
+  let suppressSettingsSave = false;
+  let pendingSettingsPayload = null;
+  let settingsSaveTimer = null;
+
+  function buildUserSettingsPayload(){
+    const evalProfiles = (EVAL_PROFILES || []).map(profile => ({
+      profileId: profile.profileId,
+      label: profile.label,
+      routeId: profile.routeId,
+      evalCode: profile.evalCode,
+      boxes: profile.boxes ?? null,
+      stops: profile.stops ?? null,
+      hoursPerDay: profile.hoursPerDay ?? null,
+      officeHoursPerDay: profile.officeHoursPerDay ?? null,
+      annualSalary: profile.annualSalary ?? null,
+      effectiveFrom: profile.effectiveFrom ?? null,
+      effectiveTo: profile.effectiveTo ?? null
+    }));
+    const vacationRanges = listVacationRanges().map(r => ({ from: r.from, to: r.to }));
+    const ema = readStoredEma();
+    const extraTrip = Number.isFinite(ema) ? { ema } : null;
+    const activeEvalId = USPS_EVAL?.profileId || getActiveEvalId();
+    return {
+      eval_profiles: evalProfiles,
+      active_eval_id: activeEvalId || null,
+      vacation_ranges: vacationRanges,
+      extra_trip: extraTrip
+    };
+  }
+
+  async function upsertUserSettingsRemote(payload){
+    if (!CURRENT_USER_ID) return;
+    try{
+      const { error } = await sb.from(USER_SETTINGS_TABLE).upsert({
+        user_id: CURRENT_USER_ID,
+        eval_profiles: payload.eval_profiles || [],
+        active_eval_id: payload.active_eval_id || null,
+        vacation_ranges: payload.vacation_ranges || [],
+        extra_trip: payload.extra_trip || null,
+        updated_at: new Date().toISOString()
+      });
+      if (error) console.warn('[Settings] upsert failed', error);
+    }catch(err){
+      console.warn('[Settings] upsert error', err);
+    }
+  }
+
+  function scheduleUserSettingsSave(){
+    if (suppressSettingsSave) return;
+    if (!CURRENT_USER_ID) return;
+    pendingSettingsPayload = buildUserSettingsPayload();
+    if (settingsSaveTimer) clearTimeout(settingsSaveTimer);
+    settingsSaveTimer = setTimeout(()=>{
+      const payload = pendingSettingsPayload;
+      pendingSettingsPayload = null;
+      if (!payload) return;
+      upsertUserSettingsRemote(payload);
+    }, 800);
+  }
+
+  async function syncUserSettingsFromRemote(){
+    if (!CURRENT_USER_ID) return;
+    try{
+      const { data, error } = await sb
+        .from(USER_SETTINGS_TABLE)
+        .select('eval_profiles, active_eval_id, vacation_ranges, extra_trip')
+        .eq('user_id', CURRENT_USER_ID)
+        .maybeSingle();
+      if (error && error.code !== 'PGRST116'){
+        console.warn('[Settings] load failed', error);
+        return;
+      }
+      suppressSettingsSave = true;
+      try{
+        if (data){
+          if (Array.isArray(data.eval_profiles)){
+            saveEvalProfiles(data.eval_profiles);
+            if (data.active_eval_id){
+              setActiveEvalId(data.active_eval_id);
+            }
+            syncEvalGlobals();
+          }
+          if (Array.isArray(data.vacation_ranges)){
+            const sanitized = data.vacation_ranges
+              .filter(r => r?.from && r?.to)
+              .map(r => ({ from: r.from, to: r.to }));
+            const normalized = normalizeRanges(sanitized);
+            VACATION = { ranges: normalized };
+            saveVacation(VACATION);
+          }
+          if (data.extra_trip && typeof data.extra_trip === 'object'){
+            const emaVal = parseFloat(data.extra_trip.ema);
+            if (Number.isFinite(emaVal)){
+              try{ localStorage.setItem(SECOND_TRIP_EMA_KEY, String(emaVal)); }catch(_){}
+            }
+          }
+        } else {
+          await upsertUserSettingsRemote(buildUserSettingsPayload());
+        }
+      } finally {
+        suppressSettingsSave = false;
+      }
+      renderVacationRanges();
+      renderUspsEvalTag();
+      if (secondTripEmaInput){
+        secondTripEmaInput.value = readStoredEma();
+        updateSecondTripSummary();
+      }
+      buildEvalCompare(allRows || []);
+    }catch(err){
+      suppressSettingsSave = false;
+      console.warn('[Settings] sync error', err);
+    }
+  }
+
+  async function ensureUserSettingsSync(){
+    if (!CURRENT_USER_ID) return;
+    if (userSettingsSynced) return;
+    userSettingsSynced = true;
+    await syncUserSettingsFromRemote();
   }
 
   function getEvalProfileById(profileId){
@@ -703,10 +833,19 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
     buildQuickFilter
   } = chartsFeature;
 
-  // Supabase
-  const sb = createSupabaseClient();
+// Supabase
+const sb = createSupabaseClient();
+try{ window.__sbClient = sb; }catch(_){ }
 
-  const authReadyPromise = handleAuthCallback(sb);
+const authReadyPromise = handleAuthCallback(sb);
+
+  authReadyPromise.then(session=>{
+    if (session?.user){
+      CURRENT_USER_ID = session.user.id;
+      dAuth.textContent = 'Session';
+      ensureUserSettingsSync();
+    }
+  }).catch(()=>{});
 
   // === Handle auth callbacks (incl. password recovery links) ===
   (async () => {
@@ -732,9 +871,17 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
   (async ()=>{ try{ await fetch(SUPABASE_URL,{mode:'no-cors'}); dConn.textContent='Connected'; }catch{ dConn.textContent='Error'; }})();
   (async function ensureSession(){
     const { data:{ session } } = await sb.auth.getSession();
-    if(!session){ await sb.auth.signInAnonymously().catch(()=>{}); } // you can remove this later if you like
+    const hasSession = !!session;
+    if (!hasSession){
+      dAuth.textContent = 'No session';
+      return;
+    }
     const { data:{ user } } = await sb.auth.getUser();
     dAuth.textContent = user? 'Session' : 'No session';
+    if (user){
+      CURRENT_USER_ID = user.id;
+      ensureUserSettingsSync();
+    }
   })();
 
   // Magic link
@@ -994,6 +1141,7 @@ aiSummary = createAiSummary({
       populateEvalProfileSelectUI(newProfile.profileId);
       applyEvalProfileToInputs(newProfile.profileId);
       buildEvalCompare(allRows || []);
+      scheduleUserSettingsSave();
     }catch(_){ }
   });
 
@@ -1011,6 +1159,7 @@ aiSummary = createAiSummary({
     populateEvalProfileSelectUI(fallbackId);
     applyEvalProfileToInputs(fallbackId);
     buildEvalCompare(allRows || []);
+    scheduleUserSettingsSave();
   });
 
   saveSettings?.addEventListener('click', (e)=>{
@@ -1082,6 +1231,7 @@ aiSummary = createAiSummary({
     renderVacationRanges();
     rebuildAll();
     renderUspsEvalTag();
+    scheduleUserSettingsSave();
 
     applyTrendPillsVisibility();
     applyCollapsedUi();
@@ -1245,6 +1395,14 @@ aiSummary = createAiSummary({
     dAuth.textContent = authed ? 'Session' : 'No session';
     if (authed){
       aiSummary.renderLastSummary();
+      ensureUserSettingsSync();
+    } else {
+      userSettingsSynced = false;
+      pendingSettingsPayload = null;
+      if (settingsSaveTimer){
+        clearTimeout(settingsSaveTimer);
+        settingsSaveTimer = null;
+      }
     }
   });
 
@@ -1253,6 +1411,9 @@ aiSummary = createAiSummary({
     CURRENT_USER_ID = session?.user?.id || null;
     if (CURRENT_USER_ID){
       aiSummary.renderLastSummary();
+      ensureUserSettingsSync();
+    } else {
+      userSettingsSynced = false;
     }
   }).catch(()=>{});
 
@@ -1265,7 +1426,6 @@ const parcels=$('parcels'), letters=$('letters'), miles=$('miles'), mood=$('mood
 const secondTripMilesInput=$('secondTripMiles'), secondTripTimeInput=$('secondTripTime'), secondTripEmaInput=$('secondTripEma');
 const breakMinutesInput=$('breakMinutes');
 const secondTripPaidEl=$('secondTripPaid'), secondTripActualEl=$('secondTripActual'), secondTripReimburseEl=$('secondTripReimburse'), secondTripEmaRateEl=$('secondTripEmaRate');
-const SECOND_TRIP_EMA_KEY = 'routeStats.secondTrip.ema';
 
 function readStoredEma(){
   try{
@@ -1666,6 +1826,7 @@ function updateSecondTripSummary(){
   if (secondTripEmaRateEl) secondTripEmaRateEl.textContent = ema.toFixed(2);
   // Persist user EMA preference
   try{ if (ema>0) localStorage.setItem(SECOND_TRIP_EMA_KEY, String(ema)); }catch(_){ }
+  scheduleUserSettingsSave();
   try{ computeBreakdown(); }catch(_){ }
 }
 

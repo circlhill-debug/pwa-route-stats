@@ -1245,39 +1245,24 @@ Reason (e.g., Road closure, Weather, Extra parcels):` : "Reason (e.g., Road clos
             const reasonPrompt = window.prompt(`${basePrompt}
 You can append minutes like "+15" (e.g., "parcels+15") and separate multiple reasons with commas (e.g., "parcels+15, flats+30").`, defaultReason);
             if (reasonPrompt === null) return;
-            const reasonInput = reasonPrompt.trim();
-            const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-            let tags = parseDismissReasonInput2(reasonInput);
-            if (!tags.length) {
-              let minutesFromReason = null;
-              let reason = reasonInput;
-              const reasonMatch = reasonInput.match(/(.+?)\s*\+\s*(\d+)/);
-              if (reasonMatch) {
-                reason = reasonMatch[1].trim();
-                minutesFromReason = parseFloat(reasonMatch[2]);
-              }
-              const minutesPrompt = window.prompt("Minutes attributable to this reason (optional, numbers only):", minutesFromReason != null ? String(minutesFromReason) : deltaMinutes != null ? String(deltaMinutes) : "");
-              let minutes = null;
-              if (minutesPrompt && minutesPrompt.trim()) {
-                const parsed = parseFloat(minutesPrompt.trim());
-                if (Number.isFinite(parsed)) minutes = parsed;
-              }
-              const fallbackReason = reason.replace(/\s+/g, " ").trim();
-              if (!fallbackReason) {
-                window.alert("No reason provided; dismissal cancelled.");
-                return;
-              }
-              tags = [{ reason: fallbackReason, minutes: minutes != null ? minutes : null }];
-            } else {
-              const tagsNeedingMinutes = tags.filter((tag) => tag.minutes == null);
-              if (tagsNeedingMinutes.length === 1) {
-                const minutesPrompt = window.prompt("Minutes attributable to this reason (optional, numbers only):", deltaMinutes != null ? String(deltaMinutes) : "");
-                if (minutesPrompt && minutesPrompt.trim()) {
-                  const parsed = parseFloat(minutesPrompt.trim());
-                  if (Number.isFinite(parsed)) tagsNeedingMinutes[0].minutes = parsed;
-                }
+            let reasonText = reasonPrompt.trim();
+            if (!reasonText) {
+              window.alert("No reason provided; dismissal cancelled.");
+              return;
+            }
+            if (!/[+:]/.test(reasonText)) {
+              const minutesPrompt = window.prompt("Minutes attributable to this reason (optional, numbers only):", deltaMinutes != null ? String(deltaMinutes) : "");
+              const minutesInput = minutesPrompt != null ? minutesPrompt.trim() : "";
+              if (minutesInput) {
+                reasonText = `${reasonText}+${minutesInput}`;
               }
             }
+            const tags = parseDismissReasonInput2(reasonText);
+            if (!tags.length) {
+              window.alert("No reason provided; dismissal cancelled.");
+              return;
+            }
+            const nowIso = (/* @__PURE__ */ new Date()).toISOString();
             const existing = loadDismissedResiduals2().filter((item) => item && item.iso !== iso);
             if (tags.length) {
               const entry = {
@@ -3464,12 +3449,14 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     }
   }
   var DEFAULT_AI_BASE_PROMPT = "You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.";
+  var SECOND_TRIP_EMA_KEY = "routeStats.secondTrip.ema";
   function addVacationRange(fromIso, toIso) {
     if (!fromIso || !toIso) return;
     const next = { ranges: [...(VACATION == null ? void 0 : VACATION.ranges) || [], { from: fromIso, to: toIso }] };
     next.ranges = normalizeRanges(next.ranges);
     VACATION = next;
     saveVacation(VACATION);
+    scheduleUserSettingsSave();
   }
   function removeVacationRange(index) {
     const ranges = Array.isArray(VACATION == null ? void 0 : VACATION.ranges) ? [...VACATION.ranges] : [];
@@ -3477,6 +3464,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     ranges.splice(index, 1);
     VACATION = { ranges: normalizeRanges(ranges) };
     saveVacation(VACATION);
+    scheduleUserSettingsSave();
   }
   function listVacationRanges() {
     const cfg = VACATION || loadVacation();
@@ -3524,6 +3512,124 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
   function syncEvalGlobals() {
     EVAL_PROFILES = loadEvalProfiles();
     USPS_EVAL = loadEval();
+  }
+  var USER_SETTINGS_TABLE = "user_settings";
+  var userSettingsSynced = false;
+  var suppressSettingsSave = false;
+  var pendingSettingsPayload = null;
+  var settingsSaveTimer = null;
+  function buildUserSettingsPayload() {
+    const evalProfiles = (EVAL_PROFILES || []).map((profile) => {
+      var _a5, _b, _c, _d, _e, _f, _g;
+      return {
+        profileId: profile.profileId,
+        label: profile.label,
+        routeId: profile.routeId,
+        evalCode: profile.evalCode,
+        boxes: (_a5 = profile.boxes) != null ? _a5 : null,
+        stops: (_b = profile.stops) != null ? _b : null,
+        hoursPerDay: (_c = profile.hoursPerDay) != null ? _c : null,
+        officeHoursPerDay: (_d = profile.officeHoursPerDay) != null ? _d : null,
+        annualSalary: (_e = profile.annualSalary) != null ? _e : null,
+        effectiveFrom: (_f = profile.effectiveFrom) != null ? _f : null,
+        effectiveTo: (_g = profile.effectiveTo) != null ? _g : null
+      };
+    });
+    const vacationRanges = listVacationRanges().map((r) => ({ from: r.from, to: r.to }));
+    const ema = readStoredEma();
+    const extraTrip = Number.isFinite(ema) ? { ema } : null;
+    const activeEvalId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || getActiveEvalId();
+    return {
+      eval_profiles: evalProfiles,
+      active_eval_id: activeEvalId || null,
+      vacation_ranges: vacationRanges,
+      extra_trip: extraTrip
+    };
+  }
+  async function upsertUserSettingsRemote(payload) {
+    if (!CURRENT_USER_ID) return;
+    try {
+      const { error } = await sb.from(USER_SETTINGS_TABLE).upsert({
+        user_id: CURRENT_USER_ID,
+        eval_profiles: payload.eval_profiles || [],
+        active_eval_id: payload.active_eval_id || null,
+        vacation_ranges: payload.vacation_ranges || [],
+        extra_trip: payload.extra_trip || null,
+        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      if (error) console.warn("[Settings] upsert failed", error);
+    } catch (err) {
+      console.warn("[Settings] upsert error", err);
+    }
+  }
+  function scheduleUserSettingsSave() {
+    if (suppressSettingsSave) return;
+    if (!CURRENT_USER_ID) return;
+    pendingSettingsPayload = buildUserSettingsPayload();
+    if (settingsSaveTimer) clearTimeout(settingsSaveTimer);
+    settingsSaveTimer = setTimeout(() => {
+      const payload = pendingSettingsPayload;
+      pendingSettingsPayload = null;
+      if (!payload) return;
+      upsertUserSettingsRemote(payload);
+    }, 800);
+  }
+  async function syncUserSettingsFromRemote() {
+    if (!CURRENT_USER_ID) return;
+    try {
+      const { data, error } = await sb.from(USER_SETTINGS_TABLE).select("eval_profiles, active_eval_id, vacation_ranges, extra_trip").eq("user_id", CURRENT_USER_ID).maybeSingle();
+      if (error && error.code !== "PGRST116") {
+        console.warn("[Settings] load failed", error);
+        return;
+      }
+      suppressSettingsSave = true;
+      try {
+        if (data) {
+          if (Array.isArray(data.eval_profiles)) {
+            saveEvalProfiles(data.eval_profiles);
+            if (data.active_eval_id) {
+              setActiveEvalId(data.active_eval_id);
+            }
+            syncEvalGlobals();
+          }
+          if (Array.isArray(data.vacation_ranges)) {
+            const sanitized = data.vacation_ranges.filter((r) => (r == null ? void 0 : r.from) && (r == null ? void 0 : r.to)).map((r) => ({ from: r.from, to: r.to }));
+            const normalized = normalizeRanges(sanitized);
+            VACATION = { ranges: normalized };
+            saveVacation(VACATION);
+          }
+          if (data.extra_trip && typeof data.extra_trip === "object") {
+            const emaVal = parseFloat(data.extra_trip.ema);
+            if (Number.isFinite(emaVal)) {
+              try {
+                localStorage.setItem(SECOND_TRIP_EMA_KEY, String(emaVal));
+              } catch (_) {
+              }
+            }
+          }
+        } else {
+          await upsertUserSettingsRemote(buildUserSettingsPayload());
+        }
+      } finally {
+        suppressSettingsSave = false;
+      }
+      renderVacationRanges();
+      renderUspsEvalTag();
+      if (secondTripEmaInput) {
+        secondTripEmaInput.value = readStoredEma();
+        updateSecondTripSummary();
+      }
+      buildEvalCompare(allRows || []);
+    } catch (err) {
+      suppressSettingsSave = false;
+      console.warn("[Settings] sync error", err);
+    }
+  }
+  async function ensureUserSettingsSync() {
+    if (!CURRENT_USER_ID) return;
+    if (userSettingsSynced) return;
+    userSettingsSynced = true;
+    await syncUserSettingsFromRemote();
   }
   function getEvalProfileById(profileId) {
     if (!profileId) return null;
@@ -4046,7 +4152,19 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     buildQuickFilter
   } = chartsFeature;
   var sb = createSupabaseClient();
+  try {
+    window.__sbClient = sb;
+  } catch (_) {
+  }
   var authReadyPromise = handleAuthCallback(sb);
+  authReadyPromise.then((session) => {
+    if (session == null ? void 0 : session.user) {
+      CURRENT_USER_ID = session.user.id;
+      dAuth.textContent = "Session";
+      ensureUserSettingsSync();
+    }
+  }).catch(() => {
+  });
   (async () => {
     const isRecoveryLink = /type=recovery/i.test(window.location.hash);
     if (!isRecoveryLink) return;
@@ -4075,12 +4193,17 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
   })();
   (async function ensureSession() {
     const { data: { session } } = await sb.auth.getSession();
-    if (!session) {
-      await sb.auth.signInAnonymously().catch(() => {
-      });
+    const hasSession = !!session;
+    if (!hasSession) {
+      dAuth.textContent = "No session";
+      return;
     }
     const { data: { user } } = await sb.auth.getUser();
     dAuth.textContent = user ? "Session" : "No session";
+    if (user) {
+      CURRENT_USER_ID = user.id;
+      ensureUserSettingsSync();
+    }
   })();
   var linkBtn = $("linkBtn");
   var linkDlg = $("linkDlg");
@@ -4335,6 +4458,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       populateEvalProfileSelectUI(newProfile.profileId);
       applyEvalProfileToInputs(newProfile.profileId);
       buildEvalCompare(allRows || []);
+      scheduleUserSettingsSave();
     } catch (_) {
     }
   });
@@ -4353,6 +4477,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     populateEvalProfileSelectUI(fallbackId);
     applyEvalProfileToInputs(fallbackId);
     buildEvalCompare(allRows || []);
+    scheduleUserSettingsSave();
   });
   saveSettings == null ? void 0 : saveSettings.addEventListener("click", (e) => {
     e.preventDefault();
@@ -4434,6 +4559,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     renderVacationRanges();
     rebuildAll();
     renderUspsEvalTag();
+    scheduleUserSettingsSave();
     applyTrendPillsVisibility();
     applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
@@ -4626,6 +4752,14 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     dAuth.textContent = authed ? "Session" : "No session";
     if (authed) {
       aiSummary.renderLastSummary();
+      ensureUserSettingsSync();
+    } else {
+      userSettingsSynced = false;
+      pendingSettingsPayload = null;
+      if (settingsSaveTimer) {
+        clearTimeout(settingsSaveTimer);
+        settingsSaveTimer = null;
+      }
     }
   });
   sb.auth.getSession().then(({ data }) => {
@@ -4634,6 +4768,9 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     CURRENT_USER_ID = ((_a5 = session == null ? void 0 : session.user) == null ? void 0 : _a5.id) || null;
     if (CURRENT_USER_ID) {
       aiSummary.renderLastSummary();
+      ensureUserSettingsSync();
+    } else {
+      userSettingsSynced = false;
     }
   }).catch(() => {
   });
@@ -4659,7 +4796,6 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
   var secondTripActualEl = $("secondTripActual");
   var secondTripReimburseEl = $("secondTripReimburse");
   var secondTripEmaRateEl = $("secondTripEmaRate");
-  var SECOND_TRIP_EMA_KEY = "routeStats.secondTrip.ema";
   function readStoredEma() {
     try {
       const saved = parseFloat(localStorage.getItem(SECOND_TRIP_EMA_KEY));
@@ -5108,6 +5244,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       if (ema > 0) localStorage.setItem(SECOND_TRIP_EMA_KEY, String(ema));
     } catch (_) {
     }
+    scheduleUserSettingsSave();
     try {
       computeBreakdown();
     } catch (_) {

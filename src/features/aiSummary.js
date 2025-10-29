@@ -53,7 +53,8 @@ export function createAiSummary({
   supabaseClient,
   getCurrentUserId,
   getDiagnosticsContext,
-  defaultPrompt
+  defaultPrompt,
+  onTokenUsageChange
 }){
   const {
     card,
@@ -139,6 +140,9 @@ export function createAiSummary({
     }
     saveTokenUsage(usage);
     updateTokenUsageCard(usage);
+    if (typeof onTokenUsageChange === 'function'){
+      onTokenUsageChange(usage);
+    }
   }
 
   function addTokenUsage(deltaTokens){
@@ -150,6 +154,9 @@ export function createAiSummary({
     saveTokenUsage(usage);
     updateTokenUsageCard(usage);
     populateTokenInputs(usage);
+    if (typeof onTokenUsageChange === 'function'){
+      onTokenUsageChange(usage);
+    }
   }
 
   async function fetchAiSummaryFromSupabase(){

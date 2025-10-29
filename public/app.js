@@ -1608,7 +1608,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     supabaseClient,
     getCurrentUserId,
     getDiagnosticsContext,
-    defaultPrompt
+    defaultPrompt,
+    onTokenUsageChange
   }) {
     const {
       card,
@@ -1687,6 +1688,9 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       }
       saveTokenUsage(usage);
       updateTokenUsageCard(usage);
+      if (typeof onTokenUsageChange === "function") {
+        onTokenUsageChange(usage);
+      }
     }
     function addTokenUsage(deltaTokens) {
       if (!(deltaTokens > 0)) return;
@@ -1697,6 +1701,9 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       saveTokenUsage(usage);
       updateTokenUsageCard(usage);
       populateTokenInputs(usage);
+      if (typeof onTokenUsageChange === "function") {
+        onTokenUsageChange(usage);
+      }
     }
     async function fetchAiSummaryFromSupabase() {
       const userId = getCurrentUserId();
@@ -3539,11 +3546,13 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     const ema = readStoredEma();
     const extraTrip = Number.isFinite(ema) ? { ema } : null;
     const activeEvalId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || getActiveEvalId();
+    const tokenUsage = loadTokenUsage();
     return {
       eval_profiles: evalProfiles,
       active_eval_id: activeEvalId || null,
       vacation_ranges: vacationRanges,
-      extra_trip: extraTrip
+      extra_trip: extraTrip,
+      ai_token_usage: tokenUsage
     };
   }
   async function upsertUserSettingsRemote(payload) {
@@ -3607,6 +3616,9 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
               }
             }
           }
+          if (data.ai_token_usage && typeof data.ai_token_usage === "object") {
+            saveTokenUsage(data.ai_token_usage);
+          }
         } else {
           await upsertUserSettingsRemote(buildUserSettingsPayload());
         }
@@ -3618,6 +3630,12 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       if (secondTripEmaInput) {
         secondTripEmaInput.value = readStoredEma();
         updateSecondTripSummary();
+      }
+      try {
+        const latestUsage = loadTokenUsage();
+        aiSummary.populateTokenInputs(latestUsage);
+        aiSummary.updateTokenUsageCard(latestUsage);
+      } catch (_) {
       }
       buildEvalCompare(allRows || []);
     } catch (err) {
@@ -4383,7 +4401,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     supabaseClient: sb,
     getCurrentUserId: () => CURRENT_USER_ID,
     getDiagnosticsContext: getLatestDiagnosticsContext,
-    defaultPrompt: DEFAULT_AI_BASE_PROMPT
+    defaultPrompt: DEFAULT_AI_BASE_PROMPT,
+    onTokenUsageChange: scheduleUserSettingsSave
   });
   btnSettings == null ? void 0 : btnSettings.addEventListener("click", () => {
     flagWeekdayTicks.checked = !!FLAGS.weekdayTicks;

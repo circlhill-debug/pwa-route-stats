@@ -195,11 +195,13 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
     const ema = readStoredEma();
     const extraTrip = Number.isFinite(ema) ? { ema } : null;
     const activeEvalId = USPS_EVAL?.profileId || getActiveEvalId();
+    const tokenUsage = loadTokenUsage();
     return {
       eval_profiles: evalProfiles,
       active_eval_id: activeEvalId || null,
       vacation_ranges: vacationRanges,
-      extra_trip: extraTrip
+      extra_trip: extraTrip,
+      ai_token_usage: tokenUsage
     };
   }
 
@@ -269,6 +271,9 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
               try{ localStorage.setItem(SECOND_TRIP_EMA_KEY, String(emaVal)); }catch(_){}
             }
           }
+          if (data.ai_token_usage && typeof data.ai_token_usage === 'object'){
+            saveTokenUsage(data.ai_token_usage);
+          }
         } else {
           await upsertUserSettingsRemote(buildUserSettingsPayload());
         }
@@ -281,6 +286,11 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
         secondTripEmaInput.value = readStoredEma();
         updateSecondTripSummary();
       }
+      try{
+        const latestUsage = loadTokenUsage();
+        aiSummary.populateTokenInputs(latestUsage);
+        aiSummary.updateTokenUsageCard(latestUsage);
+      }catch(_){ }
       buildEvalCompare(allRows || []);
     }catch(err){
       suppressSettingsSave = false;
@@ -1064,7 +1074,8 @@ aiSummary = createAiSummary({
   supabaseClient: sb,
   getCurrentUserId: () => CURRENT_USER_ID,
   getDiagnosticsContext: getLatestDiagnosticsContext,
-  defaultPrompt: DEFAULT_AI_BASE_PROMPT
+  defaultPrompt: DEFAULT_AI_BASE_PROMPT,
+  onTokenUsageChange: scheduleUserSettingsSave
 });
 
   btnSettings?.addEventListener('click', ()=>{

@@ -648,7 +648,8 @@
     setCurrentLetterWeight,
     combinedVolume: combinedVolume2,
     routeAdjustedMinutes: routeAdjustedMinutes2,
-    colorForDelta: colorForDelta2
+    colorForDelta: colorForDelta2,
+    onDismissedChange
   }) {
     if (typeof getFlags !== "function") throw new Error("createDiagnostics: getFlags is required");
     if (typeof filterRowsForView2 !== "function") throw new Error("createDiagnostics: filterRowsForView is required");
@@ -666,6 +667,8 @@
     if (typeof combinedVolume2 !== "function") throw new Error("createDiagnostics: combinedVolume is required");
     if (typeof routeAdjustedMinutes2 !== "function") throw new Error("createDiagnostics: routeAdjustedMinutes is required");
     if (typeof colorForDelta2 !== "function") throw new Error("createDiagnostics: colorForDelta is required");
+    const notifyDismissedChange = typeof onDismissedChange === "function" ? onDismissedChange : () => {
+    };
     let residModelCache = null;
     let latestDiagnosticsContext = null;
     const __testApi = {};
@@ -1086,6 +1089,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             return;
           }
           saveDismissedResiduals2(updated);
+          notifyDismissedChange();
           buildDiagnostics2(rows);
         });
         manageDismissBtn.dataset.bound = "1";
@@ -1276,8 +1280,10 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
               };
               existing.push(entry);
               saveDismissedResiduals2(existing);
+              notifyDismissedChange();
             } else {
               saveDismissedResiduals2(existing);
+              notifyDismissedChange();
             }
             buildDiagnostics2(rows);
           });
@@ -3547,12 +3553,14 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     const extraTrip = Number.isFinite(ema) ? { ema } : null;
     const activeEvalId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || getActiveEvalId();
     const tokenUsage = loadTokenUsage();
+    const dismissedList = loadDismissedResiduals(parseDismissReasonInput);
     return {
       eval_profiles: evalProfiles,
       active_eval_id: activeEvalId || null,
       vacation_ranges: vacationRanges,
       extra_trip: extraTrip,
-      ai_token_usage: tokenUsage
+      ai_token_usage: tokenUsage,
+      diagnostics_dismissed: dismissedList
     };
   }
   async function upsertUserSettingsRemote(payload) {
@@ -3564,6 +3572,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         active_eval_id: payload.active_eval_id || null,
         vacation_ranges: payload.vacation_ranges || [],
         extra_trip: payload.extra_trip || null,
+        diagnostics_dismissed: payload.diagnostics_dismissed || [],
+        ai_token_usage: payload.ai_token_usage || null,
         updated_at: (/* @__PURE__ */ new Date()).toISOString()
       });
       if (error) console.warn("[Settings] upsert failed", error);
@@ -3586,7 +3596,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
   async function syncUserSettingsFromRemote() {
     if (!CURRENT_USER_ID) return;
     try {
-      const { data, error } = await sb.from(USER_SETTINGS_TABLE).select("eval_profiles, active_eval_id, vacation_ranges, extra_trip").eq("user_id", CURRENT_USER_ID).maybeSingle();
+      const { data, error } = await sb.from(USER_SETTINGS_TABLE).select("eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed").eq("user_id", CURRENT_USER_ID).maybeSingle();
       if (error && error.code !== "PGRST116") {
         console.warn("[Settings] load failed", error);
         return;
@@ -3619,6 +3629,9 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           if (data.ai_token_usage && typeof data.ai_token_usage === "object") {
             saveTokenUsage(data.ai_token_usage);
           }
+          if (Array.isArray(data.diagnostics_dismissed)) {
+            saveDismissedResiduals(data.diagnostics_dismissed);
+          }
         } else {
           await upsertUserSettingsRemote(buildUserSettingsPayload());
         }
@@ -3635,6 +3648,11 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         const latestUsage = loadTokenUsage();
         aiSummary.populateTokenInputs(latestUsage);
         aiSummary.updateTokenUsageCard(latestUsage);
+      } catch (_) {
+      }
+      try {
+        resetDiagnosticsCache == null ? void 0 : resetDiagnosticsCache();
+        buildDiagnostics(filterRowsForView(allRows || []));
       } catch (_) {
       }
       buildEvalCompare(allRows || []);
@@ -4142,7 +4160,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     },
     combinedVolume,
     routeAdjustedMinutes,
-    colorForDelta
+    colorForDelta,
+    onDismissedChange: scheduleUserSettingsSave
   });
   var {
     buildDiagnostics,

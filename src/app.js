@@ -196,12 +196,14 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
     const extraTrip = Number.isFinite(ema) ? { ema } : null;
     const activeEvalId = USPS_EVAL?.profileId || getActiveEvalId();
     const tokenUsage = loadTokenUsage();
+    const dismissedList = loadDismissedResiduals(parseDismissReasonInput);
     return {
       eval_profiles: evalProfiles,
       active_eval_id: activeEvalId || null,
       vacation_ranges: vacationRanges,
       extra_trip: extraTrip,
-      ai_token_usage: tokenUsage
+      ai_token_usage: tokenUsage,
+      diagnostics_dismissed: dismissedList
     };
   }
 
@@ -214,6 +216,8 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
         active_eval_id: payload.active_eval_id || null,
         vacation_ranges: payload.vacation_ranges || [],
         extra_trip: payload.extra_trip || null,
+        diagnostics_dismissed: payload.diagnostics_dismissed || [],
+        ai_token_usage: payload.ai_token_usage || null,
         updated_at: new Date().toISOString()
       });
       if (error) console.warn('[Settings] upsert failed', error);
@@ -240,7 +244,7 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
     try{
       const { data, error } = await sb
         .from(USER_SETTINGS_TABLE)
-        .select('eval_profiles, active_eval_id, vacation_ranges, extra_trip')
+        .select('eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed')
         .eq('user_id', CURRENT_USER_ID)
         .maybeSingle();
       if (error && error.code !== 'PGRST116'){
@@ -274,6 +278,9 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
           if (data.ai_token_usage && typeof data.ai_token_usage === 'object'){
             saveTokenUsage(data.ai_token_usage);
           }
+          if (Array.isArray(data.diagnostics_dismissed)){
+            saveDismissedResiduals(data.diagnostics_dismissed);
+          }
         } else {
           await upsertUserSettingsRemote(buildUserSettingsPayload());
         }
@@ -290,6 +297,10 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
         const latestUsage = loadTokenUsage();
         aiSummary.populateTokenInputs(latestUsage);
         aiSummary.updateTokenUsageCard(latestUsage);
+      }catch(_){ }
+      try{
+        resetDiagnosticsCache?.();
+        buildDiagnostics(filterRowsForView(allRows || []));
       }catch(_){ }
       buildEvalCompare(allRows || []);
     }catch(err){
@@ -812,7 +823,8 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
     },
     combinedVolume,
     routeAdjustedMinutes,
-    colorForDelta
+    colorForDelta,
+    onDismissedChange: scheduleUserSettingsSave
   });
 
   const {

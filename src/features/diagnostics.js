@@ -20,7 +20,8 @@ export function createDiagnostics({
   setCurrentLetterWeight,
   combinedVolume,
   routeAdjustedMinutes,
-  colorForDelta
+  colorForDelta,
+  onDismissedChange
 }) {
   if (typeof getFlags !== 'function') throw new Error('createDiagnostics: getFlags is required');
   if (typeof filterRowsForView !== 'function') throw new Error('createDiagnostics: filterRowsForView is required');
@@ -38,6 +39,10 @@ export function createDiagnostics({
   if (typeof combinedVolume !== 'function') throw new Error('createDiagnostics: combinedVolume is required');
   if (typeof routeAdjustedMinutes !== 'function') throw new Error('createDiagnostics: routeAdjustedMinutes is required');
   if (typeof colorForDelta !== 'function') throw new Error('createDiagnostics: colorForDelta is required');
+
+  const notifyDismissedChange = typeof onDismissedChange === 'function'
+    ? onDismissedChange
+    : () => {};
 
   let residModelCache = null;
   let latestDiagnosticsContext = null;
@@ -507,6 +512,7 @@ export function createDiagnostics({
           return;
         }
         saveDismissedResiduals(updated);
+        notifyDismissedChange();
         buildDiagnostics(rows);
       });
       manageDismissBtn.dataset.bound = '1';
@@ -711,8 +717,10 @@ export function createDiagnostics({
             };
             existing.push(entry);
             saveDismissedResiduals(existing);
+            notifyDismissedChange();
           } else {
             saveDismissedResiduals(existing);
+            notifyDismissedChange();
           }
           buildDiagnostics(rows);
         });

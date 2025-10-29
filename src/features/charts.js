@@ -434,6 +434,7 @@ export function createCharts({
     const warnColor = docStyle.getPropertyValue('--warn').trim() || '#FFD27A';
     const warnLineColor = warnColor || '#FFD27A';
     const goodColor = docStyle.getPropertyValue('--good').trim() || '#7CE38B';
+    const routeLineColor = '#9ca3af';
     const text = document.getElementById('mixText');
     const eff  = document.getElementById('mixEff');
     const overlay = document.getElementById('weekOverlay');
@@ -656,11 +657,11 @@ export function createCharts({
           const lettersThisMasked = lettersThisBy.map((v,i)=> i<=dayIdxToday? v : null);
           const routeThisMasked = routeThisBy.map((v,i)=> i<=dayIdxToday? v : null);
           const datasets = [
-            { label:'Parcels – last week', data:parcelsLastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-            { label:'Parcels – this week', data:parcelsThisMasked, borderColor:warnLineColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-            { label:'Letters – last week', data:lettersLastBy, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-            { label:'Letters – this week', data:lettersThisMasked, borderColor:lettersThisColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-            { label:'Route hours – this week', data:routeThisMasked, borderColor:routeColor, backgroundColor:'transparent', borderDash:[4,3], tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true, yAxisID:'y2' }
+            { label:'Parcels – last week', data:parcelsLastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:1, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Parcels – this week', data:parcelsThisMasked, borderColor:warnLineColor, backgroundColor:'transparent', tension:0.25, pointRadius:1, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Letters – last week', data:lettersLastBy, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:1, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Letters – this week', data:lettersThisMasked, borderColor:lettersThisColor, backgroundColor:'transparent', tension:0.25, pointRadius:1, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Route hours – this week', data:routeThisMasked, borderColor:routeLineColor, backgroundColor:'transparent', borderDash:[4,3], tension:0.25, pointRadius:1, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true, yAxisID:'y2' }
           ];
           overlay._chart = new Chart(ctx, {
             type:'line',
@@ -762,12 +763,12 @@ export function createCharts({
           const anchorLetters = Array.isArray(anchor?.letters) ? anchor.letters : null;
           const driftDatasets = [];
           if (baselineParcels && anchorParcels){
-            driftDatasets.push({ label:'Baseline parcels', data:baselineParcels, borderColor:warnLineColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true });
-            driftDatasets.push({ label:'Anchor parcels', data:anchorParcels, borderColor:warnLineColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true, borderDash:[6,4] });
+            driftDatasets.push({ label:'Baseline parcels', data:baselineParcels, borderColor:'#22c55e', backgroundColor:'transparent', tension:0.25, pointRadius:1, borderWidth:2, spanGaps:true });
+            driftDatasets.push({ label:'Anchor parcels', data:anchorParcels, borderColor:'#166534', backgroundColor:'transparent', tension:0.25, pointRadius:1, borderWidth:2, spanGaps:true, borderDash:[6,4] });
           }
           if (baselineLetters && anchorLetters){
-            driftDatasets.push({ label:'Baseline letters', data:baselineLetters, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true });
-            driftDatasets.push({ label:'Anchor letters', data:anchorLetters, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true, borderDash:[6,4] });
+            driftDatasets.push({ label:'Baseline letters', data:baselineLetters, borderColor:'#0ea5e9', backgroundColor:'transparent', tension:0.25, pointRadius:1, borderWidth:2, spanGaps:true });
+            driftDatasets.push({ label:'Anchor letters', data:anchorLetters, borderColor:'#1d4ed8', backgroundColor:'transparent', tension:0.25, pointRadius:1, borderWidth:2, spanGaps:true, borderDash:[6,4] });
           }
           if (driftDatasets.length){
             driftCanvas.style.display = 'block';

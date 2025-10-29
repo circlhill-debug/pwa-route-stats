@@ -432,6 +432,7 @@ export function createCharts({
     const docStyle = getComputedStyle(document.documentElement);
     const brand = docStyle.getPropertyValue('--brand').trim() || '#2b7fff';
     const warnColor = docStyle.getPropertyValue('--warn').trim() || '#FFD27A';
+    const warnLineColor = warnColor || '#FFD27A';
     const goodColor = docStyle.getPropertyValue('--good').trim() || '#7CE38B';
     const text = document.getElementById('mixText');
     const eff  = document.getElementById('mixEff');
@@ -618,6 +619,13 @@ export function createCharts({
     }
     const expectationStroke = 'rgba(255,140,0,0.85)';
     const expectationFill = 'rgba(255,140,0,0.22)';
+    const isoForPoint = (datasetIndex, idx)=>{
+      try{
+        if (datasetIndex === 0 || datasetIndex === 2) return startLast.plus({ days: idx }).toISODate();
+        if (datasetIndex === 1 || datasetIndex === 3 || datasetIndex === 4) return startThis.plus({ days: idx }).toISODate();
+      }catch(_){ }
+      return null;
+    };
     const dEff = ((p0+ln0)>0 && (p1+ln1)>0)
       ? Math.round((( (rm1/(p1+ln1)) - (rm0/(p0+ln0)) ) / (rm1/(p1+ln1)) )*100)
       : null;
@@ -632,7 +640,7 @@ export function createCharts({
       const usedL = (resL && resL.used) ? `, ${resL.used} day(s) used` : '';
       details.innerHTML = [
         line('Efficiency', dEff, `(${( (rm0/(p0+ln0))||0 ).toFixed(2)} vs ${( (rm1/(p1+ln1))||0 ).toFixed(2)})`),
-        line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, warnColor || '#f97316'),
+        line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, warnLineColor),
         line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, '#60a5fa'),
         line('Hours', dH, `(${(sum(W0,r=>+r.hours||0)).toFixed(1)}h vs ${(sum(W1,r=>+r.hours||0)).toFixed(1)}h)`)
       ].join('');
@@ -647,18 +655,11 @@ export function createCharts({
           const parcelsThisMasked = parcelsThisBy.map((v,i)=> i<=dayIdxToday? v : null);
           const lettersThisMasked = lettersThisBy.map((v,i)=> i<=dayIdxToday? v : null);
           const routeThisMasked = routeThisBy.map((v,i)=> i<=dayIdxToday? v : null);
-          const isoForPoint = (datasetIndex, idx) => {
-            try{
-              if (datasetIndex === 0 || datasetIndex === 2) return startLast.plus({ days: idx }).toISODate();
-              if (datasetIndex === 1 || datasetIndex === 3 || datasetIndex === 4) return startThis.plus({ days: idx }).toISODate();
-            }catch(_){ }
-            return null;
-          };
           const datasets = [
-            { label:'Parcels – last week', data:parcelsLastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-            { label:'Parcels – this week', data:parcelsThisMasked, borderColor:warnColor || '#FFD27A', backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-            { label:'Letters – last week', data:lettersLastBy, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-            { label:'Letters – this week', data:lettersThisMasked, borderColor:lettersThisColor, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Parcels – last week', data:parcelsLastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Parcels – this week', data:parcelsThisMasked, borderColor:warnLineColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Letters – last week', data:lettersLastBy, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Letters – this week', data:lettersThisMasked, borderColor:lettersThisColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
             { label:'Route hours – this week', data:routeThisMasked, borderColor:routeColor, backgroundColor:'transparent', borderDash:[4,3], tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true, yAxisID:'y2' }
           ];
           overlay._chart = new Chart(ctx, {
@@ -715,7 +716,7 @@ export function createCharts({
             type:'line',
             data:{ labels:days, datasets:[
               { label:'Efficiency last week', data:efficiencyLast, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true },
-              { label:'Efficiency this week', data:efficiencyThisMasked, borderColor:warnColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true }
+            { label:'Efficiency this week', data:efficiencyThisMasked, borderColor:warnLineColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true }
             ]},
             options:{
               responsive:true,
@@ -761,8 +762,8 @@ export function createCharts({
           const anchorLetters = Array.isArray(anchor?.letters) ? anchor.letters : null;
           const driftDatasets = [];
           if (baselineParcels && anchorParcels){
-            driftDatasets.push({ label:'Baseline parcels', data:baselineParcels, borderColor:warnColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true });
-            driftDatasets.push({ label:'Anchor parcels', data:anchorParcels, borderColor:warnColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true, borderDash:[6,4] });
+            driftDatasets.push({ label:'Baseline parcels', data:baselineParcels, borderColor:warnLineColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true });
+            driftDatasets.push({ label:'Anchor parcels', data:anchorParcels, borderColor:warnLineColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true, borderDash:[6,4] });
           }
           if (baselineLetters && anchorLetters){
             driftDatasets.push({ label:'Baseline letters', data:baselineLetters, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true });

@@ -2392,6 +2392,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const docStyle = getComputedStyle(document.documentElement);
       const brand = docStyle.getPropertyValue("--brand").trim() || "#2b7fff";
       const warnColor = docStyle.getPropertyValue("--warn").trim() || "#FFD27A";
+      const warnLineColor = warnColor || "#FFD27A";
       const goodColor = docStyle.getPropertyValue("--good").trim() || "#7CE38B";
       const text = document.getElementById("mixText");
       const eff = document.getElementById("mixEff");
@@ -2600,6 +2601,14 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       }
       const expectationStroke = "rgba(255,140,0,0.85)";
       const expectationFill = "rgba(255,140,0,0.22)";
+      const isoForPoint = (datasetIndex, idx) => {
+        try {
+          if (datasetIndex === 0 || datasetIndex === 2) return startLast.plus({ days: idx }).toISODate();
+          if (datasetIndex === 1 || datasetIndex === 3 || datasetIndex === 4) return startThis.plus({ days: idx }).toISODate();
+        } catch (_) {
+        }
+        return null;
+      };
       const dEff = p0 + ln0 > 0 && p1 + ln1 > 0 ? Math.round((rm1 / (p1 + ln1) - rm0 / (p0 + ln0)) / (rm1 / (p1 + ln1)) * 100) : null;
       const arrow = (v) => v == null ? "\u2014" : v >= 0 ? "\u2191 " + v + "%" : "\u2193 " + Math.abs(v) + "%";
       const color = (v) => v == null ? "var(--text)" : v >= 0 ? "var(--good)" : "var(--bad)";
@@ -2612,7 +2621,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         const usedL = resL && resL.used ? `, ${resL.used} day(s) used` : "";
         details.innerHTML = [
           line("Efficiency", dEff, `(${(rm0 / (p0 + ln0) || 0).toFixed(2)} vs ${(rm1 / (p1 + ln1) || 0).toFixed(2)})`),
-          line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, warnColor || "#f97316"),
+          line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, warnLineColor),
           line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, "#60a5fa"),
           line("Hours", dH, `(${sum(W0, (r) => +r.hours || 0).toFixed(1)}h vs ${sum(W1, (r) => +r.hours || 0).toFixed(1)}h)`)
         ].join("");
@@ -2632,19 +2641,11 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             const parcelsThisMasked = parcelsThisBy.map((v, i) => i <= dayIdxToday ? v : null);
             const lettersThisMasked = lettersThisBy.map((v, i) => i <= dayIdxToday ? v : null);
             const routeThisMasked = routeThisBy.map((v, i) => i <= dayIdxToday ? v : null);
-            const isoForPoint2 = (datasetIndex, idx) => {
-              try {
-                if (datasetIndex === 0 || datasetIndex === 2) return startLast.plus({ days: idx }).toISODate();
-                if (datasetIndex === 1 || datasetIndex === 3 || datasetIndex === 4) return startThis.plus({ days: idx }).toISODate();
-              } catch (_) {
-              }
-              return null;
-            };
             const datasets = [
-              { label: "Parcels \u2013 last week", data: parcelsLastBy, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
-              { label: "Parcels \u2013 this week", data: parcelsThisMasked, borderColor: warnColor || "#FFD27A", backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
-              { label: "Letters \u2013 last week", data: lettersLastBy, borderColor: lettersLastColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
-              { label: "Letters \u2013 this week", data: lettersThisMasked, borderColor: lettersThisColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
+              { label: "Parcels \u2013 last week", data: parcelsLastBy, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
+              { label: "Parcels \u2013 this week", data: parcelsThisMasked, borderColor: warnLineColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
+              { label: "Letters \u2013 last week", data: lettersLastBy, borderColor: lettersLastColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
+              { label: "Letters \u2013 this week", data: lettersThisMasked, borderColor: lettersThisColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
               { label: "Route hours \u2013 this week", data: routeThisMasked, borderColor: routeColor, backgroundColor: "transparent", borderDash: [4, 3], tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true, yAxisID: "y2" }
             ];
             overlay._chart = new Chart(ctx, {
@@ -2660,7 +2661,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
                     title: (items) => {
                       if (!items || !items.length) return "";
                       const item = items[0];
-                      const iso = isoForPoint2(item.datasetIndex, item.dataIndex);
+                      const iso = isoForPoint(item.datasetIndex, item.dataIndex);
                       if (iso) {
                         const dt = DateTime.fromISO(iso, { zone: ZONE });
                         return dt.toFormat("ccc \u2022 MMM d, yyyy") + (vacGlyph2 ? vacGlyph2(iso) : "");
@@ -2706,7 +2707,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
               type: "line",
               data: { labels: days, datasets: [
                 { label: "Efficiency last week", data: efficiencyLast, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true },
-                { label: "Efficiency this week", data: efficiencyThisMasked, borderColor: warnColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true }
+                { label: "Efficiency this week", data: efficiencyThisMasked, borderColor: warnLineColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true }
               ] },
               options: {
                 responsive: true,
@@ -2759,8 +2760,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             const anchorLetters = Array.isArray(anchor == null ? void 0 : anchor.letters) ? anchor.letters : null;
             const driftDatasets = [];
             if (baselineParcels && anchorParcels) {
-              driftDatasets.push({ label: "Baseline parcels", data: baselineParcels, borderColor: warnColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
-              driftDatasets.push({ label: "Anchor parcels", data: anchorParcels, borderColor: warnColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true, borderDash: [6, 4] });
+              driftDatasets.push({ label: "Baseline parcels", data: baselineParcels, borderColor: warnLineColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
+              driftDatasets.push({ label: "Anchor parcels", data: anchorParcels, borderColor: warnLineColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true, borderDash: [6, 4] });
             }
             if (baselineLetters && anchorLetters) {
               driftDatasets.push({ label: "Baseline letters", data: baselineLetters, borderColor: lettersLastColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
@@ -2870,7 +2871,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           }
           const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#2b7fff";
           const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
-          const isoForPoint2 = (datasetIndex, idx) => {
+          const isoForPoint = (datasetIndex, idx) => {
             try {
               if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
               if (datasetIndex === 1) return startThis.plus({ days: idx }).toISODate();
@@ -2894,7 +2895,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
                   title: (items) => {
                     if (!items || !items.length) return "";
                     const item = items[0];
-                    const iso = isoForPoint2(item.datasetIndex, item.dataIndex);
+                    const iso = isoForPoint(item.datasetIndex, item.dataIndex);
                     if (iso) {
                       const dt = DateTime.fromISO(iso, { zone: ZONE });
                       return dt.toFormat("ccc \u2022 MMM d, yyyy") + (vacGlyph2 ? vacGlyph2(iso) : "");

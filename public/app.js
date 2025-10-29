@@ -2642,7 +2642,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             };
             const datasets = [
               { label: "Parcels \u2013 last week", data: parcelsLastBy, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
-              { label: "Parcels \u2013 this week", data: parcelsThisMasked, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
+              { label: "Parcels \u2013 this week", data: parcelsThisMasked, borderColor: warnColor || "#FFD27A", backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
               { label: "Letters \u2013 last week", data: lettersLastBy, borderColor: lettersLastColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
               { label: "Letters \u2013 this week", data: lettersThisMasked, borderColor: lettersThisColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
               { label: "Route hours \u2013 this week", data: routeThisMasked, borderColor: routeColor, backgroundColor: "transparent", borderDash: [4, 3], tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true, yAxisID: "y2" }
@@ -2869,7 +2869,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             }
           }
           const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#2b7fff";
-          const warn2 = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
+          const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
           const isoForPoint2 = (datasetIndex, idx) => {
             try {
               if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
@@ -2882,7 +2882,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             type: "line",
             data: { labels: days, datasets: [
               { label: "Last week", data: lastBy, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true },
-              { label: "This week", data: thisMasked, borderColor: warn2, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true }
+              { label: "This week", data: thisMasked, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true }
             ] },
             options: {
               responsive: true,
@@ -3002,7 +3002,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const showL = !!(cbL ? cbL.checked : true);
       const showH = !!(cbH ? cbH.checked : true);
       const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#2b7fff";
-      const warn2 = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
+      const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
       const good = getComputedStyle(document.documentElement).getPropertyValue("--good").trim() || "#2E7D32";
       const datasets = [];
       const needNormalize = [showP, showL, showH].filter(Boolean).length > 1;
@@ -3022,7 +3022,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const dataL = needNormalize ? norm(serL) : serL;
       const dataH = needNormalize ? norm(serH) : serH;
       if (showP) datasets.push({ label: "Parcels", data: dataP, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
-      if (showL) datasets.push({ label: "Letters", data: dataL, borderColor: warn2, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
+      if (showL) datasets.push({ label: "Letters", data: dataL, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
       if (showH) datasets.push({ label: "Hours", data: dataH, borderColor: good, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
       const summary = [];
       const fmtNum = (n) => (Math.round(n * 10) / 10).toFixed(1);

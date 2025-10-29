@@ -656,7 +656,7 @@ export function createCharts({
           };
           const datasets = [
             { label:'Parcels – last week', data:parcelsLastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-            { label:'Parcels – this week', data:parcelsThisMasked, borderColor:warn, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Parcels – this week', data:parcelsThisMasked, borderColor:warnColor || '#FFD27A', backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
             { label:'Letters – last week', data:lettersLastBy, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
             { label:'Letters – this week', data:lettersThisMasked, borderColor:lettersThisColor, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
             { label:'Route hours – this week', data:routeThisMasked, borderColor:routeColor, backgroundColor:'transparent', borderDash:[4,3], tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true, yAxisID:'y2' }

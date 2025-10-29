@@ -641,131 +641,29 @@ export function createCharts({
     }
     try{
       if (overlay && window.Chart && overlay.getContext){
-        const ctx = overlay.getContext('2d');
-        if (overlay._chart) { try{ overlay._chart.destroy(); }catch(_){ } }
-        const parcelsThisMasked = parcelsThisBy.map((v,i)=> i<=dayIdxToday? v : null);
-        const lettersThisMasked = lettersThisBy.map((v,i)=> i<=dayIdxToday? v : null);
-        const routeThisMasked = routeThisBy.map((v,i)=> i<=dayIdxToday? v : null);
-        const isoForPoint = (datasetIndex, idx) => {
-          try{
-            if (datasetIndex === 0 || datasetIndex === 2) return startLast.plus({ days: idx }).toISODate();
-            if (datasetIndex === 1 || datasetIndex === 3 || datasetIndex === 4) return startThis.plus({ days: idx }).toISODate();
-          }catch(_){ }
-          return null;
-        };
-        const datasets = [
-          { label:'Parcels – last week', data:parcelsLastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-          { label:'Parcels – this week', data:parcelsThisMasked, borderColor:warn, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-          { label:'Letters – last week', data:lettersLastBy, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-          { label:'Letters – this week', data:lettersThisMasked, borderColor:lettersThisColor, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
-          { label:'Route hours – this week', data:routeThisMasked, borderColor:routeColor, backgroundColor:'transparent', borderDash:[4,3], tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true, yAxisID:'y2' }
-        ];
-        overlay._chart = new Chart(ctx, {
-          type:'line',
-          data:{ labels:days, datasets },
-          options:{
-            responsive:true,
-            maintainAspectRatio:false,
-            layout:{ padding:{ top:12, right:16, bottom:10, left:16 } },
-            interaction:{ mode:'nearest', intersect:false },
-            plugins:{ legend:{ display:true, labels:{ boxWidth:12, boxHeight:12 } }, tooltip:{
-              callbacks:{
-                title:(items)=>{
-                  if (!items || !items.length) return '';
-                  const item = items[0];
-                  const iso = isoForPoint(item.datasetIndex, item.dataIndex);
-                  if (iso){
-                    const dt = DateTime.fromISO(iso, { zone: ZONE });
-                    return dt.toFormat('ccc • MMM d, yyyy') + (vacGlyph ? vacGlyph(iso) : '');
-                  }
-                  const lbl = item.label || '';
-                  return lbl + (vacGlyph ? vacGlyph(lbl) : '');
-                },
-                label:(item)=>{
-                  const label = item.dataset?.label || '';
-                  const raw = item.parsed?.y;
-                  if (raw == null || Number.isNaN(raw)) return `${label}: —`;
-                  const value = label.includes('Route') ? Number(raw).toFixed(1) : Number(raw).toFixed(raw % 1 === 0 ? 0 : 1);
-                  const suffix = label.includes('Route') ? ' min' : '';
-                  return `${label}: ${value}${suffix}`;
-                }
-              }
-            }},
-            scales:{
-              x:{ display:true, grid:{ display:false } },
-              y:{ display:false },
-              y2:{ display:false }
-            }
-          }
-        });
-      }
-
-      if (effOverlay && window.Chart && effOverlay.getContext){
-        const ctxEff = effOverlay.getContext('2d');
-        if (effOverlay._chart) { try{ effOverlay._chart.destroy(); }catch(_){ } }
-        const efficiencyLast = volumeLastBy.map((vol, idx)=> (vol>0 ? +(routeLastBy[idx] / vol).toFixed(2) : null));
-        const efficiencyThis = volumeThisBy.map((vol, idx)=> (vol>0 ? +(routeThisBy[idx] / vol).toFixed(2) : null));
-        const efficiencyThisMasked = efficiencyThis.map((v,i)=> i<=dayIdxToday ? v : null);
-        effOverlay._chart = new Chart(ctxEff, {
-          type:'line',
-          data:{ labels:days, datasets:[
-            { label:'Efficiency last week', data:efficiencyLast, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true },
-            { label:'Efficiency this week', data:efficiencyThisMasked, borderColor:warnColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true }
-          ]},
-          options:{
-            responsive:true,
-            maintainAspectRatio:false,
-            layout:{ padding:{ top:12, right:16, bottom:10, left:16 } },
-            interaction:{ mode:'nearest', intersect:false },
-            plugins:{ legend:{ display:true, labels:{ boxWidth:12, boxHeight:12 } }, tooltip:{
-              callbacks:{
-                title:(items)=>{
-                  if (!items || !items.length) return '';
-                  const item = items[0];
-                  const iso = isoForPoint(item.datasetIndex === 0 ? 0 : 1, item.dataIndex);
-                  if (iso){
-                    const dt = DateTime.fromISO(iso, { zone: ZONE });
-                    return dt.toFormat('ccc • MMM d, yyyy') + (vacGlyph ? vacGlyph(iso) : '');
-                  }
-                  return item.label || '';
-                },
-                label:(item)=>{
-                  const label = item.dataset?.label || '';
-                  const raw = item.parsed?.y;
-                  if (raw == null || Number.isNaN(raw)) return `${label}: —`;
-                  return `${label}: ${Number(raw).toFixed(2)} min/vol`;
-                }
-              }
-            }},
-            scales:{
-              x:{ display:true, grid:{ display:false } },
-              y:{ display:true, ticks:{ display:true }, grid:{ display:false } }
-            }
-          }
-        });
-      }
-
-      if (driftCanvas && window.Chart && driftCanvas.getContext){
-        const ctxDrift = driftCanvas.getContext('2d');
-        if (driftCanvas._chart) { try{ driftCanvas._chart.destroy(); }catch(_){ } }
-        const baselineParcels = Array.isArray(baselines?.parcels) ? baselines.parcels : null;
-        const baselineLetters = Array.isArray(baselines?.letters) ? baselines.letters : null;
-        const anchorParcels = Array.isArray(anchor?.parcels) ? anchor.parcels : null;
-        const anchorLetters = Array.isArray(anchor?.letters) ? anchor.letters : null;
-        const driftDatasets = [];
-        if (baselineParcels && anchorParcels){
-          driftDatasets.push({ label:'Baseline parcels', data:baselineParcels, borderColor:warnColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true });
-          driftDatasets.push({ label:'Anchor parcels', data:anchorParcels, borderColor:warnColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true, borderDash:[6,4] });
-        }
-        if (baselineLetters && anchorLetters){
-          driftDatasets.push({ label:'Baseline letters', data:baselineLetters, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true });
-          driftDatasets.push({ label:'Anchor letters', data:anchorLetters, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true, borderDash:[6,4] });
-        }
-        if (driftDatasets.length){
-          driftCanvas.style.display = 'block';
-          driftCanvas._chart = new Chart(ctxDrift, {
+        try{
+          const ctx = overlay.getContext('2d');
+          if (overlay._chart) { try{ overlay._chart.destroy(); }catch(_){ } }
+          const parcelsThisMasked = parcelsThisBy.map((v,i)=> i<=dayIdxToday? v : null);
+          const lettersThisMasked = lettersThisBy.map((v,i)=> i<=dayIdxToday? v : null);
+          const routeThisMasked = routeThisBy.map((v,i)=> i<=dayIdxToday? v : null);
+          const isoForPoint = (datasetIndex, idx) => {
+            try{
+              if (datasetIndex === 0 || datasetIndex === 2) return startLast.plus({ days: idx }).toISODate();
+              if (datasetIndex === 1 || datasetIndex === 3 || datasetIndex === 4) return startThis.plus({ days: idx }).toISODate();
+            }catch(_){ }
+            return null;
+          };
+          const datasets = [
+            { label:'Parcels – last week', data:parcelsLastBy, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Parcels – this week', data:parcelsThisMasked, borderColor:warn, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Letters – last week', data:lettersLastBy, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Letters – this week', data:lettersThisMasked, borderColor:lettersThisColor, backgroundColor:'transparent', tension:0.25, pointRadius:3, pointHoverRadius:6, pointHitRadius:14, borderWidth:2, spanGaps:true, yAxisID:'y' },
+            { label:'Route hours – this week', data:routeThisMasked, borderColor:routeColor, backgroundColor:'transparent', borderDash:[4,3], tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true, yAxisID:'y2' }
+          ];
+          overlay._chart = new Chart(ctx, {
             type:'line',
-            data:{ labels:days, datasets:driftDatasets },
+            data:{ labels:days, datasets },
             options:{
               responsive:true,
               maintainAspectRatio:false,
@@ -773,24 +671,134 @@ export function createCharts({
               interaction:{ mode:'nearest', intersect:false },
               plugins:{ legend:{ display:true, labels:{ boxWidth:12, boxHeight:12 } }, tooltip:{
                 callbacks:{
+                  title:(items)=>{
+                    if (!items || !items.length) return '';
+                    const item = items[0];
+                    const iso = isoForPoint(item.datasetIndex, item.dataIndex);
+                    if (iso){
+                      const dt = DateTime.fromISO(iso, { zone: ZONE });
+                      return dt.toFormat('ccc • MMM d, yyyy') + (vacGlyph ? vacGlyph(iso) : '');
+                    }
+                    const lbl = item.label || '';
+                    return lbl + (vacGlyph ? vacGlyph(lbl) : '');
+                  },
                   label:(item)=>{
                     const label = item.dataset?.label || '';
                     const raw = item.parsed?.y;
                     if (raw == null || Number.isNaN(raw)) return `${label}: —`;
-                    return `${label}: ${Number(raw).toFixed(1)}`;
+                    const value = label.includes('Route') ? Number(raw).toFixed(1) : Number(raw).toFixed(raw % 1 === 0 ? 0 : 1);
+                    const suffix = label.includes('Route') ? ' min' : '';
+                    return `${label}: ${value}${suffix}`;
                   }
                 }
               }},
-              scales:{ x:{ display:true, grid:{ display:false } }, y:{ display:true, grid:{ display:false } } }
+              scales:{
+                x:{ display:true, grid:{ display:false } },
+                y:{ display:false },
+                y2:{ display:false }
+              }
             }
           });
-        } else {
-          driftCanvas.style.display = 'none';
-          if (driftCanvas._chart) {
-            try{ driftCanvas._chart.destroy(); }catch(_){ }
-            driftCanvas._chart = null;
-          }
+        }catch(err){
+          console.warn('[MixViz] overlay chart error', err);
         }
+      }
+
+      if (effOverlay && window.Chart && effOverlay.getContext){
+        try{
+          const ctxEff = effOverlay.getContext('2d');
+          if (effOverlay._chart) { try{ effOverlay._chart.destroy(); }catch(_){ } }
+          const efficiencyLast = volumeLastBy.map((vol, idx)=> (vol>0 ? +(routeLastBy[idx] / vol).toFixed(2) : null));
+          const efficiencyThis = volumeThisBy.map((vol, idx)=> (vol>0 ? +(routeThisBy[idx] / vol).toFixed(2) : null));
+          const efficiencyThisMasked = efficiencyThis.map((v,i)=> i<=dayIdxToday ? v : null);
+          effOverlay._chart = new Chart(ctxEff, {
+            type:'line',
+            data:{ labels:days, datasets:[
+              { label:'Efficiency last week', data:efficiencyLast, borderColor:brand, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true },
+              { label:'Efficiency this week', data:efficiencyThisMasked, borderColor:warnColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:2, spanGaps:true }
+            ]},
+            options:{
+              responsive:true,
+              maintainAspectRatio:false,
+              layout:{ padding:{ top:12, right:16, bottom:10, left:16 } },
+              interaction:{ mode:'nearest', intersect:false },
+              plugins:{ legend:{ display:true, labels:{ boxWidth:12, boxHeight:12 } }, tooltip:{
+                callbacks:{
+                  title:(items)=>{
+                    if (!items || !items.length) return '';
+                    const item = items[0];
+                    const iso = isoForPoint(item.datasetIndex === 0 ? 0 : 1, item.dataIndex);
+                    if (iso){
+                      const dt = DateTime.fromISO(iso, { zone: ZONE });
+                      return dt.toFormat('ccc • MMM d, yyyy') + (vacGlyph ? vacGlyph(iso) : '');
+                    }
+                    return item.label || '';
+                  },
+                  label:(item)=>{
+                    const label = item.dataset?.label || '';
+                    const raw = item.parsed?.y;
+                    if (raw == null || Number.isNaN(raw)) return `${label}: —`;
+                    return `${label}: ${Number(raw).toFixed(2)} min/vol`;
+                  }
+                }
+              }},
+              scales:{
+                x:{ display:true, grid:{ display:false } },
+                y:{ display:true, ticks:{ display:true }, grid:{ display:false } }
+              }
+            }
+          });
+        }catch(err){ console.warn('[MixViz] efficiency chart error', err); }
+      }
+
+      if (driftCanvas && window.Chart && driftCanvas.getContext){
+        try{
+          const ctxDrift = driftCanvas.getContext('2d');
+          if (driftCanvas._chart) { try{ driftCanvas._chart.destroy(); }catch(_){ } }
+          const baselineParcels = Array.isArray(baselines?.parcels) ? baselines.parcels : null;
+          const baselineLetters = Array.isArray(baselines?.letters) ? baselines.letters : null;
+          const anchorParcels = Array.isArray(anchor?.parcels) ? anchor.parcels : null;
+          const anchorLetters = Array.isArray(anchor?.letters) ? anchor.letters : null;
+          const driftDatasets = [];
+          if (baselineParcels && anchorParcels){
+            driftDatasets.push({ label:'Baseline parcels', data:baselineParcels, borderColor:warnColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true });
+            driftDatasets.push({ label:'Anchor parcels', data:anchorParcels, borderColor:warnColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true, borderDash:[6,4] });
+          }
+          if (baselineLetters && anchorLetters){
+            driftDatasets.push({ label:'Baseline letters', data:baselineLetters, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true });
+            driftDatasets.push({ label:'Anchor letters', data:anchorLetters, borderColor:lettersLastColor, backgroundColor:'transparent', tension:0.25, pointRadius:2, borderWidth:2, spanGaps:true, borderDash:[6,4] });
+          }
+          if (driftDatasets.length){
+            driftCanvas.style.display = 'block';
+            driftCanvas._chart = new Chart(ctxDrift, {
+              type:'line',
+              data:{ labels:days, datasets:driftDatasets },
+              options:{
+                responsive:true,
+                maintainAspectRatio:false,
+                layout:{ padding:{ top:12, right:16, bottom:10, left:16 } },
+                interaction:{ mode:'nearest', intersect:false },
+                plugins:{ legend:{ display:true, labels:{ boxWidth:12, boxHeight:12 } }, tooltip:{
+                  callbacks:{
+                    label:(item)=>{
+                      const label = item.dataset?.label || '';
+                      const raw = item.parsed?.y;
+                      if (raw == null || Number.isNaN(raw)) return `${label}: —`;
+                      return `${label}: ${Number(raw).toFixed(1)}`;
+                    }
+                  }
+                }},
+                scales:{ x:{ display:true, grid:{ display:false } }, y:{ display:true, grid:{ display:false } } }
+              }
+            });
+          } else {
+            driftCanvas.style.display = 'none';
+            if (driftCanvas._chart) {
+              try{ driftCanvas._chart.destroy(); }catch(_){ }
+              driftCanvas._chart = null;
+            }
+          }
+        }catch(err){ console.warn('[MixViz] drift chart error', err); }
       }
     }catch(_){ }
     if (btn){

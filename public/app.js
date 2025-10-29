@@ -2396,10 +2396,16 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const text = document.getElementById("mixText");
       const eff = document.getElementById("mixEff");
       const overlay = document.getElementById("weekOverlay");
+      const effOverlay = document.getElementById("effOverlay");
+      const driftCanvas = document.getElementById("mixDrift");
       const culprits = document.getElementById("mixCulprits");
       const details = document.getElementById("mixCompareDetails");
       const btn = document.getElementById("mixCompareBtn");
       const driftLabel = document.getElementById("mixDriftText");
+      const lettersLastColor = "#60a5fa";
+      const lettersThisColor = goodColor || "#7CE38B";
+      const routeColor = "#94a3b8";
+      const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
       const now = DateTime.now().setZone(ZONE);
       const startThis = startOfWeekMonday(now);
       const endThis = now.endOf("day");
@@ -2413,7 +2419,33 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const endLastFull = baseWeek.end;
       const lastEndSame = DateTime.min(endLastFull, baseWeek.start.plus({ days: Math.max(0, now.weekday - 1) }).endOf("day"));
       const W0 = worked.filter((r) => inRange(r, startThis, endThis));
-      const W1 = baseWeek.rows.filter((r) => inRange(r, startLast, lastEndSame));
+      const W1full = baseWeek.rows;
+      const W1 = W1full.filter((r) => inRange(r, startLast, lastEndSame));
+      const aggregateByDow = (arr, selector) => {
+        const out = Array.from({ length: 7 }, () => 0);
+        arr.forEach((r) => {
+          if (!r || !r.work_date) return;
+          try {
+            const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
+            if (!d2.isValid) return;
+            const idx = (d2.weekday + 6) % 7;
+            const value = selector(r);
+            if (Number.isFinite(value)) out[idx] += value;
+          } catch (_) {
+          }
+        });
+        return out.map((val) => Number.isFinite(val) ? +(+val).toFixed(2) : null);
+      };
+      const parcelsThisBy = aggregateByDow(W0, (r) => +r.parcels || 0);
+      const parcelsLastBy = aggregateByDow(W1full, (r) => +r.parcels || 0);
+      const lettersThisBy = aggregateByDow(W0, (r) => +r.letters || 0);
+      const lettersLastBy = aggregateByDow(W1full, (r) => +r.letters || 0);
+      const routeThisBy = aggregateByDow(W0, (r) => Math.max(0, (+r.route_minutes || 0) - boxholderAdjMinutes2(r)));
+      const routeLastBy = aggregateByDow(W1full, (r) => Math.max(0, (+r.route_minutes || 0) - boxholderAdjMinutes2(r)));
+      const routeLastSameBy = aggregateByDow(W1, (r) => Math.max(0, (+r.route_minutes || 0) - boxholderAdjMinutes2(r)));
+      const volumeThisBy = aggregateByDow(W0, (r) => mixCombinedVolume(+r.parcels || 0, +r.letters || 0, letterW));
+      const volumeLastBy = aggregateByDow(W1full, (r) => mixCombinedVolume(+r.parcels || 0, +r.letters || 0, letterW));
+      const dayIdxToday = (now.weekday + 6) % 7;
       const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
       const p0 = sum(W0, (r) => +r.parcels || 0), p1 = sum(W1, (r) => +r.parcels || 0);
       const l0 = sum(W0, (r) => +r.letters || 0), l1 = sum(W1, (r) => +r.letters || 0);
@@ -2450,25 +2482,16 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         }
         try {
           if (culprits) {
-            const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-            const routeByDow = (arr) => {
-              const a = Array.from({ length: 7 }, () => 0);
-              arr.forEach((r) => {
-                const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
-                const idx = (d2.weekday + 6) % 7;
-                a[idx] += Math.max(0, (+r.route_minutes || 0) - boxholderAdjMinutes2(r));
-              });
-              return a.map((n) => +(Math.round(n * 100) / 100).toFixed(2));
-            };
-            const thisBy = routeByDow(W0);
-            const lastBy = routeByDow(W1);
+            const days2 = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+            const thisBy = routeThisBy;
+            const lastBy = routeLastSameBy;
             const out = [];
             thisBy.forEach((val, idx) => {
               const prev = lastBy[idx] || 0;
               if (prev <= 0) return;
               const diff = Math.round((val - prev) / prev * 100);
               if (Math.abs(diff) >= 10) {
-                out.push(`${days[idx]}: ${diff >= 0 ? "\u2191" : "\u2193"}${Math.abs(diff)}%`);
+                out.push(`${days2[idx]}: ${diff >= 0 ? "\u2191" : "\u2193"}${Math.abs(diff)}%`);
               }
             });
             culprits.textContent = out.length ? "Outliers: " + out.join(" \u2022 ") : "Outliers: \u2014";
@@ -2513,7 +2536,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           }
         }
       };
-      const nowDayIdx = (now.weekday + 6) % 7;
+      const nowDayIdx = dayIdxToday;
       if (flags.baselineCompare) {
         const mins = 5;
         const byW = (arr, fn) => {
@@ -2605,79 +2628,24 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             } catch (_) {
             }
           }
-          const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-          const warn = warnColor;
-          const good = goodColor;
-          const volByDow = (arr) => {
-            const a = Array.from({ length: 7 }, () => 0);
-            arr.forEach((r) => {
-              const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
-              const idx = (d2.weekday + 6) % 7;
-              a[idx] += mixCombinedVolume(+r.parcels || 0, +r.letters || 0, letterW);
-            });
-            return a.map((n) => +(Math.round(n * 10) / 10).toFixed(1));
-          };
-          const routeByDow = (arr) => {
-            const a = Array.from({ length: 7 }, () => 0);
-            arr.forEach((r) => {
-              const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
-              const idx = (d2.weekday + 6) % 7;
-              a[idx] += Math.max(0, (+r.route_minutes || 0) - boxholderAdjMinutes2(r));
-            });
-            return a.map((n) => +(Math.round(n * 100) / 100).toFixed(2));
-          };
-          const thisBy = volByDow(W0);
-          const W1full = baseWeek.rows;
-          const lastBy = volByDow(W1full);
-          const thisRoute = routeByDow(W0);
-          const lastRoute = routeByDow(W1full);
-          const dayIdxToday = (now.weekday + 6) % 7;
-          const hasBand = !!(typeof bandMinData !== "undefined" && typeof bandMaxData !== "undefined" && bandMinData && bandMaxData);
-          const isoForPoint = (datasetIndex, idx) => {
+          const parcelsThisMasked = parcelsThisBy.map((v, i) => i <= dayIdxToday ? v : null);
+          const lettersThisMasked = lettersThisBy.map((v, i) => i <= dayIdxToday ? v : null);
+          const routeThisMasked = routeThisBy.map((v, i) => i <= dayIdxToday ? v : null);
+          const isoForPoint2 = (datasetIndex, idx) => {
             try {
-              if (hasBand) {
-                if (datasetIndex === 0 || datasetIndex === 1) return startThis.plus({ days: idx }).toISODate();
-                if (datasetIndex === 2) return startLast.plus({ days: idx }).toISODate();
-                if (datasetIndex === 3 || datasetIndex === 4) return startThis.plus({ days: idx }).toISODate();
-              } else {
-                if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
-                if (datasetIndex === 1 || datasetIndex === 2) return startThis.plus({ days: idx }).toISODate();
-              }
+              if (datasetIndex === 0 || datasetIndex === 2) return startLast.plus({ days: idx }).toISODate();
+              if (datasetIndex === 1 || datasetIndex === 3 || datasetIndex === 4) return startThis.plus({ days: idx }).toISODate();
             } catch (_) {
             }
             return null;
           };
-          const thisMasked = thisBy.map((v, i) => i <= dayIdxToday ? v : null);
-          const thisRouteMasked = thisRoute.map((v, i) => i <= dayIdxToday ? v : null);
-          const datasets = [];
-          if (hasBand) {
-            datasets.push({
-              label: "Vol expect min",
-              data: bandMinData,
-              borderColor: "rgba(255,140,0,0.85)",
-              borderWidth: 1,
-              borderDash: [6, 4],
-              backgroundColor: "transparent",
-              pointRadius: 0,
-              spanGaps: true,
-              fill: false
-            });
-            datasets.push({
-              label: "Vol expect max",
-              data: bandMaxData,
-              borderColor: "rgba(0,0,0,0)",
-              backgroundColor: "rgba(255,140,0,0.22)",
-              pointRadius: 0,
-              borderWidth: 0,
-              spanGaps: true,
-              fill: { target: "-1", above: "rgba(255,140,0,0.22)", below: "rgba(255,140,0,0.22)" }
-            });
-          }
-          datasets.push(
-            { label: "Vol last", data: lastBy, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
-            { label: "Vol this", data: thisMasked, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
-            { label: "Route h (this)", data: thisRouteMasked, borderColor: good, backgroundColor: "transparent", borderDash: [4, 3], tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true, yAxisID: "y2" }
-          );
+          const datasets = [
+            { label: "Parcels \u2013 last week", data: parcelsLastBy, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
+            { label: "Parcels \u2013 this week", data: parcelsThisMasked, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
+            { label: "Letters \u2013 last week", data: lettersLastBy, borderColor: lettersLastColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
+            { label: "Letters \u2013 this week", data: lettersThisMasked, borderColor: lettersThisColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
+            { label: "Route hours \u2013 this week", data: routeThisMasked, borderColor: routeColor, backgroundColor: "transparent", borderDash: [4, 3], tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true, yAxisID: "y2" }
+          ];
           overlay._chart = new Chart(ctx, {
             type: "line",
             data: { labels: days, datasets },
@@ -2686,12 +2654,12 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
               maintainAspectRatio: false,
               layout: { padding: { top: 12, right: 16, bottom: 10, left: 16 } },
               interaction: { mode: "nearest", intersect: false },
-              plugins: { legend: { display: false }, tooltip: {
+              plugins: { legend: { display: true, labels: { boxWidth: 12, boxHeight: 12 } }, tooltip: {
                 callbacks: {
                   title: (items) => {
                     if (!items || !items.length) return "";
                     const item = items[0];
-                    const iso = isoForPoint(item.datasetIndex, item.dataIndex);
+                    const iso = isoForPoint2(item.datasetIndex, item.dataIndex);
                     if (iso) {
                       const dt = DateTime.fromISO(iso, { zone: ZONE });
                       return dt.toFormat("ccc \u2022 MMM d, yyyy") + (vacGlyph2 ? vacGlyph2(iso) : "");
@@ -2700,12 +2668,13 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
                     return lbl + (vacGlyph2 ? vacGlyph2(lbl) : "");
                   },
                   label: (item) => {
-                    const i = item.dataIndex;
-                    const lw = lastBy[i];
-                    const tw = thisBy[i];
-                    const hasTw = i <= dayIdxToday && tw != null;
-                    const routeStr = thisRouteMasked[i] != null ? `, Route: ${thisRouteMasked[i]}m` : "";
-                    return hasTw ? `This: ${tw}${routeStr}` : `Last: ${lw}`;
+                    var _a5, _b;
+                    const label = ((_a5 = item.dataset) == null ? void 0 : _a5.label) || "";
+                    const raw = (_b = item.parsed) == null ? void 0 : _b.y;
+                    if (raw == null || Number.isNaN(raw)) return `${label}: \u2014`;
+                    const value = label.includes("Route") ? Number(raw).toFixed(1) : Number(raw).toFixed(raw % 1 === 0 ? 0 : 1);
+                    const suffix = label.includes("Route") ? " min" : "";
+                    return `${label}: ${value}${suffix}`;
                   }
                 }
               } },
@@ -2716,6 +2685,112 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
               }
             }
           });
+        }
+        if (effOverlay && window.Chart && effOverlay.getContext) {
+          const ctxEff = effOverlay.getContext("2d");
+          if (effOverlay._chart) {
+            try {
+              effOverlay._chart.destroy();
+            } catch (_) {
+            }
+          }
+          const efficiencyLast = volumeLastBy.map((vol, idx) => vol > 0 ? +(routeLastBy[idx] / vol).toFixed(2) : null);
+          const efficiencyThis = volumeThisBy.map((vol, idx) => vol > 0 ? +(routeThisBy[idx] / vol).toFixed(2) : null);
+          const efficiencyThisMasked = efficiencyThis.map((v, i) => i <= dayIdxToday ? v : null);
+          effOverlay._chart = new Chart(ctxEff, {
+            type: "line",
+            data: { labels: days, datasets: [
+              { label: "Efficiency last week", data: efficiencyLast, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true },
+              { label: "Efficiency this week", data: efficiencyThisMasked, borderColor: warnColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true }
+            ] },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              layout: { padding: { top: 12, right: 16, bottom: 10, left: 16 } },
+              interaction: { mode: "nearest", intersect: false },
+              plugins: { legend: { display: true, labels: { boxWidth: 12, boxHeight: 12 } }, tooltip: {
+                callbacks: {
+                  title: (items) => {
+                    if (!items || !items.length) return "";
+                    const item = items[0];
+                    const iso = isoForPoint(item.datasetIndex === 0 ? 0 : 1, item.dataIndex);
+                    if (iso) {
+                      const dt = DateTime.fromISO(iso, { zone: ZONE });
+                      return dt.toFormat("ccc \u2022 MMM d, yyyy") + (vacGlyph2 ? vacGlyph2(iso) : "");
+                    }
+                    return item.label || "";
+                  },
+                  label: (item) => {
+                    var _a5, _b;
+                    const label = ((_a5 = item.dataset) == null ? void 0 : _a5.label) || "";
+                    const raw = (_b = item.parsed) == null ? void 0 : _b.y;
+                    if (raw == null || Number.isNaN(raw)) return `${label}: \u2014`;
+                    return `${label}: ${Number(raw).toFixed(2)} min/vol`;
+                  }
+                }
+              } },
+              scales: {
+                x: { display: true, grid: { display: false } },
+                y: { display: true, ticks: { display: true }, grid: { display: false } }
+              }
+            }
+          });
+        }
+        if (driftCanvas && window.Chart && driftCanvas.getContext) {
+          const ctxDrift = driftCanvas.getContext("2d");
+          if (driftCanvas._chart) {
+            try {
+              driftCanvas._chart.destroy();
+            } catch (_) {
+            }
+          }
+          const baselineParcels = Array.isArray(baselines == null ? void 0 : baselines.parcels) ? baselines.parcels : null;
+          const baselineLetters = Array.isArray(baselines == null ? void 0 : baselines.letters) ? baselines.letters : null;
+          const anchorParcels = Array.isArray(anchor == null ? void 0 : anchor.parcels) ? anchor.parcels : null;
+          const anchorLetters = Array.isArray(anchor == null ? void 0 : anchor.letters) ? anchor.letters : null;
+          const driftDatasets = [];
+          if (baselineParcels && anchorParcels) {
+            driftDatasets.push({ label: "Baseline parcels", data: baselineParcels, borderColor: warnColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
+            driftDatasets.push({ label: "Anchor parcels", data: anchorParcels, borderColor: warnColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true, borderDash: [6, 4] });
+          }
+          if (baselineLetters && anchorLetters) {
+            driftDatasets.push({ label: "Baseline letters", data: baselineLetters, borderColor: lettersLastColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
+            driftDatasets.push({ label: "Anchor letters", data: anchorLetters, borderColor: lettersLastColor, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true, borderDash: [6, 4] });
+          }
+          if (driftDatasets.length) {
+            driftCanvas.style.display = "block";
+            driftCanvas._chart = new Chart(ctxDrift, {
+              type: "line",
+              data: { labels: days, datasets: driftDatasets },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { top: 12, right: 16, bottom: 10, left: 16 } },
+                interaction: { mode: "nearest", intersect: false },
+                plugins: { legend: { display: true, labels: { boxWidth: 12, boxHeight: 12 } }, tooltip: {
+                  callbacks: {
+                    label: (item) => {
+                      var _a5, _b;
+                      const label = ((_a5 = item.dataset) == null ? void 0 : _a5.label) || "";
+                      const raw = (_b = item.parsed) == null ? void 0 : _b.y;
+                      if (raw == null || Number.isNaN(raw)) return `${label}: \u2014`;
+                      return `${label}: ${Number(raw).toFixed(1)}`;
+                    }
+                  }
+                } },
+                scales: { x: { display: true, grid: { display: false } }, y: { display: true, grid: { display: false } } }
+              }
+            });
+          } else {
+            driftCanvas.style.display = "none";
+            if (driftCanvas._chart) {
+              try {
+                driftCanvas._chart.destroy();
+              } catch (_) {
+              }
+              driftCanvas._chart = null;
+            }
+          }
         }
       } catch (_) {
       }
@@ -2782,8 +2857,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             }
           }
           const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#2b7fff";
-          const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
-          const isoForPoint = (datasetIndex, idx) => {
+          const warn2 = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
+          const isoForPoint2 = (datasetIndex, idx) => {
             try {
               if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
               if (datasetIndex === 1) return startThis.plus({ days: idx }).toISODate();
@@ -2795,7 +2870,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             type: "line",
             data: { labels: days, datasets: [
               { label: "Last week", data: lastBy, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true },
-              { label: "This week", data: thisMasked, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true }
+              { label: "This week", data: thisMasked, borderColor: warn2, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true }
             ] },
             options: {
               responsive: true,
@@ -2807,7 +2882,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
                   title: (items) => {
                     if (!items || !items.length) return "";
                     const item = items[0];
-                    const iso = isoForPoint(item.datasetIndex, item.dataIndex);
+                    const iso = isoForPoint2(item.datasetIndex, item.dataIndex);
                     if (iso) {
                       const dt = DateTime.fromISO(iso, { zone: ZONE });
                       return dt.toFormat("ccc \u2022 MMM d, yyyy") + (vacGlyph2 ? vacGlyph2(iso) : "");
@@ -2915,7 +2990,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const showL = !!(cbL ? cbL.checked : true);
       const showH = !!(cbH ? cbH.checked : true);
       const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#2b7fff";
-      const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
+      const warn2 = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
       const good = getComputedStyle(document.documentElement).getPropertyValue("--good").trim() || "#2E7D32";
       const datasets = [];
       const needNormalize = [showP, showL, showH].filter(Boolean).length > 1;
@@ -2935,7 +3010,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const dataL = needNormalize ? norm(serL) : serL;
       const dataH = needNormalize ? norm(serH) : serH;
       if (showP) datasets.push({ label: "Parcels", data: dataP, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
-      if (showL) datasets.push({ label: "Letters", data: dataL, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
+      if (showL) datasets.push({ label: "Letters", data: dataL, borderColor: warn2, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
       if (showH) datasets.push({ label: "Hours", data: dataH, borderColor: good, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
       const summary = [];
       const fmtNum = (n) => (Math.round(n * 10) / 10).toFixed(1);

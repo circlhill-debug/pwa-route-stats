@@ -1,6 +1,6 @@
 // Route Stats PWA Service Worker (safe)
 // Bump when user-visible changes land to force fresh assets
-const CACHE_VERSION = 'rs-pwa-v2025-10-25-15';
+const CACHE_VERSION = 'rs-pwa-v2025-10-25-16';
 const STATIC_CACHE = CACHE_VERSION + '-static';
 
 const SAME_ORIGIN = self.location.origin;

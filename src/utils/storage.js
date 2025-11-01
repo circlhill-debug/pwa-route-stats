@@ -58,6 +58,116 @@ function generateEvalProfileId(){
   return `eval-${Date.now().toString(36)}-${evalProfileCounter.toString(36)}`;
 }
 
+export function getStored(key, fallback=null){
+  try{
+    const raw = localStorage.getItem(key);
+    if (raw == null) return fallback;
+    return JSON.parse(raw);
+  }catch(_){
+    return fallback;
+  }
+}
+
+export function setStored(key, value){
+  try{
+    localStorage.setItem(key, JSON.stringify(value));
+  }catch(_){
+    // ignore storage errors
+  }
+}
+
+// === ROUTE STATS EXTENSION: YEARLY TOTALS & BADGES ===
+export const YEARLY_THRESHOLDS = {
+  parcelTitan: { key: 'parcels', threshold: 20000, label: 'Parcel Pounder' },
+  letterLegend: { key: 'letters', threshold: 100000, label: 'Mercury Magic' },
+  hourHero: { key: 'hours', threshold: 2000, label: 'Your Ass Must be a Dragon!' }
+};
+
+export function updateYearlyTotals(dayData){
+  if (!dayData) return;
+  const iso = dayData.date || dayData.work_date;
+  if (!iso) return;
+  const year = new Date(iso).getFullYear();
+  const totals = getStored('routeStats.yearlyTotals', {}) || {};
+
+  if (!totals[year]){
+    totals[year] = { parcels: 0, letters: 0, hours: 0 };
+  }
+
+  totals[year].parcels += dayData.parcels || 0;
+  totals[year].letters += dayData.letters || 0;
+  totals[year].hours += dayData.hours || 0;
+
+  setStored('routeStats.yearlyTotals', totals);
+  checkYearlyMilestones(year, totals[year]);
+}
+
+function checkYearlyMilestones(year, stats){
+  const badges = getStored('routeStats.badges', []) || [];
+
+  Object.entries(YEARLY_THRESHOLDS).forEach(([id, { key, threshold, label }]) => {
+    const unlocked = badges.find(b => b.id === id && b.year === year);
+    if (!unlocked && (stats[key] || 0) >= threshold){
+      badges.push({
+        id,
+        year,
+        label,
+        unlockedAt: new Date().toISOString(),
+        message: `🏅 ${label} — ${threshold.toLocaleString()} ${key} delivered in ${year}!`
+      });
+    }
+  });
+
+  setStored('routeStats.badges', badges);
+}
+
+export function recomputeYearlyStats(rows){
+  try{
+    if (!Array.isArray(rows) || !rows.length) return;
+    const totals = {};
+    (rows || []).forEach(row=>{
+      if (!row) return;
+      const iso = row.work_date || row.date;
+      if (!iso) return;
+      const dt = new Date(iso);
+      if (Number.isNaN(dt.getTime())) return;
+      const year = dt.getFullYear();
+      if (!totals[year]){
+        totals[year] = { parcels:0, letters:0, hours:0 };
+      }
+      totals[year].parcels += Number(row.parcels) || 0;
+      totals[year].letters += Number(row.letters) || 0;
+      totals[year].hours += Number(row.hours) || 0;
+    });
+
+    const existing = getStored('routeStats.badges', []) || [];
+    const existingMap = new Map(existing.map(b=> [`${b.id}:${b.year}`, b]));
+    const nextBadges = [];
+
+    Object.entries(totals).forEach(([yearKey, stats])=>{
+      const year = Number(yearKey);
+      Object.entries(YEARLY_THRESHOLDS).forEach(([id, { key, threshold, label }])=>{
+        if ((stats[key] || 0) >= threshold){
+          const hash = `${id}:${year}`;
+          const prev = existingMap.get(hash);
+          nextBadges.push({
+            id,
+            year,
+            label,
+            unlockedAt: prev?.unlockedAt || new Date().toISOString(),
+            message: prev?.message || `🏅 ${label} — ${threshold.toLocaleString()} ${key} delivered in ${year}!`
+          });
+        }
+      });
+    });
+
+    setStored('routeStats.yearlyTotals', totals);
+    setStored('routeStats.badges', nextBadges);
+  }catch(_){
+    // ignore recompute errors
+  }
+}
+
 function toNumberOrNull(value){
   if (value === '' || value === null || value === undefined) return null;
   const num = Number(value);
@@ -513,6 +623,69 @@ export function setAiBasePrompt(val){
   }
 }
 
+function tokenUsageDefaults(now){
+  return {
+    today: 0,
+    week: 0,
+    month: 0,
+    monthlyLimit: null,
+    todayDate: now.toISODate(),
+    weekStart: startOfWeekMonday(now).toISODate(),
+    monthKey: now.toFormat('yyyy-MM'),
+    updatedAt: null
+  };
+}
+
+function normalizeTokenUsageSource(source, now){
+  const base = tokenUsageDefaults(now);
+  if (!source || typeof source !== 'object') return { ...base };
+  const out = { ...base };
+  if (source.today !== undefined && source.today !== null && source.today !== ''){
+    const val = Number(source.today);
+    out.today = Number.isFinite(val) ? val : out.today;
+  }
+  if (source.week !== undefined && source.week !== null && source.week !== ''){
+    const val = Number(source.week);
+    out.week = Number.isFinite(val) ? val : out.week;
+  }
+  if (source.month !== undefined && source.month !== null && source.month !== ''){
+    const val = Number(source.month);
+    out.month = Number.isFinite(val) ? val : out.month;
+  }
+  if (source.monthlyLimit !== undefined && source.monthlyLimit !== null && source.monthlyLimit !== ''){
+    const val = Number(source.monthlyLimit);
+    out.monthlyLimit = Number.isFinite(val) ? val : out.monthlyLimit;
+  } else if (source.monthlyLimit === null){
+    out.monthlyLimit = null;
+  }
+  if (typeof source.todayDate === 'string' && source.todayDate.trim()){
+    out.todayDate = source.todayDate;
+  }
+  if (typeof source.weekStart === 'string' && source.weekStart.trim()){
+    out.weekStart = source.weekStart;
+  }
+  if (typeof source.monthKey === 'string' && source.monthKey.trim()){
+    out.monthKey = source.monthKey;
+  }
+  if (source.updatedAt !== undefined && source.updatedAt !== null){
+    if (typeof source.updatedAt === 'string' && source.updatedAt.trim()){
+      const stamp = Date.parse(source.updatedAt);
+      if (!Number.isNaN(stamp)){
+        out.updatedAt = new Date(stamp).toISOString();
+      }
+    } else {
+      out.updatedAt = null;
+    }
+  }
+  return out;
+}
+
+function tokenUsageTimestamp(usage){
+  if (!usage || typeof usage !== 'object') return 0;
+  const stamp = Date.parse(usage.updatedAt || '');
+  return Number.isNaN(stamp) ? 0 : stamp;
+}
+
 export function loadTokenUsage(){
   try{
     const raw = localStorage.getItem(TOKEN_USAGE_STORAGE);
@@ -520,39 +693,80 @@ export function loadTokenUsage(){
     const today = now.toISODate();
     const weekStart = startOfWeekMonday(now).toISODate();
     const monthKey = now.toFormat('yyyy-MM');
-    if (!raw) return { today:0, week:0, month:0, monthlyLimit:null, todayDate:today, weekStart, monthKey };
-    const parsed = JSON.parse(raw) || {};
-    const usage = {
-      today: Number(parsed.today) || 0,
-      week: Number(parsed.week) || 0,
-      month: Number(parsed.month) || 0,
-      monthlyLimit: (parsed.monthlyLimit!==undefined && parsed.monthlyLimit!==null) ? Number(parsed.monthlyLimit) : null,
-      todayDate: parsed.todayDate || today,
-      weekStart: parsed.weekStart || weekStart,
-      monthKey: parsed.monthKey || monthKey
-    };
-    if (usage.todayDate !== today){ usage.today = 0; usage.todayDate = today; }
-    if (usage.weekStart !== weekStart){ usage.week = 0; usage.weekStart = weekStart; }
-    if (usage.monthKey !== monthKey){ usage.month = 0; usage.monthKey = monthKey; }
+    let usage;
+    let changed = false;
+    if (raw){
+      usage = normalizeTokenUsageSource(JSON.parse(raw) || {}, now);
+    } else {
+      usage = normalizeTokenUsageSource(null, now);
+      changed = true;
+    }
+    if (usage.todayDate !== today){
+      usage.today = 0;
+      usage.todayDate = today;
+      changed = true;
+    }
+    if (usage.weekStart !== weekStart){
+      usage.week = 0;
+      usage.weekStart = weekStart;
+      changed = true;
+    }
+    if (usage.monthKey !== monthKey){
+      usage.month = 0;
+      usage.monthKey = monthKey;
+      changed = true;
+    }
+    if (!usage.updatedAt){
+      usage.updatedAt = new Date().toISOString();
+      changed = true;
+    }
+    if (changed){
+      localStorage.setItem(TOKEN_USAGE_STORAGE, JSON.stringify(usage));
+    }
     return usage;
   }catch(_){
     const now = DateTime.now().setZone(ZONE);
-    return {
-      today:0,
-      week:0,
-      month:0,
-      monthlyLimit:null,
-      todayDate: now.toISODate(),
-      weekStart: startOfWeekMonday(now).toISODate(),
-      monthKey: now.toFormat('yyyy-MM')
-    };
+    const usage = normalizeTokenUsageSource(null, now);
+    usage.updatedAt = new Date().toISOString();
+    try{
+      localStorage.setItem(TOKEN_USAGE_STORAGE, JSON.stringify(usage));
+    }catch(__){ /* ignore */ }
+    return usage;
   }
 }
 
-export function saveTokenUsage(obj){
+export function saveTokenUsage(obj, options={}){
+  const { preserveTimestamp=false } = options || {};
   try{
-    localStorage.setItem(TOKEN_USAGE_STORAGE, JSON.stringify(obj || {}));
+    const now = DateTime.now().setZone(ZONE);
+    const usage = normalizeTokenUsageSource(obj || {}, now);
+    if (!preserveTimestamp || !usage.updatedAt){
+      usage.updatedAt = new Date().toISOString();
+    }
+    localStorage.setItem(TOKEN_USAGE_STORAGE, JSON.stringify(usage));
+    return usage;
   }catch(_){
     // ignore storage errors
+    return null;
   }
+}
+
+export function mergeTokenUsage(localUsage, incomingUsage){
+  const now = DateTime.now().setZone(ZONE);
+  const local = normalizeTokenUsageSource(localUsage || {}, now);
+  const incoming = normalizeTokenUsageSource(incomingUsage || {}, now);
+  const hasIncoming = incomingUsage && typeof incomingUsage === 'object';
+  const hasLocal = localUsage && typeof localUsage === 'object';
+  if (!hasIncoming && hasLocal) return { merged: local, source: 'local' };
+  if (hasIncoming && !hasLocal) return { merged: incoming, source: 'incoming' };
+  if (!hasIncoming && !hasLocal) return { merged: local, source: 'local' };
+  const localStamp = tokenUsageTimestamp(local);
+  const incomingStamp = tokenUsageTimestamp(incoming);
+  if (incomingStamp > localStamp) return { merged: incoming, source: 'incoming' };
+  if (incomingStamp < localStamp) return { merged: local, source: 'local' };
+  const localScore = (local.month || 0) + (local.week || 0) + (local.today || 0);
+  const incomingScore = (incoming.month || 0) + (incoming.week || 0) + (incoming.today || 0);
+  if (incomingScore > localScore) return { merged: incoming, source: 'incoming' };
+  if (incomingScore < localScore) return { merged: local, source: 'local' };
+  return { merged: incoming, source: 'incoming' };
 }

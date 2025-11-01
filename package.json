@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "scripts": {
     "build": "node scripts/build.js",
+    "dev": "esbuild src/app.js --bundle --format=iife --outfile=public/app.js --watch",
     "test": "vitest run",
     "test:watch": "vitest"
   },

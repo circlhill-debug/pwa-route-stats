@@ -179,6 +179,54 @@
   .leaderboard-table tbody tr:last-child td{ border-bottom:none; }
   .cardSection{ border-top:1px solid var(--border); margin-top:16px; padding-top:12px; }
   .cardSection h4{ margin:0 0 10px 0; font-size:14px; }
+  #milestoneBadges{ display:flex; flex-direction:column; gap:12px; margin-top:12px; }
+  .badge-card{
+    display:flex;
+    align-items:flex-start;
+    gap:16px;
+    background:var(--card);
+    border-radius:12px;
+    padding:14px 16px;
+    transition:0.3s ease;
+    border:1px solid rgba(148,163,184,0.18);
+  }
+  .badge-card.unlocked{
+    border-color:rgba(250,204,21,0.55);
+    background:linear-gradient(145deg, rgba(250,204,21,0.25), rgba(253,224,71,0.08));
+  }
+  .badge-card.locked{
+    opacity:0.88;
+  }
+  .badge-count{
+    font-size:1.45rem;
+    font-weight:600;
+    font-variant-numeric:tabular-nums;
+    color:#f8fafc;
+  }
+  .badge-count small{
+    display:block;
+    margin-top:4px;
+    font-size:0.75rem;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--muted);
+  }
+  .badge-card.unlocked .badge-count small{
+    color:#fde68a;
+  }
+  .badge-info h4{ margin:0 0 6px 0; font-size:1.1rem; }
+  .badge-info p{ margin:0; color:var(--muted); font-size:0.95rem; }
+  #milestoneHistory{ display:flex; flex-direction:column; gap:12px; margin-top:12px; }
+  .badge-history-year{ border:1px solid rgba(148,163,184,0.18); border-radius:12px; padding:12px 14px; background:rgba(15,17,21,0.6); }
+  .badge-history-year h5{ margin:0 0 8px 0; font-size:0.95rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); }
+  .badge-history-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; }
+  .badge-history-item{ border:1px solid rgba(148,163,184,0.18); border-radius:10px; padding:10px 12px; background:rgba(15,19,28,0.55); }
+  .badge-history-item.achieved{ border-color:rgba(250,204,21,0.55); background:linear-gradient(145deg, rgba(250,204,21,0.2), rgba(253,224,71,0.06)); }
+  .badge-history-value{ display:block; font-size:1.1rem; font-weight:600; font-variant-numeric:tabular-nums; }
+  .badge-history-item small{ display:block; margin-top:4px; font-size:0.75rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); }
+  .badge-history-item.achieved small{ color:#fde68a; }
+  .badge-history-name{ margin-top:6px; font-size:0.9rem; font-weight:600; color:#fde68a; }
+  .badge-history-note{ margin-top:6px; font-size:0.8rem; color:var(--muted); }
   .trip-summary{ font-size:13px; line-height:1.5; }
   .diag-wrap{
     overflow:auto;
@@ -682,6 +730,19 @@
   <canvas id="qfSpark" class="sparkline" style="height:64px;max-height:64px"></canvas>
   <div id="qfText" class="sparkline-labels">—</div>
   </div>
+  </section>
+
+  <!-- Milestone Engine -->
+  <section class="card" id="milestoneCard" style="grid-column:1/-1">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">Milestone Engine</h3>
+      <small class="muted">Tracks yearly parcel, letter, and hour milestones.</small>
+    </div>
+    <div id="milestoneBadges" aria-live="polite">
+      <p class="muted">Loading milestones…</p>
+    </div>
+    <button id="milestoneHistoryToggle" class="ghost" type="button" style="margin-top:8px;display:none">Show previous years</button>
+    <div id="milestoneHistory" style="display:none"></div>
   </section>
 
   <!-- Day Compare (experimental) -->

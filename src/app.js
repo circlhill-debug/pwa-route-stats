@@ -39,7 +39,12 @@ import {
   getAiBasePrompt,
   setAiBasePrompt,
   loadTokenUsage,
-  saveTokenUsage
+  saveTokenUsage,
+  getStored,
+  updateYearlyTotals,
+  YEARLY_THRESHOLDS,
+  recomputeYearlyStats,
+  mergeTokenUsage
 } from './utils/storage.js';
 
 import {
@@ -105,6 +110,7 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
 
   const DEFAULT_AI_BASE_PROMPT = 'You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.';
   const SECOND_TRIP_EMA_KEY = 'routeStats.secondTrip.ema';
+  let showMilestoneHistory = false;
 
   function addVacationRange(fromIso, toIso){
     if (!fromIso || !toIso) return;
@@ -241,6 +247,7 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
 
   async function syncUserSettingsFromRemote(){
     if (!CURRENT_USER_ID) return;
+    let pushTokenUsageAfterSync = false;
     try{
       const { data, error } = await sb
         .from(USER_SETTINGS_TABLE)
@@ -276,7 +283,16 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
             }
           }
           if (data.ai_token_usage && typeof data.ai_token_usage === 'object'){
-            saveTokenUsage(data.ai_token_usage);
+            const localUsage = loadTokenUsage();
+            const { merged, source } = mergeTokenUsage(localUsage, data.ai_token_usage);
+            if (source === 'incoming'){
+              saveTokenUsage(merged, { preserveTimestamp: true });
+            } else {
+              saveTokenUsage(merged);
+              pushTokenUsageAfterSync = true;
+            }
+          } else {
+            pushTokenUsageAfterSync = true;
           }
           if (Array.isArray(data.diagnostics_dismissed)){
             saveDismissedResiduals(data.diagnostics_dismissed);
@@ -287,6 +303,7 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
       } finally {
         suppressSettingsSave = false;
       }
+      if (pushTokenUsageAfterSync) scheduleUserSettingsSave();
       renderVacationRanges();
       renderUspsEvalTag();
       if (secondTripEmaInput){
@@ -658,7 +675,7 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
   }
 
   function vacGlyph(iso){
-    return (iso && isVacationDate(iso)) ? ' (v)' : '';
+    return (iso && isVacationDate(iso)) ? ' (Vacation)' : '';
   }
 
   function isHolidayMarked(row){
@@ -1902,6 +1919,7 @@ function getHourlyRateFromEval(){
     window.__rawRows = rawRows;
     window.allRows = rows;
     window.__holidayCatchupStats = summarizeHolidayCatchups(rawRows);
+    recomputeYearlyStats(rawRows);
     updateCurrentLetterWeight(normalRows);
     renderTable(applySearch(rawRows));
     buildCharts(rawRows);
@@ -1920,6 +1938,7 @@ function getHourlyRateFromEval(){
     buildEvalCompare(rawRows);
     buildDiagnostics(normalRows);
     buildVolumeLeaderboard(rawRows);
+    renderYearlyBadges();
   }
 
   async function loadByDate(){
@@ -1955,6 +1974,8 @@ function getHourlyRateFromEval(){
         }
       }catch(e){ error = e; }
       dWrite.textContent = error ? 'Failed' : 'OK'; if (error){ alert(error.message); return; }
+      updateYearlyTotals({ ...payload, date: payload.work_date });
+      renderYearlyBadges();
       clone.textContent = 'Update'; clone.disabled = true; clone.classList.add('saving','savedFlash');
       setTimeout(()=>{ clone.disabled=false; clone.classList.remove('saving'); }, 400); setTimeout(()=> clone.classList.remove('savedFlash'), 700);
       const rows = await fetchEntries();
@@ -2038,6 +2059,96 @@ function getHourlyRateFromEval(){
         <td class="right">${r.parcels||0}</td><td class="right">${r.letters||0}</td><td class="right">${r.miles||0}</td>
         <td>${r.weather_json||''}</td><td></td>`;
       tbody.appendChild(tr);
+  }
+}
+
+  function renderYearlyBadges(){
+    const container = document.getElementById('milestoneBadges');
+    const toggleBtn = document.getElementById('milestoneHistoryToggle');
+    const historyContainer = document.getElementById('milestoneHistory');
+    if (!container) return;
+    try{
+      const year = new Date().getFullYear();
+      const badges = getStored('routeStats.badges', []) || [];
+      const totals = getStored('routeStats.yearlyTotals', {}) || {};
+      const thresholds = Object.entries(YEARLY_THRESHOLDS || {});
+      if (!thresholds.length){
+        container.innerHTML = '<p class="muted">Milestones coming soon.</p>';
+        return;
+      }
+      const markup = thresholds.map(([id, { label, key, threshold }])=>{
+        const unlocked = badges.find(b => b && b.id === id && b.year === year);
+        const progressRaw = totals?.[year]?.[key];
+        const progressVal = Number(progressRaw);
+        const progress = Number.isFinite(progressVal) ? progressVal : 0;
+        const status = unlocked ? 'unlocked' : 'locked';
+        const metricTitle = key.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+        const progressDisplay = Math.max(0, progress).toLocaleString();
+        const infoBlock = unlocked
+          ? `<div class="badge-info"><h4>${label}</h4><p>${unlocked.message}</p></div>`
+          : '';
+        return `<div class="badge-card ${status}">
+  <div class="badge-count">
+    ${progressDisplay}
+    <small>${metricTitle}</small>
+  </div>
+  ${infoBlock}
+</div>`;
+      }).join('');
+      container.innerHTML = markup || '<p class="muted">No milestones defined.</p>';
+
+      const historyYears = Object.keys(totals)
+        .map(y => Number(y))
+        .filter(y => y && y !== year)
+        .sort((a,b) => b - a);
+
+      if (toggleBtn){
+        toggleBtn.style.display = historyYears.length ? '' : 'none';
+        toggleBtn.textContent = showMilestoneHistory ? 'Hide previous years' : 'Show previous years';
+        toggleBtn.onclick = ()=>{
+          showMilestoneHistory = !showMilestoneHistory;
+          renderYearlyBadges();
+        };
+      }
+
+      if (historyContainer){
+        if (!showMilestoneHistory || !historyYears.length){
+          historyContainer.style.display = 'none';
+          historyContainer.innerHTML = '';
+        } else {
+          const historyMarkup = historyYears.map(y => {
+            const stats = totals[y] || { parcels:0, letters:0, hours:0 };
+            const entries = Object.entries(YEARLY_THRESHOLDS).map(([id, { label, key, threshold }]) => {
+              const value = Number(stats[key]) || 0;
+              const unlocked = badges.find(b => b && b.id === id && b.year === y);
+              const metricTitle = key.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+              const remaining = Math.max(0, (threshold || 0) - value);
+              const statusCls = unlocked ? 'achieved' : '';
+              const note = unlocked
+                ? unlocked.message
+                : (threshold ? `${remaining.toLocaleString()} to go (goal ${threshold.toLocaleString()})` : '');
+              const labelBlock = unlocked ? `<div class="badge-history-note">${note}</div>` : (note ? `<div class="badge-history-note">${note}</div>` : '');
+              return `<div class="badge-history-item ${statusCls}">
+  <span class="badge-history-value">${Math.max(0, value).toLocaleString()}</span>
+  <small>${metricTitle}</small>
+  ${unlocked ? `<div class="badge-history-name">${label}</div>` : ''}
+  ${labelBlock}
+</div>`;
+            }).join('');
+            return `<div class="badge-history-year">
+  <h5>${y}</h5>
+  <div class="badge-history-grid">${entries}</div>
+</div>`;
+          }).join('');
+          historyContainer.innerHTML = historyMarkup;
+          historyContainer.style.display = '';
+        }
+      }
+    }catch(err){
+      console.warn('renderYearlyBadges error', err);
+      container.innerHTML = '<p class="muted">Unable to load milestones.</p>';
+      if (historyContainer) historyContainer.style.display = 'none';
+      if (toggleBtn) toggleBtn.style.display = 'none';
     }
   }
 
@@ -2781,6 +2892,7 @@ function getHourlyRateFromEval(){
       { id:'lettersOverTimeCard' },
       { id:'monthlyGlanceCard' },
       { id:'quickFilterCard' },
+      { id:'milestoneCard' },
       { id:'dayCompareCard' },
       { id:'recentEntriesCard' },
     ];

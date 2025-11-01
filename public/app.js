@@ -131,6 +131,99 @@
     evalProfileCounter = (evalProfileCounter + 1) % Number.MAX_SAFE_INTEGER;
     return `eval-${Date.now().toString(36)}-${evalProfileCounter.toString(36)}`;
   }
+  function getStored(key, fallback = null) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw == null) return fallback;
+      return JSON.parse(raw);
+    } catch (_) {
+      return fallback;
+    }
+  }
+  function setStored(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (_) {
+    }
+  }
+  var YEARLY_THRESHOLDS = {
+    parcelTitan: { key: "parcels", threshold: 2e4, label: "Parcel Pounder" },
+    letterLegend: { key: "letters", threshold: 1e5, label: "Mercury Magic" },
+    hourHero: { key: "hours", threshold: 2e3, label: "Your Ass Must be a Dragon!" }
+  };
+  function updateYearlyTotals(dayData) {
+    if (!dayData) return;
+    const iso = dayData.date || dayData.work_date;
+    if (!iso) return;
+    const year = new Date(iso).getFullYear();
+    const totals = getStored("routeStats.yearlyTotals", {}) || {};
+    if (!totals[year]) {
+      totals[year] = { parcels: 0, letters: 0, hours: 0 };
+    }
+    totals[year].parcels += dayData.parcels || 0;
+    totals[year].letters += dayData.letters || 0;
+    totals[year].hours += dayData.hours || 0;
+    setStored("routeStats.yearlyTotals", totals);
+    checkYearlyMilestones(year, totals[year]);
+  }
+  function checkYearlyMilestones(year, stats) {
+    const badges = getStored("routeStats.badges", []) || [];
+    Object.entries(YEARLY_THRESHOLDS).forEach(([id, { key, threshold, label }]) => {
+      const unlocked = badges.find((b) => b.id === id && b.year === year);
+      if (!unlocked && (stats[key] || 0) >= threshold) {
+        badges.push({
+          id,
+          year,
+          label,
+          unlockedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          message: `\u{1F3C5} ${label} \u2014 ${threshold.toLocaleString()} ${key} delivered in ${year}!`
+        });
+      }
+    });
+    setStored("routeStats.badges", badges);
+  }
+  function recomputeYearlyStats(rows) {
+    try {
+      if (!Array.isArray(rows) || !rows.length) return;
+      const totals = {};
+      (rows || []).forEach((row) => {
+        if (!row) return;
+        const iso = row.work_date || row.date;
+        if (!iso) return;
+        const dt = new Date(iso);
+        if (Number.isNaN(dt.getTime())) return;
+        const year = dt.getFullYear();
+        if (!totals[year]) {
+          totals[year] = { parcels: 0, letters: 0, hours: 0 };
+        }
+        totals[year].parcels += Number(row.parcels) || 0;
+        totals[year].letters += Number(row.letters) || 0;
+        totals[year].hours += Number(row.hours) || 0;
+      });
+      const existing = getStored("routeStats.badges", []) || [];
+      const existingMap = new Map(existing.map((b) => [`${b.id}:${b.year}`, b]));
+      const nextBadges = [];
+      Object.entries(totals).forEach(([yearKey, stats]) => {
+        const year = Number(yearKey);
+        Object.entries(YEARLY_THRESHOLDS).forEach(([id, { key, threshold, label }]) => {
+          if ((stats[key] || 0) >= threshold) {
+            const hash = `${id}:${year}`;
+            const prev = existingMap.get(hash);
+            nextBadges.push({
+              id,
+              year,
+              label,
+              unlockedAt: (prev == null ? void 0 : prev.unlockedAt) || (/* @__PURE__ */ new Date()).toISOString(),
+              message: (prev == null ? void 0 : prev.message) || `\u{1F3C5} ${label} \u2014 ${threshold.toLocaleString()} ${key} delivered in ${year}!`
+            });
+          }
+        });
+      });
+      setStored("routeStats.yearlyTotals", totals);
+      setStored("routeStats.badges", nextBadges);
+    } catch (_) {
+    }
+  }
   function toNumberOrNull(value) {
     if (value === "" || value === null || value === void 0) return null;
     const num = Number(value);
@@ -541,6 +634,66 @@
     } catch (_) {
     }
   }
+  function tokenUsageDefaults(now) {
+    return {
+      today: 0,
+      week: 0,
+      month: 0,
+      monthlyLimit: null,
+      todayDate: now.toISODate(),
+      weekStart: startOfWeekMonday(now).toISODate(),
+      monthKey: now.toFormat("yyyy-MM"),
+      updatedAt: null
+    };
+  }
+  function normalizeTokenUsageSource(source, now) {
+    const base = tokenUsageDefaults(now);
+    if (!source || typeof source !== "object") return { ...base };
+    const out = { ...base };
+    if (source.today !== void 0 && source.today !== null && source.today !== "") {
+      const val = Number(source.today);
+      out.today = Number.isFinite(val) ? val : out.today;
+    }
+    if (source.week !== void 0 && source.week !== null && source.week !== "") {
+      const val = Number(source.week);
+      out.week = Number.isFinite(val) ? val : out.week;
+    }
+    if (source.month !== void 0 && source.month !== null && source.month !== "") {
+      const val = Number(source.month);
+      out.month = Number.isFinite(val) ? val : out.month;
+    }
+    if (source.monthlyLimit !== void 0 && source.monthlyLimit !== null && source.monthlyLimit !== "") {
+      const val = Number(source.monthlyLimit);
+      out.monthlyLimit = Number.isFinite(val) ? val : out.monthlyLimit;
+    } else if (source.monthlyLimit === null) {
+      out.monthlyLimit = null;
+    }
+    if (typeof source.todayDate === "string" && source.todayDate.trim()) {
+      out.todayDate = source.todayDate;
+    }
+    if (typeof source.weekStart === "string" && source.weekStart.trim()) {
+      out.weekStart = source.weekStart;
+    }
+    if (typeof source.monthKey === "string" && source.monthKey.trim()) {
+      out.monthKey = source.monthKey;
+    }
+    if (source.updatedAt !== void 0 && source.updatedAt !== null) {
+      if (typeof source.updatedAt === "string" && source.updatedAt.trim()) {
+        const stamp = Date.parse(source.updatedAt);
+        if (!Number.isNaN(stamp)) {
+          out.updatedAt = new Date(stamp).toISOString();
+        }
+      } else {
+        out.updatedAt = null;
+      }
+    }
+    return out;
+  }
+  function tokenUsageTimestamp(usage) {
+    if (!usage || typeof usage !== "object") return 0;
+    const stamp = Date.parse(usage.updatedAt || "");
+    return Number.isNaN(stamp) ? 0 : stamp;
+  }
   function loadTokenUsage() {
     try {
       const raw = localStorage.getItem(TOKEN_USAGE_STORAGE);
@@ -548,48 +701,80 @@
       const today = now.toISODate();
       const weekStart = startOfWeekMonday(now).toISODate();
       const monthKey = now.toFormat("yyyy-MM");
-      if (!raw) return { today: 0, week: 0, month: 0, monthlyLimit: null, todayDate: today, weekStart, monthKey };
-      const parsed = JSON.parse(raw) || {};
-      const usage = {
-        today: Number(parsed.today) || 0,
-        week: Number(parsed.week) || 0,
-        month: Number(parsed.month) || 0,
-        monthlyLimit: parsed.monthlyLimit !== void 0 && parsed.monthlyLimit !== null ? Number(parsed.monthlyLimit) : null,
-        todayDate: parsed.todayDate || today,
-        weekStart: parsed.weekStart || weekStart,
-        monthKey: parsed.monthKey || monthKey
-      };
+      let usage;
+      let changed = false;
+      if (raw) {
+        usage = normalizeTokenUsageSource(JSON.parse(raw) || {}, now);
+      } else {
+        usage = normalizeTokenUsageSource(null, now);
+        changed = true;
+      }
       if (usage.todayDate !== today) {
         usage.today = 0;
         usage.todayDate = today;
+        changed = true;
       }
       if (usage.weekStart !== weekStart) {
         usage.week = 0;
         usage.weekStart = weekStart;
+        changed = true;
       }
       if (usage.monthKey !== monthKey) {
         usage.month = 0;
         usage.monthKey = monthKey;
+        changed = true;
+      }
+      if (!usage.updatedAt) {
+        usage.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+        changed = true;
+      }
+      if (changed) {
+        localStorage.setItem(TOKEN_USAGE_STORAGE, JSON.stringify(usage));
       }
       return usage;
     } catch (_) {
       const now = DateTime.now().setZone(ZONE);
-      return {
-        today: 0,
-        week: 0,
-        month: 0,
-        monthlyLimit: null,
-        todayDate: now.toISODate(),
-        weekStart: startOfWeekMonday(now).toISODate(),
-        monthKey: now.toFormat("yyyy-MM")
-      };
+      const usage = normalizeTokenUsageSource(null, now);
+      usage.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+      try {
+        localStorage.setItem(TOKEN_USAGE_STORAGE, JSON.stringify(usage));
+      } catch (__) {
+      }
+      return usage;
     }
   }
-  function saveTokenUsage(obj) {
+  function saveTokenUsage(obj, options = {}) {
+    const { preserveTimestamp = false } = options || {};
     try {
-      localStorage.setItem(TOKEN_USAGE_STORAGE, JSON.stringify(obj || {}));
+      const now = DateTime.now().setZone(ZONE);
+      const usage = normalizeTokenUsageSource(obj || {}, now);
+      if (!preserveTimestamp || !usage.updatedAt) {
+        usage.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+      }
+      localStorage.setItem(TOKEN_USAGE_STORAGE, JSON.stringify(usage));
+      return usage;
     } catch (_) {
+      return null;
     }
+  }
+  function mergeTokenUsage(localUsage, incomingUsage) {
+    const now = DateTime.now().setZone(ZONE);
+    const local = normalizeTokenUsageSource(localUsage || {}, now);
+    const incoming = normalizeTokenUsageSource(incomingUsage || {}, now);
+    const hasIncoming = incomingUsage && typeof incomingUsage === "object";
+    const hasLocal = localUsage && typeof localUsage === "object";
+    if (!hasIncoming && hasLocal) return { merged: local, source: "local" };
+    if (hasIncoming && !hasLocal) return { merged: incoming, source: "incoming" };
+    if (!hasIncoming && !hasLocal) return { merged: local, source: "local" };
+    const localStamp = tokenUsageTimestamp(local);
+    const incomingStamp = tokenUsageTimestamp(incoming);
+    if (incomingStamp > localStamp) return { merged: incoming, source: "incoming" };
+    if (incomingStamp < localStamp) return { merged: local, source: "local" };
+    const localScore = (local.month || 0) + (local.week || 0) + (local.today || 0);
+    const incomingScore = (incoming.month || 0) + (incoming.week || 0) + (incoming.today || 0);
+    if (incomingScore > localScore) return { merged: incoming, source: "incoming" };
+    if (incomingScore < localScore) return { merged: local, source: "local" };
+    return { merged: incoming, source: "incoming" };
   }
 
   // src/services/supabaseClient.js
@@ -2414,14 +2599,63 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const W0 = worked.filter((r) => inRange(r, startThis, endThis));
       const W1 = baseWeek.rows.filter((r) => inRange(r, startLast, lastEndSame));
       const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-      const p0 = sum(W0, (r) => +r.parcels || 0), p1 = sum(W1, (r) => +r.parcels || 0);
-      const l0 = sum(W0, (r) => +r.letters || 0), l1 = sum(W1, (r) => +r.letters || 0);
+      const sumNumbers = (arr) => arr.reduce((t, n) => t + (Number(n) || 0), 0);
+      const pickRowsByDayCount = (rows2, dayCount) => {
+        if (!Number.isFinite(dayCount) || dayCount <= 0) return [...rows2];
+        const sorted = [...rows2].sort((a, b) => (a.work_date || "").localeCompare(b.work_date || ""));
+        const seen = /* @__PURE__ */ new Set();
+        const out = [];
+        for (const row of sorted) {
+          const day = row.work_date;
+          const isNewDay = !seen.has(day);
+          if (isNewDay && seen.size >= dayCount) break;
+          out.push(row);
+          if (isNewDay) seen.add(day);
+        }
+        return out;
+      };
+      const uniqueDayCount = (arr) => {
+        const seen = /* @__PURE__ */ new Set();
+        arr.forEach((r) => {
+          if (r == null ? void 0 : r.work_date) seen.add(r.work_date);
+        });
+        return seen.size;
+      };
+      const thisWeekDayCount = uniqueDayCount(W0);
+      const W0Compare = pickRowsByDayCount(W0, thisWeekDayCount);
+      const W1Compare = pickRowsByDayCount(W1, thisWeekDayCount);
+      const p0 = sum(W0Compare, (r) => +r.parcels || 0), p1 = sum(W1Compare, (r) => +r.parcels || 0);
+      const l0 = sum(W0Compare, (r) => +r.letters || 0), l1 = sum(W1Compare, (r) => +r.letters || 0);
       const ln0 = +(letterW * l0).toFixed(1);
       const ln1 = +(letterW * l1).toFixed(1);
       let rm0 = 0;
       let rm1 = 0;
       try {
-        if (text) text.textContent = `W1: Parcels ${p0}, Letters ${l0} \u2022 W2: Parcels ${p1}, Letters ${l1}`;
+        const thisWeekData = {
+          days: W0Compare.map((r) => r.work_date),
+          routeHours: W0Compare.map((r) => routeAdjustedHours2(r)),
+          parcels: W0Compare.map((r) => +r.parcels || 0),
+          letters: W0Compare.map((r) => +r.letters || 0)
+        };
+        const lastWeekData = {
+          days: W1Compare.map((r) => r.work_date),
+          routeHours: W1Compare.map((r) => routeAdjustedHours2(r)),
+          parcels: W1Compare.map((r) => +r.parcels || 0),
+          letters: W1Compare.map((r) => +r.letters || 0)
+        };
+        const totalRouteHoursThis = sumNumbers(thisWeekData.routeHours);
+        const totalRouteHoursLast = sumNumbers(lastWeekData.routeHours);
+        const totalVolumeThis = mixCombinedVolume(sumNumbers(thisWeekData.parcels), sumNumbers(thisWeekData.letters), letterW);
+        const efficiencyMinutes = totalVolumeThis > 0 ? totalRouteHoursThis / totalVolumeThis * 60 : null;
+      } catch (logErr) {
+        console.warn("[WeeklyCompare] diagnostic failed", logErr);
+      }
+      try {
+        if (text) {
+          const thisColor = (warnColor || "#f97316").trim() || "#f97316";
+          const lastColor = (brand || "#2b7fff").trim() || "#2b7fff";
+          text.innerHTML = `<span style="color:${thisColor};font-weight:600">This week</span>: Parcels ${p0}, Letters ${l0} \u2022 <span style="color:${lastColor};font-weight:600">Last week</span>: Parcels ${p1}, Letters ${l1}`;
+        }
         const wBadge = document.getElementById("mixWeight");
         if (wBadge) {
           wBadge.style.display = "inline-flex";
@@ -2429,8 +2663,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         }
         const vol0 = mixCombinedVolume(p0, l0, letterW);
         const vol1 = mixCombinedVolume(p1, l1, letterW);
-        rm0 = sum(W0, (r) => routeAdjustedHours2(r));
-        rm1 = sum(W1, (r) => routeAdjustedHours2(r));
+        rm0 = sum(W0Compare, (r) => routeAdjustedHours2(r));
+        rm1 = sum(W1Compare, (r) => routeAdjustedHours2(r));
         const idx0 = vol0 > 0 && rm0 > 0 ? rm0 / vol0 : null;
         const idx1 = vol1 > 0 && rm1 > 0 ? rm1 / vol1 : null;
         let deltaStr = "\u2014";
@@ -2443,9 +2677,12 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           deltaStyle = `color:${fg}`;
         }
         if (eff) {
-          const a = idx0 == null ? "\u2014" : (Math.round(idx0 * 100) / 100).toFixed(2);
-          const b = idx1 == null ? "\u2014" : (Math.round(idx1 * 100) / 100).toFixed(2);
-          eff.innerHTML = `Efficiency index (min/vol): ${a} vs ${b} <span style="${deltaStyle}">${deltaStr}</span>`;
+          const effMin0 = idx0 != null ? idx0 * 60 : null;
+          const effMin1 = idx1 != null ? idx1 * 60 : null;
+          const a = effMin0 == null ? "\u2014" : (Math.round(effMin0 * 100) / 100).toFixed(2);
+          const b = effMin1 == null ? "\u2014" : (Math.round(effMin1 * 100) / 100).toFixed(2);
+          const effColor = (goodColor || "#7CE38B").trim() || "#7CE38B";
+          eff.innerHTML = `<span style="color:${effColor};font-weight:600">Efficiency</span> (min/vol): ${a} vs ${b} <span style="${deltaStyle}">${deltaStr}</span>`;
         }
         try {
           if (culprits) {
@@ -2470,14 +2707,18 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
                 out.push(`${days[idx]}: ${diff >= 0 ? "\u2191" : "\u2193"}${Math.abs(diff)}%`);
               }
             });
-            culprits.textContent = out.length ? "Outliers: " + out.join(" \u2022 ") : "Outliers: \u2014";
+            const routeColor = (goodColor || "#7CE38B").trim() || "#7CE38B";
+            const prefix = `<span style="color:${routeColor};font-weight:600">Outliers</span>`;
+            culprits.innerHTML = out.length ? `${prefix}: ${out.join(" \u2022 ")}` : `${prefix}: \u2014`;
           }
         } catch (_) {
         }
       } catch (_) {
       }
       const d = (a, b) => b > 0 ? Math.round((a - b) / b * 100) : null;
-      const dH = d(sum(W0, (r) => +r.hours || 0), sum(W1, (r) => +r.hours || 0));
+      const hoursThisWeek = sum(W0Compare, (r) => +r.hours || 0);
+      const hoursLastWeek = sum(W1Compare, (r) => +r.hours || 0);
+      const dH = d(hoursThisWeek, hoursLastWeek);
       let dP, dLx, lineLabelP = "Parcels", lineLabelL = "Letters";
       let resP = { used: 0 };
       let resL = { used: 0 };
@@ -2538,10 +2779,9 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         const usedP = resP && resP.used ? `, ${resP.used} day(s) used` : "";
         const usedL = resL && resL.used ? `, ${resL.used} day(s) used` : "";
         details.innerHTML = [
-          line("Efficiency", dEff, `(${(rm0 / (p0 + ln0) || 0).toFixed(2)} vs ${(rm1 / (p1 + ln1) || 0).toFixed(2)})`),
-          line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, warnColor || "#f97316"),
-          line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, "#60a5fa"),
-          line("Hours", dH, `(${sum(W0, (r) => +r.hours || 0).toFixed(1)}h vs ${sum(W1, (r) => +r.hours || 0).toFixed(1)}h)`)
+          line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, (brand || "#2b7fff").trim() || "#2b7fff"),
+          line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, (warnColor || "#f97316").trim() || "#f97316"),
+          line("Hours", dH, `(${hoursThisWeek.toFixed(1)}h vs ${hoursLastWeek.toFixed(1)}h)`)
         ].join("");
         details.style.display = "block";
         if (btn) btn.setAttribute("aria-expanded", "true");
@@ -2572,7 +2812,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             arr.forEach((r) => {
               const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
               const idx = (d2.weekday + 6) % 7;
-              a[idx] += Math.max(0, (+r.route_minutes || 0) - boxholderAdjMinutes2(r));
+              a[idx] += routeAdjustedHours2(r);
             });
             return a.map((n) => +(Math.round(n * 100) / 100).toFixed(2));
           };
@@ -2581,6 +2821,16 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           const lastBy = volByDow(W1full);
           const thisRoute = routeByDow(W0);
           const lastRoute = routeByDow(W1full);
+          const thisEff = thisBy.map((vol, idx) => {
+            const routeH2 = thisRoute[idx];
+            if (vol && routeH2 && vol > 0 && routeH2 > 0) return +(routeH2 / vol * 60).toFixed(2);
+            return null;
+          });
+          const lastEff = lastBy.map((vol, idx) => {
+            const routeH2 = lastRoute[idx];
+            if (vol && routeH2 && vol > 0 && routeH2 > 0) return +(routeH2 / vol * 60).toFixed(2);
+            return null;
+          });
           const dayIdxToday = (now.weekday + 6) % 7;
           const hasBand = !!(typeof bandMinData !== "undefined" && typeof bandMaxData !== "undefined" && bandMinData && bandMaxData);
           const isoForPoint = (datasetIndex, idx) => {
@@ -2599,6 +2849,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           };
           const thisMasked = thisBy.map((v, i) => i <= dayIdxToday ? v : null);
           const thisRouteMasked = thisRoute.map((v, i) => i <= dayIdxToday ? v : null);
+          const thisEffMasked = thisEff.map((v, i) => i <= dayIdxToday ? v : null);
           const datasets = [];
           if (hasBand) {
             datasets.push({
@@ -2624,10 +2875,18 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             });
           }
           datasets.push(
-            { label: "Vol last", data: lastBy, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
-            { label: "Vol this", data: thisMasked, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y" },
-            { label: "Route h (this)", data: thisRouteMasked, borderColor: good, backgroundColor: "transparent", borderDash: [4, 3], tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true, yAxisID: "y2" }
+            { label: "Vol last", data: lastBy, borderColor: brand, backgroundColor: "rgba(43,127,255,0.12)", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y", fill: false },
+            { label: "Vol this", data: thisMasked, borderColor: warn, backgroundColor: "rgba(255,215,0,0.18)", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y", fill: false },
+            { label: "Efficiency (this)", data: thisEffMasked, borderColor: good, backgroundColor: "transparent", borderDash: [4, 3], tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true, yAxisID: "y2" }
           );
+          const yValues = [...thisMasked, ...lastBy].filter((v) => Number.isFinite(v));
+          const yMin = yValues.length ? Math.min(...yValues) : 0;
+          const yMax = yValues.length ? Math.max(...yValues) : 0;
+          const padding = (yMax - yMin) * 0.15 || (yMax ? Math.abs(yMax) * 0.15 : 10);
+          const effValues = thisEffMasked.filter((v) => Number.isFinite(v));
+          const effMin = effValues.length ? Math.min(...effValues) : 0;
+          const effMax = effValues.length ? Math.max(...effValues) : 0;
+          const effPad = (effMax - effMin) * 0.15 || (effMax ? Math.abs(effMax) * 0.15 : 1);
           overlay._chart = new Chart(ctx, {
             type: "line",
             data: { labels: days, datasets },
@@ -2650,25 +2909,178 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
                     return lbl + (vacGlyph2 ? vacGlyph2(lbl) : "");
                   },
                   label: (item) => {
-                    const i = item.dataIndex;
-                    const lw = lastBy[i];
-                    const tw = thisBy[i];
-                    const hasTw = i <= dayIdxToday && tw != null;
-                    const routeStr = thisRouteMasked[i] != null ? `, Route: ${thisRouteMasked[i]}m` : "";
-                    return hasTw ? `This: ${tw}${routeStr}` : `Last: ${lw}`;
+                    var _a5;
+                    const idx = item.dataIndex;
+                    const datasetLabel = ((_a5 = item.dataset) == null ? void 0 : _a5.label) || "";
+                    const volThis = thisBy[idx];
+                    const volLast = lastBy[idx];
+                    const routeThis = thisRoute[idx];
+                    const routePrev = lastRoute[idx];
+                    const effThisVal = thisEff[idx];
+                    const effPrevVal = lastEff[idx];
+                    const formatVol = (prefix, value, routeHours) => {
+                      if (!Number.isFinite(value)) return `${prefix} volume: \u2014`;
+                      const lines = [`${prefix} volume: ${value.toLocaleString(void 0, { maximumFractionDigits: 1 })}`];
+                      if (Number.isFinite(routeHours)) lines.push(`Route hours: ${routeHours.toFixed(2)} h`);
+                      return lines;
+                    };
+                    const formatEfficiency = (value, routeHours, volume) => {
+                      if (!Number.isFinite(value)) return "Efficiency: \u2014";
+                      const parts = [`Efficiency: ${value.toFixed(2)} min/vol`];
+                      if (Number.isFinite(routeHours) && Number.isFinite(volume) && volume > 0) {
+                        const hoursPerVol = routeHours / volume;
+                        parts.push(`(${hoursPerVol.toFixed(3)} h/vol)`);
+                        parts.push(`Route: ${routeHours.toFixed(2)} h \u2022 Volume: ${volume.toLocaleString(void 0, { maximumFractionDigits: 1 })}`);
+                      }
+                      return parts.join(" ");
+                    };
+                    if (datasetLabel === "Vol this") {
+                      return formatVol("This week", volThis, routeThis);
+                    }
+                    if (datasetLabel === "Vol last") {
+                      return formatVol("Last week", volLast, routePrev);
+                    }
+                    if (datasetLabel === "Efficiency (this)") {
+                      return formatEfficiency(effThisVal, routeThis, volThis);
+                    }
+                    return "";
                   }
                 }
               } },
               scales: {
                 x: { display: true, grid: { display: false } },
-                y: { display: false },
-                y2: { display: false }
+                y: { display: false, suggestedMin: yMin - padding, suggestedMax: yMax + padding },
+                y2: { display: false, suggestedMin: effMin - effPad, suggestedMax: effMax + effPad }
               }
             }
           });
         }
       } catch (_) {
       }
+      (function buildMixDrift() {
+        var _a5, _b, _c, _d;
+        const driftCanvas = document.getElementById("mixDrift");
+        const driftText = document.getElementById("mixDriftText");
+        if (!driftCanvas && !driftText) return;
+        const weeksToShow = 6;
+        const weekStats = [];
+        for (let i = weeksToShow - 1; i >= 0; i--) {
+          const wkStart = startThis.minus({ weeks: i + 1 });
+          const wkEnd = endOfWeekSunday2(wkStart);
+          const wkRows = worked.filter((r) => inRange(r, wkStart, wkEnd));
+          weekStats.push({
+            start: wkStart,
+            end: wkEnd,
+            parcels: sum(wkRows, (r) => +r.parcels || 0),
+            letters: sum(wkRows, (r) => +r.letters || 0),
+            count: wkRows.length
+          });
+        }
+        const meaningfulWeeks = weekStats.filter((w) => w.parcels > 0 || w.letters > 0);
+        const hasHistory = meaningfulWeeks.length >= 2;
+        const destroyDrift = () => {
+          if (driftCanvas && driftCanvas._chart) {
+            try {
+              driftCanvas._chart.destroy();
+            } catch (_) {
+            }
+            driftCanvas._chart = null;
+          }
+        };
+        if (!window.Chart || !driftCanvas || !driftCanvas.getContext || !hasHistory) {
+          destroyDrift();
+          if (driftText) {
+            if (!hasHistory) {
+              driftText.innerHTML = '<span class="muted">Need a few weeks of history to show trends.</span>';
+            } else {
+              driftText.textContent = "\u2014";
+            }
+          }
+          return;
+        }
+        const labels = weekStats.map((w) => w.start.toFormat("MMM d"));
+        const parcelsSeries = weekStats.map((w) => w.parcels);
+        const lettersSeries = weekStats.map((w) => w.letters);
+        const baselineParcels = (baselines == null ? void 0 : baselines.parcels) || null;
+        const baselineLetters = (baselines == null ? void 0 : baselines.letters) || null;
+        const parcBaselineSeries = baselineParcels ? weekStats.map(() => {
+          const val = baselineParcels.reduce((sum2, n, idx) => {
+            return sum2 + (Number.isFinite(n) ? n : 0);
+          }, 0);
+          const count = baselineParcels.filter((n) => Number.isFinite(n)).length || 1;
+          return +(val / count).toFixed(1);
+        }) : null;
+        const letterBaselineSeries = baselineLetters ? weekStats.map(() => {
+          const val = baselineLetters.reduce((sum2, n, idx) => {
+            return sum2 + (Number.isFinite(n) ? n : 0);
+          }, 0);
+          const count = baselineLetters.filter((n) => Number.isFinite(n)).length || 1;
+          return +(val / count).toFixed(1);
+        }) : null;
+        const parcelsColor = (brand || "#2b7fff").trim() || "#2b7fff";
+        const lettersColor = (warnColor || "#f97316").trim() || "#f97316";
+        const baselineColor = "#a855f7";
+        destroyDrift();
+        const driftCtx = driftCanvas.getContext("2d");
+        driftCanvas._chart = new Chart(driftCtx, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              { label: "Parcels", data: parcelsSeries, borderColor: parcelsColor, backgroundColor: "transparent", tension: 0.3, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true },
+              { label: "Letters", data: lettersSeries, borderColor: lettersColor, backgroundColor: "transparent", tension: 0.3, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true },
+              ...baselineParcels ? [{ label: "Parcels baseline", data: parcBaselineSeries, borderColor: baselineColor, backgroundColor: "transparent", tension: 0, pointRadius: 0, borderDash: [6, 4], borderWidth: 1.5, spanGaps: true }] : [],
+              ...baselineLetters ? [{ label: "Letters baseline", data: letterBaselineSeries, borderColor: baselineColor, backgroundColor: "transparent", tension: 0, pointRadius: 0, borderDash: [3, 3], borderWidth: 1.5, spanGaps: true }] : []
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            elements: { line: { tension: 0.3 }, point: { radius: 2, hitRadius: 10 } },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  title: (items) => {
+                    if (!items || !items.length) return "";
+                    const idx = items[0].dataIndex;
+                    const w = weekStats[idx];
+                    if (!w) return "";
+                    const startLbl = w.start.toFormat("LLL d");
+                    const endLbl = w.end.toFormat("LLL d");
+                    return `Week of ${startLbl} \u2192 ${endLbl}`;
+                  },
+                  label: (item) => {
+                    const idx = item.dataIndex;
+                    const w = weekStats[idx];
+                    if (!w) return "";
+                    if (item.datasetIndex === 0) return `Parcels: ${Math.round(w.parcels).toLocaleString()}`;
+                    return `Letters: ${Math.round(w.letters).toLocaleString()}`;
+                  }
+                }
+              }
+            },
+            scales: { x: { display: false }, y: { display: false } }
+          }
+        });
+        if (driftText) {
+          const latest = weekStats[weekStats.length - 1];
+          const prev = weekStats[weekStats.length - 2];
+          const pct = (cur, prior) => {
+            if (!Number.isFinite(cur) || !Number.isFinite(prior) || prior <= 0) return null;
+            return Math.round((cur - prior) / prior * 100);
+          };
+          const fmtArrow = (val) => {
+            if (val == null) return "\u2014";
+            return val >= 0 ? `\u2191 ${val}%` : `\u2193 ${Math.abs(val)}%`;
+          };
+          const parcelsDelta = pct((_a5 = latest == null ? void 0 : latest.parcels) != null ? _a5 : 0, (_b = prev == null ? void 0 : prev.parcels) != null ? _b : 0);
+          const lettersDelta = pct((_c = latest == null ? void 0 : latest.letters) != null ? _c : 0, (_d = prev == null ? void 0 : prev.letters) != null ? _d : 0);
+          const parcelsSummary = `${fmtArrow(parcelsDelta)} (${Math.round((latest == null ? void 0 : latest.parcels) || 0).toLocaleString()} vs ${Math.round((prev == null ? void 0 : prev.parcels) || 0).toLocaleString()})`;
+          const lettersSummary = `${fmtArrow(lettersDelta)} (${Math.round((latest == null ? void 0 : latest.letters) || 0).toLocaleString()} vs ${Math.round((prev == null ? void 0 : prev.letters) || 0).toLocaleString()})`;
+          driftText.innerHTML = `<span style="color:${parcelsColor};font-weight:600">Parcels</span>: ${parcelsSummary} \u2022 <span style="color:${lettersColor};font-weight:600">Letters</span>: ${lettersSummary}`;
+        }
+      })();
       if (btn) {
         btn.onclick = () => {
           try {
@@ -3413,6 +3825,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
   }
   var DEFAULT_AI_BASE_PROMPT = "You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.";
   var SECOND_TRIP_EMA_KEY = "routeStats.secondTrip.ema";
+  var showMilestoneHistory = false;
   function addVacationRange(fromIso, toIso) {
     if (!fromIso || !toIso) return;
     const next = { ranges: [...(VACATION == null ? void 0 : VACATION.ranges) || [], { from: fromIso, to: toIso }] };
@@ -3545,6 +3958,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
   }
   async function syncUserSettingsFromRemote() {
     if (!CURRENT_USER_ID) return;
+    let pushTokenUsageAfterSync = false;
     try {
       const { data, error } = await sb.from(USER_SETTINGS_TABLE).select("eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed").eq("user_id", CURRENT_USER_ID).maybeSingle();
       if (error && error.code !== "PGRST116") {
@@ -3577,7 +3991,16 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             }
           }
           if (data.ai_token_usage && typeof data.ai_token_usage === "object") {
-            saveTokenUsage(data.ai_token_usage);
+            const localUsage = loadTokenUsage();
+            const { merged, source } = mergeTokenUsage(localUsage, data.ai_token_usage);
+            if (source === "incoming") {
+              saveTokenUsage(merged, { preserveTimestamp: true });
+            } else {
+              saveTokenUsage(merged);
+              pushTokenUsageAfterSync = true;
+            }
+          } else {
+            pushTokenUsageAfterSync = true;
           }
           if (Array.isArray(data.diagnostics_dismissed)) {
             saveDismissedResiduals(data.diagnostics_dismissed);
@@ -3588,6 +4011,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       } finally {
         suppressSettingsSave = false;
       }
+      if (pushTokenUsageAfterSync) scheduleUserSettingsSave();
       renderVacationRanges();
       renderUspsEvalTag();
       if (secondTripEmaInput) {
@@ -3949,7 +4373,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     return iso && isVacationDate(iso) ? '<sup class="vac-mark" title="Vacation day">v</sup>' : "";
   }
   function vacGlyph(iso) {
-    return iso && isVacationDate(iso) ? " (v)" : "";
+    return iso && isVacationDate(iso) ? " (Vacation)" : "";
   }
   function isHolidayMarked(row) {
     if (!row) return false;
@@ -5289,6 +5713,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     window.__rawRows = rawRows;
     window.allRows = rows;
     window.__holidayCatchupStats = summarizeHolidayCatchups(rawRows);
+    recomputeYearlyStats(rawRows);
     updateCurrentLetterWeight(normalRows);
     renderTable(applySearch(rawRows));
     buildCharts(rawRows);
@@ -5307,6 +5732,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     buildEvalCompare(rawRows);
     buildDiagnostics(normalRows);
     buildVolumeLeaderboard(rawRows);
+    renderYearlyBadges();
   }
   async function loadByDate() {
     editingKey = null;
@@ -5372,6 +5798,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         alert(error.message);
         return;
       }
+      updateYearlyTotals({ ...payload, date: payload.work_date });
+      renderYearlyBadges();
       clone.textContent = "Update";
       clone.disabled = true;
       clone.classList.add("saving", "savedFlash");
@@ -5518,6 +5946,86 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         <td class="right">${r.parcels || 0}</td><td class="right">${r.letters || 0}</td><td class="right">${r.miles || 0}</td>
         <td>${r.weather_json || ""}</td><td></td>`;
       tbody.appendChild(tr);
+    }
+  }
+  function renderYearlyBadges() {
+    const container = document.getElementById("milestoneBadges");
+    const toggleBtn = document.getElementById("milestoneHistoryToggle");
+    const historyContainer = document.getElementById("milestoneHistory");
+    if (!container) return;
+    try {
+      const year = (/* @__PURE__ */ new Date()).getFullYear();
+      const badges = getStored("routeStats.badges", []) || [];
+      const totals = getStored("routeStats.yearlyTotals", {}) || {};
+      const thresholds = Object.entries(YEARLY_THRESHOLDS || {});
+      if (!thresholds.length) {
+        container.innerHTML = '<p class="muted">Milestones coming soon.</p>';
+        return;
+      }
+      const markup = thresholds.map(([id, { label, key, threshold }]) => {
+        var _a5;
+        const unlocked = badges.find((b) => b && b.id === id && b.year === year);
+        const progressRaw = (_a5 = totals == null ? void 0 : totals[year]) == null ? void 0 : _a5[key];
+        const progressVal = Number(progressRaw);
+        const progress = Number.isFinite(progressVal) ? progressVal : 0;
+        const status = unlocked ? "unlocked" : "locked";
+        const metricTitle = key.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+        const progressDisplay = Math.max(0, progress).toLocaleString();
+        const infoBlock = unlocked ? `<div class="badge-info"><h4>${label}</h4><p>${unlocked.message}</p></div>` : "";
+        return `<div class="badge-card ${status}">
+  <div class="badge-count">
+    ${progressDisplay}
+    <small>${metricTitle}</small>
+  </div>
+  ${infoBlock}
+</div>`;
+      }).join("");
+      container.innerHTML = markup || '<p class="muted">No milestones defined.</p>';
+      const historyYears = Object.keys(totals).map((y) => Number(y)).filter((y) => y && y !== year).sort((a, b) => b - a);
+      if (toggleBtn) {
+        toggleBtn.style.display = historyYears.length ? "" : "none";
+        toggleBtn.textContent = showMilestoneHistory ? "Hide previous years" : "Show previous years";
+        toggleBtn.onclick = () => {
+          showMilestoneHistory = !showMilestoneHistory;
+          renderYearlyBadges();
+        };
+      }
+      if (historyContainer) {
+        if (!showMilestoneHistory || !historyYears.length) {
+          historyContainer.style.display = "none";
+          historyContainer.innerHTML = "";
+        } else {
+          const historyMarkup = historyYears.map((y) => {
+            const stats = totals[y] || { parcels: 0, letters: 0, hours: 0 };
+            const entries = Object.entries(YEARLY_THRESHOLDS).map(([id, { label, key, threshold }]) => {
+              const value = Number(stats[key]) || 0;
+              const unlocked = badges.find((b) => b && b.id === id && b.year === y);
+              const metricTitle = key.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+              const remaining = Math.max(0, (threshold || 0) - value);
+              const statusCls = unlocked ? "achieved" : "";
+              const note = unlocked ? unlocked.message : threshold ? `${remaining.toLocaleString()} to go (goal ${threshold.toLocaleString()})` : "";
+              const labelBlock = unlocked ? `<div class="badge-history-note">${note}</div>` : note ? `<div class="badge-history-note">${note}</div>` : "";
+              return `<div class="badge-history-item ${statusCls}">
+  <span class="badge-history-value">${Math.max(0, value).toLocaleString()}</span>
+  <small>${metricTitle}</small>
+  ${unlocked ? `<div class="badge-history-name">${label}</div>` : ""}
+  ${labelBlock}
+</div>`;
+            }).join("");
+            return `<div class="badge-history-year">
+  <h5>${y}</h5>
+  <div class="badge-history-grid">${entries}</div>
+</div>`;
+          }).join("");
+          historyContainer.innerHTML = historyMarkup;
+          historyContainer.style.display = "";
+        }
+      }
+    } catch (err) {
+      console.warn("renderYearlyBadges error", err);
+      container.innerHTML = '<p class="muted">Unable to load milestones.</p>';
+      if (historyContainer) historyContainer.style.display = "none";
+      if (toggleBtn) toggleBtn.style.display = "none";
     }
   }
   var VERSION_TAG = function() {
@@ -6371,6 +6879,7 @@ Score: ${overallScore}/10 (higher is better)`;
       { id: "lettersOverTimeCard" },
       { id: "monthlyGlanceCard" },
       { id: "quickFilterCard" },
+      { id: "milestoneCard" },
       { id: "dayCompareCard" },
       { id: "recentEntriesCard" }
     ];

@@ -2600,6 +2600,15 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const W1 = baseWeek.rows.filter((r) => inRange(r, startLast, lastEndSame));
       const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
       const sumNumbers = (arr) => arr.reduce((t, n) => t + (Number(n) || 0), 0);
+      const computeRange = (values, fallbackPad = 10) => {
+        const finite = (values || []).filter((v) => Number.isFinite(v));
+        if (!finite.length) return { min: -fallbackPad, max: fallbackPad };
+        const min = Math.min(...finite);
+        const max = Math.max(...finite);
+        let pad = (max - min) * 0.15;
+        if (!pad) pad = Math.max(Math.abs(max) * 0.15, fallbackPad);
+        return { min: min - pad, max: max + pad };
+      };
       const pickRowsByDayCount = (rows2, dayCount) => {
         if (!Number.isFinite(dayCount) || dayCount <= 0) return [...rows2];
         const sorted = [...rows2].sort((a, b) => (a.work_date || "").localeCompare(b.work_date || ""));
@@ -2628,33 +2637,33 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const l0 = sum(W0Compare, (r) => +r.letters || 0), l1 = sum(W1Compare, (r) => +r.letters || 0);
       const ln0 = +(letterW * l0).toFixed(1);
       const ln1 = +(letterW * l1).toFixed(1);
-      let rm0 = 0;
-      let rm1 = 0;
-      try {
-        const thisWeekData = {
-          days: W0Compare.map((r) => r.work_date),
-          routeHours: W0Compare.map((r) => routeAdjustedHours2(r)),
-          parcels: W0Compare.map((r) => +r.parcels || 0),
-          letters: W0Compare.map((r) => +r.letters || 0)
-        };
-        const lastWeekData = {
-          days: W1Compare.map((r) => r.work_date),
-          routeHours: W1Compare.map((r) => routeAdjustedHours2(r)),
-          parcels: W1Compare.map((r) => +r.parcels || 0),
-          letters: W1Compare.map((r) => +r.letters || 0)
-        };
-        const totalRouteHoursThis = sumNumbers(thisWeekData.routeHours);
-        const totalRouteHoursLast = sumNumbers(lastWeekData.routeHours);
-        const totalVolumeThis = mixCombinedVolume(sumNumbers(thisWeekData.parcels), sumNumbers(thisWeekData.letters), letterW);
-        const efficiencyMinutes = totalVolumeThis > 0 ? totalRouteHoursThis / totalVolumeThis * 60 : null;
-      } catch (logErr) {
-        console.warn("[WeeklyCompare] diagnostic failed", logErr);
-      }
+      const thisWeekData = {
+        days: W0Compare.map((r) => r.work_date),
+        routeHours: W0Compare.map((r) => routeAdjustedHours2(r)),
+        parcels: W0Compare.map((r) => +r.parcels || 0),
+        letters: W0Compare.map((r) => +r.letters || 0)
+      };
+      const lastWeekData = {
+        days: W1Compare.map((r) => r.work_date),
+        routeHours: W1Compare.map((r) => routeAdjustedHours2(r)),
+        parcels: W1Compare.map((r) => +r.parcels || 0),
+        letters: W1Compare.map((r) => +r.letters || 0)
+      };
+      const totalRouteHoursThis = sumNumbers(thisWeekData.routeHours);
+      const totalRouteHoursLast = sumNumbers(lastWeekData.routeHours);
+      const totalVolumeThis = mixCombinedVolume(sumNumbers(thisWeekData.parcels), sumNumbers(thisWeekData.letters), letterW);
+      const totalVolumeLast = mixCombinedVolume(sumNumbers(lastWeekData.parcels), sumNumbers(lastWeekData.letters), letterW);
+      const efficiencyMinutesCurrent = totalVolumeThis > 0 ? totalRouteHoursThis / totalVolumeThis * 60 : null;
+      const efficiencyMinutesPrev = totalVolumeLast > 0 ? totalRouteHoursLast / totalVolumeLast * 60 : null;
+      let rm0 = totalRouteHoursThis;
+      let rm1 = totalRouteHoursLast;
       try {
         if (text) {
           const thisColor = (warnColor || "#f97316").trim() || "#f97316";
           const lastColor = (brand || "#2b7fff").trim() || "#2b7fff";
-          text.innerHTML = `<span style="color:${thisColor};font-weight:600">This week</span>: Parcels ${p0}, Letters ${l0} \u2022 <span style="color:${lastColor};font-weight:600">Last week</span>: Parcels ${p1}, Letters ${l1}`;
+          const thisVacLabel = thisWeekData.days.some((iso) => vacGlyph2 && vacGlyph2(iso)) ? " (Vacation)" : "";
+          const lastVacLabel = lastWeekData.days.some((iso) => vacGlyph2 && vacGlyph2(iso)) ? " (Vacation)" : "";
+          text.innerHTML = `<span style="color:${thisColor};font-weight:600">This week${thisVacLabel}</span>: Parcels ${p0}, Letters ${l0} \u2022 <span style="color:${lastColor};font-weight:600">Last week${lastVacLabel}</span>: Parcels ${p1}, Letters ${l1}`;
         }
         const wBadge = document.getElementById("mixWeight");
         if (wBadge) {
@@ -2677,10 +2686,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           deltaStyle = `color:${fg}`;
         }
         if (eff) {
-          const effMin0 = idx0 != null ? idx0 * 60 : null;
-          const effMin1 = idx1 != null ? idx1 * 60 : null;
-          const a = effMin0 == null ? "\u2014" : (Math.round(effMin0 * 100) / 100).toFixed(2);
-          const b = effMin1 == null ? "\u2014" : (Math.round(effMin1 * 100) / 100).toFixed(2);
+          const a = efficiencyMinutesCurrent == null ? "\u2014" : efficiencyMinutesCurrent.toFixed(2);
+          const b = efficiencyMinutesPrev == null ? "\u2014" : efficiencyMinutesPrev.toFixed(2);
           const effColor = (goodColor || "#7CE38B").trim() || "#7CE38B";
           eff.innerHTML = `<span style="color:${effColor};font-weight:600">Efficiency</span> (min/vol): ${a} vs ${b} <span style="${deltaStyle}">${deltaStr}</span>`;
         }
@@ -2848,45 +2855,68 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             return null;
           };
           const thisMasked = thisBy.map((v, i) => i <= dayIdxToday ? v : null);
-          const thisRouteMasked = thisRoute.map((v, i) => i <= dayIdxToday ? v : null);
+          const lastMasked = lastBy.map((v, i) => i <= dayIdxToday ? v : null);
           const thisEffMasked = thisEff.map((v, i) => i <= dayIdxToday ? v : null);
+          const volThisRange = computeRange(thisMasked, 5);
+          const volLastRange = computeRange(lastMasked.length ? lastMasked : lastBy, 5);
+          const effRange = computeRange(thisEffMasked, 1);
+          const thisPointColors = days.map((_, idx) => {
+            const iso = startThis.plus({ days: idx }).toISODate();
+            return vacGlyph2 && vacGlyph2(iso) ? "rgba(255,99,132,0.9)" : warn;
+          });
+          const thisPointRadius = days.map((_, idx) => {
+            if (idx > dayIdxToday || thisMasked[idx] == null) return 0;
+            const iso = startThis.plus({ days: idx }).toISODate();
+            return vacGlyph2 && vacGlyph2(iso) ? 6 : 3;
+          });
+          const thisHoverRadius = thisPointRadius.map((r) => r ? r + 2 : 0);
+          const lastPointColors = days.map((_, idx) => {
+            const iso = startLast.plus({ days: idx }).toISODate();
+            return vacGlyph2 && vacGlyph2(iso) ? "rgba(165,155,255,0.9)" : brand;
+          });
+          const lastPointRadius = days.map((_, idx) => {
+            const iso = startLast.plus({ days: idx }).toISODate();
+            const highlight = vacGlyph2 && vacGlyph2(iso);
+            if (highlight) return 6;
+            return idx < thisWeekDayCount ? 3 : 2;
+          });
+          const lastHoverRadius = lastPointRadius.map((r) => r ? r + 2 : 0);
+          const styleMap = {
+            "Vol this": { color: "rgba(255,215,0,0.9)", width: 2.3, alpha: 0.9 },
+            "Vol last": { color: "rgba(43,127,255,0.85)", width: 2.1, alpha: 0.85 },
+            "Efficiency (this)": { color: "rgba(46,204,113,0.9)", width: 2.6, alpha: 0.92 }
+          };
           const datasets = [];
           if (hasBand) {
             datasets.push({
               label: "Vol expect min",
-              data: bandMinData,
+              data: bandMinData ? [...bandMinData] : [],
               borderColor: "rgba(255,140,0,0.85)",
               borderWidth: 1,
               borderDash: [6, 4],
               backgroundColor: "transparent",
               pointRadius: 0,
               spanGaps: true,
-              fill: false
+              fill: false,
+              yAxisID: "yVolThis"
             });
             datasets.push({
               label: "Vol expect max",
-              data: bandMaxData,
+              data: bandMaxData ? [...bandMaxData] : [],
               borderColor: "rgba(0,0,0,0)",
               backgroundColor: "rgba(255,140,0,0.22)",
               pointRadius: 0,
               borderWidth: 0,
               spanGaps: true,
-              fill: { target: "-1", above: "rgba(255,140,0,0.22)", below: "rgba(255,140,0,0.22)" }
+              fill: { target: "-1", above: "rgba(255,140,0,0.22)", below: "rgba(255,140,0,0.22)" },
+              yAxisID: "yVolThis"
             });
           }
           datasets.push(
-            { label: "Vol last", data: lastBy, borderColor: brand, backgroundColor: "rgba(43,127,255,0.12)", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y", fill: false },
-            { label: "Vol this", data: thisMasked, borderColor: warn, backgroundColor: "rgba(255,215,0,0.18)", tension: 0.25, pointRadius: 3, pointHoverRadius: 6, pointHitRadius: 14, borderWidth: 2, spanGaps: true, yAxisID: "y", fill: false },
-            { label: "Efficiency (this)", data: thisEffMasked, borderColor: good, backgroundColor: "transparent", borderDash: [4, 3], tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true, yAxisID: "y2" }
+            { label: "Vol last", data: [...lastBy], borderColor: styleMap["Vol last"].color, backgroundColor: "rgba(43,127,255,0.12)", tension: 0.25, pointRadius: lastPointRadius, pointHoverRadius: lastHoverRadius, pointBorderColor: lastPointColors, pointBackgroundColor: lastPointColors, borderWidth: styleMap["Vol last"].width, spanGaps: true, yAxisID: "yVolLast", fill: "origin" },
+            { label: "Vol this", data: [...thisMasked], borderColor: styleMap["Vol this"].color, backgroundColor: "rgba(255,215,0,0.18)", tension: 0.25, pointRadius: thisPointRadius, pointHoverRadius: thisHoverRadius, pointBorderColor: thisPointColors, pointBackgroundColor: thisPointColors, borderWidth: styleMap["Vol this"].width, spanGaps: true, yAxisID: "yVolThis", fill: "origin" },
+            { label: "Efficiency (this)", data: [...thisEffMasked], borderColor: styleMap["Efficiency (this)"].color, backgroundColor: "transparent", borderDash: [4, 3], tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: styleMap["Efficiency (this)"].width, spanGaps: true, yAxisID: "yEff", fill: false }
           );
-          const yValues = [...thisMasked, ...lastBy].filter((v) => Number.isFinite(v));
-          const yMin = yValues.length ? Math.min(...yValues) : 0;
-          const yMax = yValues.length ? Math.max(...yValues) : 0;
-          const padding = (yMax - yMin) * 0.15 || (yMax ? Math.abs(yMax) * 0.15 : 10);
-          const effValues = thisEffMasked.filter((v) => Number.isFinite(v));
-          const effMin = effValues.length ? Math.min(...effValues) : 0;
-          const effMax = effValues.length ? Math.max(...effValues) : 0;
-          const effPad = (effMax - effMin) * 0.15 || (effMax ? Math.abs(effMax) * 0.15 : 1);
           overlay._chart = new Chart(ctx, {
             type: "line",
             data: { labels: days, datasets },
@@ -2949,8 +2979,9 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
               } },
               scales: {
                 x: { display: true, grid: { display: false } },
-                y: { display: false, suggestedMin: yMin - padding, suggestedMax: yMax + padding },
-                y2: { display: false, suggestedMin: effMin - effPad, suggestedMax: effMax + effPad }
+                yVolThis: { type: "linear", display: false, suggestedMin: volThisRange.min, suggestedMax: volThisRange.max },
+                yVolLast: { type: "linear", display: false, suggestedMin: volLastRange.min, suggestedMax: volLastRange.max },
+                yEff: { type: "linear", display: false, suggestedMin: effRange.min, suggestedMax: effRange.max }
               }
             }
           });
@@ -2968,12 +2999,14 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           const wkStart = startThis.minus({ weeks: i + 1 });
           const wkEnd = endOfWeekSunday2(wkStart);
           const wkRows = worked.filter((r) => inRange(r, wkStart, wkEnd));
+          const hasVacation = wkRows.some((r) => vacGlyph2 && vacGlyph2(r.work_date));
           weekStats.push({
             start: wkStart,
             end: wkEnd,
             parcels: sum(wkRows, (r) => +r.parcels || 0),
             letters: sum(wkRows, (r) => +r.letters || 0),
-            count: wkRows.length
+            count: wkRows.length,
+            vacation: hasVacation
           });
         }
         const meaningfulWeeks = weekStats.filter((w) => w.parcels > 0 || w.letters > 0);
@@ -3022,15 +3055,21 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         const baselineColor = "#a855f7";
         destroyDrift();
         const driftCtx = driftCanvas.getContext("2d");
+        const parcelsRange = computeRange(parcelsSeries, 10);
+        const lettersRange = computeRange(lettersSeries, 10);
+        const parcelPointColors = weekStats.map((w) => w.vacation ? "rgba(255,99,132,0.9)" : parcelsColor);
+        const parcelPointRadius = weekStats.map((w) => w.vacation ? 6 : 3);
+        const letterPointColors = weekStats.map((w) => w.vacation ? "rgba(255,160,122,0.9)" : lettersColor);
+        const letterPointRadius = weekStats.map((w) => w.vacation ? 6 : 3);
         driftCanvas._chart = new Chart(driftCtx, {
           type: "line",
           data: {
             labels,
             datasets: [
-              { label: "Parcels", data: parcelsSeries, borderColor: parcelsColor, backgroundColor: "transparent", tension: 0.3, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true },
-              { label: "Letters", data: lettersSeries, borderColor: lettersColor, backgroundColor: "transparent", tension: 0.3, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: 2, spanGaps: true },
-              ...baselineParcels ? [{ label: "Parcels baseline", data: parcBaselineSeries, borderColor: baselineColor, backgroundColor: "transparent", tension: 0, pointRadius: 0, borderDash: [6, 4], borderWidth: 1.5, spanGaps: true }] : [],
-              ...baselineLetters ? [{ label: "Letters baseline", data: letterBaselineSeries, borderColor: baselineColor, backgroundColor: "transparent", tension: 0, pointRadius: 0, borderDash: [3, 3], borderWidth: 1.5, spanGaps: true }] : []
+              { label: "Parcels", data: [...parcelsSeries], borderColor: parcelsColor, backgroundColor: "rgba(43,127,255,0.12)", tension: 0.3, pointRadius: parcelPointRadius, pointHoverRadius: parcelPointRadius.map((r) => r ? r + 2 : 0), pointHitRadius: 12, pointBackgroundColor: parcelPointColors, pointBorderColor: parcelPointColors, borderWidth: 2, spanGaps: true, fill: "origin", yAxisID: "yParcels" },
+              { label: "Letters", data: [...lettersSeries], borderColor: lettersColor, backgroundColor: "rgba(255,215,0,0.18)", tension: 0.3, pointRadius: letterPointRadius, pointHoverRadius: letterPointRadius.map((r) => r ? r + 2 : 0), pointHitRadius: 12, pointBackgroundColor: letterPointColors, pointBorderColor: letterPointColors, borderWidth: 2, spanGaps: true, fill: "origin", yAxisID: "yLetters" },
+              ...baselineParcels ? [{ label: "Parcels baseline", data: [...parcBaselineSeries], borderColor: baselineColor, backgroundColor: "transparent", tension: 0, pointRadius: 0, pointHoverRadius: 0, borderDash: [6, 4], borderWidth: 1.5, spanGaps: true, fill: false, yAxisID: "yParcels" }] : [],
+              ...baselineLetters ? [{ label: "Letters baseline", data: [...letterBaselineSeries], borderColor: baselineColor, backgroundColor: "transparent", tension: 0, pointRadius: 0, pointHoverRadius: 0, borderDash: [3, 3], borderWidth: 1.5, spanGaps: true, fill: false, yAxisID: "yLetters" }] : []
             ]
           },
           options: {
@@ -3060,7 +3099,11 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
                 }
               }
             },
-            scales: { x: { display: false }, y: { display: false } }
+            scales: {
+              x: { display: false },
+              yParcels: { type: "linear", display: false, suggestedMin: parcelsRange.min, suggestedMax: parcelsRange.max },
+              yLetters: { type: "linear", display: false, suggestedMin: lettersRange.min, suggestedMax: lettersRange.max }
+            }
           }
         });
         if (driftText) {
@@ -3076,8 +3119,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           };
           const parcelsDelta = pct((_a5 = latest == null ? void 0 : latest.parcels) != null ? _a5 : 0, (_b = prev == null ? void 0 : prev.parcels) != null ? _b : 0);
           const lettersDelta = pct((_c = latest == null ? void 0 : latest.letters) != null ? _c : 0, (_d = prev == null ? void 0 : prev.letters) != null ? _d : 0);
-          const parcelsSummary = `${fmtArrow(parcelsDelta)} (${Math.round((latest == null ? void 0 : latest.parcels) || 0).toLocaleString()} vs ${Math.round((prev == null ? void 0 : prev.parcels) || 0).toLocaleString()})`;
-          const lettersSummary = `${fmtArrow(lettersDelta)} (${Math.round((latest == null ? void 0 : latest.letters) || 0).toLocaleString()} vs ${Math.round((prev == null ? void 0 : prev.letters) || 0).toLocaleString()})`;
+          const parcelsSummary = `${fmtArrow(parcelsDelta)} (${Math.round((latest == null ? void 0 : latest.parcels) || 0).toLocaleString()} vs ${Math.round((prev == null ? void 0 : prev.parcels) || 0).toLocaleString()})${(latest == null ? void 0 : latest.vacation) ? " (Vacation)" : ""}`;
+          const lettersSummary = `${fmtArrow(lettersDelta)} (${Math.round((latest == null ? void 0 : latest.letters) || 0).toLocaleString()} vs ${Math.round((prev == null ? void 0 : prev.letters) || 0).toLocaleString()})${(latest == null ? void 0 : latest.vacation) ? " (Vacation)" : ""}`;
           driftText.innerHTML = `<span style="color:${parcelsColor};font-weight:600">Parcels</span>: ${parcelsSummary} \u2022 <span style="color:${lettersColor};font-weight:600">Letters</span>: ${lettersSummary}`;
         }
       })();

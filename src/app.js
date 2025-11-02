@@ -2397,6 +2397,66 @@ function getHourlyRateFromEval(){
     const pCarry = pct(avgOrNull(pLast,dLast), avgOrNull(sum(priorW,r=>+r.parcels||0), dPrior));
     const lCarry = pct(avgOrNull(lLast,dLast), avgOrNull(sum(priorW,r=>+r.letters||0), dPrior));
 
+    // ===== Advanced Weekly Metrics (Phase 1) =====
+    // Day-by-day comparison Mon..today vs same weekday last week,
+    // then compute weighted average and cumulative impact (percent).
+    const dayIndexToday = (today.weekday + 6) % 7; // Mon=0..Sun=6
+
+    // Build arrays for this week and last week by weekday index (Mon..Sun)
+    const toWeekArray = (from, to) => {
+      const out = Array.from({ length: 7 }, () => ({ h: 0, p: 0, l: 0 }));
+      const inRange = (r) => {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        return d >= from && d <= to;
+      };
+      workRows.filter(inRange).forEach(r => {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        const idx = (d.weekday + 6) % 7; // Mon=0
+        const h = +r.hours || 0;
+        const p = +r.parcels || 0;
+        const l = +r.letters || 0;
+        out[idx].h += h; out[idx].p += p; out[idx].l += l;
+      });
+      return out;
+    };
+    const thisWeek = toWeekArray(weekStart, weekEnd);
+    const lastWeek = toWeekArray(prevWeekStart, prevWeekEnd);
+
+    // Holiday adjustment detection: if Monday of this week is an explicit off day,
+    // treat Tuesday's baseline as (Mon+Tue of last week). Controlled by flag.
+    const holidayAdjEnabled = !!(FLAGS && FLAGS.holidayAdjustments);
+    // Detect holiday off-days within current week. If found, adjust the NEXT day's baseline
+    const carryNext = new Set();
+    if (holidayAdjEnabled) {
+      try{
+        const inWeek = (r)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=weekStart && d<=weekEnd; };
+        const isHolidayMarked = (r)=> /(^|\\b)Holiday(\\b|$)/i.test(String(r.weather_json||''));
+        rows.filter(r=> r.status==='off' && inWeek(r) && isHolidayMarked(r)).forEach(r=>{
+          const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; if (idx<6) carryNext.add(idx+1);
+        });
+      }catch(_){ /* ignore */ }
+    }
+
+    // Off-day detection for current week (so we don't show -100% on off days)
+    const offIdxThisWeek = new Set(rows
+      .filter(r => r.status === 'off' && inRange(r, weekStart, weekEnd))
+      .map(r => (DateTime.fromISO(r.work_date, { zone: ZONE }).weekday + 6) % 7));
+
+    const normalizedTotals = (key)=>{
+      let curTotal = 0;
+      let baseTotal = 0;
+      for (let i = 0; i <= dayIndexToday && i < 7; i++){
+        const curVal = offIdxThisWeek.has(i) ? 0 : (thisWeek[i]?.[key] || 0);
+        let baseVal = lastWeek[i]?.[key] || 0;
+        if (holidayAdjEnabled && carryNext && carryNext.has(i)){
+          baseVal = (lastWeek[i-1]?.[key] || 0) + (lastWeek[i]?.[key] || 0);
+        }
+        curTotal += curVal || 0;
+        if (i <= dayIndexToday) baseTotal += baseVal || 0;
+      }
+      return { cur: curTotal, base: baseTotal };
+    };
+
     const normHours = normalizedTotals('h');
     const normParcels = normalizedTotals('p');
     const normLetters = normalizedTotals('l');
@@ -2481,66 +2541,6 @@ function getHourlyRateFromEval(){
           : `Gas: $${totalGas.toFixed(2)} · Add salary in Settings to include paid time`; 
       }
     }
-
-    // ===== Advanced Weekly Metrics (Phase 1) =====
-    // Day-by-day comparison Mon..today vs same weekday last week,
-    // then compute weighted average and cumulative impact (percent).
-    const dayIndexToday = (today.weekday + 6) % 7; // Mon=0..Sun=6
-
-    // Build arrays for this week and last week by weekday index (Mon..Sun)
-    const toWeekArray = (from, to) => {
-      const out = Array.from({ length: 7 }, () => ({ h: 0, p: 0, l: 0 }));
-      const inRange = (r) => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        return d >= from && d <= to;
-      };
-      workRows.filter(inRange).forEach(r => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        const idx = (d.weekday + 6) % 7; // Mon=0
-        const h = +r.hours || 0;
-        const p = +r.parcels || 0;
-        const l = +r.letters || 0;
-        out[idx].h += h; out[idx].p += p; out[idx].l += l;
-      });
-      return out;
-    };
-    const thisWeek = toWeekArray(weekStart, weekEnd);
-    const lastWeek = toWeekArray(prevWeekStart, prevWeekEnd);
-
-    // Holiday adjustment detection: if Monday of this week is an explicit off day,
-    // treat Tuesday's baseline as (Mon+Tue of last week). Controlled by flag.
-    const holidayAdjEnabled = !!(FLAGS && FLAGS.holidayAdjustments);
-    // Detect holiday off-days within current week. If found, adjust the NEXT day's baseline
-    const carryNext = new Set();
-    if (holidayAdjEnabled) {
-      try{
-        const inWeek = (r)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=weekStart && d<=weekEnd; };
-        const isHolidayMarked = (r)=> /(^|\b)Holiday(\b|$)/i.test(String(r.weather_json||''));
-        rows.filter(r=> r.status==='off' && inWeek(r) && isHolidayMarked(r)).forEach(r=>{
-          const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; if (idx<6) carryNext.add(idx+1);
-        });
-      }catch(_){ /* ignore */ }
-    }
-
-    // Off-day detection for current week (so we don't show -100% on off days)
-    const offIdxThisWeek = new Set(rows
-      .filter(r => r.status === 'off' && inRange(r, weekStart, weekEnd))
-      .map(r => (DateTime.fromISO(r.work_date, { zone: ZONE }).weekday + 6) % 7));
-
-    const normalizedTotals = (key)=>{
-      let curTotal = 0;
-      let baseTotal = 0;
-      for (let i = 0; i <= dayIndexToday && i < 7; i++){
-        const curVal = offIdxThisWeek.has(i) ? 0 : (thisWeek[i]?.[key] || 0);
-        let baseVal = lastWeek[i]?.[key] || 0;
-        if (holidayAdjEnabled && carryNext && carryNext.has(i)){
-          baseVal = (lastWeek[i-1]?.[key] || 0) + (lastWeek[i]?.[key] || 0);
-        }
-        curTotal += curVal || 0;
-        if (i <= dayIndexToday) baseTotal += baseVal || 0;
-      }
-      return { cur: curTotal, base: baseTotal };
-    };
 
     const dailyDeltas = (key) => {
       const arr = [];

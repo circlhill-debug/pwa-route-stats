@@ -2298,9 +2298,15 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       if (window.Chart) {
         try {
           const renderSpark = (target, dataArr, color, metricName, starts2, ends2) => {
+            const headerText = (target.textContent || "").trim();
             target.innerHTML = "";
             const nums = (dataArr || []).filter((v) => v != null && isFinite(v));
             const avg = nums.length ? nums.reduce((a, b) => a + Number(b), 0) / nums.length : null;
+            const headerEl = document.createElement("div");
+            if (headerText) {
+              headerEl.className = "sparkline-title";
+              headerEl.textContent = headerText;
+            }
             const fmtAvg = (v) => {
               if (v == null) return "\u2014";
               return metricName === "Hours" ? (Math.round(v * 10) / 10).toFixed(1) + "h" : String(Math.round(v));
@@ -2309,6 +2315,9 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             wrap.style.display = "flex";
             wrap.style.flexDirection = "column";
             wrap.style.width = "100%";
+            if (headerText) {
+              wrap.appendChild(headerEl);
+            }
             const avgEl = document.createElement("span");
             avgEl.className = "pill";
             avgEl.style.fontSize = "11px";
@@ -2338,6 +2347,17 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
             wrap.appendChild(summary);
             target.appendChild(wrap);
             const ctx = canvas.getContext("2d");
+            const finiteVals = (dataArr || []).filter((v) => Number.isFinite(v));
+            const yScaleOptions = { display: false };
+            if (finiteVals.length) {
+              const min = Math.min(...finiteVals);
+              const max = Math.max(...finiteVals);
+              const padBase = (max - min) * 0.1;
+              const padFallback = Math.max(Math.abs(min), Math.abs(max), 1) * 0.1;
+              const pad = padBase || padFallback;
+              yScaleOptions.suggestedMin = min - pad;
+              yScaleOptions.suggestedMax = max + pad;
+            }
             const chart = new Chart(ctx, {
               type: "line",
               data: { labels, datasets: [{
@@ -2357,7 +2377,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
                 maintainAspectRatio: false,
                 layout: { padding: { top: 14, right: 24, bottom: 12, left: 24 } },
                 interaction: { mode: "nearest", intersect: false },
-                scales: { x: { display: false }, y: { display: false } },
+                scales: { x: { display: false }, y: yScaleOptions },
                 plugins: { legend: { display: false }, tooltip: {
                   enabled: true,
                   callbacks: {
@@ -2430,6 +2450,13 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           script.onload = () => {
             try {
               if (window.Chart) {
+                if (!window.Chart._baselineCleanupRegistered) {
+                  try {
+                    window.Chart.register(baselineStrokeCleanupPlugin);
+                    window.Chart._baselineCleanupRegistered = true;
+                  } catch (_) {
+                  }
+                }
                 try {
                   buildMonthlyGlance2(rows);
                 } catch (_) {
@@ -2563,6 +2590,70 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const ll = +l || 0;
       return +(pp + weight * ll).toFixed(2);
     }
+    function createSeparatedSeries(displaySeries, actualSeries, labels, opts = {}) {
+      const seriesList = Array.isArray(displaySeries) ? displaySeries : [];
+      const actualList = Array.isArray(actualSeries) ? actualSeries : [];
+      const { separationPct = 0.12, minSeparation = 6 } = opts || {};
+      const count = seriesList.length;
+      if (!count) return [];
+      const values = [];
+      seriesList.forEach((series) => {
+        (series || []).forEach((val) => {
+          if (Number.isFinite(val)) values.push(val);
+        });
+      });
+      let min = values.length ? Math.min(...values) : 0;
+      let max = values.length ? Math.max(...values) : 0;
+      let range = max - min;
+      if (!Number.isFinite(range) || range === 0) {
+        const magnitude = values.length ? Math.max(Math.abs(min), Math.abs(max), 1) : 1;
+        range = magnitude;
+      }
+      let separation = range * separationPct;
+      if (!Number.isFinite(separation) || separation === 0) {
+        separation = minSeparation;
+      } else {
+        const magnitude = values.length ? Math.max(Math.abs(min), Math.abs(max), 1) : 1;
+        separation = Math.max(separation, magnitude * separationPct, minSeparation);
+      }
+      const offsetBase = (count - 1) / 2;
+      return seriesList.map((series, idx) => {
+        const offset = count > 1 ? separation * (idx - offsetBase) : 0;
+        const actual = actualList[idx] || [];
+        const data = (series || []).map((value, i) => {
+          const actualVal = Array.isArray(actual) ? actual[i] : null;
+          if (!Number.isFinite(value)) {
+            return { x: labels ? labels[i] : i, y: null, actual: actualVal != null ? actualVal : null };
+          }
+          return { x: labels ? labels[i] : i, y: value + offset, actual: actualVal != null ? actualVal : null };
+        });
+        return { data, offset };
+      });
+    }
+    const baselineStrokeCleanupPlugin = {
+      id: "baselineStrokeCleanup",
+      beforeDatasetDraw(chart, args) {
+        var _a5;
+        const dataset = (_a5 = chart.data.datasets) == null ? void 0 : _a5[args.index];
+        if (!dataset) return;
+        const label = dataset.label || "";
+        if (!/baseline/i.test(label)) return;
+        const ctx = chart.ctx;
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = "source-over";
+        ctx.shadowColor = "transparent";
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      }
+    };
+    if (typeof window !== "undefined" && window.Chart && !window.Chart._baselineCleanupRegistered) {
+      try {
+        window.Chart.register(baselineStrokeCleanupPlugin);
+        window.Chart._baselineCleanupRegistered = true;
+      } catch (_) {
+      }
+    }
     function buildMixViz2(rows) {
       rows = filterRowsForView2(rows || []);
       const flags = getFlags();
@@ -2603,11 +2694,35 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const computeRange = (values, fallbackPad = 10) => {
         const finite = (values || []).filter((v) => Number.isFinite(v));
         if (!finite.length) return { min: -fallbackPad, max: fallbackPad };
-        const min = Math.min(...finite);
-        const max = Math.max(...finite);
-        let pad = (max - min) * 0.15;
-        if (!pad) pad = Math.max(Math.abs(max) * 0.15, fallbackPad);
-        return { min: min - pad, max: max + pad };
+        let min = Math.min(...finite);
+        let max = Math.max(...finite);
+        if (min === max) {
+          const magnitude = Math.max(Math.abs(min), fallbackPad);
+          return { min: min - magnitude * 0.1, max: max + magnitude * 0.1 };
+        }
+        let minY;
+        let maxY;
+        if (min < 0) {
+          minY = min * 1.1;
+        } else if (min === 0) {
+          const pad = Math.max(Math.abs(max) * 0.1, fallbackPad);
+          minY = min - pad;
+        } else {
+          minY = min * 0.9;
+        }
+        if (max > 0) {
+          maxY = max * 1.1;
+        } else if (max === 0) {
+          const pad = Math.max(Math.abs(min) * 0.1, fallbackPad);
+          maxY = max + pad;
+        } else {
+          maxY = max * 0.9;
+        }
+        if (!Number.isFinite(minY) || !Number.isFinite(maxY) || minY === maxY) {
+          const magnitude = Math.max(Math.abs(min), Math.abs(max), fallbackPad);
+          return { min: min - magnitude * 0.1, max: max + magnitude * 0.1 };
+        }
+        return { min: Math.min(minY, maxY), max: Math.max(minY, maxY) };
       };
       const pickRowsByDayCount = (rows2, dayCount) => {
         if (!Number.isFinite(dayCount) || dayCount <= 0) return [...rows2];
@@ -3055,8 +3170,35 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         const baselineColor = "#a855f7";
         destroyDrift();
         const driftCtx = driftCanvas.getContext("2d");
-        const parcelsRange = computeRange(parcelsSeries, 10);
-        const lettersRange = computeRange(lettersSeries, 10);
+        const separatedDrift = createSeparatedSeries(
+          [parcelsSeries, lettersSeries],
+          [parcelsSeries, lettersSeries],
+          labels,
+          { separationPct: 0.12, minSeparation: 6 }
+        );
+        const parcelsSeparated = separatedDrift[0] || { data: [], offset: 0 };
+        const lettersSeparated = separatedDrift[1] || { data: [], offset: 0 };
+        const extractRange = (arr) => computeRange((arr || []).map((pt) => Number.isFinite(pt == null ? void 0 : pt.y) ? pt.y : null), 10);
+        const parcelsRange = extractRange(parcelsSeparated.data);
+        const lettersRange = extractRange(lettersSeparated.data);
+        const baselineParcelsData = parcBaselineSeries ? parcBaselineSeries.map((val, idx) => {
+          const numeric = Number.isFinite(val) ? val : null;
+          return {
+            x: labels[idx],
+            y: numeric == null ? null : numeric + (parcelsSeparated.offset || 0),
+            actual: numeric
+          };
+        }) : null;
+        const baselineLettersData = letterBaselineSeries ? letterBaselineSeries.map((val, idx) => {
+          const numeric = Number.isFinite(val) ? val : null;
+          return {
+            x: labels[idx],
+            y: numeric == null ? null : numeric + (lettersSeparated.offset || 0),
+            actual: numeric
+          };
+        }) : null;
+        const baselineSeriesData = baselineParcelsData || baselineLettersData;
+        const baselineYAxis = baselineParcelsData ? "yParcels" : "yLetters";
         const parcelPointColors = weekStats.map((w) => w.vacation ? "rgba(255,99,132,0.9)" : parcelsColor);
         const parcelPointRadius = weekStats.map((w) => w.vacation ? 6 : 3);
         const letterPointColors = weekStats.map((w) => w.vacation ? "rgba(255,160,122,0.9)" : lettersColor);
@@ -3066,10 +3208,9 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           data: {
             labels,
             datasets: [
-              { label: "Parcels", data: [...parcelsSeries], borderColor: parcelsColor, backgroundColor: "rgba(43,127,255,0.12)", tension: 0.3, pointRadius: parcelPointRadius, pointHoverRadius: parcelPointRadius.map((r) => r ? r + 2 : 0), pointHitRadius: 12, pointBackgroundColor: parcelPointColors, pointBorderColor: parcelPointColors, borderWidth: 2, spanGaps: true, fill: "origin", yAxisID: "yParcels" },
-              { label: "Letters", data: [...lettersSeries], borderColor: lettersColor, backgroundColor: "rgba(255,215,0,0.18)", tension: 0.3, pointRadius: letterPointRadius, pointHoverRadius: letterPointRadius.map((r) => r ? r + 2 : 0), pointHitRadius: 12, pointBackgroundColor: letterPointColors, pointBorderColor: letterPointColors, borderWidth: 2, spanGaps: true, fill: "origin", yAxisID: "yLetters" },
-              ...baselineParcels ? [{ label: "Parcels baseline", data: [...parcBaselineSeries], borderColor: baselineColor, backgroundColor: "transparent", tension: 0, pointRadius: 0, pointHoverRadius: 0, borderDash: [6, 4], borderWidth: 1.5, spanGaps: true, fill: false, yAxisID: "yParcels" }] : [],
-              ...baselineLetters ? [{ label: "Letters baseline", data: [...letterBaselineSeries], borderColor: baselineColor, backgroundColor: "transparent", tension: 0, pointRadius: 0, pointHoverRadius: 0, borderDash: [3, 3], borderWidth: 1.5, spanGaps: true, fill: false, yAxisID: "yLetters" }] : []
+              { label: "Parcels", data: parcelsSeparated.data, borderColor: parcelsColor, backgroundColor: "transparent", tension: 0.3, pointRadius: parcelPointRadius, pointHoverRadius: parcelPointRadius.map((r) => r ? r + 2 : 0), pointHitRadius: 12, pointBackgroundColor: parcelPointColors, pointBorderColor: parcelPointColors, borderWidth: 2, spanGaps: true, fill: false, yAxisID: "yParcels", parsing: { yAxisKey: "y" } },
+              { label: "Letters", data: lettersSeparated.data, borderColor: lettersColor, backgroundColor: "transparent", tension: 0.3, pointRadius: letterPointRadius, pointHoverRadius: letterPointRadius.map((r) => r ? r + 2 : 0), pointHitRadius: 12, pointBackgroundColor: letterPointColors, pointBorderColor: letterPointColors, borderWidth: 2, spanGaps: true, fill: false, yAxisID: "yLetters", parsing: { yAxisKey: "y" } },
+              ...baselineSeriesData ? [{ label: "Baseline (avg)", data: baselineSeriesData, borderColor: baselineColor, backgroundColor: "transparent", tension: 0, pointRadius: 0, pointHoverRadius: 0, borderDash: [6, 4], borderWidth: 1.5, spanGaps: true, fill: false, yAxisID: baselineYAxis, parsing: { yAxisKey: "y" } }] : []
             ]
           },
           options: {
@@ -3090,11 +3231,18 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
                     return `Week of ${startLbl} \u2192 ${endLbl}`;
                   },
                   label: (item) => {
+                    var _a6, _b2;
                     const idx = item.dataIndex;
                     const w = weekStats[idx];
                     if (!w) return "";
-                    if (item.datasetIndex === 0) return `Parcels: ${Math.round(w.parcels).toLocaleString()}`;
-                    return `Letters: ${Math.round(w.letters).toLocaleString()}`;
+                    const label = ((_a6 = item.dataset) == null ? void 0 : _a6.label) || "";
+                    if (label.startsWith("Parcels")) return `Parcels: ${Math.round(w.parcels).toLocaleString()}`;
+                    if (label.startsWith("Letters")) return `Letters: ${Math.round(w.letters).toLocaleString()}`;
+                    if (label.includes("Baseline")) {
+                      const actual = (_b2 = item.raw) == null ? void 0 : _b2.actual;
+                      return `Baseline: ${Math.round(actual != null ? actual : 0).toLocaleString()}`;
+                    }
+                    return "";
                   }
                 }
               }
@@ -3104,7 +3252,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
               yParcels: { type: "linear", display: false, suggestedMin: parcelsRange.min, suggestedMax: parcelsRange.max },
               yLetters: { type: "linear", display: false, suggestedMin: lettersRange.min, suggestedMax: lettersRange.max }
             }
-          }
+          },
+          plugins: [baselineStrokeCleanupPlugin]
         });
         if (driftText) {
           const latest = weekStats[weekStats.length - 1];
@@ -3322,7 +3471,6 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#2b7fff";
       const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#FFD27A";
       const good = getComputedStyle(document.documentElement).getPropertyValue("--good").trim() || "#2E7D32";
-      const datasets = [];
       const needNormalize = [showP, showL, showH].filter(Boolean).length > 1;
       const norm = (arr) => {
         const vals = arr || [];
@@ -3336,12 +3484,31 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         if (max === min) return vals.map((_) => 50);
         return vals.map((v) => v == null ? null : Math.round((v - min) / (max - min) * 100));
       };
-      const dataP = needNormalize ? norm(serP) : serP;
-      const dataL = needNormalize ? norm(serL) : serL;
-      const dataH = needNormalize ? norm(serH) : serH;
-      if (showP) datasets.push({ label: "Parcels", data: dataP, borderColor: brand, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
-      if (showL) datasets.push({ label: "Letters", data: dataL, borderColor: warn, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
-      if (showH) datasets.push({ label: "Hours", data: dataH, borderColor: good, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true });
+      const datasetConfigs = [];
+      if (showP) datasetConfigs.push({ label: "Parcels", color: brand, raw: serP, display: needNormalize ? norm(serP) : serP });
+      if (showL) datasetConfigs.push({ label: "Letters", color: warn, raw: serL, display: needNormalize ? norm(serL) : serL });
+      if (showH) datasetConfigs.push({ label: "Hours", color: good, raw: serH, display: needNormalize ? norm(serH) : serH });
+      const separatedQuick = datasetConfigs.length ? createSeparatedSeries(
+        datasetConfigs.map((cfg) => cfg.display),
+        datasetConfigs.map((cfg) => cfg.raw),
+        labels,
+        { separationPct: 0.12, minSeparation: 6 }
+      ) : [];
+      const chartDatasets = datasetConfigs.map((cfg, idx) => {
+        const separated = separatedQuick[idx] || { data: [], offset: 0 };
+        return {
+          label: cfg.label,
+          data: separated.data,
+          borderColor: cfg.color,
+          backgroundColor: "transparent",
+          tension: 0.25,
+          pointRadius: 2,
+          borderWidth: 2,
+          spanGaps: true,
+          fill: false,
+          parsing: { yAxisKey: "y" }
+        };
+      });
       const summary = [];
       const fmtNum = (n) => (Math.round(n * 10) / 10).toFixed(1);
       if (showP) summary.push(`P: ${serP.slice(-labels.length).map(fmtNum).join(", ")}`);
@@ -3351,7 +3518,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       const note = needNormalize ? " (normalized)" : "";
       if (normBadge) normBadge.style.display = needNormalize ? "inline-flex" : "none";
       const coverage = `Showing ${showing} of ${lastCount} requested${available ? `, available ${available}` : ""}`;
-      text.textContent = datasets.length ? `${summary.join(" \u2022 ")} \u2014 ${coverage}${note}` : "\u2014";
+      text.textContent = chartDatasets.length ? `${summary.join(" \u2022 ")} \u2014 ${coverage}${note}` : "\u2014";
       const daysBadge = document.getElementById("qfDaysBadge");
       if (daysBadge) {
         daysBadge.style.display = "inline-flex";
@@ -3371,23 +3538,40 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
           } catch (_) {
           }
           const wantRuler = (cbRuler ? !!cbRuler.checked : false) && needNormalize;
+          const yVals = [];
+          chartDatasets.forEach((ds) => {
+            (ds.data || []).forEach((pt) => {
+              const val = pt && typeof pt.y === "number" ? pt.y : null;
+              if (Number.isFinite(val)) yVals.push(val);
+            });
+          });
+          const yMin = yVals.length ? Math.min(...yVals) : 0;
+          const yMax = yVals.length ? Math.max(...yVals) : 0;
+          const yPad = yVals.length ? Math.max((yMax - yMin) * 0.1, 6) : 10;
           spark._chart = new Chart(ctx, {
             type: "line",
-            data: { labels, datasets: datasets.map((d) => Object.assign({ tension: 0.25, pointRadius: 2, borderWidth: 2, spanGaps: true, fill: false }, d)) },
+            data: { labels, datasets: chartDatasets },
             options: {
               responsive: true,
               maintainAspectRatio: false,
               layout: { padding: { top: 8, right: 6, bottom: 6, left: 6 } },
               interaction: { mode: "nearest", intersect: false },
-              plugins: { legend: { display: false }, tooltip: { enabled: true } },
+              plugins: { legend: { display: false }, tooltip: { enabled: true, callbacks: { label: (ctx2) => {
+                var _a5, _b;
+                const label = ((_a5 = ctx2.dataset) == null ? void 0 : _a5.label) || "";
+                const actual = (_b = ctx2.raw) == null ? void 0 : _b.actual;
+                if (!Number.isFinite(+actual)) return `${label}: \u2014`;
+                if (label === "Hours") return `${label}: ${(+actual).toFixed(2)}h`;
+                return `${label}: ${Math.round(+actual)}`;
+              } } } },
               scales: {
                 x: { display: false, grid: { display: false } },
                 y: {
                   display: wantRuler,
-                  min: needNormalize ? 0 : void 0,
-                  max: needNormalize ? 100 : void 0,
                   ticks: { display: false, stepSize: 50 },
-                  grid: { display: wantRuler, color: "rgba(255,255,255,0.08)" }
+                  grid: { display: wantRuler, color: "rgba(255,255,255,0.08)" },
+                  suggestedMin: needNormalize ? 0 : yMin - yPad,
+                  suggestedMax: needNormalize ? 100 : yMax + yPad
                 }
               }
             }
@@ -6412,9 +6596,66 @@ Score: ${overallScore}/10 (higher is better)`;
     const hCarry = pct(avgOrNull(hLast, dLast), avgOrNull(sum(priorW, (r) => +r.hours || 0), dPrior));
     const pCarry = pct(avgOrNull(pLast, dLast), avgOrNull(sum(priorW, (r) => +r.parcels || 0), dPrior));
     const lCarry = pct(avgOrNull(lLast, dLast), avgOrNull(sum(priorW, (r) => +r.letters || 0), dPrior));
-    const hTarget = pct(avgOrNull(hThis, dThis), avgOrNull(hLast, dLast));
-    const pTarget = pct(avgOrNull(pThis, dThis), avgOrNull(pLast, dLast));
-    const lTarget = pct(avgOrNull(lThis, dThis), avgOrNull(lLast, dLast));
+    const dayIndexToday = (today.weekday + 6) % 7;
+    const toWeekArray = (from, to) => {
+      const out = Array.from({ length: 7 }, () => ({ h: 0, p: 0, l: 0 }));
+      const inRange2 = (r) => {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        return d >= from && d <= to;
+      };
+      workRows.filter(inRange2).forEach((r) => {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        const idx = (d.weekday + 6) % 7;
+        const h = +r.hours || 0;
+        const p = +r.parcels || 0;
+        const l = +r.letters || 0;
+        out[idx].h += h;
+        out[idx].p += p;
+        out[idx].l += l;
+      });
+      return out;
+    };
+    const thisWeek = toWeekArray(weekStart, weekEnd);
+    const lastWeek = toWeekArray(prevWeekStart, prevWeekEnd);
+    const holidayAdjEnabled = !!(FLAGS && FLAGS.holidayAdjustments);
+    const carryNext = /* @__PURE__ */ new Set();
+    if (holidayAdjEnabled) {
+      try {
+        const inWeek = (r) => {
+          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+          return d >= weekStart && d <= weekEnd;
+        };
+        const isHolidayMarked2 = (r) => /(^|\\b)Holiday(\\b|$)/i.test(String(r.weather_json || ""));
+        rows.filter((r) => r.status === "off" && inWeek(r) && isHolidayMarked2(r)).forEach((r) => {
+          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+          const idx = (d.weekday + 6) % 7;
+          if (idx < 6) carryNext.add(idx + 1);
+        });
+      } catch (_) {
+      }
+    }
+    const offIdxThisWeek = new Set(rows.filter((r) => r.status === "off" && inRange(r, weekStart, weekEnd)).map((r) => (DateTime.fromISO(r.work_date, { zone: ZONE }).weekday + 6) % 7));
+    const normalizedTotals = (key) => {
+      var _a6, _b2, _c2, _d2;
+      let curTotal = 0;
+      let baseTotal = 0;
+      for (let i = 0; i <= dayIndexToday && i < 7; i++) {
+        const curVal = offIdxThisWeek.has(i) ? 0 : ((_a6 = thisWeek[i]) == null ? void 0 : _a6[key]) || 0;
+        let baseVal = ((_b2 = lastWeek[i]) == null ? void 0 : _b2[key]) || 0;
+        if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
+          baseVal = (((_c2 = lastWeek[i - 1]) == null ? void 0 : _c2[key]) || 0) + (((_d2 = lastWeek[i]) == null ? void 0 : _d2[key]) || 0);
+        }
+        curTotal += curVal || 0;
+        if (i <= dayIndexToday) baseTotal += baseVal || 0;
+      }
+      return { cur: curTotal, base: baseTotal };
+    };
+    const normHours = normalizedTotals("h");
+    const normParcels = normalizedTotals("p");
+    const normLetters = normalizedTotals("l");
+    let hTarget = pct(normHours.cur, normHours.base);
+    let pTarget = pct(normParcels.cur, normParcels.base);
+    let lTarget = pct(normLetters.cur, normLetters.base);
     const progress = Math.min(1, dThis / 5);
     const blend = (carry, target) => carry == null && target == null ? null : carry == null ? target : target == null ? carry : carry * (1 - progress) + target * progress;
     const dh = blend(hCarry, hTarget);
@@ -6482,45 +6723,6 @@ Score: ${overallScore}/10 (higher is better)`;
         extraPayoutEl.title = timeComp != null ? `Gas: $${totalGas.toFixed(2)} \xB7 Time pay: $${timeComp.toFixed(2)}` : `Gas: $${totalGas.toFixed(2)} \xB7 Add salary in Settings to include paid time`;
       }
     }
-    const dayIndexToday = (today.weekday + 6) % 7;
-    const toWeekArray = (from, to) => {
-      const out = Array.from({ length: 7 }, () => ({ h: 0, p: 0, l: 0 }));
-      const inRange2 = (r) => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        return d >= from && d <= to;
-      };
-      workRows.filter(inRange2).forEach((r) => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        const idx = (d.weekday + 6) % 7;
-        const h = +r.hours || 0;
-        const p = +r.parcels || 0;
-        const l = +r.letters || 0;
-        out[idx].h += h;
-        out[idx].p += p;
-        out[idx].l += l;
-      });
-      return out;
-    };
-    const thisWeek = toWeekArray(weekStart, weekEnd);
-    const lastWeek = toWeekArray(prevWeekStart, prevWeekEnd);
-    const holidayAdjEnabled = !!(FLAGS && FLAGS.holidayAdjustments);
-    const carryNext = /* @__PURE__ */ new Set();
-    if (holidayAdjEnabled) {
-      try {
-        const inWeek = (r) => {
-          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-          return d >= weekStart && d <= weekEnd;
-        };
-        const isHolidayMarked2 = (r) => /(^|\b)Holiday(\b|$)/i.test(String(r.weather_json || ""));
-        rows.filter((r) => r.status === "off" && inWeek(r) && isHolidayMarked2(r)).forEach((r) => {
-          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-          const idx = (d.weekday + 6) % 7;
-          if (idx < 6) carryNext.add(idx + 1);
-        });
-      } catch (_) {
-      }
-    }
-    const offIdxThisWeek = new Set(rows.filter((r) => r.status === "off" && inRange(r, weekStart, weekEnd)).map((r) => (DateTime.fromISO(r.work_date, { zone: ZONE }).weekday + 6) % 7));
     const dailyDeltas = (key) => {
       var _a6, _b2;
       const arr = [];

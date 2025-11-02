@@ -2397,10 +2397,14 @@ function getHourlyRateFromEval(){
     const pCarry = pct(avgOrNull(pLast,dLast), avgOrNull(sum(priorW,r=>+r.parcels||0), dPrior));
     const lCarry = pct(avgOrNull(lLast,dLast), avgOrNull(sum(priorW,r=>+r.letters||0), dPrior));
 
-    // Current-week target % vs last week (per-worked-day averages so far)
-    const hTarget = pct(avgOrNull(hThis,dThis), avgOrNull(hLast,dLast));
-    const pTarget = pct(avgOrNull(pThis,dThis), avgOrNull(pLast,dLast));
-    const lTarget = pct(avgOrNull(lThis,dThis), avgOrNull(lLast,dLast));
+    const normHours = normalizedTotals('h');
+    const normParcels = normalizedTotals('p');
+    const normLetters = normalizedTotals('l');
+
+    // Current-week target % vs last week, normalized by matched day counts
+    let hTarget = pct(normHours.cur, normHours.base);
+    let pTarget = pct(normParcels.cur, normParcels.base);
+    let lTarget = pct(normLetters.cur, normLetters.base);
 
     // Blend from carry-forward toward current as the week progresses (Mon..Fri ≈ 5 workdays)
     const progress = Math.min(1, dThis/5);
@@ -2522,6 +2526,21 @@ function getHourlyRateFromEval(){
     const offIdxThisWeek = new Set(rows
       .filter(r => r.status === 'off' && inRange(r, weekStart, weekEnd))
       .map(r => (DateTime.fromISO(r.work_date, { zone: ZONE }).weekday + 6) % 7));
+
+    const normalizedTotals = (key)=>{
+      let curTotal = 0;
+      let baseTotal = 0;
+      for (let i = 0; i <= dayIndexToday && i < 7; i++){
+        const curVal = offIdxThisWeek.has(i) ? 0 : (thisWeek[i]?.[key] || 0);
+        let baseVal = lastWeek[i]?.[key] || 0;
+        if (holidayAdjEnabled && carryNext && carryNext.has(i)){
+          baseVal = (lastWeek[i-1]?.[key] || 0) + (lastWeek[i]?.[key] || 0);
+        }
+        curTotal += curVal || 0;
+        if (i <= dayIndexToday) baseTotal += baseVal || 0;
+      }
+      return { cur: curTotal, base: baseTotal };
+    };
 
     const dailyDeltas = (key) => {
       const arr = [];

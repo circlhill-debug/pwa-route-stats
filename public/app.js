@@ -6028,13 +6028,13 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
       if (toggleBtn) toggleBtn.style.display = "none";
     }
   }
-  var VERSION_TAG = function() {
+  var VERSION_TAG = (function() {
     try {
       return "v" + DateTime.now().setZone(ZONE).toFormat("yyyy-MM-dd");
     } catch (_) {
       return "v-current";
     }
-  }();
+  })();
   function toCsv(rows) {
     const headers = ["work_date", "route", "status", "start_time", "depart_time", "return_time", "end_time", "hours", "office_minutes", "route_minutes", "parcels", "letters", "miles", "mood", "notes", "weather_json", "created_at"];
     const lines = [headers.join(",")];

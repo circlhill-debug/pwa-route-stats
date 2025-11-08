@@ -52,6 +52,7 @@ import {
   createSupabaseClient,
   handleAuthCallback
 } from './services/supabaseClient.js';
+import { computeForecastText, storeForecastSnapshot } from './modules/forecast.js';
 
 import { createDiagnostics } from './features/diagnostics.js';
 import { createAiSummary } from './features/aiSummary.js';
@@ -644,9 +645,34 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
       tag.onclick = ()=> document.getElementById('btnSettings')?.click();
     }catch(_){ /* ignore */ }
   }
+
+  function renderTomorrowForecast(){
+    try{
+      const forecastText = computeForecastText();
+      if (!forecastText) return;
+      storeForecastSnapshot(forecastText);
+      const container = document.querySelector('#forecastBadgeContainer') || document.body;
+      if (!container) return;
+      const existingBadges = container.querySelectorAll('.forecast-badge');
+      existingBadges.forEach(node => node.remove());
+      const forecastBadge = document.createElement('div');
+      forecastBadge.className = 'forecast-badge';
+      const titleEl = document.createElement('h3');
+      titleEl.textContent = '🌤 Tomorrow’s Forecast';
+      const bodyEl = document.createElement('p');
+      bodyEl.textContent = forecastText;
+      forecastBadge.appendChild(titleEl);
+      forecastBadge.appendChild(bodyEl);
+      container.appendChild(forecastBadge);
+    }catch(err){
+      console.warn('renderTomorrowForecast failed', err);
+    }
+  }
+  window.renderTomorrowForecast = renderTomorrowForecast;
   // initial render
   renderUspsEvalTag();
   renderVacationRanges();
+  renderTomorrowForecast();
 
   function getLastNonEmptyWeek(rows, now, { excludeVacation = true } = {}){
     const worked = (rows || []).filter(r => (+r.hours || 0) > 0);

@@ -813,6 +813,156 @@
     }
   }
 
+  // src/modules/forecast.js
+  var STEADY_MESSAGE = "Steady outlook based on recent trends.";
+  function getTodayISO() {
+    try {
+      return (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    } catch (_) {
+      return todayIso ? todayIso() : "";
+    }
+  }
+  function loadTagHistory() {
+    try {
+      const raw = localStorage.getItem("routeStats.tagHistory");
+      const history = raw ? JSON.parse(raw) : [];
+      return Array.isArray(history) ? history.filter(Boolean) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  function loadDailyData() {
+    try {
+      const raw = localStorage.getItem("routeStats.dailyData");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return parsed;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+  function flattenTagStrings(history) {
+    if (!Array.isArray(history)) return [];
+    const today = /* @__PURE__ */ new Date();
+    const todayDow = today.getDay();
+    const entriesForDay = history.filter((entry) => {
+      if (!entry) return false;
+      const iso = entry.iso || entry.date;
+      if (!iso) return false;
+      const entryDate = new Date(iso);
+      if (Number.isNaN(entryDate.getTime())) return false;
+      return entryDate.getDay() === todayDow;
+    }).sort((a, b) => {
+      const aDate = new Date(a.iso || a.date || 0).getTime();
+      const bDate = new Date(b.iso || b.date || 0).getTime();
+      return aDate - bDate;
+    });
+    const latestByType = /* @__PURE__ */ new Map();
+    const normalizeTag = (tagValue) => {
+      if (typeof tagValue === "string") return tagValue;
+      if (tagValue && typeof tagValue.tag === "string") return tagValue.tag;
+      if (tagValue && tagValue.reason) {
+        const minutes = Number(tagValue.minutes);
+        if (Number.isFinite(minutes)) return `${tagValue.reason}+${minutes}`;
+        return String(tagValue.reason);
+      }
+      return null;
+    };
+    entriesForDay.forEach((entry) => {
+      if (!entry || !Array.isArray(entry.tags)) return;
+      entry.tags.forEach((rawTag) => {
+        const tagString = normalizeTag(rawTag);
+        if (!tagString) return;
+        const [rawType] = tagString.split("+");
+        const type = (rawType || "").trim().toLowerCase();
+        if (!type) return;
+        latestByType.set(type, tagString);
+      });
+    });
+    return Array.from(latestByType.values());
+  }
+  function generateForecastFromDailyData(dailyData) {
+    if (!dailyData || typeof dailyData !== "object") return null;
+    const summaries = [];
+    const flats = Number(dailyData.flats);
+    const parcels2 = Number(dailyData.parcels);
+    const letters2 = Number(dailyData.letters);
+    if (Number.isFinite(flats) && flats > 125) summaries.push("heavier flats today");
+    if (Number.isFinite(parcels2) && parcels2 > 85) summaries.push("higher parcel volume");
+    if (Number.isFinite(letters2) && letters2 > 400) summaries.push("letter load above average");
+    if (!summaries.length) return null;
+    return `Expect a longer day due to ${summaries.join(" and ")}.`;
+  }
+  function generateForecastText(tagHistory) {
+    const allTags = Array.isArray(tagHistory) ? flattenTagStrings(tagHistory) : [];
+    const summaries = [];
+    allTags.forEach((tagStr) => {
+      if (typeof tagStr !== "string") {
+        summaries.push("an unknown factor (+some time)");
+        return;
+      }
+      const [typeRaw, timeStr] = tagStr.split("+");
+      const type = (typeRaw || "").trim();
+      const minutes = parseInt((timeStr || "").trim(), 10);
+      if (!type || Number.isNaN(minutes)) {
+        summaries.push("an unknown factor (+some time)");
+        return;
+      }
+      switch (type) {
+        case "break":
+          summaries.push(`a planned break (+${minutes} min)`);
+          break;
+        case "flats":
+          summaries.push(`a heavy flats day (+${minutes} min)`);
+          break;
+        case "parcels":
+          summaries.push(`extra parcels (+${minutes} min)`);
+          break;
+        case "letters":
+          summaries.push(`a large number of letters (+${minutes} min)`);
+          break;
+        case "second-trip":
+          summaries.push(`a second trip (+${minutes} min)`);
+          break;
+        case "detour":
+          summaries.push(`a route detour (+${minutes} min)`);
+          break;
+        case "load":
+          summaries.push(`loading time (+${minutes} min)`);
+          break;
+        default:
+          summaries.push(`an unknown tag: "${type}" (+${minutes} min)`);
+      }
+    });
+    if (!summaries.length) return STEADY_MESSAGE;
+    return `Expect a longer day due to ${summaries.join(" and ")}.`;
+  }
+  function computeForecastText(options = {}) {
+    const history = Array.isArray(options.tagHistory) ? options.tagHistory : loadTagHistory();
+    const tagText = generateForecastText(history);
+    if (tagText && tagText !== STEADY_MESSAGE) return tagText;
+    const dailyData = options.dailyData || loadDailyData();
+    const fallback = generateForecastFromDailyData(dailyData);
+    if (fallback) return fallback;
+    return tagText || STEADY_MESSAGE;
+  }
+  function storeForecastSnapshot(text, isoDate = getTodayISO()) {
+    if (!text) return;
+    try {
+      const payload = {
+        iso: isoDate,
+        text,
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      localStorage.setItem("routeStats.latestForecast", JSON.stringify(payload));
+    } catch (_) {
+    }
+  }
+  if (typeof window !== "undefined") {
+    window.generateForecastText = (tagHistory) => generateForecastText(tagHistory || loadTagHistory());
+  }
+
   // src/features/diagnostics.js
   function createDiagnostics({
     getFlags,
@@ -1413,6 +1563,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const dismissBtns = tbody.querySelectorAll(".diag-dismiss");
         dismissBtns.forEach((btn) => {
           btn.addEventListener("click", () => {
+            var _a6;
             const iso = btn.dataset.dismissIso;
             if (!iso) return;
             const residual = residuals.find((r) => r.iso === iso);
@@ -1439,30 +1590,49 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
               window.alert("No reason provided; dismissal cancelled.");
               return;
             }
-            if (!/[+:]/.test(reasonText)) {
-              const minutesPrompt = window.prompt("Minutes attributable to this reason (optional, numbers only):", deltaMinutes != null ? String(deltaMinutes) : "");
-              const minutesInput = minutesPrompt != null ? minutesPrompt.trim() : "";
-              if (minutesInput) {
-                reasonText = `${reasonText}+${minutesInput}`;
-              }
-            }
             const tags = parseDismissReasonInput2(reasonText);
             if (!tags.length) {
               window.alert("No reason provided; dismissal cancelled.");
               return;
             }
             const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+            const tagTimestamp = Date.now();
+            const tagEntries = tags.map((t) => ({
+              reason: t.reason,
+              minutes: t.minutes != null && Number.isFinite(Number(t.minutes)) ? Number(t.minutes) : null,
+              notedAt: tagTimestamp
+            }));
             const existing = loadDismissedResiduals2().filter((item) => item && item.iso !== iso);
             if (tags.length) {
               const entry = {
                 iso,
-                tags: tags.map((t) => ({
-                  reason: t.reason,
-                  minutes: t.minutes,
-                  notedAt: Date.now()
-                })),
+                tags: tagEntries,
                 notedAt: nowIso
               };
+              try {
+                const dismissedIso = iso;
+                let history = [];
+                try {
+                  const rawHistory = localStorage.getItem("routeStats.tagHistory");
+                  const parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
+                  if (Array.isArray(parsedHistory)) history = parsedHistory.filter(Boolean);
+                } catch (err) {
+                  console.warn("Could not parse tag history; resetting.", err);
+                  history = [];
+                }
+                if (!Array.isArray(history)) history = [];
+                const existingHistory = history.find((item) => item && item.iso === dismissedIso);
+                if (existingHistory) {
+                  existingHistory.tags.push(...tagEntries);
+                } else {
+                  history.push({ iso: dismissedIso, tags: [...tagEntries] });
+                }
+                localStorage.setItem("routeStats.tagHistory", JSON.stringify(history));
+                console.log("\u{1F4E6} Saved tag history:", history);
+                (_a6 = window.renderTomorrowForecast) == null ? void 0 : _a6.call(window);
+              } catch (err) {
+                console.warn("Failed to update tag history.", err);
+              }
               existing.push(entry);
               saveDismissedResiduals2(existing);
               notifyDismissedChange();
@@ -4573,8 +4743,32 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     } catch (_) {
     }
   }
+  function renderTomorrowForecast() {
+    try {
+      const forecastText = computeForecastText();
+      if (!forecastText) return;
+      storeForecastSnapshot(forecastText);
+      const container = document.querySelector("#forecastBadgeContainer") || document.body;
+      if (!container) return;
+      const existingBadges = container.querySelectorAll(".forecast-badge");
+      existingBadges.forEach((node) => node.remove());
+      const forecastBadge = document.createElement("div");
+      forecastBadge.className = "forecast-badge";
+      const titleEl = document.createElement("h3");
+      titleEl.textContent = "\u{1F324} Tomorrow\u2019s Forecast";
+      const bodyEl = document.createElement("p");
+      bodyEl.textContent = forecastText;
+      forecastBadge.appendChild(titleEl);
+      forecastBadge.appendChild(bodyEl);
+      container.appendChild(forecastBadge);
+    } catch (err) {
+      console.warn("renderTomorrowForecast failed", err);
+    }
+  }
+  window.renderTomorrowForecast = renderTomorrowForecast;
   renderUspsEvalTag();
   renderVacationRanges();
+  renderTomorrowForecast();
   function getLastNonEmptyWeek(rows, now, { excludeVacation = true } = {}) {
     const worked = (rows || []).filter((r) => (+r.hours || 0) > 0);
     const weeksToScan = 12;

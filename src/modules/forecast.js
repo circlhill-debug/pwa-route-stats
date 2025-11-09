@@ -32,10 +32,8 @@ function loadDailyData() {
   }
 }
 
-function flattenTagStrings(history) {
+function flattenTagStrings(history, targetDow) {
   if (!Array.isArray(history)) return [];
-  const today = new Date();
-  const todayDow = today.getDay();
   const entriesForDay = history
     .filter((entry) => {
       if (!entry) return false;
@@ -43,7 +41,7 @@ function flattenTagStrings(history) {
       if (!iso) return false;
       const entryDate = new Date(iso);
       if (Number.isNaN(entryDate.getTime())) return false;
-      return entryDate.getDay() === todayDow;
+      return entryDate.getDay() === targetDow;
     })
     .sort((a, b) => {
       const aDate = new Date(a.iso || a.date || 0).getTime();
@@ -91,8 +89,8 @@ function generateForecastFromDailyData(dailyData) {
   return `Expect a longer day due to ${summaries.join(' and ')}.`;
 }
 
-export function generateForecastText(tagHistory) {
-  const allTags = Array.isArray(tagHistory) ? flattenTagStrings(tagHistory) : [];
+export function generateForecastText(tagHistory, targetDow) {
+  const allTags = Array.isArray(tagHistory) ? flattenTagStrings(tagHistory, targetDow) : [];
   const summaries = [];
 
   allTags.forEach((tagStr) => {
@@ -140,7 +138,10 @@ export function generateForecastText(tagHistory) {
 
 export function computeForecastText(options = {}) {
   const history = Array.isArray(options.tagHistory) ? options.tagHistory : loadTagHistory();
-  const tagText = generateForecastText(history);
+  const targetDow = typeof options.targetDow === 'number' ? options.targetDow : null;
+  const fallbackDow = new Date(Date.now() + 864e5).getDay();
+  const weekday = targetDow != null ? targetDow : fallbackDow;
+  const tagText = generateForecastText(history, weekday);
   if (tagText && tagText !== STEADY_MESSAGE) return tagText;
   const dailyData = options.dailyData || loadDailyData();
   const fallback = generateForecastFromDailyData(dailyData);
@@ -148,20 +149,26 @@ export function computeForecastText(options = {}) {
   return tagText || STEADY_MESSAGE;
 }
 
-export function storeForecastSnapshot(text, isoDate = getTodayISO()) {
-  if (!text) return;
+export function storeForecastSnapshot(dateString = getTodayISO(), forecastText) {
+  if (!forecastText || !dateString) return;
   try {
-    const payload = {
-      iso: isoDate,
-      text,
+    const existing = JSON.parse(localStorage.getItem('forecastSnapshots') || '{}');
+    existing[dateString] = forecastText;
+    localStorage.setItem('forecastSnapshots', JSON.stringify(existing));
+    localStorage.setItem('routeStats.latestForecast', JSON.stringify({
+      iso: dateString,
+      text: forecastText,
       updatedAt: new Date().toISOString()
-    };
-    localStorage.setItem('routeStats.latestForecast', JSON.stringify(payload));
+    }));
   } catch (_) {
     // ignore storage errors
   }
 }
 
 if (typeof window !== 'undefined') {
-  window.generateForecastText = (tagHistory) => generateForecastText(tagHistory || loadTagHistory());
+  window.generateForecastText = (tagHistory) => {
+    const fallbackDow = new Date(Date.now() + 864e5).getDay();
+    return generateForecastText(tagHistory || loadTagHistory(), fallbackDow);
+  };
+  window.computeForecastText = (options = {}) => computeForecastText(options);
 }

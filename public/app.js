@@ -842,17 +842,15 @@
       return null;
     }
   }
-  function flattenTagStrings(history) {
+  function flattenTagStrings(history, targetDow) {
     if (!Array.isArray(history)) return [];
-    const today = /* @__PURE__ */ new Date();
-    const todayDow = today.getDay();
     const entriesForDay = history.filter((entry) => {
       if (!entry) return false;
       const iso = entry.iso || entry.date;
       if (!iso) return false;
       const entryDate = new Date(iso);
       if (Number.isNaN(entryDate.getTime())) return false;
-      return entryDate.getDay() === todayDow;
+      return entryDate.getDay() === targetDow;
     }).sort((a, b) => {
       const aDate = new Date(a.iso || a.date || 0).getTime();
       const bDate = new Date(b.iso || b.date || 0).getTime();
@@ -894,8 +892,8 @@
     if (!summaries.length) return null;
     return `Expect a longer day due to ${summaries.join(" and ")}.`;
   }
-  function generateForecastText(tagHistory) {
-    const allTags = Array.isArray(tagHistory) ? flattenTagStrings(tagHistory) : [];
+  function generateForecastText(tagHistory, targetDow) {
+    const allTags = Array.isArray(tagHistory) ? flattenTagStrings(tagHistory, targetDow) : [];
     const summaries = [];
     allTags.forEach((tagStr) => {
       if (typeof tagStr !== "string") {
@@ -940,27 +938,36 @@
   }
   function computeForecastText(options = {}) {
     const history = Array.isArray(options.tagHistory) ? options.tagHistory : loadTagHistory();
-    const tagText = generateForecastText(history);
+    const targetDow = typeof options.targetDow === "number" ? options.targetDow : null;
+    const fallbackDow = new Date(Date.now() + 864e5).getDay();
+    const weekday = targetDow != null ? targetDow : fallbackDow;
+    const tagText = generateForecastText(history, weekday);
     if (tagText && tagText !== STEADY_MESSAGE) return tagText;
     const dailyData = options.dailyData || loadDailyData();
     const fallback = generateForecastFromDailyData(dailyData);
     if (fallback) return fallback;
     return tagText || STEADY_MESSAGE;
   }
-  function storeForecastSnapshot(text, isoDate = getTodayISO()) {
-    if (!text) return;
+  function storeForecastSnapshot(dateString = getTodayISO(), forecastText) {
+    if (!forecastText || !dateString) return;
     try {
-      const payload = {
-        iso: isoDate,
-        text,
+      const existing = JSON.parse(localStorage.getItem("forecastSnapshots") || "{}");
+      existing[dateString] = forecastText;
+      localStorage.setItem("forecastSnapshots", JSON.stringify(existing));
+      localStorage.setItem("routeStats.latestForecast", JSON.stringify({
+        iso: dateString,
+        text: forecastText,
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      localStorage.setItem("routeStats.latestForecast", JSON.stringify(payload));
+      }));
     } catch (_) {
     }
   }
   if (typeof window !== "undefined") {
-    window.generateForecastText = (tagHistory) => generateForecastText(tagHistory || loadTagHistory());
+    window.generateForecastText = (tagHistory) => {
+      const fallbackDow = new Date(Date.now() + 864e5).getDay();
+      return generateForecastText(tagHistory || loadTagHistory(), fallbackDow);
+    };
+    window.computeForecastText = (options = {}) => computeForecastText(options);
   }
 
   // src/features/diagnostics.js
@@ -4743,11 +4750,19 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
     } catch (_) {
     }
   }
-  function renderTomorrowForecast() {
+  async function renderTomorrowForecast() {
     try {
-      const forecastText = computeForecastText();
-      if (!forecastText) return;
-      storeForecastSnapshot(forecastText);
+      let tagHistoryData;
+      try {
+        tagHistoryData = await loadForecastHistory();
+      } catch (err) {
+        console.warn("renderTomorrowForecast: Supabase load failed, using local history", err);
+        tagHistoryData = null;
+      }
+      const tomorrowDate = DateTime.now().setZone(ZONE).plus({ days: 1 });
+      const tomorrowDow = tomorrowDate.weekday % 7;
+      const forecastText = computeForecastText({ tagHistory: tagHistoryData || void 0, targetDow: tomorrowDow }) || "Forecast unavailable";
+      storeForecastSnapshot(tomorrowDate.toISODate(), forecastText);
       const container = document.querySelector("#forecastBadgeContainer") || document.body;
       if (!container) return;
       const existingBadges = container.querySelectorAll(".forecast-badge");

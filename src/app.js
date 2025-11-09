@@ -646,11 +646,19 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
     }catch(_){ /* ignore */ }
   }
 
-  function renderTomorrowForecast(){
+  async function renderTomorrowForecast(){
     try{
-      const forecastText = computeForecastText();
-      if (!forecastText) return;
-      storeForecastSnapshot(forecastText);
+      let tagHistoryData;
+      try {
+        tagHistoryData = await loadForecastHistory();
+      } catch (err) {
+        console.warn('renderTomorrowForecast: Supabase load failed, using local history', err);
+        tagHistoryData = null;
+      }
+      const tomorrowDate = DateTime.now().setZone(ZONE).plus({ days: 1 });
+      const tomorrowDow = tomorrowDate.weekday % 7;
+      const forecastText = computeForecastText({ tagHistory: tagHistoryData || undefined, targetDow: tomorrowDow }) || 'Forecast unavailable';
+      storeForecastSnapshot(tomorrowDate.toISODate(), forecastText);
       const container = document.querySelector('#forecastBadgeContainer') || document.body;
       if (!container) return;
       const existingBadges = container.querySelectorAll('.forecast-badge');

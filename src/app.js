@@ -15,21 +15,6 @@ import {
 
 import {
   RESIDUAL_WEIGHT_PREF_KEY,
-  loadFlags,
-  saveFlags,
-  loadEval,
-  saveEval,
-  saveEvalProfiles,
-  setActiveEvalId,
-  getActiveEvalId,
-  loadEvalProfiles,
-  deleteEvalProfile,
-  createEvalProfile,
-  loadVacation,
-  saveVacation,
-  ensureWeeklyBaselines,
-  getWeeklyBaselines,
-  computeAnchorBaselines,
   getModelScope,
   setModelScope,
   loadDismissedResiduals,
@@ -40,10 +25,6 @@ import {
   setAiBasePrompt,
   loadTokenUsage,
   saveTokenUsage,
-  getStored,
-  updateYearlyTotals,
-  YEARLY_THRESHOLDS,
-  recomputeYearlyStats,
   mergeTokenUsage
 } from './utils/storage.js';
 
@@ -58,7 +39,6 @@ import { createDiagnostics } from './features/diagnostics.js';
 import { createAiSummary } from './features/aiSummary.js';
 import { createCharts } from './features/charts.js';
 import { createSummariesFeature } from './features/summaries.js';
-import { parseDismissReasonInput } from './utils/diagnostics.js';
 
 // If libs failed to load, show a clear banner with next step
   (function(){
@@ -96,87 +76,10 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
 
 // ==== SUPABASE CONFIG ====
   console.log('[RouteStats] boot start');
-  let EVAL_PROFILES = loadEvalProfiles();
-  let USPS_EVAL = loadEval();
-
-  // Vacation Mode config
-  let VACATION = loadVacation();
-  if (VACATION && Array.isArray(VACATION.ranges)){
-    const normalized = normalizeRanges(VACATION.ranges);
-    if (normalized.length !== VACATION.ranges.length || normalized.some((r,i)=> r.from!==VACATION.ranges[i]?.from || r.to!==VACATION.ranges[i]?.to)){
-      VACATION = { ranges: normalized };
-      saveVacation(VACATION);
-    }
-  }
 
   const DEFAULT_AI_BASE_PROMPT = 'You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.';
   const SECOND_TRIP_EMA_KEY = 'routeStats.secondTrip.ema';
   let showMilestoneHistory = false;
-
-  function addVacationRange(fromIso, toIso){
-    if (!fromIso || !toIso) return;
-    const next = { ranges: [...(VACATION?.ranges || []), { from: fromIso, to: toIso }] };
-    next.ranges = normalizeRanges(next.ranges);
-    VACATION = next;
-    saveVacation(VACATION);
-    scheduleUserSettingsSave();
-  }
-
-  function removeVacationRange(index){
-    const ranges = Array.isArray(VACATION?.ranges) ? [...VACATION.ranges] : [];
-    if (index < 0 || index >= ranges.length) return;
-    ranges.splice(index, 1);
-    VACATION = { ranges: normalizeRanges(ranges) };
-    saveVacation(VACATION);
-    scheduleUserSettingsSave();
-  }
-
-  function listVacationRanges(){
-    const cfg = VACATION || loadVacation();
-    return Array.isArray(cfg?.ranges) ? cfg.ranges : [];
-  }
-
-  function renderVacationRanges(){
-    const container = document.getElementById('vacRanges');
-    if (!container) return;
-    const ranges = listVacationRanges();
-    if (!ranges.length){
-      container.innerHTML = '<small class="muted">No vacation ranges saved.</small>';
-      return;
-    }
-    const rows = ranges.map((r, idx)=>{
-      try{
-        const from = DateTime.fromISO(r.from, { zone: ZONE });
-        const to   = DateTime.fromISO(r.to,   { zone: ZONE });
-        const days = Math.max(1, Math.round(to.endOf('day').diff(from.startOf('day'), 'days').days + 1));
-        const label = `${from.toFormat('LLL dd, yyyy')} → ${to.toFormat('LLL dd, yyyy')}`;
-        return `<div class="vac-range-item"><div><strong>${label}</strong><br><small>${days} day${days===1?'':'s'}</small></div><button class="ghost vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
-      }catch(_){
-        return `<div class="vac-range-item"><div><strong>${r.from} → ${r.to}</strong></div><button class="ghost vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
-      }
-    }).join('');
-    container.innerHTML = rows;
-  }
-
-  function isVacationDate(iso){
-    try{
-      const cfg = VACATION || loadVacation();
-      if (!cfg || !Array.isArray(cfg.ranges)) return false;
-      return cfg.ranges.some(r=> dateInRangeISO(iso, r.from, r.to));
-    }catch(_){ return false; }
-  }
-  function filterRowsForView(rows){
-    try{
-      const cfg = VACATION || loadVacation();
-      if (!cfg || !Array.isArray(cfg.ranges) || !cfg.ranges.length) return rows||[];
-      return (rows||[]).filter(r=> !isVacationDate(r.work_date));
-    }catch(_){ return rows||[]; }
-  }
-
-  function syncEvalGlobals(){
-    EVAL_PROFILES = loadEvalProfiles();
-    USPS_EVAL = loadEval();
-  }
 
   const USER_SETTINGS_TABLE = 'user_settings';
   let userSettingsSynced = false;
@@ -185,29 +88,11 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
   let settingsSaveTimer = null;
 
   function buildUserSettingsPayload(){
-    const evalProfiles = (EVAL_PROFILES || []).map(profile => ({
-      profileId: profile.profileId,
-      label: profile.label,
-      routeId: profile.routeId,
-      evalCode: profile.evalCode,
-      boxes: profile.boxes ?? null,
-      stops: profile.stops ?? null,
-      hoursPerDay: profile.hoursPerDay ?? null,
-      officeHoursPerDay: profile.officeHoursPerDay ?? null,
-      annualSalary: profile.annualSalary ?? null,
-      effectiveFrom: profile.effectiveFrom ?? null,
-      effectiveTo: profile.effectiveTo ?? null
-    }));
-    const vacationRanges = listVacationRanges().map(r => ({ from: r.from, to: r.to }));
     const ema = readStoredEma();
     const extraTrip = Number.isFinite(ema) ? { ema } : null;
-    const activeEvalId = USPS_EVAL?.profileId || getActiveEvalId();
     const tokenUsage = loadTokenUsage();
-    const dismissedList = loadDismissedResiduals(parseDismissReasonInput);
+    const dismissedList = loadDismissedResiduals();
     return {
-      eval_profiles: evalProfiles,
-      active_eval_id: activeEvalId || null,
-      vacation_ranges: vacationRanges,
       extra_trip: extraTrip,
       ai_token_usage: tokenUsage,
       diagnostics_dismissed: dismissedList
@@ -219,9 +104,6 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
     try{
       const { error } = await sb.from(USER_SETTINGS_TABLE).upsert({
         user_id: CURRENT_USER_ID,
-        eval_profiles: payload.eval_profiles || [],
-        active_eval_id: payload.active_eval_id || null,
-        vacation_ranges: payload.vacation_ranges || [],
         extra_trip: payload.extra_trip || null,
         diagnostics_dismissed: payload.diagnostics_dismissed || [],
         ai_token_usage: payload.ai_token_usage || null,
@@ -252,7 +134,7 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
     try{
       const { data, error } = await sb
         .from(USER_SETTINGS_TABLE)
-        .select('eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed')
+        .select('extra_trip, ai_token_usage, diagnostics_dismissed')
         .eq('user_id', CURRENT_USER_ID)
         .maybeSingle();
       if (error && error.code !== 'PGRST116'){
@@ -262,21 +144,6 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
       suppressSettingsSave = true;
       try{
         if (data){
-          if (Array.isArray(data.eval_profiles)){
-            saveEvalProfiles(data.eval_profiles);
-            if (data.active_eval_id){
-              setActiveEvalId(data.active_eval_id);
-            }
-            syncEvalGlobals();
-          }
-          if (Array.isArray(data.vacation_ranges)){
-            const sanitized = data.vacation_ranges
-              .filter(r => r?.from && r?.to)
-              .map(r => ({ from: r.from, to: r.to }));
-            const normalized = normalizeRanges(sanitized);
-            VACATION = { ranges: normalized };
-            saveVacation(VACATION);
-          }
           if (data.extra_trip && typeof data.extra_trip === 'object'){
             const emaVal = parseFloat(data.extra_trip.ema);
             if (Number.isFinite(emaVal)){
@@ -305,8 +172,6 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
         suppressSettingsSave = false;
       }
       if (pushTokenUsageAfterSync) scheduleUserSettingsSave();
-      renderVacationRanges();
-      renderUspsEvalTag();
       if (secondTripEmaInput){
         secondTripEmaInput.value = readStoredEma();
         updateSecondTripSummary();
@@ -320,7 +185,6 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
         resetDiagnosticsCache?.();
         buildDiagnostics(filterRowsForView(allRows || []));
       }catch(_){ }
-      buildEvalCompare(allRows || []);
     }catch(err){
       suppressSettingsSave = false;
       console.warn('[Settings] sync error', err);
@@ -860,9 +724,8 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
     getResidualWeighting,
     setHolidayDownweightEnabled,
     isHolidayDownweightEnabled,
-    loadDismissedResiduals: () => loadDismissedResiduals(parseDismissReasonInput),
+    loadDismissedResiduals: () => loadDismissedResiduals(),
     saveDismissedResiduals,
-    parseDismissReasonInput,
     rebuildAll,
     updateAiSummaryAvailability,
     inferBoxholderLabel,

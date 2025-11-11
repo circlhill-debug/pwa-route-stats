@@ -23,39 +23,6 @@
   function endOfWeekSunday2(dt) {
     return startOfWeekMonday(dt).plus({ days: 6 }).endOf("day");
   }
-  function dateInRangeISO(iso, fromIso, toIso) {
-    try {
-      if (!iso || !fromIso || !toIso) return false;
-      const d = DateTime.fromISO(iso, { zone: ZONE }).startOf("day");
-      const a = DateTime.fromISO(fromIso, { zone: ZONE }).startOf("day");
-      const b = DateTime.fromISO(toIso, { zone: ZONE }).endOf("day");
-      return d >= a && d <= b;
-    } catch (_) {
-      return false;
-    }
-  }
-  function normalizeRanges(ranges) {
-    try {
-      const parse = (iso) => DateTime.fromISO(iso, { zone: ZONE }).startOf("day");
-      const items = (ranges || []).map((r) => ({ from: r.from, to: r.to })).filter((r) => r.from && r.to).map((r) => ({ a: parse(r.from), b: DateTime.fromISO(r.to, { zone: ZONE }).endOf("day") })).sort((x, y) => x.a.toMillis() - y.a.toMillis());
-      const merged = [];
-      for (const it of items) {
-        if (!merged.length) {
-          merged.push({ ...it });
-          continue;
-        }
-        const last = merged[merged.length - 1];
-        if (it.a <= last.b.plus({ days: 0 })) {
-          if (it.b > last.b) last.b = it.b;
-        } else {
-          merged.push({ ...it });
-        }
-      }
-      return merged.map((x) => ({ from: x.a.toISODate(), to: x.b.toISODate() }));
-    } catch (_) {
-      return ranges || [];
-    }
-  }
   function diffHours(dateIso, t1, t2) {
     if (!t1 || !t2) return null;
     const a = DateTime.fromISO(`${dateIso}T${t1}`, { zone: ZONE });
@@ -79,12 +46,32 @@
     return "\u{1F318}";
   }
 
+  // src/features/tagLibrary.js
+  var TAG_CATEGORIES = {
+    WEATHER: "Weather",
+    WORKLOAD: "Workload",
+    PERSONAL: "Personal",
+    OTHER: "Other"
+  };
+  var TAGS = [
+    // Weather
+    { id: "weather-rain", label: "Rain", category: TAG_CATEGORIES.WEATHER },
+    { id: "weather-snow", label: "Snow", category: TAG_CATEGORIES.WEATHER },
+    { id: "weather-heat", label: "Extreme Heat", category: TAG_CATEGORIES.WEATHER },
+    { id: "weather-cold", label: "Extreme Cold", category: TAG_CATEGORIES.WEATHER },
+    // Workload
+    { id: "workload-heavy-parcels", label: "Heavy Parcels", category: TAG_CATEGORIES.WORKLOAD },
+    { id: "workload-heavy-letters", label: "Heavy Letters", category: TAG_CATEGORIES.WORKLOAD },
+    { id: "workload-late-start", label: "Late Start", category: TAG_CATEGORIES.WORKLOAD },
+    { id: "workload-vehicle-issue", label: "Vehicle Issue", category: TAG_CATEGORIES.WORKLOAD },
+    // Personal
+    { id: "personal-sick", label: "Sick", category: TAG_CATEGORIES.PERSONAL },
+    { id: "personal-appointment", label: "Appointment", category: TAG_CATEGORIES.PERSONAL },
+    // Other
+    { id: "other-holiday", label: "Holiday", category: TAG_CATEGORIES.OTHER }
+  ];
+
   // src/utils/storage.js
-  var FLAG_KEY = "routeStats.flags.v1";
-  var EVAL_KEY = "routeStats.uspsEval.v1";
-  var EVAL_PROFILES_KEY = "routeStats.uspsEvalProfiles.v1";
-  var ACTIVE_EVAL_ID_KEY = "routeStats.uspsEval.activeId.v1";
-  var VACAY_KEY = "routeStats.vacation.v1";
   var BASELINE_KEY = "routeStats.baseline.v1";
   var MODEL_SCOPE_KEY = "routeStats.modelScope";
   var RESIDUAL_WEIGHT_PREF_KEY = "routeStats.residual.downweightHoliday";
@@ -94,449 +81,19 @@
   var AI_SUMMARY_COLLAPSED_KEY = "routeStats.ai.summaryCollapsed";
   var TOKEN_USAGE_STORAGE = "routeStats.ai.tokenUsage";
   var AI_BASE_PROMPT_KEY = "routeStats.ai.basePrompt";
-  var DEFAULT_FLAGS = {
-    weekdayTicks: true,
-    progressivePills: false,
-    monthlyGlance: true,
-    holidayAdjustments: true,
-    trendPills: false,
-    sameRangeTotals: true,
-    quickFilter: true,
-    headlineDigest: false,
-    smartSummary: true,
-    mixViz: true,
-    baselineCompare: true,
-    collapsedUi: false,
-    focusMode: false,
-    quickEntry: false,
-    uspsEval: true,
-    dayCompare: true
+  var REASON_TO_TAG_ID_MAP = {
+    "heavy parcels": "workload-heavy-parcels",
+    "heavy letters": "workload-heavy-letters",
+    "late start": "workload-late-start",
+    "vehicle issue": "workload-vehicle-issue",
+    "sick": "personal-sick",
+    "appointment": "personal-appointment",
+    "holiday": "other-holiday",
+    "rain": "weather-rain",
+    "snow": "weather-snow",
+    "heat": "weather-heat",
+    "cold": "weather-cold"
   };
-  var DEFAULT_EVAL_PROFILE = {
-    profileId: "eval-default",
-    label: "Default Evaluation",
-    routeId: "R1",
-    evalCode: "44K",
-    boxes: 670,
-    stops: null,
-    hoursPerDay: 9.4,
-    officeHoursPerDay: 2,
-    annualSalary: 68e3,
-    effectiveFrom: null,
-    effectiveTo: null
-  };
-  var EMPTY_VACATION = { ranges: [] };
-  var evalProfileCounter = 0;
-  function generateEvalProfileId() {
-    evalProfileCounter = (evalProfileCounter + 1) % Number.MAX_SAFE_INTEGER;
-    return `eval-${Date.now().toString(36)}-${evalProfileCounter.toString(36)}`;
-  }
-  function getStored(key, fallback = null) {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw == null) return fallback;
-      return JSON.parse(raw);
-    } catch (_) {
-      return fallback;
-    }
-  }
-  function setStored(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch (_) {
-    }
-  }
-  var YEARLY_THRESHOLDS = {
-    parcelTitan: { key: "parcels", threshold: 2e4, label: "Parcel Pounder" },
-    letterLegend: { key: "letters", threshold: 1e5, label: "Mercury Magic" },
-    hourHero: { key: "hours", threshold: 2e3, label: "Your Ass Must be a Dragon!" }
-  };
-  function updateYearlyTotals(dayData) {
-    if (!dayData) return;
-    const iso = dayData.date || dayData.work_date;
-    if (!iso) return;
-    const year = new Date(iso).getFullYear();
-    const totals = getStored("routeStats.yearlyTotals", {}) || {};
-    if (!totals[year]) {
-      totals[year] = { parcels: 0, letters: 0, hours: 0 };
-    }
-    totals[year].parcels += dayData.parcels || 0;
-    totals[year].letters += dayData.letters || 0;
-    totals[year].hours += dayData.hours || 0;
-    setStored("routeStats.yearlyTotals", totals);
-    checkYearlyMilestones(year, totals[year]);
-  }
-  function checkYearlyMilestones(year, stats) {
-    const badges = getStored("routeStats.badges", []) || [];
-    Object.entries(YEARLY_THRESHOLDS).forEach(([id, { key, threshold, label }]) => {
-      const unlocked = badges.find((b) => b.id === id && b.year === year);
-      if (!unlocked && (stats[key] || 0) >= threshold) {
-        badges.push({
-          id,
-          year,
-          label,
-          unlockedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          message: `\u{1F3C5} ${label} \u2014 ${threshold.toLocaleString()} ${key} delivered in ${year}!`
-        });
-      }
-    });
-    setStored("routeStats.badges", badges);
-  }
-  function recomputeYearlyStats(rows) {
-    try {
-      if (!Array.isArray(rows) || !rows.length) return;
-      const totals = {};
-      (rows || []).forEach((row) => {
-        if (!row) return;
-        const iso = row.work_date || row.date;
-        if (!iso) return;
-        const dt = new Date(iso);
-        if (Number.isNaN(dt.getTime())) return;
-        const year = dt.getFullYear();
-        if (!totals[year]) {
-          totals[year] = { parcels: 0, letters: 0, hours: 0 };
-        }
-        totals[year].parcels += Number(row.parcels) || 0;
-        totals[year].letters += Number(row.letters) || 0;
-        totals[year].hours += Number(row.hours) || 0;
-      });
-      const existing = getStored("routeStats.badges", []) || [];
-      const existingMap = new Map(existing.map((b) => [`${b.id}:${b.year}`, b]));
-      const nextBadges = [];
-      Object.entries(totals).forEach(([yearKey, stats]) => {
-        const year = Number(yearKey);
-        Object.entries(YEARLY_THRESHOLDS).forEach(([id, { key, threshold, label }]) => {
-          if ((stats[key] || 0) >= threshold) {
-            const hash = `${id}:${year}`;
-            const prev = existingMap.get(hash);
-            nextBadges.push({
-              id,
-              year,
-              label,
-              unlockedAt: (prev == null ? void 0 : prev.unlockedAt) || (/* @__PURE__ */ new Date()).toISOString(),
-              message: (prev == null ? void 0 : prev.message) || `\u{1F3C5} ${label} \u2014 ${threshold.toLocaleString()} ${key} delivered in ${year}!`
-            });
-          }
-        });
-      });
-      setStored("routeStats.yearlyTotals", totals);
-      setStored("routeStats.badges", nextBadges);
-    } catch (_) {
-    }
-  }
-  function toNumberOrNull(value) {
-    if (value === "" || value === null || value === void 0) return null;
-    const num = Number(value);
-    return Number.isFinite(num) ? num : null;
-  }
-  function normalizeDateValue(value) {
-    if (value === "" || value === null || value === void 0) return null;
-    try {
-      const iso = String(value).trim();
-      if (!iso) return null;
-      const dt = DateTime.fromISO(iso, { zone: ZONE });
-      if (!dt.isValid) return null;
-      return dt.toISODate();
-    } catch (_) {
-      return null;
-    }
-  }
-  function sanitizeEvalProfile(input, fallback) {
-    var _a5, _b;
-    const base = { ...DEFAULT_EVAL_PROFILE, ...fallback || {} };
-    const merged = { ...base, ...input || {} };
-    const providedId = typeof merged.profileId === "string" && merged.profileId.trim() ? merged.profileId.trim() : typeof merged.id === "string" && merged.id.trim() ? merged.id.trim() : null;
-    const profileId = providedId || generateEvalProfileId();
-    const routeId = typeof merged.routeId === "string" && merged.routeId.trim() ? merged.routeId.trim() : base.routeId;
-    const evalCode2 = typeof merged.evalCode === "string" && merged.evalCode.trim() ? merged.evalCode.trim() : base.evalCode;
-    const labelSource = typeof merged.label === "string" && merged.label.trim() ? merged.label.trim() : typeof merged.name === "string" && merged.name.trim() ? merged.name.trim() : null;
-    const fallbackLabelPieces = [routeId, evalCode2].filter(Boolean);
-    const label = labelSource || (fallbackLabelPieces.length ? fallbackLabelPieces.join(" ") : "Evaluation");
-    return {
-      profileId,
-      label,
-      routeId,
-      evalCode: evalCode2,
-      boxes: toNumberOrNull(merged.boxes),
-      stops: toNumberOrNull(merged.stops),
-      hoursPerDay: toNumberOrNull(merged.hoursPerDay),
-      officeHoursPerDay: toNumberOrNull(merged.officeHoursPerDay),
-      annualSalary: toNumberOrNull(merged.annualSalary),
-      effectiveFrom: normalizeDateValue((_a5 = merged.effectiveFrom) != null ? _a5 : merged.from),
-      effectiveTo: normalizeDateValue((_b = merged.effectiveTo) != null ? _b : merged.to)
-    };
-  }
-  function sanitizeEvalProfileList(list) {
-    if (!Array.isArray(list) || !list.length) {
-      return [sanitizeEvalProfile(DEFAULT_EVAL_PROFILE)];
-    }
-    const seen = /* @__PURE__ */ new Set();
-    const out = [];
-    for (const item of list) {
-      const sanitized = sanitizeEvalProfile(item);
-      if (seen.has(sanitized.profileId)) continue;
-      seen.add(sanitized.profileId);
-      out.push(sanitized);
-    }
-    if (!out.length) out.push(sanitizeEvalProfile(DEFAULT_EVAL_PROFILE));
-    return out;
-  }
-  function legacyEvalPayload(profile) {
-    if (!profile) return {};
-    const {
-      routeId,
-      evalCode: evalCode2,
-      boxes,
-      stops,
-      hoursPerDay,
-      officeHoursPerDay,
-      annualSalary,
-      effectiveFrom,
-      effectiveTo,
-      profileId,
-      label
-    } = profile;
-    return {
-      routeId,
-      evalCode: evalCode2,
-      boxes,
-      stops,
-      hoursPerDay,
-      officeHoursPerDay,
-      annualSalary,
-      effectiveFrom,
-      effectiveTo,
-      profileId,
-      label
-    };
-  }
-  function loadFlags() {
-    try {
-      return Object.assign({}, DEFAULT_FLAGS, JSON.parse(localStorage.getItem(FLAG_KEY) || "{}"));
-    } catch (_) {
-      return { ...DEFAULT_FLAGS };
-    }
-  }
-  function saveFlags(flags) {
-    localStorage.setItem(FLAG_KEY, JSON.stringify(flags));
-  }
-  function loadEvalProfiles() {
-    try {
-      const raw = localStorage.getItem(EVAL_PROFILES_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const list = sanitizeEvalProfileList(parsed);
-        if (list.length) {
-          return list.map((p) => ({ ...p }));
-        }
-      }
-    } catch (_) {
-    }
-    try {
-      const legacyRaw = localStorage.getItem(EVAL_KEY);
-      if (legacyRaw) {
-        const legacyParsed = JSON.parse(legacyRaw);
-        return sanitizeEvalProfileList([legacyParsed]).map((p) => ({ ...p }));
-      }
-    } catch (_) {
-    }
-    return sanitizeEvalProfileList([DEFAULT_EVAL_PROFILE]).map((p) => ({ ...p }));
-  }
-  function saveEvalProfiles(profiles) {
-    try {
-      const sanitized = sanitizeEvalProfileList(profiles);
-      localStorage.setItem(EVAL_PROFILES_KEY, JSON.stringify(sanitized));
-    } catch (_) {
-    }
-  }
-  function getActiveEvalId() {
-    try {
-      const raw = localStorage.getItem(ACTIVE_EVAL_ID_KEY);
-      if (typeof raw === "string") {
-        const trimmed = raw.trim();
-        return trimmed ? trimmed : null;
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
-  function setActiveEvalId(id) {
-    try {
-      if (!id) {
-        localStorage.removeItem(ACTIVE_EVAL_ID_KEY);
-      } else {
-        localStorage.setItem(ACTIVE_EVAL_ID_KEY, id);
-      }
-    } catch (_) {
-    }
-  }
-  function loadEval() {
-    try {
-      const profiles = loadEvalProfiles();
-      let activeId = getActiveEvalId();
-      let active = profiles.find((p) => p.profileId === activeId);
-      if (!active) {
-        active = profiles[0] || sanitizeEvalProfile(DEFAULT_EVAL_PROFILE);
-        if (active) setActiveEvalId(active.profileId);
-      }
-      return active ? { ...active } : { ...sanitizeEvalProfile(DEFAULT_EVAL_PROFILE) };
-    } catch (_) {
-      return { ...sanitizeEvalProfile(DEFAULT_EVAL_PROFILE) };
-    }
-  }
-  function saveEval(cfg) {
-    try {
-      const sanitized = sanitizeEvalProfile(cfg);
-      const profiles = loadEvalProfiles();
-      const idx = profiles.findIndex((p) => p.profileId === sanitized.profileId);
-      if (idx >= 0) profiles[idx] = sanitized;
-      else profiles.push(sanitized);
-      saveEvalProfiles(profiles);
-      setActiveEvalId(sanitized.profileId);
-      localStorage.setItem(EVAL_KEY, JSON.stringify(legacyEvalPayload(sanitized)));
-    } catch (_) {
-      try {
-        localStorage.setItem(EVAL_KEY, JSON.stringify(cfg || {}));
-      } catch (__) {
-      }
-    }
-  }
-  function deleteEvalProfile(profileId) {
-    var _a5;
-    if (!profileId) return loadEvalProfiles();
-    try {
-      let profiles = loadEvalProfiles().filter((p) => p.profileId !== profileId);
-      if (!profiles.length) {
-        profiles = [sanitizeEvalProfile(DEFAULT_EVAL_PROFILE)];
-      }
-      saveEvalProfiles(profiles);
-      const activeId = getActiveEvalId();
-      if (activeId === profileId) {
-        const nextActive = ((_a5 = profiles[0]) == null ? void 0 : _a5.profileId) || null;
-        if (nextActive) {
-          setActiveEvalId(nextActive);
-          localStorage.setItem(EVAL_KEY, JSON.stringify(legacyEvalPayload(profiles[0])));
-        } else {
-          setActiveEvalId(null);
-          localStorage.removeItem(EVAL_KEY);
-        }
-      }
-      return profiles.map((p) => ({ ...p }));
-    } catch (_) {
-      return loadEvalProfiles();
-    }
-  }
-  function createEvalProfile(partial = {}) {
-    return sanitizeEvalProfile({ ...DEFAULT_EVAL_PROFILE, profileId: null, ...partial || {} });
-  }
-  function loadVacation() {
-    try {
-      const v = JSON.parse(localStorage.getItem(VACAY_KEY) || "{}");
-      const ranges = Array.isArray(v == null ? void 0 : v.ranges) ? v.ranges : [];
-      return { ranges: ranges.filter((r) => (r == null ? void 0 : r.from) && (r == null ? void 0 : r.to)) };
-    } catch (_) {
-      return { ...EMPTY_VACATION };
-    }
-  }
-  function saveVacation(cfg) {
-    try {
-      localStorage.setItem(VACAY_KEY, JSON.stringify({ ranges: cfg.ranges || [] }));
-    } catch (_) {
-    }
-  }
-  function ensureWeeklyBaselines(rows) {
-    try {
-      const now = DateTime.now().setZone(ZONE);
-      const weekStartIso = startOfWeekMonday(now).toISODate();
-      const savedRaw = localStorage.getItem(BASELINE_KEY);
-      if (savedRaw) {
-        const saved = JSON.parse(savedRaw);
-        if (saved && saved.weekStart === weekStartIso) return saved;
-      }
-      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const endLast = endOfWeekSunday2(now.minus({ weeks: 1 }));
-      const startPrev = startOfWeekMonday(now.minus({ weeks: 2 }));
-      const endPrev = endOfWeekSunday2(now.minus({ weeks: 2 }));
-      const inRange = (r, from, to) => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        return d >= from && d <= to;
-      };
-      const worked = (rows || []).filter((r) => (r == null ? void 0 : r.status) !== "off");
-      const W1 = worked.filter((r) => inRange(r, startLast, endLast));
-      const W2 = worked.filter((r) => inRange(r, startPrev, endPrev));
-      const byW = (arr, fn) => {
-        const out = Array.from({ length: 7 }, () => []);
-        arr.forEach((r) => {
-          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-          const idx = (d.weekday + 6) % 7;
-          out[idx].push(fn(r) || 0);
-        });
-        return out;
-      };
-      const pW1 = byW(W1, (r) => +r.parcels || 0);
-      const pW2 = byW(W2, (r) => +r.parcels || 0);
-      const lW1 = byW(W1, (r) => +r.letters || 0);
-      const lW2 = byW(W2, (r) => +r.letters || 0);
-      const mean = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-      const parcels2 = Array.from({ length: 7 }, (_, i) => mean([...pW1[i] || [], ...pW2[i] || []]));
-      const letters2 = Array.from({ length: 7 }, (_, i) => mean([...lW1[i] || [], ...lW2[i] || []]));
-      const snap = { weekStart: weekStartIso, parcels: parcels2, letters: letters2 };
-      localStorage.setItem(BASELINE_KEY, JSON.stringify(snap));
-      return snap;
-    } catch (_) {
-      return null;
-    }
-  }
-  function getWeeklyBaselines() {
-    try {
-      return JSON.parse(localStorage.getItem(BASELINE_KEY) || "null");
-    } catch (_) {
-      return null;
-    }
-  }
-  function computeAnchorBaselines(rows, weeks = 8) {
-    try {
-      const now = DateTime.now().setZone(ZONE);
-      const worked = (rows || []).filter((r) => (r == null ? void 0 : r.status) !== "off");
-      const weeksArr = [];
-      for (let w = 1; w <= weeks; w++) {
-        const s = startOfWeekMonday(now.minus({ weeks: w }));
-        const e = endOfWeekSunday2(now.minus({ weeks: w }));
-        weeksArr.push({ s, e });
-      }
-      const perW = (fn) => {
-        const arrs = Array.from({ length: 7 }, () => []);
-        for (const wk of weeksArr) {
-          const set = worked.filter((r) => {
-            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-            return d >= wk.s && d <= wk.e;
-          });
-          const tmp = Array.from({ length: 7 }, () => 0);
-          set.forEach((r) => {
-            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-            const idx = (d.weekday + 6) % 7;
-            tmp[idx] += fn(r) || 0;
-          });
-          for (let i = 0; i < 7; i++) arrs[i].push(tmp[i]);
-        }
-        const med = arrs.map((a) => {
-          const b = [...a].sort((x, y) => x - y);
-          const n = b.length;
-          if (!n) return null;
-          const mid = Math.floor(n / 2);
-          return n % 2 ? b[mid] : (b[mid - 1] + b[mid]) / 2;
-        });
-        return med;
-      };
-      return {
-        parcels: perW((r) => +r.parcels || 0),
-        letters: perW((r) => +r.letters || 0)
-      };
-    } catch (_) {
-      return null;
-    }
-  }
   function getModelScope() {
     try {
       const v = localStorage.getItem(MODEL_SCOPE_KEY);
@@ -551,7 +108,7 @@
     } catch (_) {
     }
   }
-  function loadDismissedResiduals(parseDismissReasonInput2) {
+  function loadDismissedResiduals() {
     try {
       const raw = localStorage.getItem(RESIDUAL_DISMISS_KEY);
       if (!raw) return [];
@@ -565,28 +122,34 @@
         if (Array.isArray(item.tags)) {
           sourceTags = item.tags;
         } else if (item.reason) {
-          if (typeof parseDismissReasonInput2 === "function") {
-            const parsedReasonTags = parseDismissReasonInput2(item.reason) || [];
-            if (parsedReasonTags.length) {
-              sourceTags = parsedReasonTags.map((tag) => ({
-                reason: tag.reason,
-                minutes: tag.minutes,
-                notedAt: item.notedAt
-              }));
-            } else {
-              sourceTags = [{ reason: item.reason, minutes: item.minutes, notedAt: item.notedAt }];
-            }
+          const reason = String(item.reason || "").trim().toLowerCase();
+          const tagId = REASON_TO_TAG_ID_MAP[reason];
+          if (tagId) {
+            sourceTags = [{
+              id: tagId,
+              minutes: item.minutes,
+              notedAt: item.notedAt
+            }];
           } else {
-            sourceTags = [{ reason: item.reason, minutes: item.minutes, notedAt: item.notedAt }];
+            sourceTags = [{
+              id: `custom-${reason.replace(/\s+/g, "-")}`,
+              label: item.reason,
+              minutes: item.minutes,
+              notedAt: item.notedAt
+            }];
           }
         }
         const tags = sourceTags.map((tag) => {
           if (!tag) return null;
-          const reason = String(tag.reason || "").trim();
-          if (!reason) return null;
+          const id = String(tag.id || "").trim();
+          if (!id) return null;
           const minutes = tag.minutes != null && tag.minutes !== "" ? Number(tag.minutes) : null;
           const notedAt = tag.notedAt || item.notedAt || (/* @__PURE__ */ new Date()).toISOString();
-          return { reason, minutes: Number.isFinite(minutes) ? minutes : null, notedAt };
+          const tagData = { id, minutes: Number.isFinite(minutes) ? minutes : null, notedAt };
+          if (tag.label) {
+            tagData.label = tag.label;
+          }
+          return tagData;
         }).filter(Boolean);
         return tags.length ? { iso, tags } : null;
       }).filter(Boolean);
@@ -596,7 +159,25 @@
   }
   function saveDismissedResiduals(list) {
     try {
-      localStorage.setItem(RESIDUAL_DISMISS_KEY, JSON.stringify(list || []));
+      const sanitizedList = (list || []).map((item) => {
+        if (!item || !item.iso || !Array.isArray(item.tags)) return null;
+        const tags = item.tags.map((tag) => {
+          if (!tag || !tag.id) return null;
+          const sanitizedTag = { id: tag.id };
+          if (tag.minutes != null) {
+            sanitizedTag.minutes = tag.minutes;
+          }
+          if (tag.notedAt) {
+            sanitizedTag.notedAt = tag.notedAt;
+          }
+          if (tag.label) {
+            sanitizedTag.label = tag.label;
+          }
+          return sanitizedTag;
+        }).filter(Boolean);
+        return { iso: item.iso, tags };
+      }).filter(Boolean);
+      localStorage.setItem(RESIDUAL_DISMISS_KEY, JSON.stringify(sanitizedList));
     } catch (_) {
     }
   }
@@ -773,8 +354,100 @@
     const localScore = (local.month || 0) + (local.week || 0) + (local.today || 0);
     const incomingScore = (incoming.month || 0) + (incoming.week || 0) + (incoming.today || 0);
     if (incomingScore > localScore) return { merged: incoming, source: "incoming" };
-    if (incomingScore < localScore) return { merged: local, source: "local" };
+    if (incomingScore < localScore) return { merged: "local", source: "local" };
     return { merged: incoming, source: "incoming" };
+  }
+  function ensureWeeklyBaselines(rows) {
+    try {
+      const now = DateTime.now().setZone(ZONE);
+      const weekStartIso = startOfWeekMonday(now).toISODate();
+      const savedRaw = localStorage.getItem(BASELINE_KEY);
+      if (savedRaw) {
+        const saved = JSON.parse(savedRaw);
+        if (saved && saved.weekStart === weekStartIso) return saved;
+      }
+      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
+      const endLast = endOfWeekSunday2(now.minus({ weeks: 1 }));
+      const startPrev = startOfWeekMonday(now.minus({ weeks: 2 }));
+      const endPrev = endOfWeekSunday2(now.minus({ weeks: 2 }));
+      const inRange = (r, from, to) => {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        return d >= from && d <= to;
+      };
+      const worked = (rows || []).filter((r) => (r == null ? void 0 : r.status) !== "off");
+      const W1 = worked.filter((r) => inRange(r, startLast, endLast));
+      const W2 = worked.filter((r) => inRange(r, startPrev, endPrev));
+      const byW = (arr, fn) => {
+        const out = Array.from({ length: 7 }, () => []);
+        arr.forEach((r) => {
+          const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+          const idx = (d.weekday + 6) % 7;
+          out[idx].push(fn(r) || 0);
+        });
+        return out;
+      };
+      const pW1 = byW(W1, (r) => +r.parcels || 0);
+      const pW2 = byW(W2, (r) => +r.parcels || 0);
+      const lW1 = byW(W1, (r) => +r.letters || 0);
+      const lW2 = byW(W2, (r) => +r.letters || 0);
+      const mean = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+      const parcels2 = Array.from({ length: 7 }, (_, i) => mean([...pW1[i] || [], ...pW2[i] || []]));
+      const letters2 = Array.from({ length: 7 }, (_, i) => mean([...lW1[i] || [], ...lW2[i] || []]));
+      const snap = { weekStart: weekStartIso, parcels: parcels2, letters: letters2 };
+      localStorage.setItem(BASELINE_KEY, JSON.stringify(snap));
+      return snap;
+    } catch (_) {
+      return null;
+    }
+  }
+  function getWeeklyBaselines() {
+    try {
+      return JSON.parse(localStorage.getItem(BASELINE_KEY) || "null");
+    } catch (_) {
+      return null;
+    }
+  }
+  function computeAnchorBaselines(rows, weeks = 8) {
+    try {
+      const now = DateTime.now().setZone(ZONE);
+      const worked = (rows || []).filter((r) => (r == null ? void 0 : r.status) !== "off");
+      const weeksArr = [];
+      for (let w = 1; w <= weeks; w++) {
+        const s = startOfWeekMonday(now.minus({ weeks: w }));
+        const e = endOfWeekSunday2(now.minus({ weeks: w }));
+        weeksArr.push({ s, e });
+      }
+      const perW = (fn) => {
+        const arrs = Array.from({ length: 7 }, () => []);
+        for (const wk of weeksArr) {
+          const set = worked.filter((r) => {
+            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+            return d >= wk.s && d <= wk.e;
+          });
+          const tmp = Array.from({ length: 7 }, () => 0);
+          set.forEach((r) => {
+            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+            const idx = (d.weekday + 6) % 7;
+            tmp[idx] += fn(r) || 0;
+          });
+          for (let i = 0; i < 7; i++) arrs[i].push(tmp[i]);
+        }
+        const med = arrs.map((a) => {
+          const b = [...a].sort((x, y) => x - y);
+          const n = b.length;
+          if (!n) return null;
+          const mid = Math.floor(n / 2);
+          return n % 2 ? b[mid] : (b[mid - 1] + b[mid]) / 2;
+        });
+        return med;
+      };
+      return {
+        parcels: perW((r) => +r.parcels || 0),
+        letters: perW((r) => +r.letters || 0)
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
   // src/services/supabaseClient.js
@@ -981,7 +654,7 @@
     isHolidayDownweightEnabled: isHolidayDownweightEnabled2,
     loadDismissedResiduals: loadDismissedResiduals2,
     saveDismissedResiduals: saveDismissedResiduals2,
-    parseDismissReasonInput: parseDismissReasonInput2,
+    parseDismissReasonInput,
     rebuildAll: rebuildAll2,
     updateAiSummaryAvailability: updateAiSummaryAvailability2,
     inferBoxholderLabel: inferBoxholderLabel2,
@@ -1000,7 +673,7 @@
     if (typeof getResidualWeighting2 !== "function") throw new Error("createDiagnostics: getResidualWeighting is required");
     if (typeof loadDismissedResiduals2 !== "function") throw new Error("createDiagnostics: loadDismissedResiduals is required");
     if (typeof saveDismissedResiduals2 !== "function") throw new Error("createDiagnostics: saveDismissedResiduals is required");
-    if (typeof parseDismissReasonInput2 !== "function") throw new Error("createDiagnostics: parseDismissReasonInput is required");
+    if (typeof parseDismissReasonInput !== "function") throw new Error("createDiagnostics: parseDismissReasonInput is required");
     if (typeof rebuildAll2 !== "function") throw new Error("createDiagnostics: rebuildAll is required");
     if (typeof inferBoxholderLabel2 !== "function") throw new Error("createDiagnostics: inferBoxholderLabel is required");
     if (typeof hasTag2 !== "function") throw new Error("createDiagnostics: hasTag is required");
@@ -1600,7 +1273,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
               window.alert("No reason provided; dismissal cancelled.");
               return;
             }
-            const tags = parseDismissReasonInput2(reasonText);
+            const tags = parseDismissReasonInput(reasonText);
             if (!tags.length) {
               window.alert("No reason provided; dismissal cancelled.");
               return;
@@ -4136,49 +3809,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     };
   }
 
-  // src/utils/diagnostics.js
-  function parseDismissReasonInput(raw) {
-    if (!raw) return [];
-    let working = String(raw).replace(/[;\n]+/g, ",").replace(/\s*,\s*/g, ",").trim();
-    if (!working) return [];
-    const aggregated = /* @__PURE__ */ new Map();
-    const upsert = (reasonRaw, minutesVal, hasMinutes = false) => {
-      if (reasonRaw == null) return;
-      const reason = String(reasonRaw).replace(/\s+/g, " ").trim();
-      if (!reason) return;
-      const key = reason.toLowerCase();
-      const entry = aggregated.get(key) || { reason, minutes: 0, hasMinutes: false };
-      if (hasMinutes && Number.isFinite(minutesVal)) {
-        entry.minutes += minutesVal;
-        entry.hasMinutes = true;
-      }
-      aggregated.set(key, entry);
-    };
-    working = working.replace(/([^,+:]+?)\s*\+\s*([-+]?\d+(?:\.\d+)?)/g, (_, reasonPart, minutesPart) => {
-      const reason = reasonPart.trim();
-      const minutes = parseFloat(minutesPart);
-      upsert(reason, Number.isFinite(minutes) ? minutes : 0, Number.isFinite(minutes));
-      return " ";
-    });
-    working = working.replace(/([^,+:]+?)\s*:\s*([^,+\s]+)/g, (_, keyPart, valuePart) => {
-      const key = keyPart.trim();
-      const value = valuePart.trim();
-      const label = value ? `${key}:${value}` : key;
-      upsert(label, 0, false);
-      return " ";
-    });
-    working.split(",").map((segment) => segment.trim()).filter(Boolean).forEach((segment) => {
-      const cleaned = segment.replace(/\s+/g, " ").trim();
-      if (!cleaned) return;
-      if (/^[+\-]?\d+(?:\.\d+)?$/.test(cleaned)) return;
-      upsert(cleaned, 0, false);
-    });
-    return Array.from(aggregated.values()).map((item) => ({
-      reason: item.reason,
-      minutes: item.hasMinutes ? item.minutes : null
-    }));
-  }
-
   // src/app.js
   (function() {
     function ready(fn) {
@@ -4217,117 +3847,20 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     }, true);
   })();
   console.log("[RouteStats] boot start");
-  var EVAL_PROFILES = loadEvalProfiles();
-  var USPS_EVAL = loadEval();
-  var VACATION = loadVacation();
-  if (VACATION && Array.isArray(VACATION.ranges)) {
-    const normalized = normalizeRanges(VACATION.ranges);
-    if (normalized.length !== VACATION.ranges.length || normalized.some((r, i) => {
-      var _a5, _b;
-      return r.from !== ((_a5 = VACATION.ranges[i]) == null ? void 0 : _a5.from) || r.to !== ((_b = VACATION.ranges[i]) == null ? void 0 : _b.to);
-    })) {
-      VACATION = { ranges: normalized };
-      saveVacation(VACATION);
-    }
-  }
   var DEFAULT_AI_BASE_PROMPT = "You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.";
   var SECOND_TRIP_EMA_KEY = "routeStats.secondTrip.ema";
   var showMilestoneHistory = false;
-  function addVacationRange(fromIso, toIso) {
-    if (!fromIso || !toIso) return;
-    const next = { ranges: [...(VACATION == null ? void 0 : VACATION.ranges) || [], { from: fromIso, to: toIso }] };
-    next.ranges = normalizeRanges(next.ranges);
-    VACATION = next;
-    saveVacation(VACATION);
-    scheduleUserSettingsSave();
-  }
-  function removeVacationRange(index) {
-    const ranges = Array.isArray(VACATION == null ? void 0 : VACATION.ranges) ? [...VACATION.ranges] : [];
-    if (index < 0 || index >= ranges.length) return;
-    ranges.splice(index, 1);
-    VACATION = { ranges: normalizeRanges(ranges) };
-    saveVacation(VACATION);
-    scheduleUserSettingsSave();
-  }
-  function listVacationRanges() {
-    const cfg = VACATION || loadVacation();
-    return Array.isArray(cfg == null ? void 0 : cfg.ranges) ? cfg.ranges : [];
-  }
-  function renderVacationRanges() {
-    const container = document.getElementById("vacRanges");
-    if (!container) return;
-    const ranges = listVacationRanges();
-    if (!ranges.length) {
-      container.innerHTML = '<small class="muted">No vacation ranges saved.</small>';
-      return;
-    }
-    const rows = ranges.map((r, idx) => {
-      try {
-        const from = DateTime.fromISO(r.from, { zone: ZONE });
-        const to = DateTime.fromISO(r.to, { zone: ZONE });
-        const days = Math.max(1, Math.round(to.endOf("day").diff(from.startOf("day"), "days").days + 1));
-        const label = `${from.toFormat("LLL dd, yyyy")} \u2192 ${to.toFormat("LLL dd, yyyy")}`;
-        return `<div class="vac-range-item"><div><strong>${label}</strong><br><small>${days} day${days === 1 ? "" : "s"}</small></div><button class="ghost vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
-      } catch (_) {
-        return `<div class="vac-range-item"><div><strong>${r.from} \u2192 ${r.to}</strong></div><button class="ghost vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
-      }
-    }).join("");
-    container.innerHTML = rows;
-  }
-  function isVacationDate(iso) {
-    try {
-      const cfg = VACATION || loadVacation();
-      if (!cfg || !Array.isArray(cfg.ranges)) return false;
-      return cfg.ranges.some((r) => dateInRangeISO(iso, r.from, r.to));
-    } catch (_) {
-      return false;
-    }
-  }
-  function filterRowsForView(rows) {
-    try {
-      const cfg = VACATION || loadVacation();
-      if (!cfg || !Array.isArray(cfg.ranges) || !cfg.ranges.length) return rows || [];
-      return (rows || []).filter((r) => !isVacationDate(r.work_date));
-    } catch (_) {
-      return rows || [];
-    }
-  }
-  function syncEvalGlobals() {
-    EVAL_PROFILES = loadEvalProfiles();
-    USPS_EVAL = loadEval();
-  }
   var USER_SETTINGS_TABLE = "user_settings";
   var userSettingsSynced = false;
   var suppressSettingsSave = false;
   var pendingSettingsPayload = null;
   var settingsSaveTimer = null;
   function buildUserSettingsPayload() {
-    const evalProfiles = (EVAL_PROFILES || []).map((profile) => {
-      var _a5, _b, _c, _d, _e, _f, _g;
-      return {
-        profileId: profile.profileId,
-        label: profile.label,
-        routeId: profile.routeId,
-        evalCode: profile.evalCode,
-        boxes: (_a5 = profile.boxes) != null ? _a5 : null,
-        stops: (_b = profile.stops) != null ? _b : null,
-        hoursPerDay: (_c = profile.hoursPerDay) != null ? _c : null,
-        officeHoursPerDay: (_d = profile.officeHoursPerDay) != null ? _d : null,
-        annualSalary: (_e = profile.annualSalary) != null ? _e : null,
-        effectiveFrom: (_f = profile.effectiveFrom) != null ? _f : null,
-        effectiveTo: (_g = profile.effectiveTo) != null ? _g : null
-      };
-    });
-    const vacationRanges = listVacationRanges().map((r) => ({ from: r.from, to: r.to }));
     const ema = readStoredEma();
     const extraTrip = Number.isFinite(ema) ? { ema } : null;
-    const activeEvalId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || getActiveEvalId();
     const tokenUsage = loadTokenUsage();
-    const dismissedList = loadDismissedResiduals(parseDismissReasonInput);
+    const dismissedList = loadDismissedResiduals();
     return {
-      eval_profiles: evalProfiles,
-      active_eval_id: activeEvalId || null,
-      vacation_ranges: vacationRanges,
       extra_trip: extraTrip,
       ai_token_usage: tokenUsage,
       diagnostics_dismissed: dismissedList
@@ -4338,9 +3871,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     try {
       const { error } = await sb.from(USER_SETTINGS_TABLE).upsert({
         user_id: CURRENT_USER_ID,
-        eval_profiles: payload.eval_profiles || [],
-        active_eval_id: payload.active_eval_id || null,
-        vacation_ranges: payload.vacation_ranges || [],
         extra_trip: payload.extra_trip || null,
         diagnostics_dismissed: payload.diagnostics_dismissed || [],
         ai_token_usage: payload.ai_token_usage || null,
@@ -4367,7 +3897,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (!CURRENT_USER_ID) return;
     let pushTokenUsageAfterSync = false;
     try {
-      const { data, error } = await sb.from(USER_SETTINGS_TABLE).select("eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed").eq("user_id", CURRENT_USER_ID).maybeSingle();
+      const { data, error } = await sb.from(USER_SETTINGS_TABLE).select("extra_trip, ai_token_usage, diagnostics_dismissed").eq("user_id", CURRENT_USER_ID).maybeSingle();
       if (error && error.code !== "PGRST116") {
         console.warn("[Settings] load failed", error);
         return;
@@ -4375,19 +3905,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       suppressSettingsSave = true;
       try {
         if (data) {
-          if (Array.isArray(data.eval_profiles)) {
-            saveEvalProfiles(data.eval_profiles);
-            if (data.active_eval_id) {
-              setActiveEvalId(data.active_eval_id);
-            }
-            syncEvalGlobals();
-          }
-          if (Array.isArray(data.vacation_ranges)) {
-            const sanitized = data.vacation_ranges.filter((r) => (r == null ? void 0 : r.from) && (r == null ? void 0 : r.to)).map((r) => ({ from: r.from, to: r.to }));
-            const normalized = normalizeRanges(sanitized);
-            VACATION = { ranges: normalized };
-            saveVacation(VACATION);
-          }
           if (data.extra_trip && typeof data.extra_trip === "object") {
             const emaVal = parseFloat(data.extra_trip.ema);
             if (Number.isFinite(emaVal)) {
@@ -4419,8 +3936,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         suppressSettingsSave = false;
       }
       if (pushTokenUsageAfterSync) scheduleUserSettingsSave();
-      renderVacationRanges();
-      renderUspsEvalTag();
       if (secondTripEmaInput) {
         secondTripEmaInput.value = readStoredEma();
         updateSecondTripSummary();
@@ -4436,7 +3951,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         buildDiagnostics(filterRowsForView(allRows || []));
       } catch (_) {
       }
-      buildEvalCompare(allRows || []);
     } catch (err) {
       suppressSettingsSave = false;
       console.warn("[Settings] sync error", err);
@@ -4956,9 +4470,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     getResidualWeighting,
     setHolidayDownweightEnabled,
     isHolidayDownweightEnabled,
-    loadDismissedResiduals: () => loadDismissedResiduals(parseDismissReasonInput),
+    loadDismissedResiduals: () => loadDismissedResiduals(),
     saveDismissedResiduals,
-    parseDismissReasonInput,
     rebuildAll,
     updateAiSummaryAvailability,
     inferBoxholderLabel,

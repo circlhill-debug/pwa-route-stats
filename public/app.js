@@ -848,9 +848,10 @@
       if (!entry) return false;
       const iso = entry.iso || entry.date;
       if (!iso) return false;
-      const entryDate = new Date(iso);
-      if (Number.isNaN(entryDate.getTime())) return false;
-      return entryDate.getDay() === targetDow;
+      const entryDow = DateTime.fromISO(iso, { zone: ZONE }).weekday;
+      if (!entryDow) return false;
+      const entryJsDow = entryDow === 7 ? 0 : entryDow;
+      return entryJsDow === targetDow;
     }).sort((a, b) => {
       const aDate = new Date(a.iso || a.date || 0).getTime();
       const bDate = new Date(b.iso || b.date || 0).getTime();
@@ -1589,8 +1590,10 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             if (letters2 != null) hintParts.push(`Letters: ${letters2}`);
             const basePrompt = hintParts.length ? `${hintParts.join(" \xB7 ")}
 Reason (e.g., Road closure, Weather, Extra parcels):` : "Reason (e.g., Road closure, Weather, Extra parcels):";
+            const tagReference = "Tag keywords: break, flats, parcels, letters, second-trip, detour, load, gas, traffic, road, weather.";
             const reasonPrompt = window.prompt(`${basePrompt}
-You can append minutes like "+15" (e.g., "parcels+15") and separate multiple reasons with commas (e.g., "parcels+15, flats+30").`, defaultReason);
+${tagReference}
+You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-10") and separate multiple reasons with commas (e.g., "parcels+15, flats-20").`, defaultReason);
             if (reasonPrompt === null) return;
             let reasonText = reasonPrompt.trim();
             if (!reasonText) {
@@ -4760,7 +4763,8 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         tagHistoryData = null;
       }
       const tomorrowDate = DateTime.now().setZone(ZONE).plus({ days: 1 });
-      const tomorrowDow = tomorrowDate.weekday % 7;
+      const luxonDow = tomorrowDate.weekday;
+      const tomorrowDow = luxonDow === 7 ? 0 : luxonDow;
       const forecastText = computeForecastText({ tagHistory: tagHistoryData || void 0, targetDow: tomorrowDow }) || "Forecast unavailable";
       storeForecastSnapshot(tomorrowDate.toISODate(), forecastText);
       const container = document.querySelector("#forecastBadgeContainer") || document.body;

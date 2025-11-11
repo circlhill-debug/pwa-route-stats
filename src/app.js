@@ -656,7 +656,8 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
         tagHistoryData = null;
       }
       const tomorrowDate = DateTime.now().setZone(ZONE).plus({ days: 1 });
-      const tomorrowDow = tomorrowDate.weekday % 7;
+      const luxonDow = tomorrowDate.weekday; // 1 (Mon) .. 7 (Sun)
+      const tomorrowDow = luxonDow === 7 ? 0 : luxonDow; // convert to JS 0-6
       const forecastText = computeForecastText({ tagHistory: tagHistoryData || undefined, targetDow: tomorrowDow }) || 'Forecast unavailable';
       storeForecastSnapshot(tomorrowDate.toISODate(), forecastText);
       const container = document.querySelector('#forecastBadgeContainer') || document.body;

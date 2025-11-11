@@ -1,4 +1,4 @@
-import { todayIso as getTodayIsoFromUtils } from '../utils/date.js';
+import { todayIso as getTodayIsoFromUtils, DateTime, ZONE } from '../utils/date.js';
 
 const STEADY_MESSAGE = 'Steady outlook based on recent trends.';
 
@@ -39,9 +39,10 @@ function flattenTagStrings(history, targetDow) {
       if (!entry) return false;
       const iso = entry.iso || entry.date;
       if (!iso) return false;
-      const entryDate = new Date(iso);
-      if (Number.isNaN(entryDate.getTime())) return false;
-      return entryDate.getDay() === targetDow;
+      const entryDow = DateTime.fromISO(iso, { zone: ZONE }).weekday;
+      if (!entryDow) return false;
+      const entryJsDow = entryDow === 7 ? 0 : entryDow;
+      return entryJsDow === targetDow;
     })
     .sort((a, b) => {
       const aDate = new Date(a.iso || a.date || 0).getTime();

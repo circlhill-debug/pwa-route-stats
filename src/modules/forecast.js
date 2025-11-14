@@ -46,20 +46,28 @@ function loadDailyData() {
   }
 }
 
+/* === Forecast Raw Loader (restored) ========================= */
+
 function readForecastBadgeDataRaw() {
-  if (typeof localStorage === 'undefined') return [];
-  for (const key of FORECAST_BADGE_STORAGE_KEYS) {
-    try {
+  try {
+    const keys = [
+      "forecastBadgeData",
+      "routeStats.forecastBadgeData"
+    ];
+
+    for (const key of keys) {
       const raw = localStorage.getItem(key);
-      if (!raw) continue;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return parsed.filter((item) => item && typeof item === 'object');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
       }
-    } catch (_) {
-      // ignore malformed JSON and try next key
     }
+  } catch (err) {
+    console.error("[Forecast] read raw error:", err);
   }
+
   return [];
 }
 

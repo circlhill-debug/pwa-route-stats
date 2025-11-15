@@ -1,0 +1,1207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<!-- Progressive Web App metadata -->
+<meta name="theme-color" content="#2b7fff" />
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="RouteStats" />
+<title>Route Stats — Live Dashboard</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#141821; --border:#22262e; --text:#e8e8ea; --muted:#9aa0aa; --brand:#2b7fff;
+    --good:#7CE38B; --warn:#FFD27A; --bad:#FF8FA1;
+    --rs-neg:#17803d;   /* under time = green */
+    --rs-pos:#c0392b;   /* over time  = red   */
+    --rs-mute:#6b7280;  /* neutral/gray      */
+    --rs-cell:rgba(0,0,0,0.06);
+    --rs-cell-dark:rgba(255,255,255,0.10);
+    --rs-grid:rgba(154,160,170,0.45);
+    --rs-grid-dark:rgba(224,228,236,0.45);
+    --safe-top: env(safe-area-inset-top);
+    --safe-bottom: env(safe-area-inset-bottom);
+    --safe-left: env(safe-area-inset-left);
+    --safe-right: env(safe-area-inset-right);
+  }
+  *{box-sizing:border-box}
+  html{ font-size: clamp(15px, 1.6vw + .4rem, 18px); }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:system-ui,-apple-system,Inter,Segoe UI,Roboto,Arial,sans-serif;
+    padding-bottom:max(12px, var(--safe-bottom));
+    padding-top:max(8px, var(--safe-top));
+    -webkit-text-size-adjust:100%;
+    text-size-adjust:100%;
+  }
+  header{ border-bottom:1px solid var(--border); padding:14px 16px }
+  .wrap{ max-width:1120px; margin:0 auto; padding:16px }
+  h1{ margin:0; font-size:20px; letter-spacing:.3px }
+  .grid{ display:grid; gap:12px }
+  @media(min-width:1000px){ .grid-2{ grid-template-columns:1.1fr .9fr } }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px }
+  label{ font-size:13px; color:var(--muted) }
+  input,select,textarea{ width:100%; padding:12px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:16px }
+  button{ background:var(--brand); color:#fff; border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer }
+  button.ghost{ background:transparent; color:var(--text); border:1px solid var(--border) }
+  small{ color:var(--muted) }
+  table{ width:100%; border-collapse:collapse }
+  th,td{ border-bottom:1px solid var(--border); padding:8px 6px; text-align:left }
+  th{ color:var(--muted); font-weight:600 }
+  .right{ text-align:right }
+  .pill{ display:inline-flex; gap:8px; align-items:center; border:1px solid var(--border); padding:6px 8px; border-radius:999px; background:transparent }
+  .pill.badge-holiday{
+    background:rgba(234,179,8,0.16);
+    border-color:rgba(202,138,4,0.45);
+    color:#facc15;
+    font-size:12px;
+    letter-spacing:0.01em;
+    text-transform:uppercase;
+  }
+  .pill.toggle-button{
+    cursor:pointer;
+    transition:background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  }
+  .pill.toggle-button.active{
+    background:rgba(59,130,246,0.18);
+    border-color:rgba(59,130,246,0.55);
+    color:#93c5fd;
+  }
+  /* Ensure checkboxes render visibly inside pill labels */
+  input[type="checkbox"]{ width:auto; height:auto; padding:0; margin:0 4px 0 0; accent-color: var(--brand); }
+  .modelMetric{ color:#fbbf24; font-weight:400; }
+  #liveModelStrip .pill b{ color:inherit; font-weight:400; }
+  #diagnosticsLegend{
+    margin-top:6px;
+    font-size:0.75em;
+    color:#6b7280;
+    display:flex;
+    gap:12px;
+  }
+  #diagnosticsLegend span{
+    display:flex;
+    align-items:center;
+    gap:4px;
+  }
+  #diagnosticsLegend .swatch{
+    width:14px; height:14px; border-radius:3px;
+    border:1px solid rgba(255,255,255,0.4);
+  }
+  .legend-swatch{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px }
+  /* ==== Diagnostics table polish ==== */
+  .diag-table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    background:transparent;
+    font-variant-numeric:tabular-nums;
+    border-radius:12px;
+    overflow:hidden;
+    font-size:clamp(.95rem, 2.9vw, 1.05rem);
+  }
+  .diag-table th,
+  .diag-table td{
+    padding:10px 12px;
+    border-top:1px solid var(--rs-grid);
+    line-height:1.3;
+  }
+  .diag-table thead th{
+    background:color-mix(in srgb, var(--rs-cell) 60%, transparent);
+    border-top:none;
+    text-align:left;
+    font-weight:600;
+  }
+  .diag-table tbody tr:nth-child(odd){
+    background:color-mix(in srgb, var(--rs-cell) 40%, transparent);
+  }
+  @media(prefers-color-scheme:dark){
+    .diag-table thead th{ background:var(--rs-cell-dark); }
+    .diag-table tbody tr:nth-child(odd){ background:color-mix(in srgb, var(--rs-cell-dark) 55%, transparent); }
+    .diag-table th,
+    .diag-table td{ border-top:1px solid var(--rs-grid-dark); }
+    .diag-table td+td,
+    .diag-table th+th{ border-left:1px solid var(--rs-grid-dark); }
+  }
+  .diag-table td+td,
+  .diag-table th+th{
+    border-left:1px solid var(--rs-grid);
+  }
+  .diag-table td{ text-align:right; white-space:nowrap; }
+  .diag-table td:first-child,
+  .diag-table th:first-child{ text-align:left; }
+  .diag-table .text-left{ text-align:left; }
+  .notes-cell{ text-align:left; vertical-align:top; white-space:nowrap; }
+  .notes-cell .diag-note{
+    padding:0;
+    font-size:12px;
+    color:var(--brand);
+    border:0;
+    background:transparent;
+    text-decoration:underline;
+    cursor:pointer;
+    display:inline-block;
+    margin-top:-4px;
+  }
+  .token-usage-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-top:10px; }
+  .token-box{ border:1px solid var(--border); border-radius:12px; padding:10px; background:rgba(148,163,184,0.08); }
+  .token-label{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; }
+  .token-value{ font-size:20px; font-weight:600; }
+  .token-bar{ height:10px; border-radius:999px; background:rgba(255,255,255,0.08); overflow:hidden; margin-top:8px; }
+  .token-bar-fill{ height:100%; width:0; border-radius:999px; background:var(--brand); transition:width .3s ease, background .3s ease; }
+  .weather-cell{ white-space:normal; word-break:break-word; max-width:14ch; }
+  .notes-cell p{ margin:0 0 6px 0; }
+  .notes-cell p:last-child{ margin-bottom:0; }
+  .vac-mark { font-size:0.7em; color:var(--muted); margin-left:2px; }
+  .vac-ranges{ margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+  .vac-range-item{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 10px; border:1px solid var(--border); border-radius:10px; background:rgba(148,163,184,0.08); font-size:0.9rem; }
+  .vac-range-item small{ color:var(--muted); }
+  .vac-range-item button{ margin-left:auto; }
+  .stat .statValue{ display:block; font-size:18px; font-weight:500; font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
+  .stat .statValue--lg{ font-size:20px; }
+  .stat .statValue--sm{ font-size:17px; }
+  .stat .statDelta{ font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
+  .snapshot-sections{ display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; }
+  .snapshot-section{ border:1px solid var(--border); border-radius:14px; padding:14px; background:rgba(148,163,184,0.08); display:flex; flex-direction:column; gap:12px; }
+  .fullWidth{ grid-column:1 / -1; }
+  .snapshot-section h4{ margin:0 0 10px 0; font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); }
+  .snapshot-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; align-items:stretch; }
+  .snapshot-grid .full-span{ grid-column:1 / -1; }
+  .snapshot-subgrid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
+  .pill-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+  .leaderboard-table{ width:100%; border-collapse:collapse; font-size:13px; }
+  .leaderboard-table th, .leaderboard-table td{ padding:6px 8px; border-bottom:1px solid var(--border); text-align:right; }
+  .leaderboard-table th:first-child, .leaderboard-table td:first-child{ text-align:left; }
+  .leaderboard-table tbody tr:last-child td{ border-bottom:none; }
+  .cardSection{ border-top:1px solid var(--border); margin-top:16px; padding-top:12px; }
+  .cardSection h4{ margin:0 0 10px 0; font-size:14px; }
+  #milestoneBadges{ display:flex; flex-direction:column; gap:12px; margin-top:12px; }
+  .badge-card{
+    display:flex;
+    align-items:flex-start;
+    gap:16px;
+    background:var(--card);
+    border-radius:12px;
+    padding:14px 16px;
+    transition:0.3s ease;
+    border:1px solid rgba(148,163,184,0.18);
+  }
+  .badge-card.unlocked{
+    border-color:rgba(250,204,21,0.55);
+    background:linear-gradient(145deg, rgba(250,204,21,0.25), rgba(253,224,71,0.08));
+  }
+  .badge-card.locked{
+    opacity:0.88;
+  }
+  .badge-count{
+    font-size:1.45rem;
+    font-weight:600;
+    font-variant-numeric:tabular-nums;
+    color:#f8fafc;
+  }
+  .badge-count small{
+    display:block;
+    margin-top:4px;
+    font-size:0.75rem;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--muted);
+  }
+  .badge-card.unlocked .badge-count small{
+    color:#fde68a;
+  }
+  .badge-info h4{ margin:0 0 6px 0; font-size:1.1rem; }
+  .badge-info p{ margin:0; color:var(--muted); font-size:0.95rem; }
+  #milestoneHistory{ display:flex; flex-direction:column; gap:12px; margin-top:12px; }
+  .badge-history-year{ border:1px solid rgba(148,163,184,0.18); border-radius:12px; padding:12px 14px; background:rgba(15,17,21,0.6); }
+  .badge-history-year h5{ margin:0 0 8px 0; font-size:0.95rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); }
+  .badge-history-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; }
+  .badge-history-item{ border:1px solid rgba(148,163,184,0.18); border-radius:10px; padding:10px 12px; background:rgba(15,19,28,0.55); }
+  .badge-history-item.achieved{ border-color:rgba(250,204,21,0.55); background:linear-gradient(145deg, rgba(250,204,21,0.2), rgba(253,224,71,0.06)); }
+  .badge-history-value{ display:block; font-size:1.1rem; font-weight:600; font-variant-numeric:tabular-nums; }
+  .badge-history-item small{ display:block; margin-top:4px; font-size:0.75rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); }
+  .badge-history-item.achieved small{ color:#fde68a; }
+  .badge-history-name{ margin-top:6px; font-size:0.9rem; font-weight:600; color:#fde68a; }
+  .badge-history-note{ margin-top:6px; font-size:0.8rem; color:var(--muted); }
+  .trip-summary{ font-size:13px; line-height:1.5; }
+  .diag-wrap{
+    overflow:auto;
+    border-radius:12px;
+    box-shadow:0 1px 0 rgba(0,0,0,.06);
+  }
+  .delta{
+    display:inline-block;
+    min-width:4.5ch;
+    text-align:right;
+    padding:2px 6px;
+    border-radius:999px;
+    background:color-mix(in srgb, currentColor 12%, transparent);
+    font-variant-numeric:tabular-nums;
+    font-size:clamp(1rem, 3.4vw, 1.15rem);
+  }
+  .delta.pos{ color:var(--rs-pos); }
+  .delta.neg{ color:var(--rs-neg); }
+  .delta.zero{ color:var(--rs-mute); }
+  .delta.outlier{ box-shadow:0 0 0 1.5px currentColor inset; }
+  .eval-tf-btn.active{ background:var(--brand); color:#fff; border-color:var(--brand); }
+  .num, .delta{ font-variant-numeric:tabular-nums; font-size:clamp(1rem, 3.4vw, 1.15rem); }
+  .scope-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:.5ch;
+    margin-top:6px;
+    padding:4px 14px;
+    border-radius:999px;
+    font-weight:600;
+    font-size:.9rem;
+    letter-spacing:.02em;
+    background:rgba(37,99,235,.18);
+    border:1px solid rgba(37,99,235,.42);
+    color:#e8f1ff;
+    text-shadow:0 1px 1px rgba(0,0,0,.55);
+  }
+  @media(prefers-color-scheme:light){
+    .scope-badge{
+      background:rgba(37,99,235,.12);
+      border:1px solid rgba(37,99,235,.35);
+      color:#1d4ed8;
+      text-shadow:none;
+    }
+  }
+  .scope-badge .dot{
+    width:.55em;
+    height:.55em;
+    border-radius:50%;
+    background:#2563eb;
+  }
+  .scope-badge.all .dot{ background:#6b7280; }
+  @media (max-width:420px){
+    .diag-table th,
+    .diag-table td{ padding:12px 12px; }
+    .scope-badge{ font-size:.95rem; }
+  }
+  #diagnosticsLegend{ margin-top:6px; font-size:.75em; color:#6b7280; display:flex; gap:12px; flex-wrap:wrap }
+  #diagnosticsLegend span{ display:flex; align-items:center; gap:4px }
+  #diagnosticsLegend .swatch{ width:12px; height:12px; border-radius:3px }
+  .stat{ display:flex; flex-direction:column; gap:4px; padding:10px; border:1px solid var(--border); border-radius:12px; min-width:140px }
+  .up{ color:var(--good) } .down{ color:var(--bad) } .warn{ color:var(--warn) }
+  canvas{ background:transparent; border:1px solid var(--border); border-radius:10px; padding:8px; touch-action: manipulation; -webkit-tap-highlight-color: transparent }
+  /* Slim sparkline override: no border/padding, minimal height */
+  canvas.sparkline{ display:block; width:100%; border:none; padding:0; height:48px; max-height:48px; touch-action: manipulation; -webkit-tap-highlight-color: transparent }
+  .sparkline-labels{ color:var(--muted); font-size:12px; margin-top:4px }
+  .sparkline-summary{ color:var(--muted); font-size:12px; margin-top:4px }
+  .fab{ position:fixed; right:16px; bottom:16px; z-index:10 }
+  #diag{ position:sticky; top:0; z-index:999; background:#111; color:#ddd; font:12px/1.35 system-ui; padding:6px 10px; border-bottom:1px solid #222 }
+  #diag b{ color:#fff }
+  tr.light td{ background:linear-gradient(90deg, rgba(124,227,139,.07), transparent) }
+  tr.heavy td{ background:linear-gradient(90deg, rgba(255,143,161,.10), transparent) }
+  tr.typical td{ background:linear-gradient(90deg, rgba(255,210,122,.08), transparent) }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+  dialog{ background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:12px; padding:16px }
+
+  /* Visibility + focus upgrades */
+  input,select,textarea{
+    background:#0b0f15;
+    border:1px solid #303643;
+    font-size:16px;
+    caret-color:var(--brand);
+  }
+  input:hover,select:hover,textarea:hover{ border-color:#3d4554 }
+  input:focus-visible,select:focus-visible,textarea:focus-visible{
+    outline:2px solid var(--brand);
+    outline-offset:0;
+    border-color:var(--brand);
+    box-shadow:0 0 0 3px rgba(43,127,255,.25);
+    background:#0c1220;
+  }
+  ::placeholder{ color:#b7beca; opacity:1 }
+  .card .grid > div:has(> input:focus-visible),
+  .card .grid > div:has(> select:focus-visible),
+  .card .grid > div:has(> textarea:focus-visible){
+    background:#101726;
+    border-radius:10px;
+    padding:6px;
+    transition:background .15s ease;
+  }
+
+  /* Save feedback */
+  button.saving{ opacity:.7; cursor:wait }
+  @keyframes savedFlash{
+    0%{ box-shadow:0 0 0 0 rgba(43,127,255,.6) }
+    100%{ box-shadow:0 0 0 14px rgba(43,127,255,0) }
+  }
+  button.savedFlash{ animation:savedFlash 600ms ease-out }
+
+  /* Clickable results */
+  #tbl tbody tr.rowLink{ cursor:pointer }
+  #tbl tbody tr.rowLink:hover td{ background:rgba(43,127,255,.06) }
+  /* Compact header buttons (e.g., Quick Entry) */
+  button.btn-compact{ padding:4px 8px; font-size:12px; border-radius:999px }
+</style>
+</head>
+<body>
+<div id="diag">
+  ROUTE STATS · Supabase: <b id="dConn">…</b> · Auth: <b id="dAuth">…</b> · Write: <b id="dWrite">—</b>
+</div>
+
+<!-- Version tag -->
+<div id="verTag" style="position:fixed;top:6px;right:12px;color:#9aa0aa;font-size:11px;z-index:9999;">v—</div>
+<!-- USPS Evaluation summary (fixed) -->
+<div id="uspsEvalTag" title="Click to edit USPS evaluation in Settings"
+     style="position:fixed;top:26px;right:12px;z-index:9999;display:none">
+  <span class="pill" style="font-size:11px;line-height:1.2;gap:6px;padding:6px 8px;cursor:pointer">
+    <span id="evalRouteLabel">—</span>
+    <span id="evalEvalCode" class="muted">—</span>
+    <span id="evalBoxes" class="muted">— boxes</span>
+    <span id="evalSalary" class="muted">—/yr</span>
+    <span id="evalHours" class="muted">—h (— office)</span>
+  </span>
+</div>
+
+<!-- Live model strip -->
+<div id="liveModelStrip" style="display:none;margin:8px 0;gap:8px;flex-wrap:wrap" class="row">
+  <span class="pill" title="bp: minutes per parcel predicted by the model"><span class="modelMetric">bp</span>: <span id="lm-bp">—</span> min/parcel</span>
+  <span class="pill" title="bl: minutes per letter predicted by the model"><span class="modelMetric">bl</span>: <span id="lm-bl">—</span> min/letter</span>
+  <span class="pill" title="Letter weight (bl ÷ bp) used for combined volume"><span class="modelMetric">w</span>: <span id="lm-w">—</span></span>
+  <span class="pill" title="Model fit (coefficient of determination)"><span class="modelMetric">R²</span>: <span id="lm-r2">—</span></span>
+</div>
+
+<header>
+  <div class="wrap row" style="justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+    <!-- CHANGED: dynamic date -->
+    <div>
+      <h1 style="margin-bottom:4px">📈 ROUTE STATS — Live Dashboard — <span id="headerDate">—</span></h1>
+      <div id="modelScopeBadge" class="scope-badge" aria-live="polite"></div>
+      <div id="headlineDigest" style="display:none;font-size:13px;color:var(--text);text-align:center;margin-top:6px">—</div>
+      <div id="smartSummary" style="display:none;font-size:13px;color:var(--text);text-align:center;margin-top:6px">—</div>
+    </div>
+    <div class="row">
+      <button id="signInBtn" class="ghost">Sign in</button>
+      <button id="setPwBtn" class="ghost" title="Set/Change password for the current account">Set password</button>
+      <button id="linkBtn" class="ghost">Link devices (magic link)</button>
+      <button id="signOut" class="ghost">Sign out</button>
+      <button id="btnSettings" class="ghost" title="Toggle feature flags">Settings</button>
+      <button id="btnFocusMode" class="ghost" title="Show only snapshot tiles (collapse the rest)" style="display:none">Focus Mode: Off</button>
+      <a href="docs/metrics.html" target="_blank" class="ghost" style="text-decoration:none; padding:10px 14px; border:1px solid var(--border); border-radius:10px">Data Sheet</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap grid grid-2">
+  <!-- SNAPSHOT -->
+  <section class="card fullWidth" id="snapshotCard">
+    <div class="snapshot-sections">
+    <div class="snapshot-section">
+      <h4>Today</h4>
+      <div class="snapshot-grid">
+        <div class="stat">
+          <small>Expected End (today)</small>
+          <span id="expEnd" class="statValue statValue--lg">—</span>
+          <small id="expMeta" style="color:var(--muted)">DOW avg —</small>
+        </div>
+        <div class="stat">
+          <small>Volume</small>
+          <span id="badgeVolume" class="statValue statValue--lg">—</span>
+          <small class="muted">parcels + <span class="modelMetric">w×letters</span> (data-fit)</small>
+          <div id="helpVolume" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
+          <button id="openVolumeLeaderboard" type="button" class="ghost" style="align-self:flex-start;font-size:12px;padding:4px 8px;">Top days</button>
+        </div>
+        <div class="stat">
+          <small>Route Eff.</small>
+          <span id="badgeRouteEff" class="statValue statValue--lg">—</span>
+          <small class="muted">vs weekday baseline</small>
+          <div id="helpRouteEff" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
+        </div>
+        <div class="stat">
+          <small>Overall</small>
+          <span id="badgeOverall" class="statValue statValue--lg">—</span>
+          <small class="muted">office + route vs expected</small>
+          <div id="helpOverall" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
+        </div>
+        <div class="stat">
+          <small>Today Parcels Δ</small>
+          <span id="todayParcelsDelta" class="statDelta">—</span>
+          <small class="muted">vs past same weekday (worked)</small>
+        </div>
+        <div class="stat">
+          <small>Today Letters Δ</small>
+          <span id="todayLettersDelta" class="statDelta">—</span>
+          <small class="muted">vs past same weekday (worked)</small>
+        </div>
+        <div class="stat">
+          <small>Today Office Δ</small>
+          <span id="todayOfficeDelta" class="statDelta">—</span>
+          <small class="muted">vs past same weekday (worked)</small>
+        </div>
+        <div class="stat" id="extraTripTodayTile" style="display:none">
+          <small>Extra Trip</small>
+          <span id="extraTripTodayVal" class="statValue statValue--lg">—</span>
+          <small class="muted" id="extraTripTodayMeta">—</small>
+        </div>
+        <div class="stat" id="todayHourlyTile" style="display:none">
+          <small>Running $/h</small>
+          <span id="todayHourlyRate" class="statValue statValue--lg">—</span>
+          <small class="muted" id="todayHourlyMeta">Includes extra trip payout</small>
+        </div>
+        <div class="stat full-span" id="todayHeaviness" style="display:none"></div>
+      </div>
+    </div>
+
+    <div class="snapshot-section">
+      <h4>Week & USPS</h4>
+      <div class="snapshot-grid">
+        <div class="stat" id="tileWkHours" style="cursor:pointer" tabindex="0" title="Click for weekly hours breakdown">
+          <small>Hours (week)</small>
+          <div><span id="wkHours" class="statValue statValue--lg">—</span> <span id="wkHoursDelta" class="pill">—</span></div>
+        </div>
+        <div class="stat" id="tileWkParcels" style="cursor:pointer" tabindex="0" title="Click for weekly parcels breakdown">
+          <small>Parcels (week)</small>
+          <div><span id="wkParcels" class="statValue statValue--lg">—</span> <span id="wkParcelsDelta" class="pill">—</span></div>
+        </div>
+        <div class="stat" id="tileWkLetters" style="cursor:pointer" tabindex="0" title="Click for weekly letters breakdown">
+          <small>Letters (week)</small>
+          <div><span id="wkLetters" class="statValue statValue--lg">—</span> <span id="wkLettersDelta" class="pill">—</span></div>
+        </div>
+        <div class="stat" id="extraMilesWeek">
+          <small>Extra trip miles</small>
+          <span class="statValue statValue--lg" id="extraMilesWeekVal">—</span>
+          <small class="muted">Mon..today total</small>
+        </div>
+        <div class="stat" id="extraTimeWeek">
+          <small>Extra trip time</small>
+          <span class="statValue statValue--lg" id="extraTimeWeekVal">—</span>
+          <small class="muted">Actual min (Mon..today)</small>
+        </div>
+        <div class="stat" id="extraPayoutWeek">
+          <small>Extra trip payout</small>
+          <span class="statValue statValue--lg" id="extraPayoutWeekVal">—</span>
+          <small class="muted">Paid time + EMA</small>
+        </div>
+        <div class="stat" id="tileUspsRouteEff">
+          <small>USPS Route Eff.</small>
+          <span id="uspsRouteEffVal" class="statValue">—</span>
+          <small class="muted">this week vs eval</small>
+        </div>
+        <div class="stat" id="tileUspsHourly">
+          <small>Weekly $/h</small>
+          <span id="uspsHourlyRateVal" class="statValue">—</span>
+          <small class="muted">4w avg</small>
+        </div>
+        <div class="stat full-span" id="trendFactors" style="display:none"></div>
+        <div class="stat full-span" id="weekHeaviness" style="display:none"></div>
+        <div id="trendPillsRow" class="snapshot-subgrid full-span" style="display:none">
+          <div class="stat" id="tileAdvHours" style="cursor:pointer" tabindex="0" title="Click for weighted daily hour deltas">
+            <small>Weekly Hours Trend</small>
+            <div><span id="advHoursTrend" class="pill">—</span></div>
+            <small class="muted">day-by-day vs last week</small>
+          </div>
+          <div class="stat" id="tileAdvParcels" style="cursor:pointer" tabindex="0" title="Click for weighted daily parcel deltas">
+            <small>Weekly Parcels Trend</small>
+            <div><span id="advParcelsTrend" class="pill">—</span></div>
+            <small class="muted">day-by-day vs last week</small>
+          </div>
+          <div class="stat" id="tileAdvLetters" style="cursor:pointer" tabindex="0" title="Click for weighted daily letter deltas">
+            <small>Weekly Letters Trend</small>
+            <div><span id="advLettersTrend" class="pill">—</span></div>
+            <small class="muted">day-by-day vs last week</small>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+
+    <!-- Inline details panel for weekly hours breakdown (toggled on click) -->
+    <div id="wkHoursDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Weekly Hours Breakdown</h4>
+        <button id="closeWkHoursDetails" class="ghost">Close</button>
+      </div>
+      <small class="muted" style="color:var(--text)">Shows this week (Mon..today) vs last week (Mon..Sun). Δ% compares each weekday and the totals.</small>
+      <div id="wkHoursDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px">
+        <!-- populated by script -->
+      </div>
+    </div>
+    <!-- Inline details panel for weekly parcels breakdown -->
+    <div id="wkParcelsDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Weekly Parcels Breakdown</h4>
+        <button id="closeWkParcelsDetails" class="ghost">Close</button>
+      </div>
+      
+      <div id="wkParcelsDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
+    </div>
+    <!-- Inline details panel for weekly letters breakdown -->
+    <div id="wkLettersDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Weekly Letters Breakdown</h4>
+        <button id="closeWkLettersDetails" class="ghost">Close</button>
+      </div>
+      
+      <div id="wkLettersDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
+    </div>
+    <!-- Inline details panel for advanced Weekly Trend (Hours) -->
+    <div id="advHoursDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Weekly Hours Trend — Weighted daily deltas</h4>
+        <button id="closeAdvHoursDetails" class="ghost">Close</button>
+      </div>
+      <small class="muted">Mon..today vs same weekday last week. Uses Weighted average (falls back to Cumulative if needed).</small>
+      <div id="advHoursDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
+    </div>
+    <!-- Inline details panel for advanced Weekly Trend (Parcels) -->
+    <div id="advParcelsDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Weekly Parcels Trend — Weighted daily deltas</h4>
+        <button id="closeAdvParcelsDetails" class="ghost">Close</button>
+      </div>
+      <small class="muted">Mon..today vs same weekday last week. Uses Weighted average (falls back to Cumulative if needed).</small>
+      <div id="advParcelsDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
+    </div>
+    <!-- Inline details panel for advanced Weekly Trend (Letters) -->
+    <div id="advLettersDetails" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Weekly Letters Trend — Weighted daily deltas</h4>
+        <button id="closeAdvLettersDetails" class="ghost">Close</button>
+      </div>
+      <small class="muted">Mon..today vs same weekday last week. Uses Weighted average (falls back to Cumulative if needed).</small>
+      <div id="advLettersDetailsBody" style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px"></div>
+    </div>
+
+    <div id="volumeLeaderboard" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h4 style="margin:0">Top Volume Days</h4>
+        <button id="closeVolumeLeaderboard" class="ghost">Close</button>
+      </div>
+      <small id="volumeLeaderboardNote" class="muted">—</small>
+      <div style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px">
+        <table class="leaderboard-table">
+          <thead><tr><th>Date</th><th>Parcels</th><th>Letters</th><th>Volume</th><th>Percentile</th></tr></thead>
+          <tbody id="volumeLeaderboardBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- FORM -->
+  <section class="card fullWidth" id="addEntryCard">
+    <h3 style="margin:0 0 8px 0">Add Entry</h3>
+
+    <div class="row" style="margin:6px 0 10px 0; gap:8px; flex-wrap:wrap">
+      <button id="btnStartNow" class="ghost">Start (now)</button>
+      <button id="btnStreetNow" class="ghost">Hit Street (now)</button>
+      <button id="btnClockNow" class="ghost">Clock Out (now)</button>
+      <!-- Quick actions -->
+      <button id="btnEditLast" class="ghost">Edit last entry</button>
+      <button id="btnDeleteDay" class="ghost" style="border-color:#ff8fa1;color:#ff8fa1">Delete this day</button>
+      <button id="btnUndoDelete" class="ghost" style="display:none">Undo delete</button>
+    </div>
+
+    <div class="grid" style="grid-template-columns:repeat(2,1fr);gap:10px">
+      <div><label>Date</label><input id="date" type="date"></div>
+
+      <div>
+        <label>Route</label>
+        <input id="route" type="text" value="R1" readonly>
+      </div>
+
+      <div><label>Start (defaults 08:00)</label><div class="row"><input id="start" type="time" value="08:00"><button id="btnStartNow2" class="ghost">Now</button></div></div>
+      <div><label>Hit Street</label><div class="row"><input id="departTime" type="time" placeholder="--:--"><button id="btnStreetNow2" class="ghost">Now</button></div></div>
+
+      <div><label>Return (optional)</label><div class="row"><input id="returnTime" type="time" placeholder="--:--"><button id="btnReturnNow" class="ghost">Now</button></div></div>
+      <div><label>Clock Out</label><div class="row"><input id="end" type="time" placeholder="--:--"><button id="btnClockNow2" class="ghost">Now</button></div></div>
+
+      <div><label>Parcels</label><input id="parcels" type="number" min="0" value="0"></div>
+      <div><label>Letters</label><input id="letters" type="number" min="0" value="0"></div>
+      <div><label>Miles</label><input id="miles" type="number" step="0.1" min="0" value="53"></div>
+
+      <div>
+        <label>Weather</label>
+        <div class="row">
+          <select id="weather" style="min-width:160px">
+            <option value="">—</option>
+            <option>☀️ Sunny</option>
+            <option>⛅ Partly Cloudy</option>
+            <option>🌧️ Rain</option>
+            <option>❄️ Snow</option>
+            <option>💨 Windy</option>
+            <option>🌫️ Fog</option>
+            <option>Other</option>
+          </select>
+          <select id="temp" title="Temp (°F)" style="min-width:110px">
+            <option value="">Temp (°F)</option>
+            <option>20</option><option>25</option><option>30</option><option>35</option>
+            <option>40</option><option>45</option><option>50</option><option>55</option>
+            <option>60</option><option>65</option><option>70</option><option>75</option>
+            <option>80</option><option>85</option><option>90</option><option>95</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label>Boxholders</label>
+        <select id="boxholders" title="x1 = one boxholder; x2 = two; x3 = three+">
+          <option value="">—</option>
+          <option value="x1">x1</option>
+          <option value="x2">x2</option>
+          <option value="x3">x3</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Reason (optional)</label>
+        <input id="reasonTag" type="text" placeholder="e.g., Boxholders, Detour, Weather" />
+      </div>
+
+      <div><label>Mood</label><select id="mood"><option value="">—</option><option>🔥 dialed in</option><option>🙂 good</option><option>😐 meh</option><option>🥵 cooked</option><option>🌧️ soggy</option><option>🛑 off</option></select></div>
+      <div><label>Extra trip miles
+        <input id="secondTripMiles" type="number" min="0" step="0.1" placeholder="e.g., 6.5">
+      </label></div>
+      <div><label>Extra trip time (min)
+        <input id="secondTripTime" type="number" min="0" step="1" placeholder="e.g., 45">
+      </label></div>
+      <div><label>Break (min)
+        <input id="breakMinutes" type="number" min="0" step="1" value="0">
+      </label></div>
+      <input id="secondTripEma" type="hidden">
+      <div class="trip-summary" id="secondTripSummary" style="grid-column:1/-1;margin-top:-2px">
+        🕒 Paid time: <strong id="secondTripPaid">0</strong> min (2 min/mi)
+        · ⏱ Actual: <strong id="secondTripActual">0</strong> min
+        · 💸 Reimbursement: $<strong id="secondTripReimburse">0.00</strong>
+        · EMA: $<strong id="secondTripEmaRate">0.00</strong>/mi
+      </div>
+      <small class="muted" style="grid-column:1/-1;margin-top:-6px">Second-trip time is excluded from route efficiency; defaults live under Settings → Extra Trip Defaults and totals roll into weekly tiles.</small>
+      <div style="grid-column:1/-1"><label>Notes</label><textarea id="notes" rows="2" placeholder="Anything notable…"></textarea></div>
+
+      <div class="row" style="grid-column:1/-1;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <div class="row" style="gap:8px;align-items:center">
+          <label class="pill"><input id="offDay" type="checkbox"> Off day</label>
+          <label class="pill" title="If an off day is a holiday, the next day's baseline will include two days to avoid skew"><input id="holiday" type="checkbox"> Holiday (observed)</label>
+        </div>
+        <div class="row"><span class="pill"><small>Office:</small> <b id="officeH">—</b></span><span class="pill"><small>Route:</small> <b id="routeH">—</b></span><span class="pill"><small>Total:</small> <b id="totalH">—</b></span></div>
+        <div class="row"><button id="save">Save</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHARTS -->
+  <section class="card" id="dowCard"><h3 style="margin:0 0 8px 0">Average Hours by Weekday</h3><canvas id="dowChart" height="180"></canvas></section>
+  <section class="card" id="parcelsOverTimeCard"><h3 style="margin:0 0 8px 0">Parcels Over Time (worked days)</h3><canvas id="parcelsChart" height="180"></canvas></section>
+  <section class="card" id="lettersOverTimeCard"><h3 style="margin:0 0 8px 0">Letters Over Time (worked days)</h3><canvas id="lettersChart" height="180"></canvas></section>
+
+  <!-- Quick Filter (Phase 3) -->
+  <section class="card" id="quickFilterCard">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">Quick Filter</h3>
+      <select id="qfSelect" style="min-width:140px">
+        <option value="all">All days</option>
+        <option value="1">Monday</option>
+        <option value="2">Tuesday</option>
+        <option value="3">Wednesday</option>
+        <option value="4">Thursday</option>
+        <option value="5">Friday</option>
+        <option value="6">Saturday</option>
+        <option value="0">Sunday</option>
+      </select>
+    </div>
+    <div class="row" id="qfStats" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+      <!-- pills populated by script -->
+    </div>
+      <div id="qfViz" style="margin-top:8px">
+      <div class="row" id="qfMetrics" style="gap:8px;flex-wrap:wrap;margin-bottom:6px;align-items:center">
+        <label class="pill" title="Toggle all metrics on/off"><input id="qfAllMetrics" type="checkbox" checked> All</label>
+        <label class="pill"><span class="legend-swatch" style="background: var(--brand)"></span><input id="qfShowParcels" type="checkbox" checked> Parcels</label>
+        <label class="pill"><span class="legend-swatch" style="background: var(--warn)"></span><input id="qfShowLetters" type="checkbox" checked> Letters</label>
+        <label class="pill"><span class="legend-swatch" style="background: var(--good)"></span><input id="qfShowHours"   type="checkbox" checked> Hours</label>
+        <span class="pill" style="gap:6px"><small>Last</small>
+          <select id="qfLastN" style="min-width:80px">
+            <option value="8">8</option>
+            <option value="12" selected>12</option>
+            <option value="20">20</option>
+          </select>
+        </span>
+        <label class="pill" title="Show faint 0/50/100 guide when normalized"><input id="qfShowRuler" type="checkbox"> Ruler</label>
+        <span id="qfNormBadge" class="pill" style="display:none;border-color:var(--brand);color:var(--brand)" title="Values are normalized (0–100) for comparability">Normalized</span>
+        <span id="qfDaysBadge" class="pill" title="Number of filtered days" style="display:none"></span>
+      </div>
+  <canvas id="qfSpark" class="sparkline" style="height:64px;max-height:64px"></canvas>
+  <div id="qfText" class="sparkline-labels">—</div>
+  </div>
+  </section>
+
+  <!-- Milestone Engine -->
+  <section class="card" id="milestoneCard" style="grid-column:1/-1">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">Milestone Engine</h3>
+      <small class="muted">Tracks yearly parcel, letter, and hour milestones.</small>
+    </div>
+    <div id="milestoneBadges" aria-live="polite">
+      <p class="muted">Loading milestones…</p>
+    </div>
+    <button id="milestoneHistoryToggle" class="ghost" type="button" style="margin-top:8px;display:none">Show previous years</button>
+    <div id="milestoneHistory" style="display:none"></div>
+  </section>
+
+  <!-- Day Compare (experimental) -->
+  <section class="card" id="dayCompareCard" style="grid-column:1/-1; display:none">
+    <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+      <div>
+        <h3 style="margin:0 0 6px 0">Day Compare</h3>
+        <small class="muted">Pick a day, then compare against last same weekday, weekday baseline, or any prior entry.</small>
+      </div>
+      <button id="dcToggleRef" class="ghost" type="button" style="display:none">Cycle reference</button>
+    </div>
+    <div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:10px">
+      <div style="min-width:220px">
+        <label for="dcSubjectSelect">Subject day</label>
+        <select id="dcSubjectSelect"></select>
+      </div>
+      <div style="min-width:220px">
+        <label for="dcReferenceMode">Reference</label>
+        <select id="dcReferenceMode">
+          <option value="last">Last same weekday</option>
+          <option value="baseline">Weekday baseline (avg)</option>
+          <option value="manual">Pick another day…</option>
+        </select>
+      </div>
+      <div id="dcManualPicker" style="min-width:220px;display:none">
+        <label for="dcManualSelect">Reference day</label>
+        <select id="dcManualSelect"></select>
+      </div>
+    </div>
+    <div id="dcContent" style="margin-top:16px">
+      <div id="dcEmpty" style="color:var(--muted);font-size:14px">Select a worked day to compare.</div>
+      <div id="dcCompare" style="display:none">
+        <div class="row" style="gap:12px;flex-wrap:wrap">
+          <div class="card" style="flex:1;min-width:260px;border:1px solid var(--border);background:rgba(16,20,28,0.6);padding:12px">
+            <small class="muted">Subject</small>
+            <h4 id="dcSubjectLabel" style="margin:4px 0 8px 0">—</h4>
+            <div class="row" style="gap:10px;flex-wrap:wrap" id="dcSubjectPills"></div>
+            <div id="dcSubjectNotes" style="margin-top:10px;font-size:13px;color:var(--muted)"></div>
+          </div>
+          <div class="card" style="flex:1;min-width:260px;border:1px solid var(--border);background:rgba(16,20,28,0.6);padding:12px">
+            <small class="muted">Reference</small>
+            <h4 id="dcReferenceLabel" style="margin:4px 0 8px 0">—</h4>
+            <div class="row" style="gap:10px;flex-wrap:wrap" id="dcReferencePills"></div>
+            <div id="dcReferenceNotes" style="margin-top:10px;font-size:13px;color:var(--muted)"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:12px;border:1px solid var(--border);background:rgba(16,20,28,0.45);padding:12px">
+          <small class="muted">Delta focus</small>
+          <div class="row" id="dcHighlights" style="gap:10px;flex-wrap:wrap;margin-top:6px"></div>
+          <div id="dcReasoning" style="margin-top:10px;color:var(--muted);font-size:13px"></div>
+        </div>
+        <div class="card" style="margin-top:12px;border:1px solid var(--border);background:transparent;padding:12px">
+          <table style="width:100%;border-collapse:collapse;font-size:14px">
+            <thead>
+              <tr style="color:var(--muted);text-transform:uppercase;font-size:12px">
+                <th style="padding:6px 4px;text-align:left">Metric</th>
+                <th style="padding:6px 4px;text-align:right">Subject</th>
+                <th style="padding:6px 4px;text-align:right">Reference</th>
+                <th style="padding:6px 4px;text-align:right">Δ</th>
+              </tr>
+            </thead>
+            <tbody id="dcTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Mix Compare (Baseline-aware) -->
+  <section class="card" id="mixVizCard" style="display:none">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">Weekly Compare</h3>
+      <button id="mixCompareBtn" class="ghost" type="button">Details</button>
+    </div>
+    <div class="sparkline-labels">This week vs last (Mon..today vs last Mon..Sun)</div>
+    <canvas id="weekOverlay" class="sparkline" style="margin-top:4px;height:72px;max-height:72px"></canvas>
+    <div id="mixText" class="sparkline-labels">—</div>
+    <div id="mixEff" class="sparkline-labels">—</div>
+    <div id="mixCulprits" class="sparkline-labels">—</div>
+    <div class="sparkline-labels">Efficiency (min/vol) — lower is better</div>
+    <canvas id="effOverlay" class="sparkline" style="margin-top:4px;height:64px;max-height:64px"></canvas>
+    <div id="mixCompareDetails" class="sparkline-summary" style="display:none; margin-top:6px">—</div>
+    <canvas id="mixDrift" class="sparkline" style="margin-top:8px"></canvas>
+    <div id="mixDriftText" class="sparkline-labels">—</div>
+  </section>
+
+  <!-- Office Time Compare -->
+  <section class="card" id="officeCompareCard" style="grid-column:1/-1; display:none">
+    <h3 style="margin:0 0 6px 0">Office Time Compare</h3>
+    <div class="sparkline-labels">This week (Mon..today) vs last week (Mon..Sun)</div>
+    <canvas id="officeOverlay" class="sparkline" style="margin-top:4px;height:72px;max-height:72px"></canvas>
+    <div id="officeSummary" class="sparkline-labels">—</div>
+  </section>
+
+  <!-- Evaluation Compare -->
+  <section class="card" id="evalCompareCard" style="grid-column:1/-1; display:none">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">Evaluation Compare</h3>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Baseline</small>
+          <select id="evalCompareSelectA" style="min-width:150px"></select>
+        </label>
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Compare to</small>
+          <select id="evalCompareSelectB" style="min-width:150px"></select>
+        </label>
+        <div class="pill" style="gap:4px;align-items:center;padding:4px 6px">
+          <button type="button" class="ghost eval-tf-btn" data-tf="day" style="font-size:12px;padding:6px 10px">Days</button>
+          <button type="button" class="ghost eval-tf-btn active" data-tf="week" style="font-size:12px;padding:6px 10px">Weeks</button>
+          <button type="button" class="ghost eval-tf-btn" data-tf="month" style="font-size:12px;padding:6px 10px">Months</button>
+        </div>
+      </div>
+    </div>
+    <div class="sparkline-labels" id="evalCompareSummary">—</div>
+    <div style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px">
+      <table id="evalCompareTable" style="min-width:640px">
+        <thead>
+          <tr>
+            <th data-sort="label">Period</th>
+            <th class="right" data-sort="volumeA">Baseline volume</th>
+            <th class="right" data-sort="volumeB">Compare volume</th>
+            <th class="right" data-sort="deltaVolume">Δ volume</th>
+            <th class="right" data-sort="hoursA">Baseline hours</th>
+            <th class="right" data-sort="hoursB">Compare hours</th>
+            <th class="right" data-sort="deltaHours">Δ hours</th>
+            <th class="right" data-sort="countB">Days A/B</th>
+          </tr>
+        </thead>
+        <tbody id="evalCompareBody"></tbody>
+      </table>
+    </div>
+  </section>
+ 
+  
+
+  <!-- Diagnostics: Volume→Time model & outliers -->
+  <section class="card" id="diagnosticsCard" style="grid-column:1/-1; display:none">
+    <button id="toggleDiagDetails" class="ghost" type="button" style="all:unset; display:block; width:100%; cursor:pointer;">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <h3 style="margin:0">Diagnostics — Volume→Time Model</h3>
+        <div class="row" style="gap:8px;align-items:center">
+          <span id="diagModelBadge" class="pill" title="Minutes per unit (fit from last ~120 worked days)">—</span>
+          <span class="pill" aria-hidden="true" style="padding:4px 10px; font-size:0.85rem;">Details</span>
+        </div>
+      </div>
+    </button>
+    <div class="sparkline-labels" id="diagSummary">—</div>
+    <div class="row" id="diagWeightControls" style="gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center">
+      <button id="diagHolidayWeightBtn" type="button" class="pill toggle-button ghost">Downweight holiday catch-up</button>
+      <small class="muted" id="diagWeightNote">—</small>
+      <button id="diagManageDismissed" type="button" class="ghost" style="font-size:12px;">Manage dismissed</button>
+    </div>
+    <div id="diagDetails" style="display:none;margin-top:8px">
+      <small class="muted">Top residual days (|actual − predicted|). Helps spot non-volume causes: detours, weather, boxholders, etc.</small>
+      <div class="diag-wrap" style="margin-top:8px;border:1px solid var(--border);border-radius:12px">
+        <table class="diag-table" style="font-size:14px">
+          <thead>
+            <tr style="color:var(--muted);text-transform:uppercase;font-size:12px">
+              <th>Date</th>
+              <th>Parcels</th>
+              <th>Letters</th>
+              <th>Expected h</th>
+              <th>Actual h</th>
+              <th>Δ Route Time</th>
+              <th>Box H</th>
+              <th>Wx</th>
+              <th>Notes</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="diagTableBody"></tbody>
+        </table>
+      </div>
+      <div id="diagnosticsLegend">
+        <span><span class="swatch" style="background:rgba(22,101,52,0.25)"></span> Faster than predicted</span>
+        <span><span class="swatch" style="background:rgba(153,27,27,0.25)"></span> Slower than predicted</span>
+        <span><span class="swatch" style="background:rgba(107,114,128,0.20)"></span> Near expected</span>
+        <span><span class="swatch" style="background:rgba(250,204,21,0.35);border-color:rgba(202,138,4,0.55)"></span> Holiday catch-up</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="aiSummaryCard" style="grid-column:1/-1; display:none">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">AI Summary</h3>
+      <div class="row" style="gap:6px;align-items:center">
+        <button id="toggleAiSummary" class="ghost">Collapse</button>
+        <button id="generateAiSummary" class="ghost">Generate summary</button>
+      </div>
+    </div>
+    <div id="aiSummaryContent" style="margin-top:6px">
+      <small class="muted" id="aiSummaryHint">Set your OpenAI API key in Settings → AI Summary.</small>
+      <div id="aiSummaryStatus" class="muted" style="margin-top:6px"></div>
+      <div id="aiSummaryOutput" style="margin-top:8px;white-space:pre-wrap;font-size:0.95rem"></div>
+    </div>
+  </section>
+
+  <section class="card" id="tokenUsageCard" style="grid-column:1/-1; display:none">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">AI Token Usage</h3>
+      <small class="muted">Approximate tokens consumed via OpenAI calls.</small>
+    </div>
+    <div class="token-usage-grid">
+      <div class="token-box"><div class="token-label">Today</div><div class="token-value" id="token-today">—</div></div>
+      <div class="token-box"><div class="token-label">This week</div><div class="token-value" id="token-week">—</div></div>
+      <div class="token-box"><div class="token-label">This month</div><div class="token-value" id="token-month">—</div></div>
+      <div class="token-box"><div class="token-label">Monthly limit</div><div class="token-value" id="token-limit">—</div></div>
+    </div>
+    <div class="token-bar" style="margin-top:12px"><div id="token-bar-fill" class="token-bar-fill"></div></div>
+    <small class="muted" id="token-bar-note" style="display:block;margin-top:6px">Usage resets when you reload this page or update these numbers manually.</small>
+  </section>
+
+  <!-- Monthly Glance (preview) — behind feature flag -->
+  <section class="card" id="monthlyGlanceCard" style="grid-column:1/-1; display:none">
+    <h3 style="margin:0 0 8px 0">Monthly Glance (preview)</h3>
+    <small class="muted">Last 4 weeks (Mon..Sun). Charts render when available; shows text fallback otherwise.</small>
+    <div class="grid" style="margin-top:8px; gap:8px">
+      <div>
+        <label>Hours</label>
+        <div id="mgHours" class="row" style="color:var(--muted)">—</div>
+      </div>
+      <div>
+        <label>Parcels</label>
+        <div id="mgParcels" class="row" style="color:var(--muted)">—</div>
+      </div>
+      <div>
+        <label>Letters</label>
+        <div id="mgLetters" class="row" style="color:var(--muted)">—</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TABLE -->
+  <section class="card" id="recentEntriesCard" style="grid-column:1/-1">
+    <div class="row" style="justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <h3 style="margin:0">Recent Entries</h3>
+      <div class="row" style="gap:8px">
+        <input id="searchBox" type="search" placeholder="Search date, mood, weather, notes…" style="min-width:240px">
+        <button id="exportCsv" class="ghost">Export CSV (All)</button>
+        <button id="exportCsvFiltered" class="ghost">Export CSV (Filtered)</button>
+        <input id="importFile" type="file" accept=".csv,text/csv" style="display:none">
+        <button id="importCsv" class="ghost">Import CSV</button>
+        <button id="showUid" class="ghost" title="Show current user id">Show UID</button>
+      </div>
+    </div>
+    <div style="max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:10px">
+      <table id="tbl"><thead><tr>
+        <th>Date</th><th>Route</th><th>Status</th><th class="right">Office (h)</th><th class="right">Route (h)</th><th class="right">Total (h)</th><th class="right">Parcels</th><th class="right">Letters</th><th class="right">Miles</th><th>Weather</th><th>Δ</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+</main>
+
+<!-- Magic link dialog -->
+<dialog id="linkDlg">
+  <form method="dialog" class="grid" style="min-width:320px;gap:10px">
+    <h3 style="margin:0">Link devices</h3>
+    <small>Enter your email, then tap the magic link in your inbox on each device.</small>
+    <input id="email" type="email" placeholder="you@example.com" required>
+    <div class="row" style="justify-content:flex-end;gap:8px"><button class="ghost" value="cancel">Cancel</button><button id="sendLink">Send link</button></div>
+  </form>
+</dialog>
+
+<!-- Email + Password dialog -->
+<dialog id="pwDlg">
+  <form method="dialog" class="grid" style="min-width:320px;gap:10px">
+    <h3 style="margin:0">Sign in</h3>
+    <input id="loginEmail" type="email" placeholder="Email" autocomplete="username" required>
+    <input id="loginPass"  type="password" placeholder="Password" autocomplete="current-password" required>
+    <div class="row" style="justify-content:flex-end;gap:8px">
+      <button class="ghost" value="cancel">Cancel</button>
+      <button id="doLogin">Sign In</button>
+      <button id="doSignup" class="ghost" type="button" title="Create a new account">Create Account</button>
+    </div>
+    <small id="authMsg"></small>
+  </form>
+</dialog>
+
+<!-- NEW: Set Password dialog -->
+<dialog id="setPwDlg">
+  <form method="dialog" class="grid" style="min-width:320px;gap:10px">
+    <h3 style="margin:0">Set a new password</h3>
+    <input id="newPass"  type="password" placeholder="New password (6+ chars)" required>
+    <input id="newPass2" type="password" placeholder="Confirm password" required>
+    <div class="row" style="justify-content:flex-end;gap:8px">
+      <button class="ghost" value="cancel">Cancel</button>
+      <button id="doSetPw">Save</button>
+    </div>
+    <small id="setPwMsg"></small>
+  </form>
+</dialog>
+
+<!-- Settings / Feature Flags dialog -->
+  <dialog id="settingsDlg">
+  <form method="dialog" class="grid" style="min-width:320px;gap:10px">
+    <h3 style="margin:0">Settings</h3>
+    <label class="row" style="justify-content:space-between;align-items:center;gap:12px">
+      <span>Model scope</span>
+      <select id="modelScope" style="min-width:160px">
+        <option value="rolling">Rolling (120 days)</option>
+        <option value="all">All-time</option>
+      </select>
+    </label>
+    <!-- Feature flags -->
+    <label class="pill"><input id="flagWeekdayTicks" type="checkbox"> Show weekday + short date on line charts</label>
+    <label class="pill"><input id="flagProgressivePills" type="checkbox"> Progressive color pills for deltas</label>
+    <label class="pill"><input id="flagMonthlyGlance" type="checkbox"> Monthly Glance (preview): 4-week stacked sparklines</label>
+    <label class="pill"><input id="flagHolidayAdjust" type="checkbox"> Holiday adjustments (carry Monday into Tuesday)
+    </label>
+    <label class="pill"><input id="flagTrendPills" type="checkbox"> Show Weekly Trend pills (power users)</label>
+    <label class="pill"><input id="flagSameRangeTotals" type="checkbox"> Compare weekly totals: Mon..today vs last Mon..today</label>
+    <label class="pill"><input id="flagHeadlineDigest" type="checkbox"> Show headline digest (Wed evenings)</label>
+    <label class="pill"><input id="flagSmartSummary" type="checkbox"> Smart summary (rule-based)</label>
+    
+    <label class="pill"><input id="flagBaselineCompare" type="checkbox"> Use baseline-normalized compare (2-week weekday avg)</label>
+    <label class="pill"><input id="flagCollapsedUi" type="checkbox"> Collapsed dashboard (experimental)</label>
+    <label class="pill"><input id="flagQuickEntry" type="checkbox"> Quick Entry (experimental)</label>
+    <label class="pill"><input id="flagUspsEval" type="checkbox"> Show USPS Evaluation summary (fixed tag)</label>
+
+    <!-- USPS Evaluation configuration -->
+    <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
+      <h4 style="margin:0 0 6px 0">USPS Evaluation</h4>
+      <small class="muted">Used for comparison metrics; profiles are stored locally on this device.</small>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Profile</small>
+          <select id="evalProfileSelect" style="min-width:160px"></select>
+        </label>
+        <button id="evalProfileAdd" type="button" class="ghost" style="font-size:12px">Add</button>
+        <button id="evalProfileDelete" type="button" class="ghost" style="font-size:12px">Delete</button>
+      </div>
+      <label class="pill" style="margin-top:6px">
+        <small>Display name</small>
+        <input id="evalProfileLabel" placeholder="e.g., Spring 2024 Eval">
+      </label>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Effective from</small>
+          <input id="evalEffectiveFrom" type="date" style="width:160px">
+        </label>
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Effective to</small>
+          <input id="evalEffectiveTo" type="date" style="width:160px">
+        </label>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        <div>
+          <label>Route label</label>
+          <input id="evalRouteId" placeholder="e.g., R1" />
+        </div>
+        <div>
+          <label>Evaluation code</label>
+          <input id="evalCode" placeholder="e.g., 44K" />
+        </div>
+        <div>
+          <label>Boxes (deliveries)</label>
+          <input id="evalBoxesIn" type="number" min="0" step="1" placeholder="e.g., 670" />
+        </div>
+        <div>
+          <label>Stops</label>
+          <input id="evalStopsIn" type="number" min="0" step="1" placeholder="optional" />
+        </div>
+        <div>
+          <label>Expected hours/day</label>
+          <input id="evalHoursIn" type="number" min="0" step="0.1" placeholder="e.g., 9.4" />
+        </div>
+        <div>
+          <label>Expected office hours/day</label>
+          <input id="evalOfficeHoursIn" type="number" min="0" step="0.1" placeholder="e.g., 2.0" />
+        </div>
+        <div>
+          <label>Annual salary ($)</label>
+          <input id="evalSalaryIn" type="number" min="0" step="100" placeholder="e.g., 68000" />
+        </div>
+      </div>
+    </div>
+
+
+    <!-- Vacation Mode configuration -->
+    <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
+      <h4 style="margin:0 0 6px 0">Vacation Mode</h4>
+      <small class="muted">Exclude entries in a date range from all metrics.</small>
+      <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+        <span class="pill" style="gap:6px"><small>From</small> <input id="vacFrom" type="date"></span>
+        <span class="pill" style="gap:6px"><small>To</small> <input id="vacTo" type="date"></span>
+        <button id="vacAdd" class="ghost" type="button">Add Range</button>
+      </div>
+      <div id="vacRanges" class="vac-ranges"></div>
+    </div>
+    <div class="row" style="justify-content:flex-end;gap:8px">
+      <button class="ghost" value="cancel">Close</button>
+      <button id="saveSettings">Save</button>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
+      <h4 style="margin:0 0 6px 0">Extra Trip Defaults</h4>
+      <label class="pill">EMA rate ($/mi)
+        <input id="settingsEmaRate" type="number" min="0" step="0.01" style="margin-left:6px; width:120px">
+      </label>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
+      <h4 style="margin:0 0 6px 0">AI Summary (experimental)</h4>
+      <small class="muted">Stored locally; used when generating the AI diagnostics summary.</small>
+      <div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center">
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>OpenAI API key</small>
+          <input id="settingsOpenAiKey" type="password" placeholder="sk-..." style="width:220px">
+        </label>
+        <button id="clearOpenAiKey" type="button" class="ghost" style="font-size:12px">Clear</button>
+      </div>
+      <div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center">
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Tokens today</small>
+          <input id="tokenUsageToday" type="number" min="0" step="1" style="width:100px">
+        </label>
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>This week</small>
+          <input id="tokenUsageWeek" type="number" min="0" step="1" style="width:100px">
+        </label>
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>This month</small>
+          <input id="tokenUsageMonth" type="number" min="0" step="1" style="width:100px">
+        </label>
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Monthly limit</small>
+          <input id="tokenUsageLimit" type="number" min="0" step="1" placeholder="optional" style="width:110px">
+        </label>
+      </div>
+      <label style="display:block;margin-top:10px">
+        <small class="muted">AI base prompt (system message)</small>
+        <textarea id="aiSummaryBasePrompt" rows="3" style="width:100%;margin-top:4px"></textarea>
+      </label>
+      <small class="muted">Keep this key private. Requests run only when you click “Generate summary.”</small>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
+      <small class="muted">Maintenance</small>
+      <div class="row" style="gap:8px;margin-top:6px">
+        <button id="forceRefreshBtn" class="ghost" title="Force update service worker and clear caches">Force Refresh (update + clear cache)</button>
+      </div>
+      <small class="muted">Use if updates don’t appear due to caching.</small>
+    </div>
+    <small class="muted">Flags are stored locally (this device only).</small>
+  </form>
+</dialog>
+
+<button class="fab" id="fab">+ Add Entry</button>
+
+<!-- Prefer local vendored libraries; fall back to CDN -->
+<script src="vendor/luxon.min.js"></script>
+<script src="vendor/chart.umd.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="https://unpkg.com/luxon@3/build/global/luxon.min.js"></script>
+<!-- Chart.js intentionally not loaded statically to avoid parse errors on blocked/truncated networks. Charts are optional. -->
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+
+
+
+<script src="public/app.js"></script>
+<!-- Register the service worker for offline support -->
+
+</body>
+</html>

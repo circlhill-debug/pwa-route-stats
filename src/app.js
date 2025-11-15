@@ -657,7 +657,7 @@ import './modules/forecast.js';
         }
       }
       const tomorrowDate = DateTime.now().setZone(ZONE).plus({ days: 1 });
-      const tomorrowDow = tomorrowDate.weekday % 7;
+      const tomorrowDow = tomorrowDate.weekday === 7 ? 0 : tomorrowDate.weekday;
       const forecastText = computeForecastText({ targetDow: tomorrowDow }) || 'Forecast unavailable';
       storeForecastSnapshot(tomorrowDate.toISODate(), forecastText);
       const container = document.querySelector('#forecastBadgeContainer') || document.body;

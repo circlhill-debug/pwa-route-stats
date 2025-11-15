@@ -1974,8 +1974,10 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             if (letters2 != null) hintParts.push(`Letters: ${letters2}`);
             const basePrompt = hintParts.length ? `${hintParts.join(" \xB7 ")}
 Reason (e.g., Road closure, Weather, Extra parcels):` : "Reason (e.g., Road closure, Weather, Extra parcels):";
+            const tagReference = "Tag keywords: break, flats, parcels, letters, second-trip, detour, load, gas, traffic, road, weather.";
             const reasonPrompt = window.prompt(`${basePrompt}
-You can append minutes like "+15" (e.g., "parcels+15") and separate multiple reasons with commas (e.g., "parcels+15, flats+30").`, defaultReason);
+${tagReference}
+You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-10") and separate multiple reasons with commas (e.g., "parcels+15, flats-20").`, defaultReason);
             if (reasonPrompt === null) return;
             let reasonText = reasonPrompt.trim();
             if (!reasonText) {
@@ -5145,7 +5147,7 @@ You can append minutes like "+15" (e.g., "parcels+15") and separate multiple rea
         }
       }
       const tomorrowDate = DateTime.now().setZone(ZONE).plus({ days: 1 });
-      const tomorrowDow = tomorrowDate.weekday % 7;
+      const tomorrowDow = tomorrowDate.weekday === 7 ? 0 : tomorrowDate.weekday;
       const forecastText = computeForecastText({ targetDow: tomorrowDow }) || "Forecast unavailable";
       storeForecastSnapshot(tomorrowDate.toISODate(), forecastText);
       const container = document.querySelector("#forecastBadgeContainer") || document.body;

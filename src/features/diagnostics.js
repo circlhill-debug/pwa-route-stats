@@ -681,7 +681,8 @@ export function createDiagnostics({
           const basePrompt = hintParts.length
             ? `${hintParts.join(' · ')}\nReason (e.g., Road closure, Weather, Extra parcels):`
             : 'Reason (e.g., Road closure, Weather, Extra parcels):';
-          const reasonPrompt = window.prompt(`${basePrompt}\nYou can append minutes like "+15" (e.g., "parcels+15") and separate multiple reasons with commas (e.g., "parcels+15, flats+30").`, defaultReason);
+          const tagReference = 'Tag keywords: break, flats, parcels, letters, second-trip, detour, load, gas, traffic, road, weather.';
+          const reasonPrompt = window.prompt(`${basePrompt}\n${tagReference}\nYou can append ± minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-10") and separate multiple reasons with commas (e.g., "parcels+15, flats-20").`, defaultReason);
           if (reasonPrompt === null) return;
           let reasonText = reasonPrompt.trim();
           if (!reasonText) {

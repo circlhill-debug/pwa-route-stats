@@ -45,6 +45,21 @@
   .grid{ display:grid; gap:12px }
   @media(min-width:1000px){ .grid-2{ grid-template-columns:1.1fr .9fr } }
   .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px }
+  .forecast-badge{
+    padding:12px 18px;
+    background:#f0f8ff;
+    border:2px solid #4682b4;
+    border-radius:10px;
+    font-size:15px;
+    margin-top:10px;
+    max-width:300px;
+    color:#1f2933;
+  }
+  .forecast-badge-container{
+    margin-top:12px;
+    display:flex;
+    justify-content:flex-start;
+  }
   label{ font-size:13px; color:var(--muted) }
   input,select,textarea{ width:100%; padding:12px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:16px }
   button{ background:var(--brand); color:#fff; border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer }
@@ -449,6 +464,7 @@
         </div>
         <div class="stat full-span" id="todayHeaviness" style="display:none"></div>
       </div>
+      <div id="forecastBadgeContainer" class="forecast-badge-container"></div>
     </div>
 
     <div class="snapshot-section">

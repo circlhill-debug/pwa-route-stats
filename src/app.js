@@ -52,12 +52,14 @@ import {
   createSupabaseClient,
   handleAuthCallback
 } from './services/supabaseClient.js';
+import { computeForecastText, storeForecastSnapshot, saveForecastSnapshot, syncForecastSnapshotsFromSupabase } from './modules/forecast.js';
 
 import { createDiagnostics } from './features/diagnostics.js';
 import { createAiSummary } from './features/aiSummary.js';
 import { createCharts } from './features/charts.js';
 import { createSummariesFeature } from './features/summaries.js';
 import { parseDismissReasonInput } from './utils/diagnostics.js';
+import './modules/forecast.js';
 
 // If libs failed to load, show a clear banner with next step
   (function(){
@@ -644,9 +646,42 @@ import { parseDismissReasonInput } from './utils/diagnostics.js';
       tag.onclick = ()=> document.getElementById('btnSettings')?.click();
     }catch(_){ /* ignore */ }
   }
+
+  async function renderTomorrowForecast(){
+    try{
+      if (CURRENT_USER_ID){
+        try {
+          await syncForecastSnapshotsFromSupabase(sb, CURRENT_USER_ID, { silent: true });
+        } catch (err) {
+          console.warn('renderTomorrowForecast: snapshot sync failed, using local cache', err);
+        }
+      }
+      const tomorrowDate = DateTime.now().setZone(ZONE).plus({ days: 1 });
+      const tomorrowDow = tomorrowDate.weekday === 7 ? 0 : tomorrowDate.weekday;
+      const forecastText = computeForecastText({ targetDow: tomorrowDow }) || 'Forecast unavailable';
+      storeForecastSnapshot(tomorrowDate.toISODate(), forecastText);
+      const container = document.querySelector('#forecastBadgeContainer') || document.body;
+      if (!container) return;
+      const existingBadges = container.querySelectorAll('.forecast-badge');
+      existingBadges.forEach(node => node.remove());
+      const forecastBadge = document.createElement('div');
+      forecastBadge.className = 'forecast-badge';
+      const titleEl = document.createElement('h3');
+      titleEl.textContent = '🌤 Tomorrow’s Forecast';
+      const bodyEl = document.createElement('p');
+      bodyEl.textContent = forecastText;
+      forecastBadge.appendChild(titleEl);
+      forecastBadge.appendChild(bodyEl);
+      container.appendChild(forecastBadge);
+    }catch(err){
+      console.warn('renderTomorrowForecast failed', err);
+    }
+  }
+  window.renderTomorrowForecast = renderTomorrowForecast;
   // initial render
   renderUspsEvalTag();
   renderVacationRanges();
+  renderTomorrowForecast();
 
   function getLastNonEmptyWeek(rows, now, { excludeVacation = true } = {}){
     const worked = (rows || []).filter(r => (+r.hours || 0) > 0);
@@ -1899,6 +1934,50 @@ function parseBreakMinutesFromRow(row){
   }catch(_){ return 0; }
 }
 
+function readTagHistoryForIso(iso){
+  if (!iso) return [];
+  try{
+    const raw = localStorage.getItem('routeStats.tagHistory');
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    const entry = parsed.find(item => item && (item.iso === iso || item.date === iso));
+    if (!entry) return [];
+    if (Array.isArray(entry.tags)) return entry.tags.filter(Boolean);
+    return [];
+  }catch(_){
+    return [];
+  }
+}
+
+function buildForecastSnapshotFromPayload(payload, userId){
+  if (!payload || !payload.work_date) return null;
+  const iso = payload.work_date;
+  const dt = DateTime.fromISO(iso, { zone: ZONE });
+  const weekday = dt.isValid ? (dt.weekday % 7) : (new Date(iso)).getDay();
+  const hours = Number(payload.hours);
+  const officeHours = Number(payload.office_minutes);
+  const snapshot = {
+    iso,
+    weekday,
+    totalTime: Number.isFinite(hours) ? Math.round(hours * 60) : null,
+    officeTime: Number.isFinite(officeHours) ? Math.round(officeHours * 60) : null,
+    endTime: payload.end_time || payload.return_time || null,
+    tags: readTagHistoryForIso(iso),
+    user_id: userId || null
+  };
+  return snapshot;
+}
+
+async function persistForecastSnapshot(payload, userId){
+  try{
+    const snapshot = buildForecastSnapshotFromPayload(payload, userId);
+    if (!snapshot) return;
+    await saveForecastSnapshot(snapshot, { supabaseClient: sb, silent: true });
+  }catch(err){
+    console.warn('[Forecast] unable to save snapshot', err);
+  }
+}
+
 function getHourlyRateFromEval(){
   try{
     const cfg = USPS_EVAL || loadEval();
@@ -1976,11 +2055,13 @@ function getHourlyRateFromEval(){
       dWrite.textContent = error ? 'Failed' : 'OK'; if (error){ alert(error.message); return; }
       updateYearlyTotals({ ...payload, date: payload.work_date });
       renderYearlyBadges();
+      await persistForecastSnapshot(payload, user.id);
       clone.textContent = 'Update'; clone.disabled = true; clone.classList.add('saving','savedFlash');
       setTimeout(()=>{ clone.disabled=false; clone.classList.remove('saving'); }, 400); setTimeout(()=> clone.classList.remove('savedFlash'), 700);
       const rows = await fetchEntries();
       allRows = rows;
       rebuildAll();
+      renderTomorrowForecast();
       editingKey = { user_id:user.id, work_date:date.value }; clone.classList.remove('ghost');
     });
   })();
@@ -2446,13 +2527,14 @@ function getHourlyRateFromEval(){
       let curTotal = 0;
       let baseTotal = 0;
       for (let i = 0; i <= dayIndexToday && i < 7; i++){
-        const curVal = offIdxThisWeek.has(i) ? 0 : (thisWeek[i]?.[key] || 0);
+        if (offIdxThisWeek.has(i)) continue; // skip days not worked this week
+        const curVal = thisWeek[i]?.[key] || 0;
         let baseVal = lastWeek[i]?.[key] || 0;
         if (holidayAdjEnabled && carryNext && carryNext.has(i)){
           baseVal = (lastWeek[i-1]?.[key] || 0) + (lastWeek[i]?.[key] || 0);
         }
         curTotal += curVal || 0;
-        if (i <= dayIndexToday) baseTotal += baseVal || 0;
+        baseTotal += baseVal || 0;
       }
       return { cur: curTotal, base: baseTotal };
     };
@@ -2462,17 +2544,14 @@ function getHourlyRateFromEval(){
     const normLetters = normalizedTotals('l');
 
     // Current-week target % vs last week, normalized by matched day counts
-    let hTarget = pct(normHours.cur, normHours.base);
-    let pTarget = pct(normParcels.cur, normParcels.base);
-    let lTarget = pct(normLetters.cur, normLetters.base);
+    const hTarget = pct(normHours.cur, normHours.base);
+    const pTarget = pct(normParcels.cur, normParcels.base);
+    const lTarget = pct(normLetters.cur, normLetters.base);
 
-    // Blend from carry-forward toward current as the week progresses (Mon..Fri ≈ 5 workdays)
-    const progress = Math.min(1, dThis/5);
-    const blend=(carry,target)=> (carry==null && target==null)? null : (carry==null? target : target==null? carry : carry*(1-progress) + target*progress);
-
-    const dh = blend(hCarry, hTarget);
-    const dp = blend(pCarry, pTarget);
-    const dl = blend(lCarry, lTarget);
+    // Weekly pills should reflect the live week-to-date comparison (no smoothing).
+    const dh = hTarget;
+    const dp = pTarget;
+    const dl = lTarget;
 
     const fmt = p => {
       if (p == null) return '—';

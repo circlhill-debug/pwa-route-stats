@@ -681,20 +681,13 @@ export function createDiagnostics({
           const basePrompt = hintParts.length
             ? `${hintParts.join(' · ')}\nReason (e.g., Road closure, Weather, Extra parcels):`
             : 'Reason (e.g., Road closure, Weather, Extra parcels):';
-          const reasonPrompt = window.prompt(`${basePrompt}\nYou can append minutes like "+15" (e.g., "parcels+15") and separate multiple reasons with commas (e.g., "parcels+15, flats+30").`, defaultReason);
+          const tagReference = 'Tag keywords: break, flats, parcels, letters, second-trip, detour, load, gas, traffic, road, weather.';
+          const reasonPrompt = window.prompt(`${basePrompt}\n${tagReference}\nYou can append ± minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-10") and separate multiple reasons with commas (e.g., "parcels+15, flats-20").`, defaultReason);
           if (reasonPrompt === null) return;
           let reasonText = reasonPrompt.trim();
           if (!reasonText) {
             window.alert('No reason provided; dismissal cancelled.');
             return;
-          }
-
-          if (!/[+:]/.test(reasonText)) {
-            const minutesPrompt = window.prompt('Minutes attributable to this reason (optional, numbers only):', deltaMinutes != null ? String(deltaMinutes) : '');
-            const minutesInput = minutesPrompt != null ? minutesPrompt.trim() : '';
-            if (minutesInput) {
-              reasonText = `${reasonText}+${minutesInput}`;
-            }
           }
 
           const tags = parseDismissReasonInput(reasonText);
@@ -703,18 +696,44 @@ export function createDiagnostics({
             return;
           }
           const nowIso = new Date().toISOString();
+          const tagTimestamp = Date.now();
+          const tagEntries = tags.map(t => ({
+            reason: t.reason,
+            minutes: (t.minutes != null && Number.isFinite(Number(t.minutes))) ? Number(t.minutes) : null,
+            notedAt: tagTimestamp
+          }));
 
           const existing = loadDismissedResiduals().filter(item => item && item.iso !== iso);
           if (tags.length) {
             const entry = {
               iso,
-              tags: tags.map(t => ({
-                reason: t.reason,
-                minutes: t.minutes,
-                notedAt: Date.now()
-              })),
+              tags: tagEntries,
               notedAt: nowIso
             };
+            try {
+              const dismissedIso = iso;
+              let history = [];
+              try {
+                const rawHistory = localStorage.getItem('routeStats.tagHistory');
+                const parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
+                if (Array.isArray(parsedHistory)) history = parsedHistory.filter(Boolean);
+              } catch (err) {
+                console.warn('Could not parse tag history; resetting.', err);
+                history = [];
+              }
+              if (!Array.isArray(history)) history = [];
+              const existingHistory = history.find(item => item && item.iso === dismissedIso);
+              if (existingHistory) {
+                existingHistory.tags.push(...tagEntries);
+              } else {
+                history.push({ iso: dismissedIso, tags: [...tagEntries] });
+              }
+              localStorage.setItem('routeStats.tagHistory', JSON.stringify(history));
+              console.log('📦 Saved tag history:', history);
+              window.renderTomorrowForecast?.();
+            } catch (err) {
+              console.warn('Failed to update tag history.', err);
+            }
             existing.push(entry);
             saveDismissedResiduals(existing);
             notifyDismissedChange();

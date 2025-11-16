@@ -112,7 +112,35 @@ import './modules/forecast.js';
 
   const DEFAULT_AI_BASE_PROMPT = 'You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.';
   const SECOND_TRIP_EMA_KEY = 'routeStats.secondTrip.ema';
+  const THEME_STORAGE_KEY = 'routeStats.theme';
   let showMilestoneHistory = false;
+  let CURRENT_THEME = 'classic';
+
+  function loadThemePreference(){
+    try{
+      const stored = localStorage.getItem(THEME_STORAGE_KEY);
+      return stored === 'night' ? 'night' : 'classic';
+    }catch(_){
+      return 'classic';
+    }
+  }
+  function applyThemePreference(theme){
+    const root = document.documentElement;
+    const next = theme === 'night' ? 'night' : 'classic';
+    if (!root) return;
+    if (next === 'classic'){
+      root.removeAttribute('data-theme');
+    } else {
+      root.setAttribute('data-theme', next);
+    }
+    CURRENT_THEME = next;
+  }
+  function persistThemePreference(theme){
+    try{
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    }catch(_){ }
+  }
+  applyThemePreference(loadThemePreference());
 
   function addVacationRange(fromIso, toIso){
     if (!fromIso || !toIso) return;
@@ -151,9 +179,9 @@ import './modules/forecast.js';
         const to   = DateTime.fromISO(r.to,   { zone: ZONE });
         const days = Math.max(1, Math.round(to.endOf('day').diff(from.startOf('day'), 'days').days + 1));
         const label = `${from.toFormat('LLL dd, yyyy')} → ${to.toFormat('LLL dd, yyyy')}`;
-        return `<div class="vac-range-item"><div><strong>${label}</strong><br><small>${days} day${days===1?'':'s'}</small></div><button class="ghost vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
+        return `<div class="vac-range-item"><div><strong>${label}</strong><br><small>${days} day${days===1?'':'s'}</small></div><button class="btn vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
       }catch(_){
-        return `<div class="vac-range-item"><div><strong>${r.from} → ${r.to}</strong></div><button class="ghost vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
+        return `<div class="vac-range-item"><div><strong>${r.from} → ${r.to}</strong></div><button class="btn vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
       }
     }).join('');
     container.innerHTML = rows;
@@ -1048,6 +1076,7 @@ const authReadyPromise = handleAuthCallback(sb);
   const settingsDlg = document.getElementById('settingsDlg');
   const btnSettings = document.getElementById('btnSettings');
   const modelScopeSelect = document.getElementById('modelScope');
+  const themeSelect = document.getElementById('themeSelect');
   const flagWeekdayTicks = document.getElementById('flagWeekdayTicks');
   const flagProgressivePills = document.getElementById('flagProgressivePills');
   const flagMonthlyGlance = document.getElementById('flagMonthlyGlance');
@@ -1063,6 +1092,9 @@ const authReadyPromise = handleAuthCallback(sb);
   const flagDayCompare = document.getElementById('flagDayCompare');
   const flagUspsEval = document.getElementById('flagUspsEval');
   const settingsEmaRate = document.getElementById('settingsEmaRate');
+  if (themeSelect){
+    themeSelect.value = CURRENT_THEME;
+  }
   // USPS Eval inputs
   const evalRouteId = document.getElementById('evalRouteId');
   const evalCode    = document.getElementById('evalCode');
@@ -1159,6 +1191,7 @@ aiSummary = createAiSummary({
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
+    if (themeSelect) themeSelect.value = CURRENT_THEME;
     // populate USPS eval fields
     try{
       populateEvalProfileSelectUI(USPS_EVAL?.profileId);
@@ -1300,6 +1333,13 @@ aiSummary = createAiSummary({
         setAiBasePrompt(aiPromptTextarea.value || '');
       }
     }catch(_){ }
+    if (themeSelect){
+      const chosenTheme = themeSelect.value === 'night' ? 'night' : 'classic';
+      if (chosenTheme !== CURRENT_THEME){
+        applyThemePreference(chosenTheme);
+      }
+      persistThemePreference(chosenTheme);
+    }
     try{ aiSummary.readTokenInputs(); }catch(_){ }
     saveFlags(FLAGS);
     settingsDlg.close();
@@ -2989,6 +3029,7 @@ function getHourlyRateFromEval(){
       { id:'parcelsOverTimeCard' },
       { id:'lettersOverTimeCard' },
       { id:'monthlyGlanceCard' },
+      { id:'evalCompareCard' },
       { id:'quickFilterCard' },
       { id:'milestoneCard' },
       { id:'dayCompareCard' },
@@ -3015,6 +3056,10 @@ function getHourlyRateFromEval(){
     for (const t of targets){
       const sec = document.getElementById(t.id);
       if (!sec) continue;
+      try{
+        if (enabled) sec.setAttribute('data-collapsible-active', 'true');
+        else sec.removeAttribute('data-collapsible-active');
+      }catch(_){ }
       // Ensure a header element to host the toggle
       const headerEl = sec.firstElementChild; // usually h3 or header row
       if (!headerEl) continue;

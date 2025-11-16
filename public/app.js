@@ -3464,9 +3464,11 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       if (details) {
         const usedP = resP && resP.used ? `, ${resP.used} day(s) used` : "";
         const usedL = resL && resL.used ? `, ${resL.used} day(s) used` : "";
+        const parcelsColor = (brand || "#2b7fff").trim() || "#2b7fff";
+        const lettersColor = (warnColor || "#f97316").trim() || "#f97316";
         details.innerHTML = [
-          line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, (brand || "#2b7fff").trim() || "#2b7fff"),
-          line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, (warnColor || "#f97316").trim() || "#f97316"),
+          line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, parcelsColor),
+          line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, lettersColor),
           line("Hours", dH, `(${hoursThisWeek.toFixed(1)}h vs ${hoursLastWeek.toFixed(1)}h)`)
         ].join("");
         details.style.display = "block";
@@ -4616,7 +4618,35 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
   var DEFAULT_AI_BASE_PROMPT = "You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.";
   var SECOND_TRIP_EMA_KEY = "routeStats.secondTrip.ema";
+  var THEME_STORAGE_KEY = "routeStats.theme";
   var showMilestoneHistory = false;
+  var CURRENT_THEME = "classic";
+  function loadThemePreference() {
+    try {
+      const stored = localStorage.getItem(THEME_STORAGE_KEY);
+      return stored === "night" ? "night" : "classic";
+    } catch (_) {
+      return "classic";
+    }
+  }
+  function applyThemePreference(theme) {
+    const root = document.documentElement;
+    const next = theme === "night" ? "night" : "classic";
+    if (!root) return;
+    if (next === "classic") {
+      root.removeAttribute("data-theme");
+    } else {
+      root.setAttribute("data-theme", next);
+    }
+    CURRENT_THEME = next;
+  }
+  function persistThemePreference(theme) {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch (_) {
+    }
+  }
+  applyThemePreference(loadThemePreference());
   function addVacationRange(fromIso, toIso) {
     if (!fromIso || !toIso) return;
     const next = { ranges: [...(VACATION == null ? void 0 : VACATION.ranges) || [], { from: fromIso, to: toIso }] };
@@ -4651,9 +4681,9 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         const to = DateTime.fromISO(r.to, { zone: ZONE });
         const days = Math.max(1, Math.round(to.endOf("day").diff(from.startOf("day"), "days").days + 1));
         const label = `${from.toFormat("LLL dd, yyyy")} \u2192 ${to.toFormat("LLL dd, yyyy")}`;
-        return `<div class="vac-range-item"><div><strong>${label}</strong><br><small>${days} day${days === 1 ? "" : "s"}</small></div><button class="ghost vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
+        return `<div class="vac-range-item"><div><strong>${label}</strong><br><small>${days} day${days === 1 ? "" : "s"}</small></div><button class="btn vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
       } catch (_) {
-        return `<div class="vac-range-item"><div><strong>${r.from} \u2192 ${r.to}</strong></div><button class="ghost vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
+        return `<div class="vac-range-item"><div><strong>${r.from} \u2192 ${r.to}</strong></div><button class="btn vac-remove" type="button" data-index="${idx}">Remove</button></div>`;
       }
     }).join("");
     container.innerHTML = rows;
@@ -5531,6 +5561,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var settingsDlg = document.getElementById("settingsDlg");
   var btnSettings = document.getElementById("btnSettings");
   var modelScopeSelect = document.getElementById("modelScope");
+  var themeSelect = document.getElementById("themeSelect");
   var flagWeekdayTicks = document.getElementById("flagWeekdayTicks");
   var flagProgressivePills = document.getElementById("flagProgressivePills");
   var flagMonthlyGlance = document.getElementById("flagMonthlyGlance");
@@ -5546,6 +5577,9 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var flagDayCompare = document.getElementById("flagDayCompare");
   var flagUspsEval = document.getElementById("flagUspsEval");
   var settingsEmaRate = document.getElementById("settingsEmaRate");
+  if (themeSelect) {
+    themeSelect.value = CURRENT_THEME;
+  }
   var evalRouteId = document.getElementById("evalRouteId");
   var evalCode = document.getElementById("evalCode");
   var evalBoxesIn = document.getElementById("evalBoxesIn");
@@ -5636,6 +5670,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
+    if (themeSelect) themeSelect.value = CURRENT_THEME;
     try {
       populateEvalProfileSelectUI(USPS_EVAL == null ? void 0 : USPS_EVAL.profileId);
     } catch (_) {
@@ -5784,6 +5819,13 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         setAiBasePrompt(aiPromptTextarea.value || "");
       }
     } catch (_) {
+    }
+    if (themeSelect) {
+      const chosenTheme = themeSelect.value === "night" ? "night" : "classic";
+      if (chosenTheme !== CURRENT_THEME) {
+        applyThemePreference(chosenTheme);
+      }
+      persistThemePreference(chosenTheme);
     }
     try {
       aiSummary.readTokenInputs();
@@ -7761,6 +7803,7 @@ Score: ${overallScore}/10 (higher is better)`;
       { id: "parcelsOverTimeCard" },
       { id: "lettersOverTimeCard" },
       { id: "monthlyGlanceCard" },
+      { id: "evalCompareCard" },
       { id: "quickFilterCard" },
       { id: "milestoneCard" },
       { id: "dayCompareCard" },
@@ -7788,6 +7831,11 @@ Score: ${overallScore}/10 (higher is better)`;
     for (const t of targets) {
       const sec = document.getElementById(t.id);
       if (!sec) continue;
+      try {
+        if (enabled) sec.setAttribute("data-collapsible-active", "true");
+        else sec.removeAttribute("data-collapsible-active");
+      } catch (_) {
+      }
       const headerEl = sec.firstElementChild;
       if (!headerEl) continue;
       let body = sec.querySelector(":scope > .__collapseBody");

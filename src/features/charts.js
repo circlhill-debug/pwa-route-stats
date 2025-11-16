@@ -733,9 +733,11 @@ export function createCharts({
     if (details){
       const usedP = (resP && resP.used) ? `, ${resP.used} day(s) used` : '';
       const usedL = (resL && resL.used) ? `, ${resL.used} day(s) used` : '';
+      const parcelsColor = (brand || '#2b7fff').trim() || '#2b7fff';
+      const lettersColor = (warnColor || '#f97316').trim() || '#f97316';
       details.innerHTML = [
-        line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, (brand || '#2b7fff').trim() || '#2b7fff'),
-        line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, (warnColor || '#f97316').trim() || '#f97316'),
+        line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, parcelsColor),
+        line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, lettersColor),
         line('Hours', dH, `(${hoursThisWeek.toFixed(1)}h vs ${hoursLastWeek.toFixed(1)}h)`)
       ].join('');
       details.style.display = 'block';

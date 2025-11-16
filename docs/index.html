@@ -13,138 +13,61 @@
 <title>Route Stats — Live Dashboard</title>
 <style>
   :root{
-    --rs-bg:#000000;
-    --rs-card-bg:#28282B;
-    --rs-border:#3A3A3D;
-    --rs-text-primary:#FFFFFF;
-    --rs-text-secondary:#C7C7C7;
-    --rs-purple-primary:#2563EB;
-    --rs-purple-hover:#1E40AF;
-    --rs-purple-muted:#1D3A84;
-    --rs-shadow:rgba(0,0,0,0.4);
-    --bg:var(--rs-bg);
-    --card:var(--rs-card-bg);
-    --border:var(--rs-border);
-    --text:var(--rs-text-primary);
-    --muted:var(--rs-text-secondary);
-    --brand:var(--rs-purple-primary);
-    --safe-top:env(safe-area-inset-top);
-    --safe-bottom:env(safe-area-inset-bottom);
-    --safe-left:env(safe-area-inset-left);
-    --safe-right:env(safe-area-inset-right);
+    --bg:#0f1115; --card:#141821; --border:#22262e; --text:#e8e8ea; --muted:#9aa0aa; --brand:#2b7fff;
     --good:#7CE38B; --warn:#FFD27A; --bad:#FF8FA1;
-    --rs-neg:#17803d;
-    --rs-pos:#c0392b;
-    --rs-mute:#6b7280;
+    --rs-neg:#17803d;   /* under time = green */
+    --rs-pos:#c0392b;   /* over time  = red   */
+    --rs-mute:#6b7280;  /* neutral/gray      */
     --rs-cell:rgba(0,0,0,0.06);
     --rs-cell-dark:rgba(255,255,255,0.10);
     --rs-grid:rgba(154,160,170,0.45);
     --rs-grid-dark:rgba(224,228,236,0.45);
+    --safe-top: env(safe-area-inset-top);
+    --safe-bottom: env(safe-area-inset-bottom);
+    --safe-left: env(safe-area-inset-left);
+    --safe-right: env(safe-area-inset-right);
   }
   *{box-sizing:border-box}
   html{ font-size: clamp(15px, 1.6vw + .4rem, 18px); }
   body{
     margin:0;
-    background:var(--rs-bg)!important;
-    color:var(--rs-text-primary);
+    background:var(--bg);
+    color:var(--text);
     font-family:system-ui,-apple-system,Inter,Segoe UI,Roboto,Arial,sans-serif;
     padding-bottom:max(12px, var(--safe-bottom));
     padding-top:max(8px, var(--safe-top));
     -webkit-text-size-adjust:100%;
     text-size-adjust:100%;
-    -webkit-font-smoothing:antialiased;
-    font-smoothing:antialiased;
   }
   header{ border-bottom:1px solid var(--border); padding:14px 16px }
   .wrap{ max-width:1120px; margin:0 auto; padding:16px }
   h1{ margin:0; font-size:20px; letter-spacing:.3px }
   .grid{ display:grid; gap:12px }
   @media(min-width:1000px){ .grid-2{ grid-template-columns:1.1fr .9fr } }
-  .card,
-  .box,
-  .panel,
-  .stats-card,
-  .route-box,
-  .summary-card{
-    background:var(--rs-card-bg)!important;
-    border:1px solid var(--rs-border)!important;
-    border-radius:10px;
-    padding:12px;
-    box-shadow:0 2px 4px var(--rs-shadow);
-    color:var(--rs-text-primary);
-  }
-  .card h1,
-  .card h2,
-  .card h3,
-  .box h1,
-  .box h2,
-  .box h3{
-    color:var(--rs-text-primary);
-  }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px }
   .forecast-badge{
     padding:12px 18px;
-    background:#1e293b;
-    border:2px solid #3b82f6;
+    background:#f0f8ff;
+    border:2px solid #4682b4;
     border-radius:10px;
     font-size:15px;
     margin-top:10px;
     max-width:300px;
-    color:#facc15;
-    text-shadow:none;
+    color:#1f2933;
   }
   .forecast-badge-container{
     margin-top:12px;
     display:flex;
     justify-content:flex-start;
   }
-  label{ font-size:13px; color:var(--rs-text-secondary) }
-  input,select,textarea{
-    width:100%;
-    padding:12px;
-    background:var(--rs-card-bg)!important;
-    border:1px solid var(--rs-border)!important;
-    border-radius:10px;
-    color:var(--rs-text-primary)!important;
-    font-size:16px;
-  }
-  button,
-  .btn,
-  .action-btn{
-    background:var(--rs-purple-primary)!important;
-    color:var(--rs-text-primary)!important;
-    border:0;
-    border-radius:8px;
-    padding:8px 14px;
-    cursor:pointer;
-    font-weight:600;
-    transition:background .15s ease;
-  }
-  button:hover,
-  .btn:hover,
-  .action-btn:hover{ background:var(--rs-purple-hover)!important; }
-  button.secondary,
-  .btn.secondary,
-  .action-btn.secondary{ background:var(--rs-purple-muted)!important; }
-  button.ghost{ background:transparent; color:var(--rs-text-primary); border:1px solid var(--rs-border) }
-  small,
-  p,
-  .description,
-  .subtext,
-  .note{ color:var(--rs-text-secondary)!important; }
-  table{
-    width:100%;
-    border-collapse:collapse;
-    background:var(--rs-card-bg)!important;
-    color:var(--rs-text-primary)!important;
-  }
-  th,td{ border-bottom:1px solid var(--rs-border); padding:8px 6px; text-align:left }
-  th{ color:var(--rs-text-primary); font-weight:600 }
-  td{ color:var(--rs-text-secondary); }
-  .icon,
-  svg{ fill:var(--rs-text-primary)!important; color:var(--rs-text-primary)!important; }
-  .tile:hover,
-  .card:hover,
-  .box:hover{ filter:none; }
+  label{ font-size:13px; color:var(--muted) }
+  input,select,textarea{ width:100%; padding:12px; background:transparent; border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:16px }
+  button{ background:var(--brand); color:#fff; border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer }
+  button.ghost{ background:transparent; color:var(--text); border:1px solid var(--border) }
+  small{ color:var(--muted) }
+  table{ width:100%; border-collapse:collapse }
+  th,td{ border-bottom:1px solid var(--border); padding:8px 6px; text-align:left }
+  th{ color:var(--muted); font-weight:600 }
   .right{ text-align:right }
   .pill{ display:inline-flex; gap:8px; align-items:center; border:1px solid var(--border); padding:6px 8px; border-radius:999px; background:transparent }
   .pill.badge-holiday{
@@ -258,15 +181,7 @@
   .stat .statValue--sm{ font-size:17px; }
   .stat .statDelta{ font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
   .snapshot-sections{ display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; }
-  .snapshot-section{
-    border:1px solid var(--rs-border);
-    border-radius:14px;
-    padding:14px;
-    background:var(--rs-card-bg);
-    display:flex;
-    flex-direction:column;
-    gap:12px;
-  }
+  .snapshot-section{ border:1px solid var(--border); border-radius:14px; padding:14px; background:rgba(148,163,184,0.08); display:flex; flex-direction:column; gap:12px; }
   .fullWidth{ grid-column:1 / -1; }
   .snapshot-section h4{ margin:0 0 10px 0; font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); }
   .snapshot-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; align-items:stretch; }

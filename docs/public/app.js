@@ -442,6 +442,13 @@
   function saveVacation(cfg) {
     try {
       localStorage.setItem(VACAY_KEY, JSON.stringify({ ranges: cfg.ranges || [] }));
+      clearWeeklyBaselines();
+    } catch (_) {
+    }
+  }
+  function clearWeeklyBaselines() {
+    try {
+      localStorage.removeItem(BASELINE_KEY);
     } catch (_) {
     }
   }

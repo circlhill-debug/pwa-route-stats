@@ -410,6 +410,15 @@ export function loadVacation(){
 export function saveVacation(cfg){
   try{
     localStorage.setItem(VACAY_KEY, JSON.stringify({ ranges: cfg.ranges || [] }));
+    clearWeeklyBaselines();
+  }catch(_){
+    // ignore storage errors
+  }
+}
+
+export function clearWeeklyBaselines(){
+  try{
+    localStorage.removeItem(BASELINE_KEY);
   }catch(_){
     // ignore storage errors
   }

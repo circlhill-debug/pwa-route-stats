@@ -80,9 +80,10 @@
     -webkit-text-size-adjust:100%;
     text-size-adjust:100%;
     -webkit-font-smoothing:antialiased;
-    font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    -webkit-tap-highlight-color:transparent;
   }
-  header{ border-bottom:1px solid var(--border); padding:14px 16px }
+  header{ border-bottom:1px solid var(--border); padding:14px 16px; -webkit-tap-highlight-color:transparent }
   .wrap{ max-width:1120px; margin:0 auto; padding:16px }
   h1{ margin:0; font-size:20px; letter-spacing:.3px }
   .grid{ display:grid; gap:12px }

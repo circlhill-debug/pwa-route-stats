@@ -134,6 +134,32 @@
     display:flex;
     justify-content:flex-start;
   }
+  @supports (-webkit-touch-callout: none){
+    html:not([data-theme="night"]) body{
+      background:#0f1115!important;
+      color:#e8e8ea;
+    }
+    html:not([data-theme="night"]) .card,
+    html:not([data-theme="night"]) .box,
+    html:not([data-theme="night"]) .panel,
+    html:not([data-theme="night"]) .stats-card,
+    html:not([data-theme="night"]) .route-box,
+    html:not([data-theme="night"]) .summary-card{
+      background:#141821!important;
+      border:1px solid #22262e!important;
+      box-shadow:none;
+    }
+    html:not([data-theme="night"]) .snapshot-section{
+      background:#141821!important;
+      border:1px solid #22262e!important;
+      box-shadow:none;
+    }
+    html:not([data-theme="night"]) .forecast-badge{
+      background:#f0f8ff!important;
+      border:2px solid #4682b4!important;
+      color:#1f2933!important;
+    }
+  }
   label{ font-size:13px; color:var(--rs-text-secondary) }
   input,select,textarea{
     width:100%;

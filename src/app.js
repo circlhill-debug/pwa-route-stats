@@ -61,6 +61,12 @@ import { createSummariesFeature } from './features/summaries.js';
 import { parseDismissReasonInput } from './utils/diagnostics.js';
 import './modules/forecast.js';
 
+// Reset any stored theme and data-theme to enforce current selection
+try{
+  localStorage.removeItem('routeStats.theme');
+  document.documentElement?.removeAttribute('data-theme');
+}catch(_){ /* ignore */ }
+
 // Expose Supabase client globally for debugging
 window.__sb = createSupabaseClient();
 

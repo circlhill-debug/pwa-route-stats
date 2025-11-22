@@ -166,7 +166,7 @@ export async function saveForecastSnapshot(snapshot, options = {}) {
             weekday: normalized.weekday,
             total_time: normalized.totalTime,
             office_time: normalized.officeTime,
-            end_time: normalized.endTime,
+            return_time: normalized.endTime,
             tags: normalized.tags
           }, { onConflict: 'user_id,iso' });
       } catch (err) {
@@ -185,7 +185,7 @@ export async function syncForecastSnapshotsFromSupabase(supabaseClient, userId, 
   try {
     const { data, error } = await supabaseClient
       .from(FORECAST_SNAPSHOT_TABLE)
-      .select('iso, weekday, total_time, office_time, end_time, tags')
+      .select('iso, weekday, total_time, office_time, return_time, tags')
       .eq('user_id', userId)
       .order('iso', { ascending: true });
     if (error) throw error;

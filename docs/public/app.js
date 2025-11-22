@@ -898,7 +898,7 @@
     return Math.round(num);
   }
   function normalizeSnapshot(snapshot) {
-    var _a6, _b, _c, _d, _e, _f, _g;
+    var _a6, _b, _c, _d, _e, _f, _g, _h, _i;
     if (!snapshot || typeof snapshot !== "object") return null;
     const isoSource = snapshot.iso || snapshot.date || snapshot.work_date || snapshot.workDate;
     const iso = typeof isoSource === "string" && isoSource ? isoSource : null;
@@ -906,8 +906,12 @@
     const dt = new Date(iso);
     const weekdayCandidate = Number(snapshot.weekday);
     const weekday = Number.isFinite(weekdayCandidate) ? weekdayCandidate : Number.isNaN(dt.getTime()) ? null : dt.getDay();
-    const totalTime = (_d = minutesFromValue((_c = (_b = (_a6 = snapshot.totalTime) != null ? _a6 : snapshot.total_minutes) != null ? _b : snapshot.totalMinutes) != null ? _c : snapshot.total)) != null ? _d : Number.isFinite(snapshot.hours) ? Math.round(Number(snapshot.hours) * 60) : null;
-    const officeTime = (_g = minutesFromValue((_f = (_e = snapshot.officeTime) != null ? _e : snapshot.office_minutes) != null ? _f : snapshot.officeMinutes)) != null ? _g : Number.isFinite(snapshot.office_hours) ? Math.round(Number(snapshot.office_hours) * 60) : null;
+    const totalTime = (_e = minutesFromValue(
+      (_d = (_c = (_b = (_a6 = snapshot.totalTime) != null ? _a6 : snapshot.total_time) != null ? _b : snapshot.total_minutes) != null ? _c : snapshot.totalMinutes) != null ? _d : snapshot.total
+    )) != null ? _e : Number.isFinite(snapshot.hours) ? Math.round(Number(snapshot.hours) * 60) : null;
+    const officeTime = (_i = minutesFromValue(
+      (_h = (_g = (_f = snapshot.officeTime) != null ? _f : snapshot.office_time) != null ? _g : snapshot.office_minutes) != null ? _h : snapshot.officeMinutes
+    )) != null ? _i : Number.isFinite(snapshot.office_hours) ? Math.round(Number(snapshot.office_hours) * 60) : null;
     const endTime = snapshot.endTime || snapshot.end_time || snapshot.return_time || null;
     let tags = [];
     if (Array.isArray(snapshot.tags)) {
@@ -951,9 +955,9 @@
             user_id: normalized.user_id,
             iso: normalized.iso,
             weekday: normalized.weekday,
-            totalTime: normalized.totalTime,
-            officeTime: normalized.officeTime,
-            endTime: normalized.endTime,
+            total_time: normalized.totalTime,
+            office_time: normalized.officeTime,
+            end_time: normalized.endTime,
             tags: normalized.tags
           }, { onConflict: "user_id,iso" });
         } catch (err) {
@@ -969,7 +973,7 @@
   async function syncForecastSnapshotsFromSupabase(supabaseClient, userId, options = {}) {
     if (!supabaseClient || !userId) return loadForecastBadgeData();
     try {
-      const { data, error } = await supabaseClient.from(FORECAST_SNAPSHOT_TABLE).select("iso, weekday, totalTime, officeTime, endTime, tags").eq("user_id", userId).order("iso", { ascending: true });
+      const { data, error } = await supabaseClient.from(FORECAST_SNAPSHOT_TABLE).select("iso, weekday, total_time, office_time, end_time, tags").eq("user_id", userId).order("iso", { ascending: true });
       if (error) throw error;
       const normalized = (data || []).map((item) => normalizeSnapshot({ ...item, user_id: userId })).filter(Boolean);
       setForecastBadgeData(normalized);

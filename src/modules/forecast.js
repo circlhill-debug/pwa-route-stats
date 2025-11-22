@@ -101,10 +101,21 @@ function normalizeSnapshot(snapshot) {
   const weekdayCandidate = Number(snapshot.weekday);
   const weekday = Number.isFinite(weekdayCandidate) ? weekdayCandidate : (Number.isNaN(dt.getTime()) ? null : dt.getDay());
   const totalTime =
-    minutesFromValue(snapshot.totalTime ?? snapshot.total_minutes ?? snapshot.totalMinutes ?? snapshot.total) ??
+    minutesFromValue(
+      snapshot.totalTime ??
+        snapshot.total_time ??
+        snapshot.total_minutes ??
+        snapshot.totalMinutes ??
+        snapshot.total
+    ) ??
     (Number.isFinite(snapshot.hours) ? Math.round(Number(snapshot.hours) * 60) : null);
   const officeTime =
-    minutesFromValue(snapshot.officeTime ?? snapshot.office_minutes ?? snapshot.officeMinutes) ??
+    minutesFromValue(
+      snapshot.officeTime ??
+        snapshot.office_time ??
+        snapshot.office_minutes ??
+        snapshot.officeMinutes
+    ) ??
     (Number.isFinite(snapshot.office_hours) ? Math.round(Number(snapshot.office_hours) * 60) : null);
   const endTime = snapshot.endTime || snapshot.end_time || snapshot.return_time || null;
   let tags = [];
@@ -153,9 +164,9 @@ export async function saveForecastSnapshot(snapshot, options = {}) {
             user_id: normalized.user_id,
             iso: normalized.iso,
             weekday: normalized.weekday,
-            totalTime: normalized.totalTime,
-            officeTime: normalized.officeTime,
-            endTime: normalized.endTime,
+            total_time: normalized.totalTime,
+            office_time: normalized.officeTime,
+            end_time: normalized.endTime,
             tags: normalized.tags
           }, { onConflict: 'user_id,iso' });
       } catch (err) {
@@ -174,7 +185,7 @@ export async function syncForecastSnapshotsFromSupabase(supabaseClient, userId, 
   try {
     const { data, error } = await supabaseClient
       .from(FORECAST_SNAPSHOT_TABLE)
-      .select('iso, weekday, totalTime, officeTime, endTime, tags')
+      .select('iso, weekday, total_time, office_time, end_time, tags')
       .eq('user_id', userId)
       .order('iso', { ascending: true });
     if (error) throw error;

@@ -5199,6 +5199,9 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
           await saveForecastSnapshot({
             iso: tomorrowDate.toISODate(),
             weekday: tomorrowDow,
+            totalTime: null,
+            officeTime: null,
+            endTime: null,
             tags: readTagHistoryForIso(tomorrowDate.toISODate()),
             user_id: CURRENT_USER_ID
           }, { supabaseClient: sb, silent: true });
@@ -5653,6 +5656,15 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var evalCompareTable = document.getElementById("evalCompareTable");
   var evalCompareTfButtons = Array.from(document.querySelectorAll("#evalCompareCard .eval-tf-btn"));
   var CURRENT_USER_ID = null;
+  (async () => {
+    var _a6;
+    try {
+      const { data } = await sb.auth.getUser();
+      CURRENT_USER_ID = ((_a6 = data == null ? void 0 : data.user) == null ? void 0 : _a6.id) || null;
+    } catch (_) {
+      CURRENT_USER_ID = null;
+    }
+  })();
   aiSummary = createAiSummary({
     elements: {
       card: aiSummaryCard,

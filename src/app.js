@@ -702,6 +702,9 @@ window.__sb = createSupabaseClient();
           await saveForecastSnapshot({
             iso: tomorrowDate.toISODate(),
             weekday: tomorrowDow,
+            totalTime: null,
+            officeTime: null,
+            endTime: null,
             tags: readTagHistoryForIso(tomorrowDate.toISODate()),
             user_id: CURRENT_USER_ID
           }, { supabaseClient: sb, silent: true });
@@ -1164,6 +1167,12 @@ const evalCompareBody = document.getElementById('evalCompareBody');
 const evalCompareTable = document.getElementById('evalCompareTable');
 const evalCompareTfButtons = Array.from(document.querySelectorAll('#evalCompareCard .eval-tf-btn'));
 let CURRENT_USER_ID = null;
+(async () => {
+  try{
+    const { data } = await sb.auth.getUser();
+    CURRENT_USER_ID = data?.user?.id || null;
+  }catch(_){ CURRENT_USER_ID = null; }
+})();
 
 aiSummary = createAiSummary({
   elements: {

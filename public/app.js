@@ -242,7 +242,7 @@
     }
   }
   function sanitizeEvalProfile(input, fallback) {
-    var _a5, _b;
+    var _a6, _b;
     const base = { ...DEFAULT_EVAL_PROFILE, ...fallback || {} };
     const merged = { ...base, ...input || {} };
     const providedId = typeof merged.profileId === "string" && merged.profileId.trim() ? merged.profileId.trim() : typeof merged.id === "string" && merged.id.trim() ? merged.id.trim() : null;
@@ -262,7 +262,7 @@
       hoursPerDay: toNumberOrNull(merged.hoursPerDay),
       officeHoursPerDay: toNumberOrNull(merged.officeHoursPerDay),
       annualSalary: toNumberOrNull(merged.annualSalary),
-      effectiveFrom: normalizeDateValue((_a5 = merged.effectiveFrom) != null ? _a5 : merged.from),
+      effectiveFrom: normalizeDateValue((_a6 = merged.effectiveFrom) != null ? _a6 : merged.from),
       effectiveTo: normalizeDateValue((_b = merged.effectiveTo) != null ? _b : merged.to)
     };
   }
@@ -403,7 +403,7 @@
     }
   }
   function deleteEvalProfile(profileId) {
-    var _a5;
+    var _a6;
     if (!profileId) return loadEvalProfiles();
     try {
       let profiles = loadEvalProfiles().filter((p) => p.profileId !== profileId);
@@ -413,7 +413,7 @@
       saveEvalProfiles(profiles);
       const activeId = getActiveEvalId();
       if (activeId === profileId) {
-        const nextActive = ((_a5 = profiles[0]) == null ? void 0 : _a5.profileId) || null;
+        const nextActive = ((_a6 = profiles[0]) == null ? void 0 : _a6.profileId) || null;
         if (nextActive) {
           setActiveEvalId(nextActive);
           localStorage.setItem(EVAL_KEY, JSON.stringify(legacyEvalPayload(profiles[0])));
@@ -898,7 +898,7 @@
     return Math.round(num);
   }
   function normalizeSnapshot(snapshot) {
-    var _a5, _b, _c, _d, _e, _f, _g;
+    var _a6, _b, _c, _d, _e, _f, _g;
     if (!snapshot || typeof snapshot !== "object") return null;
     const isoSource = snapshot.iso || snapshot.date || snapshot.work_date || snapshot.workDate;
     const iso = typeof isoSource === "string" && isoSource ? isoSource : null;
@@ -906,7 +906,7 @@
     const dt = new Date(iso);
     const weekdayCandidate = Number(snapshot.weekday);
     const weekday = Number.isFinite(weekdayCandidate) ? weekdayCandidate : Number.isNaN(dt.getTime()) ? null : dt.getDay();
-    const totalTime = (_d = minutesFromValue((_c = (_b = (_a5 = snapshot.totalTime) != null ? _a5 : snapshot.total_minutes) != null ? _b : snapshot.totalMinutes) != null ? _c : snapshot.total)) != null ? _d : Number.isFinite(snapshot.hours) ? Math.round(Number(snapshot.hours) * 60) : null;
+    const totalTime = (_d = minutesFromValue((_c = (_b = (_a6 = snapshot.totalTime) != null ? _a6 : snapshot.total_minutes) != null ? _b : snapshot.totalMinutes) != null ? _c : snapshot.total)) != null ? _d : Number.isFinite(snapshot.hours) ? Math.round(Number(snapshot.hours) * 60) : null;
     const officeTime = (_g = minutesFromValue((_f = (_e = snapshot.officeTime) != null ? _e : snapshot.office_minutes) != null ? _f : snapshot.officeMinutes)) != null ? _g : Number.isFinite(snapshot.office_hours) ? Math.round(Number(snapshot.office_hours) * 60) : null;
     const endTime = snapshot.endTime || snapshot.end_time || snapshot.return_time || null;
     let tags = [];
@@ -1481,12 +1481,12 @@
       return row ? dayMetricsFromRow(row, { source: "manualReference", label: row.work_date }) : null;
     }
     function dayMetricsFromRow(row, meta) {
-      var _a5, _b, _c;
+      var _a6, _b, _c;
       if (!row) return null;
       const parcels2 = +row.parcels || 0;
       const letters2 = +row.letters || 0;
       const volume = combinedVolume2(parcels2, letters2);
-      const routeHours = normalizeHours((_a5 = row.route_minutes) != null ? _a5 : row.routeMinutes);
+      const routeHours = normalizeHours((_a6 = row.route_minutes) != null ? _a6 : row.routeMinutes);
       const officeHours = normalizeHours((_b = row.office_minutes) != null ? _b : row.officeMinutes);
       const storedHours = Number((_c = row.hours) != null ? _c : row.totalHours);
       const totalHours = Number.isFinite(storedHours) ? storedHours : routeHours + officeHours;
@@ -1513,8 +1513,8 @@
       const valid = rows.filter(Boolean);
       if (!valid.length) return null;
       const totals = valid.reduce((acc, row) => {
-        var _a5, _b, _c;
-        const routeHours = normalizeHours((_a5 = row.route_minutes) != null ? _a5 : row.routeMinutes);
+        var _a6, _b, _c;
+        const routeHours = normalizeHours((_a6 = row.route_minutes) != null ? _a6 : row.routeMinutes);
         const officeHours = normalizeHours((_b = row.office_minutes) != null ? _b : row.officeMinutes);
         const storedHours = Number((_c = row.hours) != null ? _c : row.totalHours);
         acc.totalHours += Number.isFinite(storedHours) ? storedHours : routeHours + officeHours;
@@ -1544,7 +1544,7 @@
     __testApi.dayMetricsFromRow = dayMetricsFromRow;
     __testApi.aggregateDayMetrics = aggregateDayMetrics;
     function computeDeltaDetails(subject, reference) {
-      var _a5, _b, _c, _d, _e;
+      var _a6, _b, _c, _d, _e;
       if (!subject || !reference) return { rows: [], highlights: [], reasoning: "" };
       const metricDefs = [
         { key: "totalHours", label: "Total hours", decimals: 2, suffix: "h" },
@@ -1564,7 +1564,7 @@
         const delta = subjVal != null && refVal != null ? subjVal - refVal : null;
         const pct = refVal != null && refVal !== 0 && delta != null ? delta / refVal * 100 : null;
         const colorDelta = def.invert && pct != null ? -pct : pct;
-        const displayDelta = delta == null ? "\u2014" : formatNumber2(delta, { decimals: (_a5 = def.decimals) != null ? _a5 : 2, suffix: def.suffix || "" });
+        const displayDelta = delta == null ? "\u2014" : formatNumber2(delta, { decimals: (_a6 = def.decimals) != null ? _a6 : 2, suffix: def.suffix || "" });
         const pctTxt = pct == null || !Number.isFinite(pct) ? "" : ` (${pct >= 0 ? "+" : ""}${Math.round(pct)}%)`;
         const deltaText = delta == null ? "\u2014" : `${displayDelta}${pctTxt}`;
         const subjectText = formatNumber2(subjVal, { decimals: (_b = def.decimals) != null ? _b : 2, suffix: def.suffix || "" });
@@ -1766,7 +1766,7 @@
       el.style.display = "flex";
     }
     function buildDiagnostics2(rows) {
-      var _a5, _b, _c, _d, _e;
+      var _a6, _b, _c, _d, _e;
       const filteredRows = filterRowsForView2(rows || []);
       const card = document.getElementById("diagnosticsCard");
       if (!card) return;
@@ -1861,7 +1861,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           summaryText += ` \xB7 ${parts.join(" \u2022 ")}`;
         }
         if (weightCfg.enabled) {
-          const avgW = (_a5 = model.weighting) == null ? void 0 : _a5.averageWeight;
+          const avgW = (_a6 = model.weighting) == null ? void 0 : _a6.averageWeight;
           const avgTxt = avgW ? ` (~${avgW.toFixed(2)}\xD7 weight)` : "";
           summaryText += ` \xB7 Holiday downweight ON${avgTxt}`;
         }
@@ -1918,7 +1918,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const top = [...visibleResiduals].sort((a, b) => Math.abs(b.residMin) - Math.abs(a.residMin)).slice(0, 10);
         const topContext = [];
         tbody.innerHTML = top.map((d) => {
-          var _a6;
+          var _a7;
           const rowSummary = summarizeEntry(d.row, model, stats, dismissedMap);
           topContext.push({
             iso: d.iso,
@@ -1930,7 +1930,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             boxholders: inferBoxholderLabel2(d.row),
             weather: rowSummary.weatherSnippet,
             notes: rowSummary.notesPlain,
-            tags: Array.isArray((_a6 = d.row) == null ? void 0 : _a6._tags) ? d.row._tags : []
+            tags: Array.isArray((_a7 = d.row) == null ? void 0 : _a7._tags) ? d.row._tags : []
           });
           return `<tr>
           <td class="text-left">${rowSummary.dt}</td>
@@ -1962,7 +1962,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const dismissBtns = tbody.querySelectorAll(".diag-dismiss");
         dismissBtns.forEach((btn) => {
           btn.addEventListener("click", () => {
-            var _a6;
+            var _a7;
             const iso = btn.dataset.dismissIso;
             if (!iso) return;
             const residual = residuals.find((r) => r.iso === iso);
@@ -2030,7 +2030,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
                 }
                 localStorage.setItem("routeStats.tagHistory", JSON.stringify(history));
                 console.log("\u{1F4E6} Saved tag history:", history);
-                (_a6 = window.renderTomorrowForecast) == null ? void 0 : _a6.call(window);
+                (_a7 = window.renderTomorrowForecast) == null ? void 0 : _a7.call(window);
               } catch (err) {
                 console.warn("Failed to update tag history.", err);
               }
@@ -2058,8 +2058,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       });
     }
     function formatNumber2(val, opts) {
-      var _a5;
-      const decimals = (_a5 = opts == null ? void 0 : opts.decimals) != null ? _a5 : 2;
+      var _a6;
+      const decimals = (_a6 = opts == null ? void 0 : opts.decimals) != null ? _a6 : 2;
       const suffix = (opts == null ? void 0 : opts.suffix) || "";
       const n = val == null ? null : Number(val);
       if (n == null || !Number.isFinite(n)) return "\u2014";
@@ -2072,7 +2072,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       return n;
     }
     function buildDayCompare2(rows) {
-      var _a5;
+      var _a6;
       const flags = getFlags();
       const filteredRows = filterRowsForView2(rows || []);
       const card = document.getElementById("dayCompareCard");
@@ -2130,7 +2130,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         }
       }
       subjectSelect.innerHTML = worked.map((row) => `<option value="${row.work_date}">${formatOption(row)}</option>`).join("");
-      subjectSelect.value = storedSubject && subjectSelect.querySelector(`option[value="${storedSubject}"]`) ? storedSubject : ((_a5 = worked[0]) == null ? void 0 : _a5.work_date) || "";
+      subjectSelect.value = storedSubject && subjectSelect.querySelector(`option[value="${storedSubject}"]`) ? storedSubject : ((_a6 = worked[0]) == null ? void 0 : _a6.work_date) || "";
       const manualOption = referenceSelect.querySelector('option[value="manual"]');
       const manualAvailable = worked.length > 1;
       if (manualOption) {
@@ -2139,8 +2139,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       }
       referenceSelect.value = storedMode;
       function subjectIso() {
-        var _a6;
-        return subjectSelect.value || ((_a6 = worked[0]) == null ? void 0 : _a6.work_date);
+        var _a7;
+        return subjectSelect.value || ((_a7 = worked[0]) == null ? void 0 : _a7.work_date);
       }
       function modeLabel(mode) {
         if (mode === "last") return "Last weekday";
@@ -2582,7 +2582,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       return lines.join("\n");
     }
     async function generateSummary() {
-      var _a5, _b, _c, _d;
+      var _a6, _b, _c, _d;
       if (!button) return;
       const key = getOpenAiKey();
       if (!key) {
@@ -2622,7 +2622,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         }
         const data = await response.json();
         let text = "";
-        const content2 = (_c = (_b = (_a5 = data == null ? void 0 : data.choices) == null ? void 0 : _a5[0]) == null ? void 0 : _b.message) == null ? void 0 : _c.content;
+        const content2 = (_c = (_b = (_a6 = data == null ? void 0 : data.choices) == null ? void 0 : _a6[0]) == null ? void 0 : _b.message) == null ? void 0 : _c.content;
         if (typeof content2 === "string") {
           text = content2;
         } else if (Array.isArray(content2)) {
@@ -2759,8 +2759,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
               animation: { duration: 0 },
               callbacks: {
                 title: (items) => {
-                  var _a5;
-                  const iso = (_a5 = items == null ? void 0 : items[0]) == null ? void 0 : _a5.label;
+                  var _a6;
+                  const iso = (_a6 = items == null ? void 0 : items[0]) == null ? void 0 : _a6.label;
                   if (!iso) return "";
                   const d = DateTime.fromISO(iso, { zone: ZONE });
                   return d.toFormat("cccc \u2022 MMM d, yyyy") + (vacGlyph2 ? vacGlyph2(iso) : "");
@@ -2802,8 +2802,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
               animation: { duration: 0 },
               callbacks: {
                 title: (items) => {
-                  var _a5;
-                  const iso = (_a5 = items == null ? void 0 : items[0]) == null ? void 0 : _a5.label;
+                  var _a6;
+                  const iso = (_a6 = items == null ? void 0 : items[0]) == null ? void 0 : _a6.label;
                   if (!iso) return "";
                   const d = DateTime.fromISO(iso, { zone: ZONE });
                   return d.toFormat("cccc \u2022 MMM d, yyyy") + (vacGlyph2 ? vacGlyph2(iso) : "");
@@ -2996,10 +2996,10 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
             });
             canvas.tabIndex = 0;
             canvas.addEventListener("keydown", (e) => {
-              var _a5;
+              var _a6;
               if (e.key !== "Enter" && e.key !== " ") return;
               e.preventDefault();
-              const cur = (labels.indexOf((_a5 = (summary.textContent || "").split("\xB7").pop()) == null ? void 0 : _a5.trim()) + 1) % dataArr.length;
+              const cur = (labels.indexOf((_a6 = (summary.textContent || "").split("\xB7").pop()) == null ? void 0 : _a6.trim()) + 1) % dataArr.length;
               summary.textContent = `${metricName}: ${fmtVal(dataArr[cur])} \xB7 ${fmtRange(cur)}`;
             });
           };
@@ -3204,8 +3204,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     const baselineStrokeCleanupPlugin = {
       id: "baselineStrokeCleanup",
       beforeDatasetDraw(chart, args) {
-        var _a5;
-        const dataset = (_a5 = chart.data.datasets) == null ? void 0 : _a5[args.index];
+        var _a6;
+        const dataset = (_a6 = chart.data.datasets) == null ? void 0 : _a6[args.index];
         if (!dataset) return;
         const label = dataset.label || "";
         if (!/baseline/i.test(label)) return;
@@ -3627,9 +3627,9 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
                     return lbl + (vacGlyph2 ? vacGlyph2(lbl) : "");
                   },
                   label: (item) => {
-                    var _a5;
+                    var _a6;
                     const idx = item.dataIndex;
-                    const datasetLabel = ((_a5 = item.dataset) == null ? void 0 : _a5.label) || "";
+                    const datasetLabel = ((_a6 = item.dataset) == null ? void 0 : _a6.label) || "";
                     const volThis = thisBy[idx];
                     const volLast = lastBy[idx];
                     const routeThis = thisRoute[idx];
@@ -3677,7 +3677,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       } catch (_) {
       }
       (function buildMixDrift() {
-        var _a5, _b, _c, _d;
+        var _a6, _b, _c, _d;
         const driftCanvas = document.getElementById("mixDrift");
         const driftText = document.getElementById("mixDriftText");
         if (!driftCanvas && !driftText) return;
@@ -3804,11 +3804,11 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
                     return `Week of ${startLbl} \u2192 ${endLbl}`;
                   },
                   label: (item) => {
-                    var _a6, _b2;
+                    var _a7, _b2;
                     const idx = item.dataIndex;
                     const w = weekStats[idx];
                     if (!w) return "";
-                    const label = ((_a6 = item.dataset) == null ? void 0 : _a6.label) || "";
+                    const label = ((_a7 = item.dataset) == null ? void 0 : _a7.label) || "";
                     if (label.startsWith("Parcels")) return `Parcels: ${Math.round(w.parcels).toLocaleString()}`;
                     if (label.startsWith("Letters")) return `Letters: ${Math.round(w.letters).toLocaleString()}`;
                     if (label.includes("Baseline")) {
@@ -3839,7 +3839,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
             if (val == null) return "\u2014";
             return val >= 0 ? `\u2191 ${val}%` : `\u2193 ${Math.abs(val)}%`;
           };
-          const parcelsDelta = pct((_a5 = latest == null ? void 0 : latest.parcels) != null ? _a5 : 0, (_b = prev == null ? void 0 : prev.parcels) != null ? _b : 0);
+          const parcelsDelta = pct((_a6 = latest == null ? void 0 : latest.parcels) != null ? _a6 : 0, (_b = prev == null ? void 0 : prev.parcels) != null ? _b : 0);
           const lettersDelta = pct((_c = latest == null ? void 0 : latest.letters) != null ? _c : 0, (_d = prev == null ? void 0 : prev.letters) != null ? _d : 0);
           const parcelsSummary = `${fmtArrow(parcelsDelta)} (${Math.round((latest == null ? void 0 : latest.parcels) || 0).toLocaleString()} vs ${Math.round((prev == null ? void 0 : prev.parcels) || 0).toLocaleString()})${(latest == null ? void 0 : latest.vacation) ? " (Vacation)" : ""}`;
           const lettersSummary = `${fmtArrow(lettersDelta)} (${Math.round((latest == null ? void 0 : latest.letters) || 0).toLocaleString()} vs ${Math.round((prev == null ? void 0 : prev.letters) || 0).toLocaleString()})${(latest == null ? void 0 : latest.vacation) ? " (Vacation)" : ""}`;
@@ -4027,16 +4027,16 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         return map;
       }, /* @__PURE__ */ new Map());
       const serP = lastN.map((r) => {
-        var _a5, _b;
-        return (_b = (_a5 = availableMetrics.get(r.work_date)) == null ? void 0 : _a5.parcels) != null ? _b : null;
+        var _a6, _b;
+        return (_b = (_a6 = availableMetrics.get(r.work_date)) == null ? void 0 : _a6.parcels) != null ? _b : null;
       });
       const serL = lastN.map((r) => {
-        var _a5, _b;
-        return (_b = (_a5 = availableMetrics.get(r.work_date)) == null ? void 0 : _a5.letters) != null ? _b : null;
+        var _a6, _b;
+        return (_b = (_a6 = availableMetrics.get(r.work_date)) == null ? void 0 : _a6.letters) != null ? _b : null;
       });
       const serH = lastN.map((r) => {
-        var _a5, _b;
-        return (_b = (_a5 = availableMetrics.get(r.work_date)) == null ? void 0 : _a5.hours) != null ? _b : null;
+        var _a6, _b;
+        return (_b = (_a6 = availableMetrics.get(r.work_date)) == null ? void 0 : _a6.hours) != null ? _b : null;
       });
       const showP = !!(cbP ? cbP.checked : true);
       const showL = !!(cbL ? cbL.checked : true);
@@ -4130,8 +4130,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
               layout: { padding: { top: 8, right: 6, bottom: 6, left: 6 } },
               interaction: { mode: "nearest", intersect: false },
               plugins: { legend: { display: false }, tooltip: { enabled: true, callbacks: { label: (ctx2) => {
-                var _a5, _b;
-                const label = ((_a5 = ctx2.dataset) == null ? void 0 : _a5.label) || "";
+                var _a6, _b;
+                const label = ((_a6 = ctx2.dataset) == null ? void 0 : _a6.label) || "";
                 const actual = (_b = ctx2.raw) == null ? void 0 : _b.actual;
                 if (!Number.isFinite(+actual)) return `${label}: \u2014`;
                 if (label === "Hours") return `${label}: ${(+actual).toFixed(2)}h`;
@@ -4573,6 +4573,12 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
 
   // src/app.js
+  var _a;
+  try {
+    localStorage.removeItem("routeStats.theme");
+    (_a = document.documentElement) == null ? void 0 : _a.removeAttribute("data-theme");
+  } catch (_) {
+  }
   window.__sb = createSupabaseClient();
   (function() {
     function ready(fn) {
@@ -4617,8 +4623,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   if (VACATION && Array.isArray(VACATION.ranges)) {
     const normalized = normalizeRanges(VACATION.ranges);
     if (normalized.length !== VACATION.ranges.length || normalized.some((r, i) => {
-      var _a5, _b;
-      return r.from !== ((_a5 = VACATION.ranges[i]) == null ? void 0 : _a5.from) || r.to !== ((_b = VACATION.ranges[i]) == null ? void 0 : _b.to);
+      var _a6, _b;
+      return r.from !== ((_a6 = VACATION.ranges[i]) == null ? void 0 : _a6.from) || r.to !== ((_b = VACATION.ranges[i]) == null ? void 0 : _b.to);
     })) {
       VACATION = { ranges: normalized };
       saveVacation(VACATION);
@@ -4626,35 +4632,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
   var DEFAULT_AI_BASE_PROMPT = "You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.";
   var SECOND_TRIP_EMA_KEY = "routeStats.secondTrip.ema";
-  var THEME_STORAGE_KEY = "routeStats.theme";
   var showMilestoneHistory = false;
-  var CURRENT_THEME = "classic";
-  function loadThemePreference() {
-    try {
-      const stored = localStorage.getItem(THEME_STORAGE_KEY);
-      return stored === "night" ? "night" : "classic";
-    } catch (_) {
-      return "classic";
-    }
-  }
-  function applyThemePreference(theme) {
-    const root = document.documentElement;
-    const next = theme === "night" ? "night" : "classic";
-    if (!root) return;
-    if (next === "classic") {
-      root.removeAttribute("data-theme");
-    } else {
-      root.setAttribute("data-theme", next);
-    }
-    CURRENT_THEME = next;
-  }
-  function persistThemePreference(theme) {
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, theme);
-    } catch (_) {
-    }
-  }
-  applyThemePreference(loadThemePreference());
   function addVacationRange(fromIso, toIso) {
     if (!fromIso || !toIso) return;
     const next = { ranges: [...(VACATION == null ? void 0 : VACATION.ranges) || [], { from: fromIso, to: toIso }] };
@@ -4725,13 +4703,13 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var settingsSaveTimer = null;
   function buildUserSettingsPayload() {
     const evalProfiles = (EVAL_PROFILES || []).map((profile) => {
-      var _a5, _b, _c, _d, _e, _f, _g;
+      var _a6, _b, _c, _d, _e, _f, _g;
       return {
         profileId: profile.profileId,
         label: profile.label,
         routeId: profile.routeId,
         evalCode: profile.evalCode,
-        boxes: (_a5 = profile.boxes) != null ? _a5 : null,
+        boxes: (_a6 = profile.boxes) != null ? _a6 : null,
         stops: (_b = profile.stops) != null ? _b : null,
         hoursPerDay: (_c = profile.hoursPerDay) != null ? _c : null,
         officeHoursPerDay: (_d = profile.officeHoursPerDay) != null ? _d : null,
@@ -4896,7 +4874,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (evalEffectiveToInput) evalEffectiveToInput.value = profile.effectiveTo || "";
   }
   function populateEvalProfileSelectUI(selectedId) {
-    var _a5;
+    var _a6;
     if (!evalProfileSelect) return;
     syncEvalGlobals();
     evalProfileSelect.innerHTML = "";
@@ -4906,7 +4884,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       opt.textContent = getEvalProfileDisplayName(profile);
       evalProfileSelect.appendChild(opt);
     });
-    const fallbackId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || EVAL_PROFILES && ((_a5 = EVAL_PROFILES[0]) == null ? void 0 : _a5.profileId) || null;
+    const fallbackId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || EVAL_PROFILES && ((_a6 = EVAL_PROFILES[0]) == null ? void 0 : _a6.profileId) || null;
     const targetId = selectedId && getEvalProfileById(selectedId) ? selectedId : fallbackId;
     if (targetId) evalProfileSelect.value = targetId;
     applyEvalProfileToInputs(targetId);
@@ -5169,8 +5147,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       $("evalHours").textContent = `${hp}h (${oh} office)`;
       tag.style.display = "block";
       tag.onclick = () => {
-        var _a5;
-        return (_a5 = document.getElementById("btnSettings")) == null ? void 0 : _a5.click();
+        var _a6;
+        return (_a6 = document.getElementById("btnSettings")) == null ? void 0 : _a6.click();
       };
     } catch (_) {
     }
@@ -5354,10 +5332,10 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     const enabled = isHolidayDownweightEnabled();
     if (!enabled) return { enabled: false, fn: null };
     const fn = (row) => {
-      var _a5, _b;
+      var _a6, _b;
       if (!row) return 1;
       if (!hasTag(row, "holiday_catchup")) return 1;
-      const hint = (_b = (_a5 = row._weightHints) == null ? void 0 : _a5.holidayCatchup) == null ? void 0 : _b.recommended;
+      const hint = (_b = (_a6 = row._weightHints) == null ? void 0 : _a6.holidayCatchup) == null ? void 0 : _b.recommended;
       if (Number.isFinite(hint) && hint > 0 && hint <= 1) return hint;
       return 0.65;
     };
@@ -5569,7 +5547,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var settingsDlg = document.getElementById("settingsDlg");
   var btnSettings = document.getElementById("btnSettings");
   var modelScopeSelect = document.getElementById("modelScope");
-  var themeSelect = document.getElementById("themeSelect");
   var flagWeekdayTicks = document.getElementById("flagWeekdayTicks");
   var flagProgressivePills = document.getElementById("flagProgressivePills");
   var flagMonthlyGlance = document.getElementById("flagMonthlyGlance");
@@ -5585,9 +5562,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var flagDayCompare = document.getElementById("flagDayCompare");
   var flagUspsEval = document.getElementById("flagUspsEval");
   var settingsEmaRate = document.getElementById("settingsEmaRate");
-  if (themeSelect) {
-    themeSelect.value = CURRENT_THEME;
-  }
   var evalRouteId = document.getElementById("evalRouteId");
   var evalCode = document.getElementById("evalCode");
   var evalBoxesIn = document.getElementById("evalBoxesIn");
@@ -5678,7 +5652,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
-    if (themeSelect) themeSelect.value = CURRENT_THEME;
     try {
       populateEvalProfileSelectUI(USPS_EVAL == null ? void 0 : USPS_EVAL.profileId);
     } catch (_) {
@@ -5716,14 +5689,14 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     }
   });
   evalProfileAddBtn == null ? void 0 : evalProfileAddBtn.addEventListener("click", () => {
-    var _a5, _b, _c, _d, _e;
+    var _a6, _b, _c, _d, _e;
     try {
       const base = getEvalProfileById(evalProfileSelect == null ? void 0 : evalProfileSelect.value) || USPS_EVAL || {};
       const newProfile = createEvalProfile({
         label: `Evaluation ${((EVAL_PROFILES == null ? void 0 : EVAL_PROFILES.length) || 0) + 1}`,
         routeId: base.routeId || "R1",
         evalCode: base.evalCode || "",
-        boxes: (_a5 = base.boxes) != null ? _a5 : null,
+        boxes: (_a6 = base.boxes) != null ? _a6 : null,
         stops: (_b = base.stops) != null ? _b : null,
         hoursPerDay: (_c = base.hoursPerDay) != null ? _c : null,
         officeHoursPerDay: (_d = base.officeHoursPerDay) != null ? _d : null,
@@ -5741,7 +5714,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     }
   });
   evalProfileDeleteBtn == null ? void 0 : evalProfileDeleteBtn.addEventListener("click", () => {
-    var _a5;
+    var _a6;
     const id = evalProfileSelect == null ? void 0 : evalProfileSelect.value;
     if (!id) return;
     if (((EVAL_PROFILES == null ? void 0 : EVAL_PROFILES.length) || 0) <= 1) {
@@ -5751,7 +5724,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (!confirm("Delete this evaluation profile? You can recreate it later if needed.")) return;
     deleteEvalProfile(id);
     syncEvalGlobals();
-    const fallbackId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || EVAL_PROFILES && ((_a5 = EVAL_PROFILES[0]) == null ? void 0 : _a5.profileId) || null;
+    const fallbackId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || EVAL_PROFILES && ((_a6 = EVAL_PROFILES[0]) == null ? void 0 : _a6.profileId) || null;
     populateEvalProfileSelectUI(fallbackId);
     applyEvalProfileToInputs(fallbackId);
     buildEvalCompare(allRows || []);
@@ -5827,13 +5800,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         setAiBasePrompt(aiPromptTextarea.value || "");
       }
     } catch (_) {
-    }
-    if (themeSelect) {
-      const chosenTheme = themeSelect.value === "night" ? "night" : "classic";
-      if (chosenTheme !== CURRENT_THEME) {
-        applyThemePreference(chosenTheme);
-      }
-      persistThemePreference(chosenTheme);
     }
     try {
       aiSummary.readTokenInputs();
@@ -5934,9 +5900,9 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       rebuildAll();
     }
   });
-  var _a;
-  (_a = document.getElementById("forceRefreshBtn")) == null ? void 0 : _a.addEventListener("click", async (e) => {
-    var _a5;
+  var _a2;
+  (_a2 = document.getElementById("forceRefreshBtn")) == null ? void 0 : _a2.addEventListener("click", async (e) => {
+    var _a6;
     e.preventDefault();
     try {
       try {
@@ -5951,7 +5917,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         } catch (_) {
         }
         try {
-          (_a5 = reg == null ? void 0 : reg.waiting) == null ? void 0 : _a5.postMessage({ type: "SKIP_WAITING" });
+          (_a6 = reg == null ? void 0 : reg.waiting) == null ? void 0 : _a6.postMessage({ type: "SKIP_WAITING" });
         } catch (_) {
         }
       }
@@ -6029,9 +5995,9 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     }
   }
   sb.auth.onAuthStateChange((_evt, session) => {
-    var _a5;
+    var _a6;
     const authed = !!session;
-    CURRENT_USER_ID = authed ? ((_a5 = session == null ? void 0 : session.user) == null ? void 0 : _a5.id) || null : null;
+    CURRENT_USER_ID = authed ? ((_a6 = session == null ? void 0 : session.user) == null ? void 0 : _a6.id) || null : null;
     const signOutBtn = $("signOut");
     if (signOutBtn) signOutBtn.style.display = authed ? "inline-block" : "none";
     dAuth.textContent = authed ? "Session" : "No session";
@@ -6048,9 +6014,9 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     }
   });
   sb.auth.getSession().then(({ data }) => {
-    var _a5;
+    var _a6;
     const session = (data == null ? void 0 : data.session) || null;
-    CURRENT_USER_ID = ((_a5 = session == null ? void 0 : session.user) == null ? void 0 : _a5.id) || null;
+    CURRENT_USER_ID = ((_a6 = session == null ? void 0 : session.user) == null ? void 0 : _a6.id) || null;
     if (CURRENT_USER_ID) {
       aiSummary.renderLastSummary();
       ensureUserSettingsSync();
@@ -6349,13 +6315,13 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   secondTripTimeInput == null ? void 0 : secondTripTimeInput.addEventListener("input", updateSecondTripSummary);
   secondTripEmaInput == null ? void 0 : secondTripEmaInput.addEventListener("input", updateSecondTripSummary);
   document.addEventListener("keydown", (e) => {
-    var _a5, _b, _c;
+    var _a6, _b, _c;
     const mod = e.metaKey || e.ctrlKey;
     if (!mod) return;
     const k = e.key.toLowerCase();
     if (k === "s") {
       e.preventDefault();
-      (_a5 = $("save")) == null ? void 0 : _a5.click();
+      (_a6 = $("save")) == null ? void 0 : _a6.click();
     } else if (k === "d") {
       e.preventDefault();
       (_b = $("btnEditLast")) == null ? void 0 : _b.click();
@@ -6731,8 +6697,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       clone.classList.remove("ghost");
     });
   })();
-  var _a2;
-  (_a2 = $("btnEditLast")) == null ? void 0 : _a2.addEventListener("click", async () => {
+  var _a3;
+  (_a3 = $("btnEditLast")) == null ? void 0 : _a3.addEventListener("click", async () => {
     const rows = await fetchEntries();
     if (!rows.length) {
       alert("No entries yet.");
@@ -6743,8 +6709,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     await loadByDate();
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
-  var _a3;
-  (_a3 = $("btnDeleteDay")) == null ? void 0 : _a3.addEventListener("click", async () => {
+  var _a4;
+  (_a4 = $("btnDeleteDay")) == null ? void 0 : _a4.addEventListener("click", async () => {
     const { data: { user } } = await sb.auth.getUser();
     if (!user) {
       alert("No session. Try Link devices.");
@@ -6879,9 +6845,9 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         return;
       }
       const markup = thresholds.map(([id, { label, key, threshold }]) => {
-        var _a5;
+        var _a6;
         const unlocked = badges.find((b) => b && b.id === id && b.year === year);
-        const progressRaw = (_a5 = totals == null ? void 0 : totals[year]) == null ? void 0 : _a5[key];
+        const progressRaw = (_a6 = totals == null ? void 0 : totals[year]) == null ? void 0 : _a6[key];
         const progressVal = Number(progressRaw);
         const progress = Number.isFinite(progressVal) ? progressVal : 0;
         const status = unlocked ? "unlocked" : "locked";
@@ -6996,11 +6962,11 @@ ${user.id}
 Entries are filtered by this id.`);
   });
   var importFile = $("importFile");
-  var _a4;
-  (_a4 = $("importCsv")) == null ? void 0 : _a4.addEventListener("click", () => importFile.click());
+  var _a5;
+  (_a5 = $("importCsv")) == null ? void 0 : _a5.addEventListener("click", () => importFile.click());
   importFile == null ? void 0 : importFile.addEventListener("change", async () => {
-    var _a5;
-    const file = (_a5 = importFile.files) == null ? void 0 : _a5[0];
+    var _a6;
+    const file = (_a6 = importFile.files) == null ? void 0 : _a6[0];
     if (!file) return;
     const text = await file.text();
     const lines = text.split(/\r?\n/).filter(Boolean);
@@ -7021,8 +6987,8 @@ Entries are filtered by this id.`);
     for (let i = 1; i < lines.length; i++) {
       const cols = splitCsv(lines[i]);
       const get = (name) => {
-        var _a6;
-        return unq((_a6 = cols[idx(name)]) != null ? _a6 : "");
+        var _a7;
+        return unq((_a7 = cols[idx(name)]) != null ? _a7 : "");
       };
       const r = { user_id: user.id, work_date: get("work_date"), route: "R1", status: get("status") || "worked", start_time: get("start_time") || null, depart_time: get("depart_time") || null, return_time: get("return_time") || null, end_time: get("end_time") || null, hours: +(get("hours") || 0) || null, office_minutes: get("office_minutes") || null, route_minutes: get("route_minutes") || null, parcels: +(get("parcels") || 0) || 0, letters: +(get("letters") || 0) || 0, miles: +(get("miles") || 0) || 0, mood: get("mood") || null, notes: get("notes") || null, weather_json: get("weather_json") || null };
       if (r.work_date) rows.push(r);
@@ -7051,7 +7017,7 @@ Entries are filtered by this id.`);
     return d.plus({ hours }).toFormat("h:mm a");
   }
   function buildSnapshot(rows) {
-    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u;
+    var _a6, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u;
     rows = filterRowsForView(rows || []);
     const today = DateTime.now().setZone(ZONE);
     const dow = today.weekday % 7;
@@ -7156,10 +7122,10 @@ Note: ${adjNote}`;
           const btn = document.getElementById("linkRouteEffDetails");
           if (btn) {
             btn.onclick = (e) => {
-              var _a6;
+              var _a7;
               e.preventDefault();
               try {
-                (_a6 = document.getElementById("mixVizCard")) == null ? void 0 : _a6.scrollIntoView({ behavior: "smooth", block: "start" });
+                (_a7 = document.getElementById("mixVizCard")) == null ? void 0 : _a7.scrollIntoView({ behavior: "smooth", block: "start" });
               } catch (_) {
               }
             };
@@ -7325,12 +7291,12 @@ Score: ${overallScore}/10 (higher is better)`;
     }
     const offIdxThisWeek = new Set(rows.filter((r) => r.status === "off" && inRange(r, weekStart, weekEnd)).map((r) => (DateTime.fromISO(r.work_date, { zone: ZONE }).weekday + 6) % 7));
     const normalizedTotals = (key) => {
-      var _a6, _b2, _c2, _d2;
+      var _a7, _b2, _c2, _d2;
       let curTotal = 0;
       let baseTotal = 0;
       for (let i = 0; i <= dayIndexToday && i < 7; i++) {
         if (offIdxThisWeek.has(i)) continue;
-        const curVal = ((_a6 = thisWeek[i]) == null ? void 0 : _a6[key]) || 0;
+        const curVal = ((_a7 = thisWeek[i]) == null ? void 0 : _a7[key]) || 0;
         let baseVal = ((_b2 = lastWeek[i]) == null ? void 0 : _b2[key]) || 0;
         if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
           baseVal = (((_c2 = lastWeek[i - 1]) == null ? void 0 : _c2[key]) || 0) + (((_d2 = lastWeek[i]) == null ? void 0 : _d2[key]) || 0);
@@ -7388,9 +7354,9 @@ Score: ${overallScore}/10 (higher is better)`;
       const totalActual = tripsThisWeek.reduce((sum2, entry) => sum2 + (+entry.data.t || 0), 0);
       const totalPaid = tripsThisWeek.reduce((sum2, entry) => sum2 + (+entry.data.m || 0) * 2, 0);
       const totalGas = tripsThisWeek.reduce((sum2, entry) => {
-        var _a6;
+        var _a7;
         const miles2 = +entry.data.m || 0;
-        const emaRaw = (_a6 = entry.data) == null ? void 0 : _a6.e;
+        const emaRaw = (_a7 = entry.data) == null ? void 0 : _a7.e;
         const ema = Number.isFinite(+emaRaw) && +emaRaw >= 0 ? +emaRaw : readStoredEma();
         return sum2 + miles2 * ema;
       }, 0);
@@ -7412,13 +7378,13 @@ Score: ${overallScore}/10 (higher is better)`;
       }
     }
     const dailyDeltas = (key) => {
-      var _a6, _b2;
+      var _a7, _b2;
       const arr = [];
       for (let i = 0; i <= dayIndexToday && i < 7; i++) {
         const cur = offIdxThisWeek.has(i) ? null : thisWeek[i][key];
         let base = lastWeek[i][key];
         if (holidayAdjEnabled && carryNext.has(i)) {
-          base = (((_a6 = lastWeek[i - 1]) == null ? void 0 : _a6[key]) || 0) + (((_b2 = lastWeek[i]) == null ? void 0 : _b2[key]) || 0);
+          base = (((_a7 = lastWeek[i - 1]) == null ? void 0 : _a7[key]) || 0) + (((_b2 = lastWeek[i]) == null ? void 0 : _b2[key]) || 0);
         }
         arr.push(cur == null ? null : pct(cur || 0, base || 0));
       }
@@ -7454,10 +7420,10 @@ Score: ${overallScore}/10 (higher is better)`;
     const cumP = cumulative(dP);
     const cumL = cumulative(dL);
     function sameCountDelta(key) {
-      var _a6, _b2;
+      var _a7, _b2;
       const cur = [];
       for (let i = 0; i <= dayIndexToday && i < 7; i++) {
-        const v2 = ((_a6 = thisWeek[i]) == null ? void 0 : _a6[key]) || 0;
+        const v2 = ((_a7 = thisWeek[i]) == null ? void 0 : _a7[key]) || 0;
         if (v2 > 0) cur.push(v2);
       }
       const N = cur.length;
@@ -7489,7 +7455,7 @@ Score: ${overallScore}/10 (higher is better)`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_a5 = thisWeek[i]) == null ? void 0 : _a5.h) || 0 : null;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_a6 = thisWeek[i]) == null ? void 0 : _a6.h) || 0 : null;
           let base = ((_b = lastWeek[i]) == null ? void 0 : _b.h) || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
@@ -7604,14 +7570,14 @@ Score: ${overallScore}/10 (higher is better)`;
       console.warn("Failed to populate weekly letters details", e);
     }
     const renderTrendPanel = (bodyId, dailyArr, weightedVal, cumulativeVal, key, sc) => {
-      var _a6, _b2, _c2, _d2;
+      var _a7, _b2, _c2, _d2;
       const body = document.getElementById(bodyId);
       if (!body) return;
       const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
       const rows2 = [];
       for (let i = 0; i <= dayIndexToday && i < 7; i++) {
         const v2 = dailyArr[i];
-        const cur = offIdxThisWeek.has(i) ? null : ((_a6 = thisWeek[i]) == null ? void 0 : _a6[key]) || 0;
+        const cur = offIdxThisWeek.has(i) ? null : ((_a7 = thisWeek[i]) == null ? void 0 : _a7[key]) || 0;
         let base = ((_b2 = lastWeek[i]) == null ? void 0 : _b2[key]) || 0;
         let adjMark = "";
         if (holidayAdjEnabled && carryNext && carryNext.has(i)) {

@@ -61,12 +61,6 @@ import { createSummariesFeature } from './features/summaries.js';
 import { parseDismissReasonInput } from './utils/diagnostics.js';
 import './modules/forecast.js';
 
-// Force classic theme: clear any stored theme and data-theme flag
-try{
-  localStorage.removeItem('routeStats.theme');
-  document.documentElement?.removeAttribute('data-theme');
-}catch(_){ /* ignore */ }
-
 // Expose Supabase client globally for debugging
 window.__sb = createSupabaseClient();
 
@@ -121,7 +115,35 @@ window.__sb = createSupabaseClient();
 
   const DEFAULT_AI_BASE_PROMPT = 'You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.';
   const SECOND_TRIP_EMA_KEY = 'routeStats.secondTrip.ema';
+  const THEME_STORAGE_KEY = 'routeStats.theme';
   let showMilestoneHistory = false;
+  let CURRENT_THEME = 'classic';
+
+  function loadThemePreference(){
+    try{
+      const stored = localStorage.getItem(THEME_STORAGE_KEY);
+      return stored === 'night' ? 'night' : 'classic';
+    }catch(_){
+      return 'classic';
+    }
+  }
+  function applyThemePreference(theme){
+    const root = document.documentElement;
+    const next = theme === 'night' ? 'night' : 'classic';
+    if (!root) return;
+    if (next === 'classic'){
+      root.removeAttribute('data-theme');
+    } else {
+      root.setAttribute('data-theme', next);
+    }
+    CURRENT_THEME = next;
+  }
+  function persistThemePreference(theme){
+    try{
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    }catch(_){ }
+  }
+  applyThemePreference(loadThemePreference());
 
   function addVacationRange(fromIso, toIso){
     if (!fromIso || !toIso) return;
@@ -1057,6 +1079,7 @@ const authReadyPromise = handleAuthCallback(sb);
   const settingsDlg = document.getElementById('settingsDlg');
   const btnSettings = document.getElementById('btnSettings');
   const modelScopeSelect = document.getElementById('modelScope');
+  const themeSelect = document.getElementById('themeSelect');
   const flagWeekdayTicks = document.getElementById('flagWeekdayTicks');
   const flagProgressivePills = document.getElementById('flagProgressivePills');
   const flagMonthlyGlance = document.getElementById('flagMonthlyGlance');
@@ -1072,6 +1095,9 @@ const authReadyPromise = handleAuthCallback(sb);
   const flagDayCompare = document.getElementById('flagDayCompare');
   const flagUspsEval = document.getElementById('flagUspsEval');
   const settingsEmaRate = document.getElementById('settingsEmaRate');
+  if (themeSelect){
+    themeSelect.value = CURRENT_THEME;
+  }
   // USPS Eval inputs
   const evalRouteId = document.getElementById('evalRouteId');
   const evalCode    = document.getElementById('evalCode');
@@ -1168,6 +1194,7 @@ aiSummary = createAiSummary({
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
+    if (themeSelect) themeSelect.value = CURRENT_THEME;
     // populate USPS eval fields
     try{
       populateEvalProfileSelectUI(USPS_EVAL?.profileId);
@@ -1309,6 +1336,13 @@ aiSummary = createAiSummary({
         setAiBasePrompt(aiPromptTextarea.value || '');
       }
     }catch(_){ }
+    if (themeSelect){
+      const chosenTheme = themeSelect.value === 'night' ? 'night' : 'classic';
+      if (chosenTheme !== CURRENT_THEME){
+        applyThemePreference(chosenTheme);
+      }
+      persistThemePreference(chosenTheme);
+    }
     try{ aiSummary.readTokenInputs(); }catch(_){ }
     saveFlags(FLAGS);
     settingsDlg.close();

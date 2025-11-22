@@ -61,6 +61,9 @@ import { createSummariesFeature } from './features/summaries.js';
 import { parseDismissReasonInput } from './utils/diagnostics.js';
 import './modules/forecast.js';
 
+// Expose Supabase client globally for debugging
+window.__sb = createSupabaseClient();
+
 // If libs failed to load, show a clear banner with next step
   (function(){
     function ready(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded', fn); }

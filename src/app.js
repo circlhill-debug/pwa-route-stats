@@ -695,6 +695,36 @@ window.__sb = createSupabaseClient();
       }
       const tomorrowDate = DateTime.now().setZone(ZONE).plus({ days: 1 });
       const tomorrowDow = tomorrowDate.weekday === 7 ? 0 : tomorrowDate.weekday;
+
+      // --- SUNDAY PATCH: Skip forecasting and show day-off message ---
+      if (tomorrowDow === 0) {
+        const container = document.querySelector('#forecastBadgeContainer') || document.body;
+        if (container) {
+          const existingBadges = container.querySelectorAll('.forecast-badge');
+          existingBadges.forEach(node => node.remove());
+          const forecastBadge = document.createElement('div');
+          forecastBadge.className = 'forecast-badge';
+          const titleEl = document.createElement('h3');
+          titleEl.textContent = '🌤 Tomorrow’s Forecast';
+          const bodyEl = document.createElement('p');
+          bodyEl.textContent = "Enjoy your day off ❤️";
+          forecastBadge.appendChild(titleEl);
+          forecastBadge.appendChild(bodyEl);
+          container.appendChild(forecastBadge);
+        }
+        return {
+          message: "Enjoy your day off ❤️",
+          type: "rest",
+          iso: null,
+          weekday: 0,
+          total_time: null,
+          office_time: null,
+          end_time: null,
+          tags: []
+        };
+      }
+      // ---------------------------------------------------------------
+
       const forecastText = computeForecastText({ targetDow: tomorrowDow }) || 'Forecast unavailable';
       storeForecastSnapshot(tomorrowDate.toISODate(), forecastText);
       if (CURRENT_USER_ID){

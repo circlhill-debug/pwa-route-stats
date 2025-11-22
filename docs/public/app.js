@@ -5194,6 +5194,18 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       const tomorrowDow = tomorrowDate.weekday === 7 ? 0 : tomorrowDate.weekday;
       const forecastText = computeForecastText({ targetDow: tomorrowDow }) || "Forecast unavailable";
       storeForecastSnapshot(tomorrowDate.toISODate(), forecastText);
+      if (CURRENT_USER_ID) {
+        try {
+          await saveForecastSnapshot({
+            iso: tomorrowDate.toISODate(),
+            weekday: tomorrowDow,
+            tags: readTagHistoryForIso(tomorrowDate.toISODate()),
+            user_id: CURRENT_USER_ID
+          }, { supabaseClient: sb, silent: true });
+        } catch (err) {
+          console.warn("saveForecastSnapshot (remote) failed", err);
+        }
+      }
       const container = document.querySelector("#forecastBadgeContainer") || document.body;
       if (!container) return;
       const existingBadges = container.querySelectorAll(".forecast-badge");

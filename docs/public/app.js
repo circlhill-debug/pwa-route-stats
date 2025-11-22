@@ -4573,6 +4573,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
 
   // src/app.js
+  window.__sb = createSupabaseClient();
   (function() {
     function ready(fn) {
       if (document.readyState !== "loading") fn();

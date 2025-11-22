@@ -4632,7 +4632,35 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
   var DEFAULT_AI_BASE_PROMPT = "You are an upbeat, encouraging USPS route analyst. Be concise but creative, celebrate wins, suggest actionable next steps, and call out emerging or fading trends as new tags appear.";
   var SECOND_TRIP_EMA_KEY = "routeStats.secondTrip.ema";
+  var THEME_STORAGE_KEY = "routeStats.theme";
   var showMilestoneHistory = false;
+  var CURRENT_THEME = "classic";
+  function loadThemePreference() {
+    try {
+      const stored = localStorage.getItem(THEME_STORAGE_KEY);
+      return stored === "night" ? "night" : "classic";
+    } catch (_) {
+      return "classic";
+    }
+  }
+  function applyThemePreference(theme) {
+    const root = document.documentElement;
+    const next = theme === "night" ? "night" : "classic";
+    if (!root) return;
+    if (next === "classic") {
+      root.removeAttribute("data-theme");
+    } else {
+      root.setAttribute("data-theme", next);
+    }
+    CURRENT_THEME = next;
+  }
+  function persistThemePreference(theme) {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch (_) {
+    }
+  }
+  applyThemePreference(loadThemePreference());
   function addVacationRange(fromIso, toIso) {
     if (!fromIso || !toIso) return;
     const next = { ranges: [...(VACATION == null ? void 0 : VACATION.ranges) || [], { from: fromIso, to: toIso }] };
@@ -5547,6 +5575,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var settingsDlg = document.getElementById("settingsDlg");
   var btnSettings = document.getElementById("btnSettings");
   var modelScopeSelect = document.getElementById("modelScope");
+  var themeSelect = document.getElementById("themeSelect");
   var flagWeekdayTicks = document.getElementById("flagWeekdayTicks");
   var flagProgressivePills = document.getElementById("flagProgressivePills");
   var flagMonthlyGlance = document.getElementById("flagMonthlyGlance");
@@ -5652,6 +5681,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
+    if (themeSelect) themeSelect.value = CURRENT_THEME;
     try {
       populateEvalProfileSelectUI(USPS_EVAL == null ? void 0 : USPS_EVAL.profileId);
     } catch (_) {
@@ -5800,6 +5830,13 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         setAiBasePrompt(aiPromptTextarea.value || "");
       }
     } catch (_) {
+    }
+    if (themeSelect) {
+      const chosenTheme = themeSelect.value === "night" ? "night" : "classic";
+      if (chosenTheme !== CURRENT_THEME) {
+        applyThemePreference(chosenTheme);
+      }
+      persistThemePreference(chosenTheme);
     }
     try {
       aiSummary.readTokenInputs();

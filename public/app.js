@@ -4593,30 +4593,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
 
   // src/app.js
-  var DEBUG_VERSION = "v2025-11-22-5";
-  var logs = [];
-  var logContainer = null;
-  function logToScreen(message) {
-    const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
-    const line = `[${timestamp}] ${message}`;
-    console.log(line);
-    if (logContainer) {
-      logs.push(line);
-      logContainer.innerText = logs.join("\n");
-    }
-  }
-  window.addEventListener("error", function(e) {
-    logToScreen(`[FATAL ERROR] ${e.message} at ${e.filename}:${e.lineno}`);
-  });
-  document.addEventListener("DOMContentLoaded", () => {
-    if (!document.getElementById("debug-panel")) {
-      logContainer = document.createElement("pre");
-      logContainer.id = "debug-panel";
-      logContainer.style.cssText = "background:yellow;color:black;padding:10px;font-size:10px;line-height:1.2;z-index:99999;position:relative;margin:0;white-space:pre-wrap;word-wrap:break-word;";
-      document.body.prepend(logContainer);
-      logToScreen(`App version: ${DEBUG_VERSION}`);
-    }
-  });
   var _a;
   try {
     localStorage.removeItem("routeStats.theme");
@@ -5301,23 +5277,15 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   renderVacationRanges();
   (async () => {
     var _a6;
-    logToScreen("Init: Awaiting auth promise...");
     const session = await authReadyPromise;
     CURRENT_USER_ID = ((_a6 = session == null ? void 0 : session.user) == null ? void 0 : _a6.id) || null;
-    logToScreen(`Init: Auth complete. User ID: ${CURRENT_USER_ID || "null"}`);
     if (window.__sb && CURRENT_USER_ID) {
       try {
-        logToScreen("Sync: Attempting forecast sync...");
-        const snapshots = await syncForecastSnapshotsFromSupabase(window.__sb, CURRENT_USER_ID, { silent: true });
-        logToScreen(`Sync: Success. Loaded ${snapshots ? snapshots.length : 0} snapshots from Supabase.`);
+        await syncForecastSnapshotsFromSupabase(window.__sb, CURRENT_USER_ID, { silent: true });
       } catch (e) {
-        logToScreen(`Sync: FAILED. Error: ${e.message}`);
         console.warn("[Forecast] Snapshot sync failed:", e);
       }
-    } else {
-      logToScreen("Sync: Skipped. No user or Supabase client.");
     }
-    logToScreen("Render: Calling renderTomorrowForecast().");
     renderTomorrowForecast();
   })();
   function getLastNonEmptyWeek(rows, now, { excludeVacation = true } = {}) {

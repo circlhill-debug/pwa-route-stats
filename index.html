@@ -49,25 +49,6 @@
     --muted:var(--rs-text-secondary);
     --brand:var(--rs-brand);
   }
-  [data-theme="night"]{
-    --rs-bg:#0c0d12;
-    --rs-card-bg:#2b3a44;
-    --rs-border:#2e3342;
-    --rs-text-primary:#b6c2c8;
-    --rs-text-secondary:#9aaaba;
-    --rs-brand:#2b7fff;
-    --rs-button-hover:#5c7f95;
-    --rs-button-muted:#3d5565;
-    --rs-card-shadow:0 2px 4px rgba(0,0,0,0.42);
-    --forecast-badge-bg:#1e293b;
-    --forecast-badge-border:#3b82f6;
-    --forecast-badge-text:#facc15;
-    --snapshot-bg:var(--rs-card-bg);
-    --snapshot-border:var(--rs-border);
-    --input-bg:#2b3a44;
-    --button-text:#ffffff;
-    --button-bg:#4c6d80;
-  }
   *{box-sizing:border-box}
   html{ font-size: clamp(15px, 1.6vw + .4rem, 18px); }
   body{
@@ -129,6 +110,12 @@
     color:#0b1322!important;
     text-shadow:none;
   }
+  .forecast-badge h3,
+  .forecast-badge p{
+    color:#0b1322!important;
+    margin:0;
+  }
+  .forecast-badge h3{ margin-bottom:6px; font-size:1.05em; }
   .forecast-badge-container{
     margin-top:12px;
     display:flex;
@@ -157,7 +144,7 @@
     html:not([data-theme="night"]) .forecast-badge{
       background:#f0f8ff!important;
       border:2px solid #4682b4!important;
-      color:#0b1322!important;
+      color:#1f2933!important;
     }
   }
   label{ font-size:13px; color:var(--rs-text-secondary) }
@@ -519,9 +506,6 @@
 </style>
 </head>
 <body>
-<div id="debug-panel" style="background:#fff;color:#000;padding:10px;font-size:12px;line-height:1.4;z-index:99999;position:relative;">
-  <h4 style="margin:0 0 5px 0;color:#000;">Debug Log</h4>
-</div>
 <div id="diag">
   ROUTE STATS · Supabase: <b id="dConn">…</b> · Auth: <b id="dAuth">…</b> · Write: <b id="dWrite">—</b>
 </div>
@@ -1224,13 +1208,6 @@
       <select id="modelScope" style="min-width:160px">
         <option value="rolling">Rolling (120 days)</option>
         <option value="all">All-time</option>
-      </select>
-    </label>
-    <label class="row" style="justify-content:space-between;align-items:center;gap:12px">
-      <span>Theme</span>
-      <select id="themeSelect" style="min-width:160px">
-        <option value="classic">Classic</option>
-        <option value="night">Low-light</option>
       </select>
     </label>
     <!-- Feature flags -->

@@ -1123,7 +1123,12 @@
       window.logToScreen(`Forecast Engine: Received ${(badgeData == null ? void 0 : badgeData.length) || 0} total snapshots.`);
     }
     const dataList = Array.isArray(badgeData) ? badgeData : [];
-    if (!dataList.length) return null;
+    if (!dataList.length) {
+      if (window.logToScreen) {
+        window.logToScreen("Forecast Engine: Aborting. dataList is empty.");
+      }
+      return null;
+    }
     const normalizedTarget = normalizeDow(typeof targetDow === "number" ? targetDow : new Date(Date.now() + 864e5).getDay());
     if (normalizedTarget == null) return null;
     const matching = dataList.map((entry, index) => ({
@@ -4588,24 +4593,21 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
 
   // src/app.js
-  var DEBUG_VERSION = "2025-11-22-3";
-  window.logToScreen = function(message) {
-    try {
-      const panel = document.getElementById("debug-panel");
-      if (panel) {
-        const p = document.createElement("p");
-        const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
-        p.textContent = `[${timestamp}] ${message}`;
-        p.style.margin = "0";
-        p.style.borderBottom = "1px solid #eee";
-        p.style.padding = "2px 0";
-        panel.appendChild(p);
-      }
-    } catch (e) {
-      console.error("logToScreen failed:", e);
+  var DEBUG_VERSION = "2025-11-22-4";
+  var logs = [];
+  function logToScreen(message) {
+    const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
+    const line = `[${timestamp}] ${message}`;
+    console.log(line);
+    const logContainer = document.getElementById("debug-panel");
+    if (logContainer) {
+      logs.push(line);
+      logContainer.innerText = logs.join("\n");
     }
-    console.log(message);
-  };
+  }
+  window.addEventListener("error", function(e) {
+    logToScreen(`[FATAL ERROR] ${e.message} at ${e.filename}:${e.lineno}`);
+  });
   window.addEventListener("DOMContentLoaded", () => {
     logToScreen(`App version: ${DEBUG_VERSION}`);
   });

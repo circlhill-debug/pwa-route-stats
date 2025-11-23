@@ -359,7 +359,12 @@ function buildTrendForecast_core(targetDow, badgeData) {
     window.logToScreen(`Forecast Engine: Received ${badgeData?.length || 0} total snapshots.`);
   }
   const dataList = Array.isArray(badgeData) ? badgeData : [];
-  if (!dataList.length) return null;
+  if (!dataList.length) {
+    if (window.logToScreen) {
+      window.logToScreen('Forecast Engine: Aborting. dataList is empty.');
+    }
+    return null;
+  }
   const normalizedTarget =
     normalizeDow(typeof targetDow === 'number' ? targetDow : new Date(Date.now() + 864e5).getDay());
   if (normalizedTarget == null) return null;

@@ -1,24 +1,23 @@
-const DEBUG_VERSION = '2025-11-22-3';
-window.logToScreen = function(message) {
-  try {
-    const panel = document.getElementById('debug-panel');
-    if (panel) {
-      const p = document.createElement('p');
-      const timestamp = new Date().toLocaleTimeString();
-      p.textContent = `[${timestamp}] ${message}`;
-      p.style.margin = '0';
-      p.style.borderBottom = '1px solid #eee';
-      p.style.padding = '2px 0';
-      panel.appendChild(p);
-    }
-  } catch (e) {
-    console.error('logToScreen failed:', e);
+// --- BEGIN DEBUG ---
+const DEBUG_VERSION = '2025-11-22-4';
+const logs = [];
+function logToScreen(message) {
+  const timestamp = new Date().toLocaleTimeString();
+  const line = `[${timestamp}] ${message}`;
+  console.log(line);
+  const logContainer = document.getElementById('debug-panel');
+  if (logContainer) {
+    logs.push(line);
+    logContainer.innerText = logs.join('\n');
   }
-  console.log(message);
-};
+}
+window.addEventListener('error', function(e) {
+  logToScreen(`[FATAL ERROR] ${e.message} at ${e.filename}:${e.lineno}`);
+});
 window.addEventListener('DOMContentLoaded', () => {
   logToScreen(`App version: ${DEBUG_VERSION}`);
 });
+// --- END DEBUG ---
 
 import {
   DateTime,

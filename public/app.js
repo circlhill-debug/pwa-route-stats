@@ -4593,13 +4593,13 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
 
   // src/app.js
-  var DEBUG_VERSION = "2025-11-22-4";
+  var DEBUG_VERSION = "v2025-11-22-5";
   var logs = [];
+  var logContainer = null;
   function logToScreen(message) {
     const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
     const line = `[${timestamp}] ${message}`;
     console.log(line);
-    const logContainer = document.getElementById("debug-panel");
     if (logContainer) {
       logs.push(line);
       logContainer.innerText = logs.join("\n");
@@ -4608,8 +4608,14 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   window.addEventListener("error", function(e) {
     logToScreen(`[FATAL ERROR] ${e.message} at ${e.filename}:${e.lineno}`);
   });
-  window.addEventListener("DOMContentLoaded", () => {
-    logToScreen(`App version: ${DEBUG_VERSION}`);
+  document.addEventListener("DOMContentLoaded", () => {
+    if (!document.getElementById("debug-panel")) {
+      logContainer = document.createElement("pre");
+      logContainer.id = "debug-panel";
+      logContainer.style.cssText = "background:#fff;color:#000;padding:10px;font-size:10px;line-height:1.2;z-index:99999;position:relative;margin:0;white-space:pre-wrap;word-wrap:break-word;";
+      document.body.prepend(logContainer);
+      logToScreen(`App version: ${DEBUG_VERSION}`);
+    }
   });
   var _a;
   try {
@@ -8235,7 +8241,7 @@ Score: ${overallScore}/10 (higher is better)`;
   };
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function() {
-      navigator.serviceWorker.register("sw-v2.js").catch(function(err) {
+      navigator.serviceWorker.register("sw.js").catch(function(err) {
         console.error("Service worker registration failed:", err);
       });
     });

@@ -764,8 +764,7 @@ window.__sb = createSupabaseClient();
   
   // === NEW: Sync forecast snapshots from Supabase before rendering ===
   (async () => {
-    const { data } = await sb.auth.getSession();
-    const session = data?.session || null;
+    const session = await authReadyPromise;
     CURRENT_USER_ID = session?.user?.id || null;
   
     if (window.__sb && CURRENT_USER_ID) {

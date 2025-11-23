@@ -5261,8 +5261,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   renderVacationRanges();
   (async () => {
     var _a6;
-    const { data } = await sb.auth.getSession();
-    const session = (data == null ? void 0 : data.session) || null;
+    const session = await authReadyPromise;
     CURRENT_USER_ID = ((_a6 = session == null ? void 0 : session.user) == null ? void 0 : _a6.id) || null;
     if (window.__sb && CURRENT_USER_ID) {
       try {

@@ -1119,6 +1119,9 @@
     return buildTrendForecast_core(dowRaw, badgeData);
   }
   function buildTrendForecast_core(targetDow, badgeData) {
+    if (window.logToScreen) {
+      window.logToScreen(`Forecast Engine: Received ${(badgeData == null ? void 0 : badgeData.length) || 0} total snapshots.`);
+    }
     const dataList = Array.isArray(badgeData) ? badgeData : [];
     if (!dataList.length) return null;
     const normalizedTarget = normalizeDow(typeof targetDow === "number" ? targetDow : new Date(Date.now() + 864e5).getDay());
@@ -1128,7 +1131,15 @@
       dow: extractDow(entry),
       ts: entryTimestamp(entry, index)
     })).filter((item) => item.dow === normalizedTarget).sort((a, b) => a.ts - b.ts).map((item) => item.entry);
-    if (matching.length < 6) return null;
+    if (window.logToScreen) {
+      window.logToScreen(`Forecast Engine: Found ${matching.length} matching snapshots for target DOW.`);
+    }
+    if (matching.length < 6) {
+      if (window.logToScreen) {
+        window.logToScreen(`Forecast Engine: Aborting trend forecast, need at least 6 matching snapshots.`);
+      }
+      return null;
+    }
     const recent = matching.slice(-3);
     const prior = matching.slice(-6, -3);
     const deltas = METRIC_CONFIGS.map((config) => {
@@ -4577,6 +4588,27 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
 
   // src/app.js
+  var DEBUG_VERSION = "2025-11-22-3";
+  window.logToScreen = function(message) {
+    try {
+      const panel = document.getElementById("debug-panel");
+      if (panel) {
+        const p = document.createElement("p");
+        const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
+        p.textContent = `[${timestamp}] ${message}`;
+        p.style.margin = "0";
+        p.style.borderBottom = "1px solid #eee";
+        p.style.padding = "2px 0";
+        panel.appendChild(p);
+      }
+    } catch (e) {
+      console.error("logToScreen failed:", e);
+    }
+    console.log(message);
+  };
+  window.addEventListener("DOMContentLoaded", () => {
+    logToScreen(`App version: ${DEBUG_VERSION}`);
+  });
   var _a;
   try {
     localStorage.removeItem("routeStats.theme");
@@ -5261,16 +5293,23 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   renderVacationRanges();
   (async () => {
     var _a6;
+    logToScreen("Init: Awaiting auth promise...");
     const session = await authReadyPromise;
     CURRENT_USER_ID = ((_a6 = session == null ? void 0 : session.user) == null ? void 0 : _a6.id) || null;
+    logToScreen(`Init: Auth complete. User ID: ${CURRENT_USER_ID || "null"}`);
     if (window.__sb && CURRENT_USER_ID) {
       try {
-        await syncForecastSnapshotsFromSupabase(window.__sb, CURRENT_USER_ID, { silent: true });
-        console.log("[Forecast] Synced snapshots from Supabase.");
+        logToScreen("Sync: Attempting forecast sync...");
+        const snapshots = await syncForecastSnapshotsFromSupabase(window.__sb, CURRENT_USER_ID, { silent: true });
+        logToScreen(`Sync: Success. Loaded ${snapshots ? snapshots.length : 0} snapshots from Supabase.`);
       } catch (e) {
+        logToScreen(`Sync: FAILED. Error: ${e.message}`);
         console.warn("[Forecast] Snapshot sync failed:", e);
       }
+    } else {
+      logToScreen("Sync: Skipped. No user or Supabase client.");
     }
+    logToScreen("Render: Calling renderTomorrowForecast().");
     renderTomorrowForecast();
   })();
   function getLastNonEmptyWeek(rows, now, { excludeVacation = true } = {}) {

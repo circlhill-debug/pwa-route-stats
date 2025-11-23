@@ -355,6 +355,9 @@ function buildTrendForecast(dowRaw) {
 }
 
 function buildTrendForecast_core(targetDow, badgeData) {
+  if (window.logToScreen) {
+    window.logToScreen(`Forecast Engine: Received ${badgeData?.length || 0} total snapshots.`);
+  }
   const dataList = Array.isArray(badgeData) ? badgeData : [];
   if (!dataList.length) return null;
   const normalizedTarget =
@@ -369,7 +372,15 @@ function buildTrendForecast_core(targetDow, badgeData) {
     .filter((item) => item.dow === normalizedTarget)
     .sort((a, b) => a.ts - b.ts)
     .map((item) => item.entry);
-  if (matching.length < 6) return null;
+  if (window.logToScreen) {
+    window.logToScreen(`Forecast Engine: Found ${matching.length} matching snapshots for target DOW.`);
+  }
+  if (matching.length < 6) {
+    if (window.logToScreen) {
+      window.logToScreen(`Forecast Engine: Aborting trend forecast, need at least 6 matching snapshots.`);
+    }
+    return null;
+  }
   const recent = matching.slice(-3);
   const prior = matching.slice(-6, -3);
   const deltas = METRIC_CONFIGS.map((config) => {

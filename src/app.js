@@ -1,3 +1,25 @@
+const DEBUG_VERSION = '2025-11-22-3';
+window.logToScreen = function(message) {
+  try {
+    const panel = document.getElementById('debug-panel');
+    if (panel) {
+      const p = document.createElement('p');
+      const timestamp = new Date().toLocaleTimeString();
+      p.textContent = `[${timestamp}] ${message}`;
+      p.style.margin = '0';
+      p.style.borderBottom = '1px solid #eee';
+      p.style.padding = '2px 0';
+      panel.appendChild(p);
+    }
+  } catch (e) {
+    console.error('logToScreen failed:', e);
+  }
+  console.log(message);
+};
+window.addEventListener('DOMContentLoaded', () => {
+  logToScreen(`App version: ${DEBUG_VERSION}`);
+});
+
 import {
   DateTime,
   ZONE,
@@ -764,18 +786,25 @@ window.__sb = createSupabaseClient();
   
   // === NEW: Sync forecast snapshots from Supabase before rendering ===
   (async () => {
+    logToScreen("Init: Awaiting auth promise...");
     const session = await authReadyPromise;
     CURRENT_USER_ID = session?.user?.id || null;
+    logToScreen(`Init: Auth complete. User ID: ${CURRENT_USER_ID || 'null'}`);
   
     if (window.__sb && CURRENT_USER_ID) {
       try {
-        await syncForecastSnapshotsFromSupabase(window.__sb, CURRENT_USER_ID, { silent: true });
-        console.log("[Forecast] Synced snapshots from Supabase.");
+        logToScreen("Sync: Attempting forecast sync...");
+        const snapshots = await syncForecastSnapshotsFromSupabase(window.__sb, CURRENT_USER_ID, { silent: true });
+        logToScreen(`Sync: Success. Loaded ${snapshots ? snapshots.length : 0} snapshots from Supabase.`);
       } catch (e) {
+        logToScreen(`Sync: FAILED. Error: ${e.message}`);
         console.warn("[Forecast] Snapshot sync failed:", e);
       }
+    } else {
+      logToScreen("Sync: Skipped. No user or Supabase client.");
     }
     // Now that sync is complete, render the forecast
+    logToScreen("Render: Calling renderTomorrowForecast().");
     renderTomorrowForecast();
   })();
 

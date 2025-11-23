@@ -8233,7 +8233,7 @@ Score: ${overallScore}/10 (higher is better)`;
   };
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function() {
-      navigator.serviceWorker.register("sw.js").catch(function(err) {
+      navigator.serviceWorker.register("sw-v2.js").catch(function(err) {
         console.error("Service worker registration failed:", err);
       });
     });

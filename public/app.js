@@ -4612,7 +4612,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (!document.getElementById("debug-panel")) {
       logContainer = document.createElement("pre");
       logContainer.id = "debug-panel";
-      logContainer.style.cssText = "background:#fff;color:#000;padding:10px;font-size:10px;line-height:1.2;z-index:99999;position:relative;margin:0;white-space:pre-wrap;word-wrap:break-word;";
+      logContainer.style.cssText = "background:yellow;color:black;padding:10px;font-size:10px;line-height:1.2;z-index:99999;position:relative;margin:0;white-space:pre-wrap;word-wrap:break-word;";
       document.body.prepend(logContainer);
       logToScreen(`App version: ${DEBUG_VERSION}`);
     }

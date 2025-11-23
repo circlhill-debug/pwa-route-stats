@@ -761,7 +761,24 @@ window.__sb = createSupabaseClient();
   // initial render
   renderUspsEvalTag();
   renderVacationRanges();
-  renderTomorrowForecast();
+  
+  // === NEW: Sync forecast snapshots from Supabase before rendering ===
+  (async () => {
+    const { data } = await sb.auth.getSession();
+    const session = data?.session || null;
+    CURRENT_USER_ID = session?.user?.id || null;
+  
+    if (window.__sb && CURRENT_USER_ID) {
+      try {
+        await syncForecastSnapshotsFromSupabase(window.__sb, CURRENT_USER_ID, { silent: true });
+        console.log("[Forecast] Synced snapshots from Supabase.");
+      } catch (e) {
+        console.warn("[Forecast] Snapshot sync failed:", e);
+      }
+    }
+    // Now that sync is complete, render the forecast
+    renderTomorrowForecast();
+  })();
 
   function getLastNonEmptyWeek(rows, now, { excludeVacation = true } = {}){
     const worked = (rows || []).filter(r => (+r.hours || 0) > 0);

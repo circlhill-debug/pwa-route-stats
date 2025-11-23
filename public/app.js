@@ -822,7 +822,7 @@
 
   // src/modules/forecast.js
   var STEADY_MESSAGE = "Steady outlook based on recent trends.";
-  var FORECAST_BADGE_STORAGE_KEYS = ["forecastBadgeData", "routeStats.forecastBadgeData"];
+  var FORECAST_BADGE_STORAGE_KEYS = ["forecastBadgeData_v2", "routeStats.forecastBadgeData_v2"];
   var FORECAST_PRIMARY_STORAGE = FORECAST_BADGE_STORAGE_KEYS[FORECAST_BADGE_STORAGE_KEYS.length - 1];
   var FORECAST_SNAPSHOT_TABLE = "forecast_snapshots";
   var WEEKDAY_PLURALS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
@@ -862,8 +862,8 @@
   function readForecastBadgeDataRaw() {
     try {
       const keys = [
-        "forecastBadgeData",
-        "routeStats.forecastBadgeData"
+        "forecastBadgeData_v2",
+        "routeStats.forecastBadgeData_v2"
       ];
       for (const key of keys) {
         const raw = localStorage.getItem(key);
@@ -1337,7 +1337,7 @@
       const existing = JSON.parse(localStorage.getItem("forecastSnapshots") || "{}");
       existing[dateString] = forecastText;
       localStorage.setItem("forecastSnapshots", JSON.stringify(existing));
-      localStorage.setItem("routeStats.latestForecast", JSON.stringify({
+      localStorage.setItem("routeStats.latestForecast_v2", JSON.stringify({
         iso: dateString,
         text: forecastText,
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()

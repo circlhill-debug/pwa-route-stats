@@ -38,13 +38,13 @@ Click any tile to see a short plain‑English explanation. Hover tooltips show d
 - Data sources:
   - **Phase 1 (tag-based)** reads `routeStats.tagHistory` (diagnostics dismissals, manual tags, imported data). Tags are flattened by weekday so only the latest entry of each type applies to tomorrow’s weekday.
   - **Daily data fallback** uses any values stored in `routeStats.dailyData` (flats/parcels/letters) to generate a simple volume-based forecast if no tags exist.
-  - Snapshots (`forecastBadgeData` + Supabase `forecast_snapshots`) keep a historical record so the badge text and trends can be audited later.
+  - Snapshots (`forecastBadgeData_v2` + Supabase `forecast_snapshots`) keep a historical record so the badge text and trends can be audited later.
 - **Phase 2 (trend compare)** loads the stored snapshots for the same weekday, compares the most recent 3 runs vs the prior 3, and classifies the shift (`uptick`, `dip`, or `steady`). When the percent delta exceeds ±15%, the badge mentions which metric (route/office/end time) is drifting.
 - Rendering flow:
   1. Read tag history → build a sentence (e.g., “Expect a longer day due to extra parcels (+20 min)”).
   2. If no tags apply, inspect daily data for high flats/parcels/letters hints.
   3. If still nothing, fall back to a generic “Steady outlook.”
-  4. Cache the generated text in `routeStats.latestForecast` (ISO date + timestamp) so it can be reused offline and synced to Supabase.
+  4. Cache the generated text in `routeStats.latestForecast_v2` (ISO date + timestamp) so it can be reused offline and synced to Supabase.
 - Reason tags created in Diagnostics immediately feed Phase 1; once snapshots are saved (manual or Supabase sync), Phase 2 factors them into the weekday trend comparison.
 
 ## Smart Summary (under the title)

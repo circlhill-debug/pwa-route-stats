@@ -822,7 +822,7 @@
 
   // src/modules/forecast.js
   var STEADY_MESSAGE = "Steady outlook based on recent trends.";
-  var FORECAST_BADGE_STORAGE_KEYS = ["forecastBadgeData", "routeStats.forecastBadgeData"];
+  var FORECAST_BADGE_STORAGE_KEYS = ["forecastBadgeData_v2", "routeStats.forecastBadgeData_v2"];
   var FORECAST_PRIMARY_STORAGE = FORECAST_BADGE_STORAGE_KEYS[FORECAST_BADGE_STORAGE_KEYS.length - 1];
   var FORECAST_SNAPSHOT_TABLE = "forecast_snapshots";
   var WEEKDAY_PLURALS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
@@ -862,8 +862,8 @@
   function readForecastBadgeDataRaw() {
     try {
       const keys = [
-        "forecastBadgeData",
-        "routeStats.forecastBadgeData"
+        "forecastBadgeData_v2",
+        "routeStats.forecastBadgeData_v2"
       ];
       for (const key of keys) {
         const raw = localStorage.getItem(key);
@@ -957,7 +957,7 @@
             weekday: normalized.weekday,
             total_time: normalized.totalTime,
             office_time: normalized.officeTime,
-            end_time: normalized.endTime,
+            return_time: normalized.endTime,
             tags: normalized.tags
           }, { onConflict: "user_id,iso" });
         } catch (err) {
@@ -973,7 +973,7 @@
   async function syncForecastSnapshotsFromSupabase(supabaseClient, userId, options = {}) {
     if (!supabaseClient || !userId) return loadForecastBadgeData();
     try {
-      const { data, error } = await supabaseClient.from(FORECAST_SNAPSHOT_TABLE).select("iso, weekday, total_time, office_time, end_time, tags").eq("user_id", userId).order("iso", { ascending: true });
+      const { data, error } = await supabaseClient.from(FORECAST_SNAPSHOT_TABLE).select("iso, weekday, total_time, office_time, return_time, tags").eq("user_id", userId).order("iso", { ascending: true });
       if (error) throw error;
       const normalized = (data || []).map((item) => normalizeSnapshot({ ...item, user_id: userId })).filter(Boolean);
       setForecastBadgeData(normalized);
@@ -1119,8 +1119,16 @@
     return buildTrendForecast_core(dowRaw, badgeData);
   }
   function buildTrendForecast_core(targetDow, badgeData) {
+    if (window.logToScreen) {
+      window.logToScreen(`Forecast Engine: Received ${(badgeData == null ? void 0 : badgeData.length) || 0} total snapshots.`);
+    }
     const dataList = Array.isArray(badgeData) ? badgeData : [];
-    if (!dataList.length) return null;
+    if (!dataList.length) {
+      if (window.logToScreen) {
+        window.logToScreen("Forecast Engine: Aborting. dataList is empty.");
+      }
+      return null;
+    }
     const normalizedTarget = normalizeDow(typeof targetDow === "number" ? targetDow : new Date(Date.now() + 864e5).getDay());
     if (normalizedTarget == null) return null;
     const matching = dataList.map((entry, index) => ({
@@ -1128,7 +1136,15 @@
       dow: extractDow(entry),
       ts: entryTimestamp(entry, index)
     })).filter((item) => item.dow === normalizedTarget).sort((a, b) => a.ts - b.ts).map((item) => item.entry);
-    if (matching.length < 6) return null;
+    if (window.logToScreen) {
+      window.logToScreen(`Forecast Engine: Found ${matching.length} matching snapshots for target DOW.`);
+    }
+    if (matching.length < 6) {
+      if (window.logToScreen) {
+        window.logToScreen(`Forecast Engine: Aborting trend forecast, need at least 6 matching snapshots.`);
+      }
+      return null;
+    }
     const recent = matching.slice(-3);
     const prior = matching.slice(-6, -3);
     const deltas = METRIC_CONFIGS.map((config) => {
@@ -1321,7 +1337,7 @@
       const existing = JSON.parse(localStorage.getItem("forecastSnapshots") || "{}");
       existing[dateString] = forecastText;
       localStorage.setItem("forecastSnapshots", JSON.stringify(existing));
-      localStorage.setItem("routeStats.latestForecast", JSON.stringify({
+      localStorage.setItem("routeStats.latestForecast_v2", JSON.stringify({
         iso: dateString,
         text: forecastText,
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -5196,6 +5212,32 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       }
       const tomorrowDate = DateTime.now().setZone(ZONE).plus({ days: 1 });
       const tomorrowDow = tomorrowDate.weekday === 7 ? 0 : tomorrowDate.weekday;
+      if (tomorrowDow === 0) {
+        const container2 = document.querySelector("#forecastBadgeContainer") || document.body;
+        if (container2) {
+          const existingBadges2 = container2.querySelectorAll(".forecast-badge");
+          existingBadges2.forEach((node) => node.remove());
+          const forecastBadge2 = document.createElement("div");
+          forecastBadge2.className = "forecast-badge";
+          const titleEl2 = document.createElement("h3");
+          titleEl2.textContent = "\u{1F324} Tomorrow\u2019s Forecast";
+          const bodyEl2 = document.createElement("p");
+          bodyEl2.textContent = "Enjoy your day off \u2764\uFE0F";
+          forecastBadge2.appendChild(titleEl2);
+          forecastBadge2.appendChild(bodyEl2);
+          container2.appendChild(forecastBadge2);
+        }
+        return {
+          message: "Enjoy your day off \u2764\uFE0F",
+          type: "rest",
+          iso: null,
+          weekday: 0,
+          total_time: null,
+          office_time: null,
+          end_time: null,
+          tags: []
+        };
+      }
       const forecastText = computeForecastText({ targetDow: tomorrowDow }) || "Forecast unavailable";
       storeForecastSnapshot(tomorrowDate.toISODate(), forecastText);
       if (CURRENT_USER_ID) {
@@ -5233,7 +5275,19 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   window.renderTomorrowForecast = renderTomorrowForecast;
   renderUspsEvalTag();
   renderVacationRanges();
-  renderTomorrowForecast();
+  (async () => {
+    var _a6;
+    const session = await authReadyPromise;
+    CURRENT_USER_ID = ((_a6 = session == null ? void 0 : session.user) == null ? void 0 : _a6.id) || null;
+    if (window.__sb && CURRENT_USER_ID) {
+      try {
+        await syncForecastSnapshotsFromSupabase(window.__sb, CURRENT_USER_ID, { silent: true });
+      } catch (e) {
+        console.warn("[Forecast] Snapshot sync failed:", e);
+      }
+    }
+    renderTomorrowForecast();
+  })();
   function getLastNonEmptyWeek(rows, now, { excludeVacation = true } = {}) {
     const worked = (rows || []).filter((r) => (+r.hours || 0) > 0);
     const weeksToScan = 12;

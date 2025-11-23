@@ -4,7 +4,7 @@ import { todayIso as getTodayIsoFromUtils } from '../utils/date.js';
 let __forceTrend = true;
 
 const STEADY_MESSAGE = 'Steady outlook based on recent trends.';
-const FORECAST_BADGE_STORAGE_KEYS = ['forecastBadgeData', 'routeStats.forecastBadgeData'];
+const FORECAST_BADGE_STORAGE_KEYS = ['forecastBadgeData_v2', 'routeStats.forecastBadgeData_v2'];
 const FORECAST_PRIMARY_STORAGE = FORECAST_BADGE_STORAGE_KEYS[FORECAST_BADGE_STORAGE_KEYS.length - 1];
 const FORECAST_SNAPSHOT_TABLE = 'forecast_snapshots';
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -51,8 +51,8 @@ function loadDailyData() {
 function readForecastBadgeDataRaw() {
   try {
     const keys = [
-      "forecastBadgeData",
-      "routeStats.forecastBadgeData"
+      'forecastBadgeData_v2',
+      'routeStats.forecastBadgeData_v2'
     ];
 
     for (const key of keys) {
@@ -602,7 +602,7 @@ export function storeForecastSnapshot(dateString = getTodayISO(), forecastText) 
     const existing = JSON.parse(localStorage.getItem('forecastSnapshots') || '{}');
     existing[dateString] = forecastText;
     localStorage.setItem('forecastSnapshots', JSON.stringify(existing));
-    localStorage.setItem('routeStats.latestForecast', JSON.stringify({
+    localStorage.setItem('routeStats.latestForecast_v2', JSON.stringify({
       iso: dateString,
       text: forecastText,
       updatedAt: new Date().toISOString()

@@ -957,7 +957,7 @@
             weekday: normalized.weekday,
             total_time: normalized.totalTime,
             office_time: normalized.officeTime,
-            return_time: normalized.endTime,
+            end_time: normalized.endTime,
             tags: normalized.tags
           }, { onConflict: "user_id,iso" });
         } catch (err) {
@@ -973,7 +973,7 @@
   async function syncForecastSnapshotsFromSupabase(supabaseClient, userId, options = {}) {
     if (!supabaseClient || !userId) return loadForecastBadgeData();
     try {
-      const { data, error } = await supabaseClient.from(FORECAST_SNAPSHOT_TABLE).select("iso, weekday, total_time, office_time, return_time, tags").eq("user_id", userId).order("iso", { ascending: true });
+      const { data, error } = await supabaseClient.from(FORECAST_SNAPSHOT_TABLE).select("iso, weekday, total_time, office_time, end_time, tags").eq("user_id", userId).order("iso", { ascending: true });
       if (error) throw error;
       const normalized = (data || []).map((item) => normalizeSnapshot({ ...item, user_id: userId })).filter(Boolean);
       setForecastBadgeData(normalized);

@@ -3328,6 +3328,15 @@ function getHourlyRateFromEval(){
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);
+  // 🔒 Force Supabase authentication to verify or refresh on boot
+  window.__sb.auth.getUser().then(async ({ data, error }) => {
+    if (error || !data?.user) {
+      console.warn("[Auth] No valid session found — refreshing...");
+      await window.__sb.auth.refreshSession();
+    } else {
+      console.log("[Auth] Valid session:", data.user.id);
+    }
+  });
 
   // Developer helper: log diagnostics to the console on demand
   window.showDiagnostics = function(){

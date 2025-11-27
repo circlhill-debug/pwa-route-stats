@@ -5203,6 +5203,45 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
   async function renderTomorrowForecast() {
     try {
+      let shouldExitForecast = false;
+      const done = ({ title = "\u{1F324} Tomorrow\u2019s Forecast", msg = "", iso = null } = {}) => {
+        const container2 = document.querySelector("#forecastBadgeContainer") || document.body;
+        if (container2) {
+          const existingBadges2 = container2.querySelectorAll(".forecast-badge");
+          existingBadges2.forEach((node) => node.remove());
+          const forecastBadge2 = document.createElement("div");
+          forecastBadge2.className = "forecast-badge";
+          const titleEl2 = document.createElement("h3");
+          titleEl2.textContent = title;
+          const bodyEl2 = document.createElement("p");
+          bodyEl2.textContent = msg;
+          forecastBadge2.appendChild(titleEl2);
+          forecastBadge2.appendChild(bodyEl2);
+          container2.appendChild(forecastBadge2);
+        }
+        shouldExitForecast = true;
+        return {
+          message: msg,
+          iso
+        };
+      };
+      (function() {
+        const now = /* @__PURE__ */ new Date();
+        const hour = now.getHours();
+        const minute = now.getMinutes();
+        const isMorningForecastHours = hour < 7 || hour === 7 && minute < 59;
+        const isEveningForecastHours = hour >= 20;
+        const showForecast = isMorningForecastHours || isEveningForecastHours;
+        if (!showForecast) {
+          done({
+            title: "\u2764",
+            msg: "Stay safe out there my Stallion.",
+            iso: null
+          });
+          return;
+        }
+      })();
+      if (shouldExitForecast) return;
       if (CURRENT_USER_ID) {
         try {
           await syncForecastSnapshotsFromSupabase(sb, CURRENT_USER_ID, { silent: true });
@@ -8180,6 +8219,14 @@ Score: ${overallScore}/10 (higher is better)`;
     applyFocusMode();
   })();
   console.log("Route Stats loaded \u2014", VERSION_TAG);
+  window.__sb.auth.getUser().then(async ({ data, error }) => {
+    if (error || !(data == null ? void 0 : data.user)) {
+      console.warn("[Auth] No valid session found \u2014 refreshing...");
+      await window.__sb.auth.refreshSession();
+    } else {
+      console.log("[Auth] Valid session:", data.user.id);
+    }
+  });
   window.showDiagnostics = function() {
     try {
       if (typeof fitVolumeTimeModel !== "function") {

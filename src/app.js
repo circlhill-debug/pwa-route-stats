@@ -686,6 +686,52 @@ window.__sb = createSupabaseClient();
 
   async function renderTomorrowForecast(){
     try{
+      let shouldExitForecast = false;
+      const done = ({ title = '🌤 Tomorrow’s Forecast', msg = '', iso = null } = {}) => {
+        const container = document.querySelector('#forecastBadgeContainer') || document.body;
+        if (container) {
+          const existingBadges = container.querySelectorAll('.forecast-badge');
+          existingBadges.forEach(node => node.remove());
+          const forecastBadge = document.createElement('div');
+          forecastBadge.className = 'forecast-badge';
+          const titleEl = document.createElement('h3');
+          titleEl.textContent = title;
+          const bodyEl = document.createElement('p');
+          bodyEl.textContent = msg;
+          forecastBadge.appendChild(titleEl);
+          forecastBadge.appendChild(bodyEl);
+          container.appendChild(forecastBadge);
+        }
+        shouldExitForecast = true;
+        return {
+          message: msg,
+          iso
+        };
+      };
+
+      // 🌙 Daily forecast cycle logic
+      (function() {
+        const now = new Date();
+        const hour = now.getHours();
+        const minute = now.getMinutes();
+
+        // Conditions:
+        const isMorningForecastHours = (hour < 7) || (hour === 7 && minute < 59);
+        const isEveningForecastHours = (hour >= 20);  // 8 PM and later
+        const showForecast = isMorningForecastHours || isEveningForecastHours;
+
+        if (!showForecast) {
+          // Between 7:59 AM and 7:59 PM → show encouraging message
+          done({
+            title: "❤",
+            msg: "Stay safe out there my Stallion.",
+            iso: null
+          });
+          return;
+        }
+      })();
+      if (shouldExitForecast) return;
+
       if (CURRENT_USER_ID){
         try {
           await syncForecastSnapshotsFromSupabase(sb, CURRENT_USER_ID, { silent: true });

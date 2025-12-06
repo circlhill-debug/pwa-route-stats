@@ -612,6 +612,19 @@ export function storeForecastSnapshot(dateString = getTodayISO(), forecastText) 
   }
 }
 
+export function loadLatestForecastMessage() {
+  try {
+    const raw = localStorage.getItem('routeStats.latestForecast_v2');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (!parsed.text || !parsed.iso) return null;
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
 if (typeof window !== 'undefined') {
   window.generateForecastText = (tagHistory) => {
     const fallbackDow = new Date(Date.now() + 864e5).getDay();

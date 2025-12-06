@@ -1345,6 +1345,18 @@
     } catch (_) {
     }
   }
+  function loadLatestForecastMessage() {
+    try {
+      const raw = localStorage.getItem("routeStats.latestForecast_v2");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      if (!parsed.text || !parsed.iso) return null;
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  }
   if (typeof window !== "undefined") {
     window.generateForecastText = (tagHistory) => {
       const fallbackDow = new Date(Date.now() + 864e5).getDay();
@@ -5203,110 +5215,90 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
   async function renderTomorrowForecast() {
     try {
-      let shouldExitForecast = false;
-      const done = ({ title = "\u{1F324} Tomorrow\u2019s Forecast", msg = "", iso = null } = {}) => {
-        const container2 = document.querySelector("#forecastBadgeContainer") || document.body;
-        if (container2) {
-          const existingBadges2 = container2.querySelectorAll(".forecast-badge");
-          existingBadges2.forEach((node) => node.remove());
-          const forecastBadge2 = document.createElement("div");
-          forecastBadge2.className = "forecast-badge";
-          const titleEl2 = document.createElement("h3");
-          titleEl2.textContent = title;
-          const bodyEl2 = document.createElement("p");
-          bodyEl2.textContent = msg;
-          forecastBadge2.appendChild(titleEl2);
-          forecastBadge2.appendChild(bodyEl2);
-          container2.appendChild(forecastBadge2);
-        }
-        shouldExitForecast = true;
-        return {
-          message: msg,
-          iso
-        };
+      const container = document.querySelector("#forecastBadgeContainer") || document.body;
+      const showMessage = ({ title = "\u{1F324} Tomorrow\u2019s Forecast", msg = "" } = {}) => {
+        if (!container) return;
+        const existingBadges = container.querySelectorAll(".forecast-badge");
+        existingBadges.forEach((node) => node.remove());
+        const forecastBadge = document.createElement("div");
+        forecastBadge.className = "forecast-badge";
+        const titleEl = document.createElement("h3");
+        titleEl.textContent = title;
+        const bodyEl = document.createElement("p");
+        bodyEl.textContent = msg;
+        forecastBadge.appendChild(titleEl);
+        forecastBadge.appendChild(bodyEl);
+        container.appendChild(forecastBadge);
       };
-      (function() {
-        const now = /* @__PURE__ */ new Date();
-        const hour = now.getHours();
-        const minute = now.getMinutes();
-        const isMorningForecastHours = hour < 7 || hour === 7 && minute < 59;
-        const isEveningForecastHours = hour >= 20;
-        const showForecast = isMorningForecastHours || isEveningForecastHours;
-        if (!showForecast) {
-          done({
-            title: "\u2764",
-            msg: "Stay safe out there my Stallion.",
-            iso: null
-          });
+      const now = DateTime.now().setZone(ZONE);
+      const hour = now.hour;
+      if (hour >= 20) {
+        if (CURRENT_USER_ID) {
+          try {
+            await syncForecastSnapshotsFromSupabase(sb, CURRENT_USER_ID, { silent: true });
+          } catch (err) {
+            console.warn("renderTomorrowForecast: snapshot sync failed, using local cache", err);
+          }
+        }
+        const targetDate = now.plus({ days: 1 });
+        const targetDow = targetDate.weekday === 7 ? 0 : targetDate.weekday;
+        if (targetDow === 0) {
+          showMessage({ msg: "Enjoy your day off \u2764\uFE0F" });
           return;
         }
-      })();
-      if (shouldExitForecast) return;
-      if (CURRENT_USER_ID) {
-        try {
-          await syncForecastSnapshotsFromSupabase(sb, CURRENT_USER_ID, { silent: true });
-        } catch (err) {
-          console.warn("renderTomorrowForecast: snapshot sync failed, using local cache", err);
+        const forecastText = computeForecastText({ targetDow }) || "Forecast unavailable";
+        const iso = targetDate.toISODate();
+        storeForecastSnapshot(iso, forecastText);
+        if (CURRENT_USER_ID) {
+          try {
+            await saveForecastSnapshot({
+              iso,
+              weekday: targetDow,
+              totalTime: null,
+              officeTime: null,
+              endTime: null,
+              tags: readTagHistoryForIso(iso),
+              user_id: CURRENT_USER_ID
+            }, { supabaseClient: sb, silent: true });
+          } catch (err) {
+            console.warn("saveForecastSnapshot (remote) failed", err);
+          }
         }
+        showMessage({ msg: forecastText });
+        return;
       }
-      const tomorrowDate = DateTime.now().setZone(ZONE).plus({ days: 1 });
-      const tomorrowDow = tomorrowDate.weekday === 7 ? 0 : tomorrowDate.weekday;
-      if (tomorrowDow === 0) {
-        const container2 = document.querySelector("#forecastBadgeContainer") || document.body;
-        if (container2) {
-          const existingBadges2 = container2.querySelectorAll(".forecast-badge");
-          existingBadges2.forEach((node) => node.remove());
-          const forecastBadge2 = document.createElement("div");
-          forecastBadge2.className = "forecast-badge";
-          const titleEl2 = document.createElement("h3");
-          titleEl2.textContent = "\u{1F324} Tomorrow\u2019s Forecast";
-          const bodyEl2 = document.createElement("p");
-          bodyEl2.textContent = "Enjoy your day off \u2764\uFE0F";
-          forecastBadge2.appendChild(titleEl2);
-          forecastBadge2.appendChild(bodyEl2);
-          container2.appendChild(forecastBadge2);
+      if (hour < 8) {
+        const todayIso2 = now.toISODate();
+        const latest = loadLatestForecastMessage();
+        if ((latest == null ? void 0 : latest.iso) === todayIso2 && (latest == null ? void 0 : latest.text)) {
+          showMessage({ msg: latest.text });
+          return;
         }
-        return {
-          message: "Enjoy your day off \u2764\uFE0F",
-          type: "rest",
-          iso: null,
-          weekday: 0,
-          total_time: null,
-          office_time: null,
-          end_time: null,
-          tags: []
-        };
-      }
-      const forecastText = computeForecastText({ targetDow: tomorrowDow }) || "Forecast unavailable";
-      storeForecastSnapshot(tomorrowDate.toISODate(), forecastText);
-      if (CURRENT_USER_ID) {
-        try {
-          await saveForecastSnapshot({
-            iso: tomorrowDate.toISODate(),
-            weekday: tomorrowDow,
-            totalTime: null,
-            officeTime: null,
-            endTime: null,
-            tags: readTagHistoryForIso(tomorrowDate.toISODate()),
-            user_id: CURRENT_USER_ID
-          }, { supabaseClient: sb, silent: true });
-        } catch (err) {
-          console.warn("saveForecastSnapshot (remote) failed", err);
+        const todayDow = now.weekday === 7 ? 0 : now.weekday;
+        const forecastText = computeForecastText({ targetDow: todayDow }) || "Forecast unavailable";
+        storeForecastSnapshot(todayIso2, forecastText);
+        if (CURRENT_USER_ID) {
+          try {
+            await saveForecastSnapshot({
+              iso: todayIso2,
+              weekday: todayDow,
+              totalTime: null,
+              officeTime: null,
+              endTime: null,
+              tags: readTagHistoryForIso(todayIso2),
+              user_id: CURRENT_USER_ID
+            }, { supabaseClient: sb, silent: true });
+          } catch (err) {
+            console.warn("saveForecastSnapshot (remote) failed", err);
+          }
         }
+        showMessage({ msg: forecastText });
+        return;
       }
-      const container = document.querySelector("#forecastBadgeContainer") || document.body;
-      if (!container) return;
-      const existingBadges = container.querySelectorAll(".forecast-badge");
-      existingBadges.forEach((node) => node.remove());
-      const forecastBadge = document.createElement("div");
-      forecastBadge.className = "forecast-badge";
-      const titleEl = document.createElement("h3");
-      titleEl.textContent = "\u{1F324} Tomorrow\u2019s Forecast";
-      const bodyEl = document.createElement("p");
-      bodyEl.textContent = forecastText;
-      forecastBadge.appendChild(titleEl);
-      forecastBadge.appendChild(bodyEl);
-      container.appendChild(forecastBadge);
+      showMessage({
+        title: "\u2764",
+        msg: "Stay safe out there my Stallion."
+      });
     } catch (err) {
       console.warn("renderTomorrowForecast failed", err);
     }

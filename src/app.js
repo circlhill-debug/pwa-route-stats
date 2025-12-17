@@ -1629,7 +1629,7 @@ aiSummary = createAiSummary({
   function routeEndTime(){ return ($('returnTime').value || $('end').value || ''); }
 
 const date=$('date'), route=$('route'), start=$('start'), end=$('end'), departTime=$('departTime'), returnTime=$('returnTime');
-const parcels=$('parcels'), letters=$('letters'), miles=$('miles'), mood=$('mood'), notes=$('notes');
+const parcels=$('parcels'), parcelHelperInput=$('parcelHelper'), letters=$('letters'), miles=$('miles'), mood=$('mood'), notes=$('notes');
 const secondTripMilesInput=$('secondTripMiles'), secondTripTimeInput=$('secondTripTime'), secondTripEmaInput=$('secondTripEma');
 const breakMinutesInput=$('breakMinutes');
 const secondTripPaidEl=$('secondTripPaid'), secondTripActualEl=$('secondTripActual'), secondTripReimburseEl=$('secondTripReimburse'), secondTripEmaRateEl=$('secondTripEmaRate');
@@ -1649,6 +1649,7 @@ try{
 }catch(_){ }
 setSecondTripInputs(null);
 if (breakMinutesInput) breakMinutesInput.value = '0';
+if (parcelHelperInput) parcelHelperInput.value = '0';
   const weather=$('weather'), temp=$('temp'), boxholders=$('boxholders'), holiday=$('holiday');
   const offDay=$('offDay');
   const officeH=$('officeH'), routeH=$('routeH'), totalH=$('totalH');
@@ -1889,11 +1890,15 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
     else if(e.key==='Backspace'){ e.preventDefault(); $('btnDeleteDay')?.click(); }
   });
 
-function weatherString(){
+  function weatherString(){
     const parts=[]; if(weather?.value) parts.push(weather.value); if(temp?.value) parts.push(`${temp.value}°F`); if(boxholders?.value) parts.push(`Box: ${boxholders.value}`); if (holiday?.checked) parts.push('Holiday'); if (reasonTag?.value) parts.push(`Reason: ${reasonTag.value}`);
     const breakVal = parseFloat(breakMinutesInput?.value || '0'); if (Number.isFinite(breakVal) && breakVal > 0) parts.push(`Break:${breakVal}`);
     const st = getSecondTripPayload();
     if (st){ parts.push(`SecondTrip:${JSON.stringify(st)}`); }
+    const helperParcels = readHelperParcelsInput();
+    if (helperParcels > 0){
+      parts.push(`HelperParcels:${helperParcels}`);
+    }
     return parts.length? parts.join(' · ') : null;
   }
 
@@ -1956,9 +1961,10 @@ function weatherString(){
       const reasonTag = document.getElementById('reasonTag'); if (reasonTag) reasonTag.value = '';
       setSecondTripInputs(null);
       if (breakMinutesInput) breakMinutesInput.value = '0';
+      if (parcelHelperInput) parcelHelperInput.value = '0';
     } else {
       const parts = String(raw).split('·').map(s=>s.trim());
-      let w='', t='', b=''; let hol=false; let rsn=''; let stData=null; let brk=null;
+      let w='', t='', b=''; let hol=false; let rsn=''; let stData=null; let brk=null; let helperParcels='';
       for (const p of parts){
         if (/°F$/.test(p)) t = p.replace('°F','').trim();
         else if (/^Box:/i.test(p)) b = p.split(':').slice(1).join(':').trim();
@@ -1970,6 +1976,9 @@ function weatherString(){
           const val = parseFloat(p.split(':').slice(1).join(':'));
           brk = Number.isFinite(val) && val>=0 ? val : null;
         }
+        else if (/^HelperParcels:/i.test(p)){
+          helperParcels = p.split(':').slice(1).join(':').trim();
+        }
         else if (/^Holiday$/i.test(p)) hol = true;
         else w = p;
       }
@@ -1980,6 +1989,7 @@ function weatherString(){
       const reasonTag = document.getElementById('reasonTag'); if (reasonTag) reasonTag.value = rsn || '';
       setSecondTripInputs(stData);
       if (breakMinutesInput) breakMinutesInput.value = brk!=null ? String(brk) : '0';
+      if (parcelHelperInput) parcelHelperInput.value = helperParcels || '0';
     }
     try { computeBreakdown(); } catch(_){}
   }
@@ -2020,6 +2030,13 @@ function getSecondTripPayload(){
     t: actualMinutes,
     e: +ema.toFixed(2)
   };
+}
+
+function readHelperParcelsInput(){
+  if (!parcelHelperInput) return 0;
+  const val = parseFloat(parcelHelperInput.value || '');
+  if (!Number.isFinite(val) || val <= 0) return 0;
+  return val;
 }
 
 function updateSecondTripSummary(){
@@ -2064,6 +2081,19 @@ function parseBreakMinutesFromRow(row){
     const val = parseFloat(part.split(':').slice(1).join(':'));
     return Number.isFinite(val) && val > 0 ? val : 0;
   }catch(_){ return 0; }
+}
+
+function parseHelperParcelsFromWeatherString(weatherStr){
+  if (!weatherStr) return 0;
+  try{
+    const part = String(weatherStr).split('·').map(s => s.trim()).find(p => /^HelperParcels:/i.test(p));
+    if (!part) return 0;
+    const raw = part.split(':').slice(1).join(':').trim();
+    const val = parseFloat(raw);
+    return Number.isFinite(val) && val > 0 ? val : 0;
+  }catch(_){
+    return 0;
+  }
 }
 
 function readTagHistoryForIso(iso){
@@ -2166,6 +2196,7 @@ function getHourlyRateFromEval(){
     const btn=$('save'); const clone=btn.cloneNode(true); btn.parentNode.replaceChild(clone,btn);
     clone.addEventListener('click', async ()=>{
       const { data:{ user } } = await sb.auth.getUser(); if (!user) { alert('No session. Try Link devices or refresh.'); return; }
+      const helperParcels = readHelperParcelsInput();
       const payload = collectPayload(user.id); let error;
       try{
         // Guard against duplicates: replace all rows for this user/date with a single fresh payload
@@ -2185,7 +2216,7 @@ function getHourlyRateFromEval(){
         }
       }catch(e){ error = e; }
       dWrite.textContent = error ? 'Failed' : 'OK'; if (error){ alert(error.message); return; }
-      updateYearlyTotals({ ...payload, date: payload.work_date });
+      updateYearlyTotals({ ...payload, date: payload.work_date, parcels: (payload.parcels || 0) + helperParcels });
       renderYearlyBadges();
       await persistForecastSnapshot(payload, user.id);
       clone.textContent = 'Update'; clone.disabled = true; clone.classList.add('saving','savedFlash');
@@ -2212,7 +2243,7 @@ function getHourlyRateFromEval(){
     if(!confirm(`Delete your entry for ${d}? This cannot be undone (unless you press Undo).`)) return;
     const { error } = await sb.from('entries').delete().eq('user_id',user.id).eq('work_date',d); if(error){ alert(error.message); return; }
     lastDeleted = rowToDelete; showUndo(true);
-    $('notes').value=''; parcels.value=0; letters.value=0; miles.value=53; offDay.checked=false; start.value='08:00'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; computeBreakdown();
+    $('notes').value=''; parcels.value=0; if(parcelHelperInput) parcelHelperInput.value='0'; letters.value=0; miles.value=53; offDay.checked=false; start.value='08:00'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; computeBreakdown();
     const rows = await fetchEntries();
     allRows = rows;
     rebuildAll();
@@ -2233,7 +2264,20 @@ function getHourlyRateFromEval(){
     const { data:{ user } } = await sb.auth.getUser(); if(!user) return [];
     const { data, error } = await sb.from('entries').select('*').eq('user_id',user.id).order('work_date',{ascending:false}).limit(365);
     if(error){ console.error(error); return []; }
-    return ensurePostHolidayTags(data || []);
+    return applyHelperParcels(ensurePostHolidayTags(data || []));
+  }
+
+  function applyHelperParcels(rows){
+    return (rows || []).map(row=>{
+      const helper = parseHelperParcelsFromWeatherString(row.weather_json || '');
+      const base = Number(row.parcels) || 0;
+      return {
+        ...row,
+        parcels_helper: helper,
+        parcels_base: base,
+        parcels: base + helper
+      };
+    });
   }
 
   function classifyRow(total, avg){ if(total==null||avg==null) return ''; const diff=(total-avg)/avg; if(diff<=-0.15) return 'light'; if(diff>=0.15) return 'heavy'; return 'typical'; }

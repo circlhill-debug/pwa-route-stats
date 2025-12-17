@@ -6188,6 +6188,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var departTime = $("departTime");
   var returnTime = $("returnTime");
   var parcels = $("parcels");
+  var parcelHelperInput = $("parcelHelper");
   var letters = $("letters");
   var miles = $("miles");
   var mood = $("mood");
@@ -6216,6 +6217,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
   setSecondTripInputs(null);
   if (breakMinutesInput) breakMinutesInput.value = "0";
+  if (parcelHelperInput) parcelHelperInput.value = "0";
   var weather = $("weather");
   var temp = $("temp");
   var boxholders = $("boxholders");
@@ -6496,6 +6498,10 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (st) {
       parts.push(`SecondTrip:${JSON.stringify(st)}`);
     }
+    const helperParcels = readHelperParcelsInput();
+    if (helperParcels > 0) {
+      parts.push(`HelperParcels:${helperParcels}`);
+    }
     return parts.length ? parts.join(" \xB7 ") : null;
   }
   function collectPayload(userId) {
@@ -6557,6 +6563,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       if (reasonTag2) reasonTag2.value = "";
       setSecondTripInputs(null);
       if (breakMinutesInput) breakMinutesInput.value = "0";
+      if (parcelHelperInput) parcelHelperInput.value = "0";
     } else {
       const parts = String(raw).split("\xB7").map((s) => s.trim());
       let w = "", t = "", b = "";
@@ -6564,6 +6571,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       let rsn = "";
       let stData = null;
       let brk = null;
+      let helperParcels = "";
       for (const p of parts) {
         if (/°F$/.test(p)) t = p.replace("\xB0F", "").trim();
         else if (/^Box:/i.test(p)) b = p.split(":").slice(1).join(":").trim();
@@ -6577,6 +6585,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         } else if (/^Break:/i.test(p)) {
           const val = parseFloat(p.split(":").slice(1).join(":"));
           brk = Number.isFinite(val) && val >= 0 ? val : null;
+        } else if (/^HelperParcels:/i.test(p)) {
+          helperParcels = p.split(":").slice(1).join(":").trim();
         } else if (/^Holiday$/i.test(p)) hol = true;
         else w = p;
       }
@@ -6588,6 +6598,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       if (reasonTag2) reasonTag2.value = rsn || "";
       setSecondTripInputs(stData);
       if (breakMinutesInput) breakMinutesInput.value = brk != null ? String(brk) : "0";
+      if (parcelHelperInput) parcelHelperInput.value = helperParcels || "0";
     }
     try {
       computeBreakdown();
@@ -6635,6 +6646,12 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       e: +ema.toFixed(2)
     };
   }
+  function readHelperParcelsInput() {
+    if (!parcelHelperInput) return 0;
+    const val = parseFloat(parcelHelperInput.value || "");
+    if (!Number.isFinite(val) || val <= 0) return 0;
+    return val;
+  }
   function updateSecondTripSummary() {
     if (!secondTripMilesInput) return;
     const { miles: miles2, actualMinutes, ema } = getSecondTripInputs();
@@ -6681,6 +6698,18 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       const part = row.weather_json.split("\xB7").map((s) => s.trim()).find((p) => /^Break:/i.test(p));
       if (!part) return 0;
       const val = parseFloat(part.split(":").slice(1).join(":"));
+      return Number.isFinite(val) && val > 0 ? val : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+  function parseHelperParcelsFromWeatherString(weatherStr) {
+    if (!weatherStr) return 0;
+    try {
+      const part = String(weatherStr).split("\xB7").map((s) => s.trim()).find((p) => /^HelperParcels:/i.test(p));
+      if (!part) return 0;
+      const raw = part.split(":").slice(1).join(":").trim();
+      const val = parseFloat(raw);
       return Number.isFinite(val) && val > 0 ? val : 0;
     } catch (_) {
       return 0;
@@ -6799,6 +6828,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         alert("No session. Try Link devices or refresh.");
         return;
       }
+      const helperParcels = readHelperParcelsInput();
       const payload = collectPayload(user.id);
       let error;
       try {
@@ -6831,7 +6861,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         alert(error.message);
         return;
       }
-      updateYearlyTotals({ ...payload, date: payload.work_date });
+      updateYearlyTotals({ ...payload, date: payload.work_date, parcels: (payload.parcels || 0) + helperParcels });
       renderYearlyBadges();
       await persistForecastSnapshot(payload, user.id);
       clone.textContent = "Update";
@@ -6893,6 +6923,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     showUndo(true);
     $("notes").value = "";
     parcels.value = 0;
+    if (parcelHelperInput) parcelHelperInput.value = "0";
     letters.value = 0;
     miles.value = 53;
     offDay.checked = false;
@@ -6938,7 +6969,19 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       console.error(error);
       return [];
     }
-    return ensurePostHolidayTags(data || []);
+    return applyHelperParcels(ensurePostHolidayTags(data || []));
+  }
+  function applyHelperParcels(rows) {
+    return (rows || []).map((row) => {
+      const helper = parseHelperParcelsFromWeatherString(row.weather_json || "");
+      const base = Number(row.parcels) || 0;
+      return {
+        ...row,
+        parcels_helper: helper,
+        parcels_base: base,
+        parcels: base + helper
+      };
+    });
   }
   function classifyRow(total, avg) {
     if (total == null || avg == null) return "";

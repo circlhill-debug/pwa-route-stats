@@ -27,6 +27,8 @@ import {
   createEvalProfile,
   loadVacation,
   saveVacation,
+  loadPeakSeason,
+  savePeakSeason,
   ensureWeeklyBaselines,
   getWeeklyBaselines,
   computeAnchorBaselines,
@@ -111,6 +113,7 @@ window.__sb = createSupabaseClient();
 
   // Vacation Mode config
   let VACATION = loadVacation();
+  let PEAK_SEASON = loadPeakSeason();
   if (VACATION && Array.isArray(VACATION.ranges)){
     const normalized = normalizeRanges(VACATION.ranges);
     if (normalized.length !== VACATION.ranges.length || normalized.some((r,i)=> r.from!==VACATION.ranges[i]?.from || r.to!==VACATION.ranges[i]?.to)){
@@ -209,6 +212,16 @@ window.__sb = createSupabaseClient();
       if (!cfg || !Array.isArray(cfg.ranges) || !cfg.ranges.length) return rows||[];
       return (rows||[]).filter(r=> !isVacationDate(r.work_date));
     }catch(_){ return rows||[]; }
+  }
+
+  function isPeakSeasonDate(iso){
+    try{
+      const cfg = PEAK_SEASON || loadPeakSeason();
+      if (!cfg || !cfg.from || !cfg.to) return false;
+      return dateInRangeISO(iso, cfg.from, cfg.to);
+    }catch(_){
+      return false;
+    }
   }
 
   function syncEvalGlobals(){
@@ -636,15 +649,18 @@ window.__sb = createSupabaseClient();
   function rowsForModelScope(allRows){
     const rows = Array.isArray(allRows) ? allRows : [];
     const scope = getModelScope();
-    if (scope !== 'rolling') return rows;
     const cutoff = DateTime.now().setZone(ZONE).minus({ days:120 }).startOf('day');
-    return rows.filter(r=>{
-      try{
-        if (!r || !r.work_date) return false;
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        return d >= cutoff;
-      }catch(_){ return false; }
-    });
+    const base = scope !== 'rolling'
+      ? rows
+      : rows.filter(r=>{
+          try{
+            if (!r || !r.work_date) return false;
+            const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+            return d >= cutoff;
+          }catch(_){ return false; }
+        });
+    if (!PEAK_SEASON?.excludeFromModel || !PEAK_SEASON.from || !PEAK_SEASON.to) return base;
+    return base.filter(r => !isPeakSeasonDate(r.work_date));
   }
   (function initModelScopeUI(){
     const el = document.getElementById('modelScope');
@@ -1200,6 +1216,10 @@ const authReadyPromise = handleAuthCallback(sb);
   const vacTo      = document.getElementById('vacTo');
   const vacAdd     = document.getElementById('vacAdd');
   const vacRangesEl= document.getElementById('vacRanges');
+  const peakFrom = document.getElementById('peakFrom');
+  const peakTo = document.getElementById('peakTo');
+  const peakExclude = document.getElementById('peakExclude');
+  const peakClear = document.getElementById('peakClear');
   const saveSettings = document.getElementById('saveSettings');
 const settingsOpenAiKey = document.getElementById('settingsOpenAiKey');
 const clearOpenAiKeyBtn = document.getElementById('clearOpenAiKey');
@@ -1296,6 +1316,12 @@ aiSummary = createAiSummary({
       if (vacTo)   vacTo.value   = last?.to   || '';
     }catch(_){ }
     try{
+      const p = PEAK_SEASON || loadPeakSeason();
+      if (peakFrom) peakFrom.value = p?.from || '';
+      if (peakTo) peakTo.value = p?.to || '';
+      if (peakExclude) peakExclude.checked = !!p?.excludeFromModel;
+    }catch(_){ }
+    try{
       if (settingsEmaRate){
         const stored = localStorage.getItem(SECOND_TRIP_EMA_KEY);
         settingsEmaRate.value = stored != null ? stored : (secondTripEmaInput?.value || '');
@@ -1311,6 +1337,15 @@ aiSummary = createAiSummary({
     aiSummary.populateTokenInputs(loadTokenUsage());
     renderVacationRanges();
     settingsDlg.showModal();
+  });
+
+  peakClear?.addEventListener('click', ()=>{
+    if (peakFrom) peakFrom.value = '';
+    if (peakTo) peakTo.value = '';
+    if (peakExclude) peakExclude.checked = false;
+    PEAK_SEASON = { from: '', to: '', excludeFromModel: false };
+    savePeakSeason(PEAK_SEASON);
+    updateModelScopeBadge();
   });
 
   evalProfileSelect?.addEventListener('change', ()=>{
@@ -1399,6 +1434,14 @@ aiSummary = createAiSummary({
       if (f && t) addVacationRange(f, t);
       if (vacFrom) vacFrom.value = '';
       if (vacTo)   vacTo.value   = '';
+    }catch(_){ }
+    try{
+      const from = peakFrom?.value || '';
+      const to = peakTo?.value || '';
+      const exclude = !!peakExclude?.checked;
+      PEAK_SEASON = { from, to, excludeFromModel: exclude };
+      savePeakSeason(PEAK_SEASON);
+      updateModelScopeBadge();
     }catch(_){ }
     try{
       if (settingsEmaRate){

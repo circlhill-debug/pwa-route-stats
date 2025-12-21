@@ -1297,6 +1297,17 @@
       </div>
       <div id="vacRanges" class="vac-ranges"></div>
     </div>
+    <!-- Peak Season configuration -->
+    <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
+      <h4 style="margin:0 0 6px 0">Peak Season</h4>
+      <small class="muted">Define a date window for peak-season reporting and optionally exclude it from the model.</small>
+      <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+        <span class="pill" style="gap:6px"><small>From</small> <input id="peakFrom" type="date"></span>
+        <span class="pill" style="gap:6px"><small>To</small> <input id="peakTo" type="date"></span>
+        <label class="pill" style="gap:6px"><input id="peakExclude" type="checkbox"> Exclude from model</label>
+        <button id="peakClear" class="btn secondary" type="button">Clear</button>
+      </div>
+    </div>
     <div class="row" style="justify-content:flex-end;gap:8px">
       <button class="btn" value="cancel">Close</button>
       <button id="saveSettings" class="btn">Save</button>

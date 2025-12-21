@@ -85,6 +85,7 @@
   var EVAL_PROFILES_KEY = "routeStats.uspsEvalProfiles.v1";
   var ACTIVE_EVAL_ID_KEY = "routeStats.uspsEval.activeId.v1";
   var VACAY_KEY = "routeStats.vacation.v1";
+  var PEAK_SEASON_KEY = "routeStats.peakSeason.v1";
   var BASELINE_KEY = "routeStats.baseline.v1";
   var MODEL_SCOPE_KEY = "routeStats.modelScope";
   var RESIDUAL_WEIGHT_PREF_KEY = "routeStats.residual.downweightHoliday";
@@ -443,6 +444,29 @@
     try {
       localStorage.setItem(VACAY_KEY, JSON.stringify({ ranges: cfg.ranges || [] }));
       clearWeeklyBaselines();
+    } catch (_) {
+    }
+  }
+  function loadPeakSeason() {
+    const fallback = { from: "", to: "", excludeFromModel: false };
+    try {
+      const stored = getStored(PEAK_SEASON_KEY, fallback) || fallback;
+      return {
+        from: stored.from || "",
+        to: stored.to || "",
+        excludeFromModel: !!stored.excludeFromModel
+      };
+    } catch (_) {
+      return { ...fallback };
+    }
+  }
+  function savePeakSeason(cfg) {
+    try {
+      setStored(PEAK_SEASON_KEY, {
+        from: (cfg == null ? void 0 : cfg.from) || "",
+        to: (cfg == null ? void 0 : cfg.to) || "",
+        excludeFromModel: !!(cfg == null ? void 0 : cfg.excludeFromModel)
+      });
     } catch (_) {
     }
   }
@@ -1343,6 +1367,18 @@
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       }));
     } catch (_) {
+    }
+  }
+  function loadLatestForecastMessage() {
+    try {
+      const raw = localStorage.getItem("routeStats.latestForecast_v2");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      if (!parsed.text || !parsed.iso) return null;
+      return parsed;
+    } catch (_) {
+      return null;
     }
   }
   if (typeof window !== "undefined") {
@@ -4640,6 +4676,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var EVAL_PROFILES = loadEvalProfiles();
   var USPS_EVAL = loadEval();
   var VACATION = loadVacation();
+  var PEAK_SEASON = loadPeakSeason();
   if (VACATION && Array.isArray(VACATION.ranges)) {
     const normalized = normalizeRanges(VACATION.ranges);
     if (normalized.length !== VACATION.ranges.length || normalized.some((r, i) => {
@@ -4738,6 +4775,15 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       return (rows || []).filter((r) => !isVacationDate(r.work_date));
     } catch (_) {
       return rows || [];
+    }
+  }
+  function isPeakSeasonDate(iso) {
+    try {
+      const cfg = PEAK_SEASON || loadPeakSeason();
+      if (!cfg || !cfg.from || !cfg.to) return false;
+      return dateInRangeISO(iso, cfg.from, cfg.to);
+    } catch (_) {
+      return false;
     }
   }
   function syncEvalGlobals() {
@@ -5147,9 +5193,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   function rowsForModelScope(allRows2) {
     const rows = Array.isArray(allRows2) ? allRows2 : [];
     const scope = getModelScope();
-    if (scope !== "rolling") return rows;
     const cutoff = DateTime.now().setZone(ZONE).minus({ days: 120 }).startOf("day");
-    return rows.filter((r) => {
+    const base = scope !== "rolling" ? rows : rows.filter((r) => {
       try {
         if (!r || !r.work_date) return false;
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
@@ -5158,6 +5203,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         return false;
       }
     });
+    if (!(PEAK_SEASON == null ? void 0 : PEAK_SEASON.excludeFromModel) || !PEAK_SEASON.from || !PEAK_SEASON.to) return base;
+    return base.filter((r) => !isPeakSeasonDate(r.work_date));
   }
   (function initModelScopeUI() {
     const el = document.getElementById("modelScope");
@@ -5203,110 +5250,90 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
   async function renderTomorrowForecast() {
     try {
-      let shouldExitForecast = false;
-      const done = ({ title = "\u{1F324} Tomorrow\u2019s Forecast", msg = "", iso = null } = {}) => {
-        const container2 = document.querySelector("#forecastBadgeContainer") || document.body;
-        if (container2) {
-          const existingBadges2 = container2.querySelectorAll(".forecast-badge");
-          existingBadges2.forEach((node) => node.remove());
-          const forecastBadge2 = document.createElement("div");
-          forecastBadge2.className = "forecast-badge";
-          const titleEl2 = document.createElement("h3");
-          titleEl2.textContent = title;
-          const bodyEl2 = document.createElement("p");
-          bodyEl2.textContent = msg;
-          forecastBadge2.appendChild(titleEl2);
-          forecastBadge2.appendChild(bodyEl2);
-          container2.appendChild(forecastBadge2);
-        }
-        shouldExitForecast = true;
-        return {
-          message: msg,
-          iso
-        };
+      const container = document.querySelector("#forecastBadgeContainer") || document.body;
+      const showMessage = ({ title = "\u{1F324} Tomorrow\u2019s Forecast", msg = "" } = {}) => {
+        if (!container) return;
+        const existingBadges = container.querySelectorAll(".forecast-badge");
+        existingBadges.forEach((node) => node.remove());
+        const forecastBadge = document.createElement("div");
+        forecastBadge.className = "forecast-badge";
+        const titleEl = document.createElement("h3");
+        titleEl.textContent = title;
+        const bodyEl = document.createElement("p");
+        bodyEl.textContent = msg;
+        forecastBadge.appendChild(titleEl);
+        forecastBadge.appendChild(bodyEl);
+        container.appendChild(forecastBadge);
       };
-      (function() {
-        const now = /* @__PURE__ */ new Date();
-        const hour = now.getHours();
-        const minute = now.getMinutes();
-        const isMorningForecastHours = hour < 7 || hour === 7 && minute < 59;
-        const isEveningForecastHours = hour >= 20;
-        const showForecast = isMorningForecastHours || isEveningForecastHours;
-        if (!showForecast) {
-          done({
-            title: "\u2764",
-            msg: "Stay safe out there my Stallion.",
-            iso: null
-          });
+      const now = DateTime.now().setZone(ZONE);
+      const hour = now.hour;
+      if (hour >= 20) {
+        if (CURRENT_USER_ID) {
+          try {
+            await syncForecastSnapshotsFromSupabase(sb, CURRENT_USER_ID, { silent: true });
+          } catch (err) {
+            console.warn("renderTomorrowForecast: snapshot sync failed, using local cache", err);
+          }
+        }
+        const targetDate = now.plus({ days: 1 });
+        const targetDow = targetDate.weekday === 7 ? 0 : targetDate.weekday;
+        if (targetDow === 0) {
+          showMessage({ msg: "Enjoy your day off \u2764\uFE0F" });
           return;
         }
-      })();
-      if (shouldExitForecast) return;
-      if (CURRENT_USER_ID) {
-        try {
-          await syncForecastSnapshotsFromSupabase(sb, CURRENT_USER_ID, { silent: true });
-        } catch (err) {
-          console.warn("renderTomorrowForecast: snapshot sync failed, using local cache", err);
+        const forecastText = computeForecastText({ targetDow }) || "Forecast unavailable";
+        const iso = targetDate.toISODate();
+        storeForecastSnapshot(iso, forecastText);
+        if (CURRENT_USER_ID) {
+          try {
+            await saveForecastSnapshot({
+              iso,
+              weekday: targetDow,
+              totalTime: null,
+              officeTime: null,
+              endTime: null,
+              tags: readTagHistoryForIso(iso),
+              user_id: CURRENT_USER_ID
+            }, { supabaseClient: sb, silent: true });
+          } catch (err) {
+            console.warn("saveForecastSnapshot (remote) failed", err);
+          }
         }
+        showMessage({ msg: forecastText });
+        return;
       }
-      const tomorrowDate = DateTime.now().setZone(ZONE).plus({ days: 1 });
-      const tomorrowDow = tomorrowDate.weekday === 7 ? 0 : tomorrowDate.weekday;
-      if (tomorrowDow === 0) {
-        const container2 = document.querySelector("#forecastBadgeContainer") || document.body;
-        if (container2) {
-          const existingBadges2 = container2.querySelectorAll(".forecast-badge");
-          existingBadges2.forEach((node) => node.remove());
-          const forecastBadge2 = document.createElement("div");
-          forecastBadge2.className = "forecast-badge";
-          const titleEl2 = document.createElement("h3");
-          titleEl2.textContent = "\u{1F324} Tomorrow\u2019s Forecast";
-          const bodyEl2 = document.createElement("p");
-          bodyEl2.textContent = "Enjoy your day off \u2764\uFE0F";
-          forecastBadge2.appendChild(titleEl2);
-          forecastBadge2.appendChild(bodyEl2);
-          container2.appendChild(forecastBadge2);
+      if (hour < 8) {
+        const todayIso2 = now.toISODate();
+        const latest = loadLatestForecastMessage();
+        if ((latest == null ? void 0 : latest.iso) === todayIso2 && (latest == null ? void 0 : latest.text)) {
+          showMessage({ msg: latest.text });
+          return;
         }
-        return {
-          message: "Enjoy your day off \u2764\uFE0F",
-          type: "rest",
-          iso: null,
-          weekday: 0,
-          total_time: null,
-          office_time: null,
-          end_time: null,
-          tags: []
-        };
-      }
-      const forecastText = computeForecastText({ targetDow: tomorrowDow }) || "Forecast unavailable";
-      storeForecastSnapshot(tomorrowDate.toISODate(), forecastText);
-      if (CURRENT_USER_ID) {
-        try {
-          await saveForecastSnapshot({
-            iso: tomorrowDate.toISODate(),
-            weekday: tomorrowDow,
-            totalTime: null,
-            officeTime: null,
-            endTime: null,
-            tags: readTagHistoryForIso(tomorrowDate.toISODate()),
-            user_id: CURRENT_USER_ID
-          }, { supabaseClient: sb, silent: true });
-        } catch (err) {
-          console.warn("saveForecastSnapshot (remote) failed", err);
+        const todayDow = now.weekday === 7 ? 0 : now.weekday;
+        const forecastText = computeForecastText({ targetDow: todayDow }) || "Forecast unavailable";
+        storeForecastSnapshot(todayIso2, forecastText);
+        if (CURRENT_USER_ID) {
+          try {
+            await saveForecastSnapshot({
+              iso: todayIso2,
+              weekday: todayDow,
+              totalTime: null,
+              officeTime: null,
+              endTime: null,
+              tags: readTagHistoryForIso(todayIso2),
+              user_id: CURRENT_USER_ID
+            }, { supabaseClient: sb, silent: true });
+          } catch (err) {
+            console.warn("saveForecastSnapshot (remote) failed", err);
+          }
         }
+        showMessage({ msg: forecastText });
+        return;
       }
-      const container = document.querySelector("#forecastBadgeContainer") || document.body;
-      if (!container) return;
-      const existingBadges = container.querySelectorAll(".forecast-badge");
-      existingBadges.forEach((node) => node.remove());
-      const forecastBadge = document.createElement("div");
-      forecastBadge.className = "forecast-badge";
-      const titleEl = document.createElement("h3");
-      titleEl.textContent = "\u{1F324} Tomorrow\u2019s Forecast";
-      const bodyEl = document.createElement("p");
-      bodyEl.textContent = forecastText;
-      forecastBadge.appendChild(titleEl);
-      forecastBadge.appendChild(bodyEl);
-      container.appendChild(forecastBadge);
+      showMessage({
+        title: "\u2764",
+        msg: "Stay safe out there my Stallion."
+      });
     } catch (err) {
       console.warn("renderTomorrowForecast failed", err);
     }
@@ -5723,6 +5750,10 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var vacTo = document.getElementById("vacTo");
   var vacAdd = document.getElementById("vacAdd");
   var vacRangesEl = document.getElementById("vacRanges");
+  var peakFrom = document.getElementById("peakFrom");
+  var peakTo = document.getElementById("peakTo");
+  var peakExclude = document.getElementById("peakExclude");
+  var peakClear = document.getElementById("peakClear");
   var saveSettings = document.getElementById("saveSettings");
   var settingsOpenAiKey = document.getElementById("settingsOpenAiKey");
   var clearOpenAiKeyBtn = document.getElementById("clearOpenAiKey");
@@ -5818,6 +5849,13 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     } catch (_) {
     }
     try {
+      const p = PEAK_SEASON || loadPeakSeason();
+      if (peakFrom) peakFrom.value = (p == null ? void 0 : p.from) || "";
+      if (peakTo) peakTo.value = (p == null ? void 0 : p.to) || "";
+      if (peakExclude) peakExclude.checked = !!(p == null ? void 0 : p.excludeFromModel);
+    } catch (_) {
+    }
+    try {
       if (settingsEmaRate) {
         const stored = localStorage.getItem(SECOND_TRIP_EMA_KEY);
         settingsEmaRate.value = stored != null ? stored : (secondTripEmaInput == null ? void 0 : secondTripEmaInput.value) || "";
@@ -5834,6 +5872,14 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     aiSummary.populateTokenInputs(loadTokenUsage());
     renderVacationRanges();
     settingsDlg.showModal();
+  });
+  peakClear == null ? void 0 : peakClear.addEventListener("click", () => {
+    if (peakFrom) peakFrom.value = "";
+    if (peakTo) peakTo.value = "";
+    if (peakExclude) peakExclude.checked = false;
+    PEAK_SEASON = { from: "", to: "", excludeFromModel: false };
+    savePeakSeason(PEAK_SEASON);
+    updateModelScopeBadge();
   });
   evalProfileSelect == null ? void 0 : evalProfileSelect.addEventListener("change", () => {
     const nextId = evalProfileSelect.value;
@@ -5920,6 +5966,15 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       if (f && t) addVacationRange(f, t);
       if (vacFrom) vacFrom.value = "";
       if (vacTo) vacTo.value = "";
+    } catch (_) {
+    }
+    try {
+      const from = (peakFrom == null ? void 0 : peakFrom.value) || "";
+      const to = (peakTo == null ? void 0 : peakTo.value) || "";
+      const exclude = !!(peakExclude == null ? void 0 : peakExclude.checked);
+      PEAK_SEASON = { from, to, excludeFromModel: exclude };
+      savePeakSeason(PEAK_SEASON);
+      updateModelScopeBadge();
     } catch (_) {
     }
     try {
@@ -6196,6 +6251,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var departTime = $("departTime");
   var returnTime = $("returnTime");
   var parcels = $("parcels");
+  var parcelHelperInput = $("parcelHelper");
   var letters = $("letters");
   var miles = $("miles");
   var mood = $("mood");
@@ -6224,6 +6280,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   }
   setSecondTripInputs(null);
   if (breakMinutesInput) breakMinutesInput.value = "0";
+  if (parcelHelperInput) parcelHelperInput.value = "0";
   var weather = $("weather");
   var temp = $("temp");
   var boxholders = $("boxholders");
@@ -6504,6 +6561,10 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (st) {
       parts.push(`SecondTrip:${JSON.stringify(st)}`);
     }
+    const helperParcels = readHelperParcelsInput();
+    if (helperParcels > 0) {
+      parts.push(`HelperParcels:${helperParcels}`);
+    }
     return parts.length ? parts.join(" \xB7 ") : null;
   }
   function collectPayload(userId) {
@@ -6565,6 +6626,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       if (reasonTag2) reasonTag2.value = "";
       setSecondTripInputs(null);
       if (breakMinutesInput) breakMinutesInput.value = "0";
+      if (parcelHelperInput) parcelHelperInput.value = "0";
     } else {
       const parts = String(raw).split("\xB7").map((s) => s.trim());
       let w = "", t = "", b = "";
@@ -6572,6 +6634,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       let rsn = "";
       let stData = null;
       let brk = null;
+      let helperParcels = "";
       for (const p of parts) {
         if (/°F$/.test(p)) t = p.replace("\xB0F", "").trim();
         else if (/^Box:/i.test(p)) b = p.split(":").slice(1).join(":").trim();
@@ -6585,6 +6648,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         } else if (/^Break:/i.test(p)) {
           const val = parseFloat(p.split(":").slice(1).join(":"));
           brk = Number.isFinite(val) && val >= 0 ? val : null;
+        } else if (/^HelperParcels:/i.test(p)) {
+          helperParcels = p.split(":").slice(1).join(":").trim();
         } else if (/^Holiday$/i.test(p)) hol = true;
         else w = p;
       }
@@ -6596,6 +6661,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       if (reasonTag2) reasonTag2.value = rsn || "";
       setSecondTripInputs(stData);
       if (breakMinutesInput) breakMinutesInput.value = brk != null ? String(brk) : "0";
+      if (parcelHelperInput) parcelHelperInput.value = helperParcels || "0";
     }
     try {
       computeBreakdown();
@@ -6643,6 +6709,12 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       e: +ema.toFixed(2)
     };
   }
+  function readHelperParcelsInput() {
+    if (!parcelHelperInput) return 0;
+    const val = parseFloat(parcelHelperInput.value || "");
+    if (!Number.isFinite(val) || val <= 0) return 0;
+    return val;
+  }
   function updateSecondTripSummary() {
     if (!secondTripMilesInput) return;
     const { miles: miles2, actualMinutes, ema } = getSecondTripInputs();
@@ -6689,6 +6761,18 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       const part = row.weather_json.split("\xB7").map((s) => s.trim()).find((p) => /^Break:/i.test(p));
       if (!part) return 0;
       const val = parseFloat(part.split(":").slice(1).join(":"));
+      return Number.isFinite(val) && val > 0 ? val : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+  function parseHelperParcelsFromWeatherString(weatherStr) {
+    if (!weatherStr) return 0;
+    try {
+      const part = String(weatherStr).split("\xB7").map((s) => s.trim()).find((p) => /^HelperParcels:/i.test(p));
+      if (!part) return 0;
+      const raw = part.split(":").slice(1).join(":").trim();
+      const val = parseFloat(raw);
       return Number.isFinite(val) && val > 0 ? val : 0;
     } catch (_) {
       return 0;
@@ -6807,6 +6891,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         alert("No session. Try Link devices or refresh.");
         return;
       }
+      const helperParcels = readHelperParcelsInput();
       const payload = collectPayload(user.id);
       let error;
       try {
@@ -6839,7 +6924,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         alert(error.message);
         return;
       }
-      updateYearlyTotals({ ...payload, date: payload.work_date });
+      updateYearlyTotals({ ...payload, date: payload.work_date, parcels: (payload.parcels || 0) + helperParcels });
       renderYearlyBadges();
       await persistForecastSnapshot(payload, user.id);
       clone.textContent = "Update";
@@ -6901,6 +6986,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     showUndo(true);
     $("notes").value = "";
     parcels.value = 0;
+    if (parcelHelperInput) parcelHelperInput.value = "0";
     letters.value = 0;
     miles.value = 53;
     offDay.checked = false;
@@ -6946,7 +7032,19 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       console.error(error);
       return [];
     }
-    return ensurePostHolidayTags(data || []);
+    return applyHelperParcels(ensurePostHolidayTags(data || []));
+  }
+  function applyHelperParcels(rows) {
+    return (rows || []).map((row) => {
+      const helper = parseHelperParcelsFromWeatherString(row.weather_json || "");
+      const base = Number(row.parcels) || 0;
+      return {
+        ...row,
+        parcels_helper: helper,
+        parcels_base: base,
+        parcels: base + helper
+      };
+    });
   }
   function classifyRow(total, avg) {
     if (total == null || avg == null) return "";

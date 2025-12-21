@@ -85,6 +85,7 @@
   var EVAL_PROFILES_KEY = "routeStats.uspsEvalProfiles.v1";
   var ACTIVE_EVAL_ID_KEY = "routeStats.uspsEval.activeId.v1";
   var VACAY_KEY = "routeStats.vacation.v1";
+  var PEAK_SEASON_KEY = "routeStats.peakSeason.v1";
   var BASELINE_KEY = "routeStats.baseline.v1";
   var MODEL_SCOPE_KEY = "routeStats.modelScope";
   var RESIDUAL_WEIGHT_PREF_KEY = "routeStats.residual.downweightHoliday";
@@ -443,6 +444,29 @@
     try {
       localStorage.setItem(VACAY_KEY, JSON.stringify({ ranges: cfg.ranges || [] }));
       clearWeeklyBaselines();
+    } catch (_) {
+    }
+  }
+  function loadPeakSeason() {
+    const fallback = { from: "", to: "", excludeFromModel: false };
+    try {
+      const stored = getStored(PEAK_SEASON_KEY, fallback) || fallback;
+      return {
+        from: stored.from || "",
+        to: stored.to || "",
+        excludeFromModel: !!stored.excludeFromModel
+      };
+    } catch (_) {
+      return { ...fallback };
+    }
+  }
+  function savePeakSeason(cfg) {
+    try {
+      setStored(PEAK_SEASON_KEY, {
+        from: (cfg == null ? void 0 : cfg.from) || "",
+        to: (cfg == null ? void 0 : cfg.to) || "",
+        excludeFromModel: !!(cfg == null ? void 0 : cfg.excludeFromModel)
+      });
     } catch (_) {
     }
   }
@@ -4652,6 +4676,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var EVAL_PROFILES = loadEvalProfiles();
   var USPS_EVAL = loadEval();
   var VACATION = loadVacation();
+  var PEAK_SEASON = loadPeakSeason();
   if (VACATION && Array.isArray(VACATION.ranges)) {
     const normalized = normalizeRanges(VACATION.ranges);
     if (normalized.length !== VACATION.ranges.length || normalized.some((r, i) => {
@@ -4750,6 +4775,15 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       return (rows || []).filter((r) => !isVacationDate(r.work_date));
     } catch (_) {
       return rows || [];
+    }
+  }
+  function isPeakSeasonDate(iso) {
+    try {
+      const cfg = PEAK_SEASON || loadPeakSeason();
+      if (!cfg || !cfg.from || !cfg.to) return false;
+      return dateInRangeISO(iso, cfg.from, cfg.to);
+    } catch (_) {
+      return false;
     }
   }
   function syncEvalGlobals() {
@@ -5159,9 +5193,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   function rowsForModelScope(allRows2) {
     const rows = Array.isArray(allRows2) ? allRows2 : [];
     const scope = getModelScope();
-    if (scope !== "rolling") return rows;
     const cutoff = DateTime.now().setZone(ZONE).minus({ days: 120 }).startOf("day");
-    return rows.filter((r) => {
+    const base = scope !== "rolling" ? rows : rows.filter((r) => {
       try {
         if (!r || !r.work_date) return false;
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
@@ -5170,6 +5203,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         return false;
       }
     });
+    if (!(PEAK_SEASON == null ? void 0 : PEAK_SEASON.excludeFromModel) || !PEAK_SEASON.from || !PEAK_SEASON.to) return base;
+    return base.filter((r) => !isPeakSeasonDate(r.work_date));
   }
   (function initModelScopeUI() {
     const el = document.getElementById("modelScope");
@@ -5715,6 +5750,10 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var vacTo = document.getElementById("vacTo");
   var vacAdd = document.getElementById("vacAdd");
   var vacRangesEl = document.getElementById("vacRanges");
+  var peakFrom = document.getElementById("peakFrom");
+  var peakTo = document.getElementById("peakTo");
+  var peakExclude = document.getElementById("peakExclude");
+  var peakClear = document.getElementById("peakClear");
   var saveSettings = document.getElementById("saveSettings");
   var settingsOpenAiKey = document.getElementById("settingsOpenAiKey");
   var clearOpenAiKeyBtn = document.getElementById("clearOpenAiKey");
@@ -5810,6 +5849,13 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     } catch (_) {
     }
     try {
+      const p = PEAK_SEASON || loadPeakSeason();
+      if (peakFrom) peakFrom.value = (p == null ? void 0 : p.from) || "";
+      if (peakTo) peakTo.value = (p == null ? void 0 : p.to) || "";
+      if (peakExclude) peakExclude.checked = !!(p == null ? void 0 : p.excludeFromModel);
+    } catch (_) {
+    }
+    try {
       if (settingsEmaRate) {
         const stored = localStorage.getItem(SECOND_TRIP_EMA_KEY);
         settingsEmaRate.value = stored != null ? stored : (secondTripEmaInput == null ? void 0 : secondTripEmaInput.value) || "";
@@ -5826,6 +5872,14 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     aiSummary.populateTokenInputs(loadTokenUsage());
     renderVacationRanges();
     settingsDlg.showModal();
+  });
+  peakClear == null ? void 0 : peakClear.addEventListener("click", () => {
+    if (peakFrom) peakFrom.value = "";
+    if (peakTo) peakTo.value = "";
+    if (peakExclude) peakExclude.checked = false;
+    PEAK_SEASON = { from: "", to: "", excludeFromModel: false };
+    savePeakSeason(PEAK_SEASON);
+    updateModelScopeBadge();
   });
   evalProfileSelect == null ? void 0 : evalProfileSelect.addEventListener("change", () => {
     const nextId = evalProfileSelect.value;
@@ -5912,6 +5966,15 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       if (f && t) addVacationRange(f, t);
       if (vacFrom) vacFrom.value = "";
       if (vacTo) vacTo.value = "";
+    } catch (_) {
+    }
+    try {
+      const from = (peakFrom == null ? void 0 : peakFrom.value) || "";
+      const to = (peakTo == null ? void 0 : peakTo.value) || "";
+      const exclude = !!(peakExclude == null ? void 0 : peakExclude.checked);
+      PEAK_SEASON = { from, to, excludeFromModel: exclude };
+      savePeakSeason(PEAK_SEASON);
+      updateModelScopeBadge();
     } catch (_) {
     }
     try {

@@ -6,6 +6,7 @@ export const EVAL_KEY = 'routeStats.uspsEval.v1';
 export const EVAL_PROFILES_KEY = 'routeStats.uspsEvalProfiles.v1';
 export const ACTIVE_EVAL_ID_KEY = 'routeStats.uspsEval.activeId.v1';
 export const VACAY_KEY = 'routeStats.vacation.v1';
+export const PEAK_SEASON_KEY = 'routeStats.peakSeason.v1';
 export const BASELINE_KEY = 'routeStats.baseline.v1';
 export const MODEL_SCOPE_KEY = 'routeStats.modelScope';
 export const RESIDUAL_WEIGHT_PREF_KEY = 'routeStats.residual.downweightHoliday';
@@ -411,6 +412,32 @@ export function saveVacation(cfg){
   try{
     localStorage.setItem(VACAY_KEY, JSON.stringify({ ranges: cfg.ranges || [] }));
     clearWeeklyBaselines();
+  }catch(_){
+    // ignore storage errors
+  }
+}
+
+export function loadPeakSeason(){
+  const fallback = { from: '', to: '', excludeFromModel: false };
+  try{
+    const stored = getStored(PEAK_SEASON_KEY, fallback) || fallback;
+    return {
+      from: stored.from || '',
+      to: stored.to || '',
+      excludeFromModel: !!stored.excludeFromModel
+    };
+  }catch(_){
+    return { ...fallback };
+  }
+}
+
+export function savePeakSeason(cfg){
+  try{
+    setStored(PEAK_SEASON_KEY, {
+      from: cfg?.from || '',
+      to: cfg?.to || '',
+      excludeFromModel: !!cfg?.excludeFromModel
+    });
   }catch(_){
     // ignore storage errors
   }

@@ -1259,6 +1259,10 @@ const parserCard = document.getElementById('parserCard');
 const parserGranularity = document.getElementById('parserGranularity');
 const parserCount = document.getElementById('parserCount');
 const parserIncludePeak = document.getElementById('parserIncludePeak');
+const parserShowParcels = document.getElementById('parserShowParcels');
+const parserShowLetters = document.getElementById('parserShowLetters');
+const parserShowHours = document.getElementById('parserShowHours');
+const parserShowEfficiency = document.getElementById('parserShowEfficiency');
 const parserNote = document.getElementById('parserNote');
 const parserChartCanvas = document.getElementById('parserChart');
 let CURRENT_USER_ID = null;
@@ -3374,12 +3378,12 @@ function getHourlyRateFromEval(){
 
     const labels = series.map(s=> s.label);
     const parcelsVals = series.map(s=> s.parcels);
-    const lettersVals = series.map(s=> s.letters);
+    const lettersVals = series.map(s=> (s.letters || 0) / 10);
     const hoursVals = series.map(s=> s.hours);
     const effVals = series.map(s=> s.efficiency);
 
     if (parserNote){
-      parserNote.textContent = 'Actual scale. Helper parcels excluded from efficiency.';
+      parserNote.textContent = 'Actual scale. Letters shown as ÷10. Helper parcels excluded from efficiency.';
     }
 
     if (!window.Chart){
@@ -3389,16 +3393,25 @@ function getHourlyRateFromEval(){
     if (parserChart && typeof parserChart.destroy === 'function'){
       try{ parserChart.destroy(); }catch(_){ }
     }
+    const datasets = [];
+    if (parserShowParcels?.checked !== false){
+      datasets.push({ label:'Parcels', data: parcelsVals, backgroundColor: getCssVar('--rs-parcels','#2b7fff'), borderRadius:4, barThickness:12 });
+    }
+    if (parserShowLetters?.checked !== false){
+      datasets.push({ label:'Letters (÷10)', data: lettersVals, backgroundColor: getCssVar('--rs-letters','#f5c542'), borderRadius:4, barThickness:12 });
+    }
+    if (parserShowHours?.checked !== false){
+      datasets.push({ label:'Hours', data: hoursVals, backgroundColor: getCssVar('--rs-hours','#f59e0b'), borderRadius:4, barThickness:12 });
+    }
+    if (parserShowEfficiency?.checked !== false){
+      datasets.push({ label:'Efficiency', data: effVals, backgroundColor: getCssVar('--rs-eff','#22c55e'), borderRadius:4, barThickness:6 });
+    }
+
     parserChart = new Chart(parserChartCanvas, {
       type:'bar',
       data:{
         labels,
-        datasets:[
-          { label:'Parcels', data: parcelsVals, backgroundColor: getCssVar('--rs-parcels','#2b7fff'), borderRadius:4, barThickness:12 },
-          { label:'Letters', data: lettersVals, backgroundColor: getCssVar('--rs-letters','#f5c542'), borderRadius:4, barThickness:12 },
-          { label:'Hours', data: hoursVals, backgroundColor: getCssVar('--rs-hours','#f59e0b'), borderRadius:4, barThickness:12 },
-          { label:'Efficiency', data: effVals, backgroundColor: getCssVar('--rs-eff','#22c55e'), borderRadius:4, barThickness:6 }
-        ]
+        datasets
       },
       options:{
         responsive:true,
@@ -3414,7 +3427,7 @@ function getHourlyRateFromEval(){
     if (parserCard?.dataset.ready) return;
     if (parserCard) parserCard.dataset.ready = '1';
     const rerender = ()=>{ buildYearlySummary(allRows || []); buildParserChart(allRows || []); };
-    [parserGranularity, parserCount, parserIncludePeak, yearlySummaryYear, yearlySummaryIncludePeak].forEach(el=>{
+    [parserGranularity, parserCount, parserIncludePeak, parserShowParcels, parserShowLetters, parserShowHours, parserShowEfficiency, yearlySummaryYear, yearlySummaryIncludePeak].forEach(el=>{
       el?.addEventListener('change', rerender);
     });
   }

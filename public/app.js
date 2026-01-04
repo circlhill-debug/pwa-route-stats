@@ -5792,6 +5792,10 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var parserGranularity = document.getElementById("parserGranularity");
   var parserCount = document.getElementById("parserCount");
   var parserIncludePeak = document.getElementById("parserIncludePeak");
+  var parserShowParcels = document.getElementById("parserShowParcels");
+  var parserShowLetters = document.getElementById("parserShowLetters");
+  var parserShowHours = document.getElementById("parserShowHours");
+  var parserShowEfficiency = document.getElementById("parserShowEfficiency");
   var parserNote = document.getElementById("parserNote");
   var parserChartCanvas = document.getElementById("parserChart");
   var CURRENT_USER_ID = null;
@@ -8172,11 +8176,11 @@ Score: ${overallScore}/10 (higher is better)`;
     });
     const labels = series.map((s) => s.label);
     const parcelsVals = series.map((s) => s.parcels);
-    const lettersVals = series.map((s) => s.letters);
+    const lettersVals = series.map((s) => (s.letters || 0) / 10);
     const hoursVals = series.map((s) => s.hours);
     const effVals = series.map((s) => s.efficiency);
     if (parserNote) {
-      parserNote.textContent = "Actual scale. Helper parcels excluded from efficiency.";
+      parserNote.textContent = "Actual scale. Letters shown as \xF710. Helper parcels excluded from efficiency.";
     }
     if (!window.Chart) {
       if (parserNote) parserNote.textContent = "Chart.js missing \u2014 unable to render parser view.";
@@ -8188,16 +8192,24 @@ Score: ${overallScore}/10 (higher is better)`;
       } catch (_) {
       }
     }
+    const datasets = [];
+    if ((parserShowParcels == null ? void 0 : parserShowParcels.checked) !== false) {
+      datasets.push({ label: "Parcels", data: parcelsVals, backgroundColor: getCssVar("--rs-parcels", "#2b7fff"), borderRadius: 4, barThickness: 12 });
+    }
+    if ((parserShowLetters == null ? void 0 : parserShowLetters.checked) !== false) {
+      datasets.push({ label: "Letters (\xF710)", data: lettersVals, backgroundColor: getCssVar("--rs-letters", "#f5c542"), borderRadius: 4, barThickness: 12 });
+    }
+    if ((parserShowHours == null ? void 0 : parserShowHours.checked) !== false) {
+      datasets.push({ label: "Hours", data: hoursVals, backgroundColor: getCssVar("--rs-hours", "#f59e0b"), borderRadius: 4, barThickness: 12 });
+    }
+    if ((parserShowEfficiency == null ? void 0 : parserShowEfficiency.checked) !== false) {
+      datasets.push({ label: "Efficiency", data: effVals, backgroundColor: getCssVar("--rs-eff", "#22c55e"), borderRadius: 4, barThickness: 6 });
+    }
     parserChart = new Chart(parserChartCanvas, {
       type: "bar",
       data: {
         labels,
-        datasets: [
-          { label: "Parcels", data: parcelsVals, backgroundColor: getCssVar("--rs-parcels", "#2b7fff"), borderRadius: 4, barThickness: 12 },
-          { label: "Letters", data: lettersVals, backgroundColor: getCssVar("--rs-letters", "#f5c542"), borderRadius: 4, barThickness: 12 },
-          { label: "Hours", data: hoursVals, backgroundColor: getCssVar("--rs-hours", "#f59e0b"), borderRadius: 4, barThickness: 12 },
-          { label: "Efficiency", data: effVals, backgroundColor: getCssVar("--rs-eff", "#22c55e"), borderRadius: 4, barThickness: 6 }
-        ]
+        datasets
       },
       options: {
         responsive: true,
@@ -8215,7 +8227,7 @@ Score: ${overallScore}/10 (higher is better)`;
       buildYearlySummary(allRows || []);
       buildParserChart(allRows || []);
     };
-    [parserGranularity, parserCount, parserIncludePeak, yearlySummaryYear, yearlySummaryIncludePeak].forEach((el) => {
+    [parserGranularity, parserCount, parserIncludePeak, parserShowParcels, parserShowLetters, parserShowHours, parserShowEfficiency, yearlySummaryYear, yearlySummaryIncludePeak].forEach((el) => {
       el == null ? void 0 : el.addEventListener("change", rerender);
     });
   }

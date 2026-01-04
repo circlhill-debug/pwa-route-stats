@@ -8035,10 +8035,6 @@ Score: ${overallScore}/10 (higher is better)`;
     });
     return Array.from(years).sort((a, b) => b - a);
   }
-  function normalizeSeries(values) {
-    const max = Math.max(0, ...values);
-    return values.map((v) => max > 0 ? v / max * 10 : 0);
-  }
   function buildPeriods(granularity, count, rows) {
     const now = DateTime.now().setZone(ZONE);
     const periods = [];
@@ -8175,12 +8171,12 @@ Score: ${overallScore}/10 (higher is better)`;
       return { label: period.label, parcels: parcels2, letters: letters2, hours, efficiency };
     });
     const labels = series.map((s) => s.label);
-    const parcelsVals = normalizeSeries(series.map((s) => s.parcels));
-    const lettersVals = normalizeSeries(series.map((s) => s.letters));
-    const hoursVals = normalizeSeries(series.map((s) => s.hours));
-    const effVals = normalizeSeries(series.map((s) => s.efficiency));
+    const parcelsVals = series.map((s) => s.parcels);
+    const lettersVals = series.map((s) => s.letters);
+    const hoursVals = series.map((s) => s.hours);
+    const effVals = series.map((s) => s.efficiency);
     if (parserNote) {
-      parserNote.textContent = "Normalized scale (1\u201310). Helper parcels excluded from efficiency.";
+      parserNote.textContent = "Actual scale. Helper parcels excluded from efficiency.";
     }
     if (!window.Chart) {
       if (parserNote) parserNote.textContent = "Chart.js missing \u2014 unable to render parser view.";
@@ -8207,7 +8203,7 @@ Score: ${overallScore}/10 (higher is better)`;
         responsive: true,
         plugins: { legend: { display: true } },
         scales: {
-          y: { beginAtZero: true, max: 10, ticks: { stepSize: 2 } }
+          y: { beginAtZero: true }
         }
       }
     });

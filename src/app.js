@@ -3377,13 +3377,23 @@ function getHourlyRateFromEval(){
     });
 
     const labels = series.map(s=> s.label);
-    const parcelsVals = series.map(s=> s.parcels);
-    const lettersVals = series.map(s=> (s.letters || 0) / 10);
-    const hoursVals = series.map(s=> s.hours);
-    const effVals = series.map(s=> s.efficiency);
+    const parcelsRaw = series.map(s=> s.parcels);
+    const lettersRaw = series.map(s=> s.letters);
+    const hoursRaw = series.map(s=> s.hours);
+    const effRaw = series.map(s=> s.efficiency);
+    const scaleTo100 = (values)=>{
+      const max = Math.max(0, ...values);
+      const divisor = max > 0 ? (max / 100) : 1;
+      const scaled = values.map(v => divisor > 0 ? (v / divisor) : 0);
+      return { scaled, divisor };
+    };
+    const parcelsScaled = scaleTo100(parcelsRaw);
+    const lettersScaled = scaleTo100(lettersRaw);
+    const hoursScaled = scaleTo100(hoursRaw);
+    const effScaled = scaleTo100(effRaw);
 
     if (parserNote){
-      parserNote.textContent = 'Actual scale. Letters shown as ÷10. Helper parcels excluded from efficiency.';
+      parserNote.textContent = 'Scaled to 0–100 per metric. Helper parcels excluded from efficiency.';
     }
 
     if (!window.Chart){
@@ -3395,16 +3405,24 @@ function getHourlyRateFromEval(){
     }
     const datasets = [];
     if (parserShowParcels?.checked !== false){
-      datasets.push({ label:'Parcels', data: parcelsVals, backgroundColor: getCssVar('--rs-parcels','#2b7fff'), borderRadius:4, barThickness:12 });
+      const divisor = parcelsScaled.divisor;
+      const label = divisor > 1 ? `Parcels (÷${divisor.toFixed(0)})` : 'Parcels';
+      datasets.push({ label, data: parcelsScaled.scaled, backgroundColor: getCssVar('--rs-parcels','#2b7fff'), borderRadius:4, barThickness:12, _raw: parcelsRaw });
     }
     if (parserShowLetters?.checked !== false){
-      datasets.push({ label:'Letters (÷10)', data: lettersVals, backgroundColor: getCssVar('--rs-letters','#f5c542'), borderRadius:4, barThickness:12 });
+      const divisor = lettersScaled.divisor;
+      const label = divisor > 1 ? `Letters (÷${divisor.toFixed(0)})` : 'Letters';
+      datasets.push({ label, data: lettersScaled.scaled, backgroundColor: getCssVar('--rs-letters','#f5c542'), borderRadius:4, barThickness:12, _raw: lettersRaw });
     }
     if (parserShowHours?.checked !== false){
-      datasets.push({ label:'Hours', data: hoursVals, backgroundColor: getCssVar('--rs-hours','#f59e0b'), borderRadius:4, barThickness:12 });
+      const divisor = hoursScaled.divisor;
+      const label = divisor > 1 ? `Hours (÷${divisor.toFixed(1)})` : 'Hours';
+      datasets.push({ label, data: hoursScaled.scaled, backgroundColor: getCssVar('--rs-hours','#f59e0b'), borderRadius:4, barThickness:12, _raw: hoursRaw });
     }
     if (parserShowEfficiency?.checked !== false){
-      datasets.push({ label:'Efficiency', data: effVals, backgroundColor: getCssVar('--rs-eff','#22c55e'), borderRadius:4, barThickness:6 });
+      const divisor = effScaled.divisor;
+      const label = divisor > 1 ? `Efficiency (÷${divisor.toFixed(2)})` : 'Efficiency';
+      datasets.push({ label, data: effScaled.scaled, backgroundColor: getCssVar('--rs-eff','#22c55e'), borderRadius:4, barThickness:6, _raw: effRaw });
     }
 
     parserChart = new Chart(parserChartCanvas, {
@@ -3415,9 +3433,23 @@ function getHourlyRateFromEval(){
       },
       options:{
         responsive:true,
-        plugins:{ legend:{ display:true } },
+        plugins:{
+          legend:{ display:true },
+          tooltip:{
+            callbacks:{
+              label:(ctx)=>{
+                const dataset = ctx.dataset;
+                const raw = Array.isArray(dataset._raw) ? dataset._raw[ctx.dataIndex] : null;
+                if (raw == null) return `${dataset.label}: —`;
+                const val = typeof raw === 'number' ? raw : Number(raw);
+                if (!Number.isFinite(val)) return `${dataset.label}: —`;
+                return `${dataset.label}: ${val.toFixed(1)}`;
+              }
+            }
+          }
+        },
         scales:{
-          y:{ beginAtZero:true }
+          y:{ beginAtZero:true, max:100, ticks:{ stepSize:20 } }
         }
       }
     });

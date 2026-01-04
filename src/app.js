@@ -632,6 +632,7 @@ window.__sb = createSupabaseClient();
     aId: USPS_EVAL?.profileId || null,
     bId: null
   };
+  let parserChart = null;
 
   // === Helpers ===
   const $ = id => document.getElementById(id);
@@ -1250,6 +1251,16 @@ const evalCompareSummary = document.getElementById('evalCompareSummary');
 const evalCompareBody = document.getElementById('evalCompareBody');
 const evalCompareTable = document.getElementById('evalCompareTable');
 const evalCompareTfButtons = Array.from(document.querySelectorAll('#evalCompareCard .eval-tf-btn'));
+const yearlySummaryCard = document.getElementById('yearlySummaryCard');
+const yearlySummaryYear = document.getElementById('yearlySummaryYear');
+const yearlySummaryIncludePeak = document.getElementById('yearlySummaryIncludePeak');
+const yearlySummaryStats = document.getElementById('yearlySummaryStats');
+const parserCard = document.getElementById('parserCard');
+const parserGranularity = document.getElementById('parserGranularity');
+const parserCount = document.getElementById('parserCount');
+const parserIncludePeak = document.getElementById('parserIncludePeak');
+const parserNote = document.getElementById('parserNote');
+const parserChartCanvas = document.getElementById('parserChart');
 let CURRENT_USER_ID = null;
 (async () => {
   try{
@@ -2223,6 +2234,9 @@ function getHourlyRateFromEval(){
     buildDiagnostics(normalRows);
     buildVolumeLeaderboard(rawRows);
     renderYearlyBadges();
+    initParserControls();
+    buildYearlySummary(rawRows);
+    buildParserChart(rawRows);
   }
 
   async function loadByDate(){
@@ -3180,6 +3194,234 @@ function getHourlyRateFromEval(){
       console.warn('buildEvalCompare error', err);
       if (evalCompareSummary) evalCompareSummary.textContent = 'Unable to render evaluation comparison.';
     }
+  }
+
+  function getCssVar(name, fallback){
+    try{
+      const raw = getComputedStyle(document.documentElement).getPropertyValue(name);
+      return raw?.trim() || fallback;
+    }catch(_){
+      return fallback;
+    }
+  }
+
+  function getBaseParcels(row){
+    const base = row?.parcels_base != null ? Number(row.parcels_base) : Number(row?.parcels);
+    return Number.isFinite(base) ? base : 0;
+  }
+
+  function combinedVolumeBase(row, weight){
+    return combinedVolume(getBaseParcels(row), Number(row?.letters||0), weight);
+  }
+
+  function filterRowsForParser(rows, includePeak){
+    const filtered = filterRowsForView(rows || []);
+    if (includePeak || !PEAK_SEASON?.from || !PEAK_SEASON?.to) return filtered;
+    return filtered.filter(r=> !isPeakSeasonDate(r.work_date));
+  }
+
+  function getAvailableYears(rows){
+    const years = new Set();
+    (rows || []).forEach(r=>{
+      if (!r?.work_date) return;
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      if (d.isValid) years.add(d.year);
+    });
+    return Array.from(years).sort((a,b)=> b-a);
+  }
+
+  function normalizeSeries(values){
+    const max = Math.max(0, ...values);
+    return values.map(v => max > 0 ? (v / max) * 10 : 0);
+  }
+
+  function buildPeriods(granularity, count, rows){
+    const now = DateTime.now().setZone(ZONE);
+    const periods = [];
+    const asCount = count === 'all' ? null : Number(count || 0);
+    const minDate = (rows || []).reduce((min, r)=>{
+      if (!r?.work_date) return min;
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      if (!d.isValid) return min;
+      return (!min || d < min) ? d : min;
+    }, null) || now;
+
+    if (granularity === 'year'){
+      const startYear = asCount ? now.year - (asCount - 1) : minDate.year;
+      for (let y = startYear; y <= now.year; y += 1){
+        const from = DateTime.fromObject({ year: y, month:1, day:1 }, { zone: ZONE }).startOf('day');
+        const to = from.endOf('year');
+        periods.push({ label: String(y), from, to });
+      }
+      return periods;
+    }
+
+    if (granularity === 'week'){
+      const start = asCount ? startOfWeekMonday(now.minus({ weeks: asCount - 1 })) : startOfWeekMonday(minDate);
+      for (let cur = start; cur <= startOfWeekMonday(now); cur = cur.plus({ weeks:1 })){
+        const from = startOfWeekMonday(cur);
+        const to = endOfWeekSunday(cur);
+        const label = from.toFormat('LLL d');
+        periods.push({ label, from, to });
+      }
+      return periods;
+    }
+
+    const spanAcrossYears = minDate.year !== now.year;
+    const start = asCount ? now.startOf('month').minus({ months: asCount - 1 }) : minDate.startOf('month');
+    for (let cur = start; cur <= now.startOf('month'); cur = cur.plus({ months:1 })){
+      const from = cur.startOf('month');
+      const to = cur.endOf('month');
+      const label = spanAcrossYears ? cur.toFormat('MMM yy') : cur.toFormat('MMM');
+      periods.push({ label, from, to });
+    }
+    return periods;
+  }
+
+  function buildYearlySummary(rows){
+    if (!yearlySummaryCard || !yearlySummaryStats || !yearlySummaryYear) return;
+    const peakConfigured = !!(PEAK_SEASON?.from && PEAK_SEASON?.to);
+    if (yearlySummaryIncludePeak){
+      yearlySummaryIncludePeak.disabled = !peakConfigured;
+      if (!peakConfigured) yearlySummaryIncludePeak.checked = false;
+    }
+    const includePeak = !!yearlySummaryIncludePeak?.checked;
+    const filtered = filterRowsForParser(rows, includePeak).filter(r=> r.status !== 'off');
+    const years = getAvailableYears(filtered);
+    if (!years.length){
+      yearlySummaryStats.textContent = 'No data yet.';
+      return;
+    }
+    const current = Number(yearlySummaryYear.value) || years[0];
+    if (yearlySummaryYear.options.length !== years.length || !yearlySummaryYear.value){
+      yearlySummaryYear.innerHTML = years.map(y=> `<option value="${y}">${y}</option>`).join('');
+      yearlySummaryYear.value = String(current);
+    }
+
+    const yearRows = filtered.filter(r=>{
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      return d.isValid && d.year === current;
+    });
+    const salary = USPS_EVAL?.annualSalary != null ? Number(USPS_EVAL.annualSalary) : null;
+    const totals = {
+      parcels: yearRows.reduce((t,r)=> t + (Number(r.parcels)||0), 0),
+      letters: yearRows.reduce((t,r)=> t + (Number(r.letters)||0), 0),
+      hours: yearRows.reduce((t,r)=> t + (Number(r.hours)||0), 0)
+    };
+    const hourlyRate = (salary && totals.hours > 0) ? (salary / totals.hours) : null;
+
+    const byMonth = Array.from({ length:12 }, (_, idx)=>({
+      idx,
+      label: DateTime.fromObject({ year: current, month: idx + 1, day:1 }, { zone: ZONE }).toFormat('MMM'),
+      parcels: 0,
+      letters: 0,
+      hours: 0,
+      routeHours: 0,
+      volumeBase: 0
+    }));
+    const letterW = CURRENT_LETTER_WEIGHT || 0.33;
+    yearRows.forEach(r=>{
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      if (!d.isValid) return;
+      const bucket = byMonth[d.month - 1];
+      bucket.parcels += Number(r.parcels)||0;
+      bucket.letters += Number(r.letters)||0;
+      bucket.hours += Number(r.hours)||0;
+      bucket.routeHours += routeAdjustedHours(r);
+      bucket.volumeBase += combinedVolumeBase(r, letterW);
+    });
+    const activeMonths = byMonth.filter(m => (m.parcels + m.letters + m.hours) > 0);
+    const heaviest = activeMonths.reduce((max, m)=> (m.parcels > (max?.parcels||-1)) ? m : max, null);
+    const lightest = activeMonths.reduce((min, m)=> (m.parcels < (min?.parcels??Infinity)) ? m : min, null);
+    const efficient = activeMonths.reduce((best, m)=>{
+      const eff = m.volumeBase > 0 ? (m.routeHours / m.volumeBase) : null;
+      if (eff == null) return best;
+      if (!best) return { ...m, eff };
+      return eff < best.eff ? { ...m, eff } : best;
+    }, null);
+
+    const blocks = [
+      { label:'Total parcels', value: totals.parcels.toLocaleString() },
+      { label:'Total letters', value: totals.letters.toLocaleString() },
+      { label:'Total hours', value: totals.hours.toFixed(1) },
+      { label:'Hourly rate', value: hourlyRate ? `$${hourlyRate.toFixed(2)}` : '—' },
+      { label:'Heaviest month', value: heaviest ? `${heaviest.label} (${heaviest.parcels.toLocaleString()})` : '—' },
+      { label:'Lightest month', value: lightest ? `${lightest.label} (${lightest.parcels.toLocaleString()})` : '—' },
+      { label:'Most efficient', value: efficient ? `${efficient.label}` : '—' }
+    ];
+    yearlySummaryStats.innerHTML = blocks.map(b=> `<span class="pill"><small>${b.label}</small> <b>${b.value}</b></span>`).join('');
+  }
+
+  function buildParserChart(rows){
+    if (!parserCard || !parserGranularity || !parserCount || !parserChartCanvas) return;
+    const peakConfigured = !!(PEAK_SEASON?.from && PEAK_SEASON?.to);
+    if (parserIncludePeak){
+      parserIncludePeak.disabled = !peakConfigured;
+      if (!peakConfigured) parserIncludePeak.checked = false;
+    }
+    const includePeak = !!parserIncludePeak?.checked;
+    const filtered = filterRowsForParser(rows, includePeak).filter(r=> r.status !== 'off');
+    const granularity = parserGranularity.value || 'month';
+    const count = parserCount.value || '12';
+    const periods = buildPeriods(granularity, count, filtered);
+    const letterW = CURRENT_LETTER_WEIGHT || 0.33;
+
+    const series = periods.map(period=>{
+      const inPeriod = filtered.filter(r=> dateInRangeISO(r.work_date, period.from.toISODate(), period.to.toISODate()));
+      const parcels = inPeriod.reduce((t,r)=> t + (Number(r.parcels)||0), 0);
+      const letters = inPeriod.reduce((t,r)=> t + (Number(r.letters)||0), 0);
+      const hours = inPeriod.reduce((t,r)=> t + (Number(r.hours)||0), 0);
+      const routeHours = inPeriod.reduce((t,r)=> t + routeAdjustedHours(r), 0);
+      const volumeBase = inPeriod.reduce((t,r)=> t + combinedVolumeBase(r, letterW), 0);
+      const efficiency = (routeHours > 0 && volumeBase > 0) ? (volumeBase / routeHours) : 0;
+      return { label: period.label, parcels, letters, hours, efficiency };
+    });
+
+    const labels = series.map(s=> s.label);
+    const parcelsVals = normalizeSeries(series.map(s=> s.parcels));
+    const lettersVals = normalizeSeries(series.map(s=> s.letters));
+    const hoursVals = normalizeSeries(series.map(s=> s.hours));
+    const effVals = normalizeSeries(series.map(s=> s.efficiency));
+
+    if (parserNote){
+      parserNote.textContent = 'Normalized scale (1–10). Helper parcels excluded from efficiency.';
+    }
+
+    if (!window.Chart){
+      if (parserNote) parserNote.textContent = 'Chart.js missing — unable to render parser view.';
+      return;
+    }
+    if (parserChart && typeof parserChart.destroy === 'function'){
+      try{ parserChart.destroy(); }catch(_){ }
+    }
+    parserChart = new Chart(parserChartCanvas, {
+      type:'bar',
+      data:{
+        labels,
+        datasets:[
+          { label:'Parcels', data: parcelsVals, backgroundColor: getCssVar('--rs-parcels','#2b7fff'), borderRadius:4, barThickness:12 },
+          { label:'Letters', data: lettersVals, backgroundColor: getCssVar('--rs-letters','#f5c542'), borderRadius:4, barThickness:12 },
+          { label:'Hours', data: hoursVals, backgroundColor: getCssVar('--rs-hours','#f59e0b'), borderRadius:4, barThickness:12 },
+          { label:'Efficiency', data: effVals, backgroundColor: getCssVar('--rs-eff','#22c55e'), borderRadius:4, barThickness:6 }
+        ]
+      },
+      options:{
+        responsive:true,
+        plugins:{ legend:{ display:true } },
+        scales:{
+          y:{ beginAtZero:true, max:10, ticks:{ stepSize:2 } }
+        }
+      }
+    });
+  }
+
+  function initParserControls(){
+    if (parserCard?.dataset.ready) return;
+    if (parserCard) parserCard.dataset.ready = '1';
+    const rerender = ()=>{ buildYearlySummary(allRows || []); buildParserChart(allRows || []); };
+    [parserGranularity, parserCount, parserIncludePeak, yearlySummaryYear, yearlySummaryIncludePeak].forEach(el=>{
+      el?.addEventListener('change', rerender);
+    });
   }
 
   try{

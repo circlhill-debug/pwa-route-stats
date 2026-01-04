@@ -5178,6 +5178,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     aId: (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || null,
     bId: null
   };
+  var parserChart = null;
   var $ = (id) => document.getElementById(id);
   var dConn = $("dConn");
   var dAuth = $("dAuth");
@@ -5783,6 +5784,16 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var evalCompareBody = document.getElementById("evalCompareBody");
   var evalCompareTable = document.getElementById("evalCompareTable");
   var evalCompareTfButtons = Array.from(document.querySelectorAll("#evalCompareCard .eval-tf-btn"));
+  var yearlySummaryCard = document.getElementById("yearlySummaryCard");
+  var yearlySummaryYear = document.getElementById("yearlySummaryYear");
+  var yearlySummaryIncludePeak = document.getElementById("yearlySummaryIncludePeak");
+  var yearlySummaryStats = document.getElementById("yearlySummaryStats");
+  var parserCard = document.getElementById("parserCard");
+  var parserGranularity = document.getElementById("parserGranularity");
+  var parserCount = document.getElementById("parserCount");
+  var parserIncludePeak = document.getElementById("parserIncludePeak");
+  var parserNote = document.getElementById("parserNote");
+  var parserChartCanvas = document.getElementById("parserChart");
   var CURRENT_USER_ID = null;
   (async () => {
     var _a6;
@@ -6858,6 +6869,9 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     buildDiagnostics(normalRows);
     buildVolumeLeaderboard(rawRows);
     renderYearlyBadges();
+    initParserControls();
+    buildYearlySummary(rawRows);
+    buildParserChart(rawRows);
   }
   async function loadByDate() {
     editingKey = null;
@@ -7991,6 +8005,223 @@ Score: ${overallScore}/10 (higher is better)`;
       console.warn("buildEvalCompare error", err);
       if (evalCompareSummary) evalCompareSummary.textContent = "Unable to render evaluation comparison.";
     }
+  }
+  function getCssVar(name, fallback) {
+    try {
+      const raw = getComputedStyle(document.documentElement).getPropertyValue(name);
+      return (raw == null ? void 0 : raw.trim()) || fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+  function getBaseParcels(row) {
+    const base = (row == null ? void 0 : row.parcels_base) != null ? Number(row.parcels_base) : Number(row == null ? void 0 : row.parcels);
+    return Number.isFinite(base) ? base : 0;
+  }
+  function combinedVolumeBase(row, weight) {
+    return combinedVolume(getBaseParcels(row), Number((row == null ? void 0 : row.letters) || 0), weight);
+  }
+  function filterRowsForParser(rows, includePeak) {
+    const filtered = filterRowsForView(rows || []);
+    if (includePeak || !(PEAK_SEASON == null ? void 0 : PEAK_SEASON.from) || !(PEAK_SEASON == null ? void 0 : PEAK_SEASON.to)) return filtered;
+    return filtered.filter((r) => !isPeakSeasonDate(r.work_date));
+  }
+  function getAvailableYears(rows) {
+    const years = /* @__PURE__ */ new Set();
+    (rows || []).forEach((r) => {
+      if (!(r == null ? void 0 : r.work_date)) return;
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      if (d.isValid) years.add(d.year);
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }
+  function normalizeSeries(values) {
+    const max = Math.max(0, ...values);
+    return values.map((v) => max > 0 ? v / max * 10 : 0);
+  }
+  function buildPeriods(granularity, count, rows) {
+    const now = DateTime.now().setZone(ZONE);
+    const periods = [];
+    const asCount = count === "all" ? null : Number(count || 0);
+    const minDate = (rows || []).reduce((min, r) => {
+      if (!(r == null ? void 0 : r.work_date)) return min;
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      if (!d.isValid) return min;
+      return !min || d < min ? d : min;
+    }, null) || now;
+    if (granularity === "year") {
+      const startYear = asCount ? now.year - (asCount - 1) : minDate.year;
+      for (let y = startYear; y <= now.year; y += 1) {
+        const from = DateTime.fromObject({ year: y, month: 1, day: 1 }, { zone: ZONE }).startOf("day");
+        const to = from.endOf("year");
+        periods.push({ label: String(y), from, to });
+      }
+      return periods;
+    }
+    if (granularity === "week") {
+      const start3 = asCount ? startOfWeekMonday(now.minus({ weeks: asCount - 1 })) : startOfWeekMonday(minDate);
+      for (let cur = start3; cur <= startOfWeekMonday(now); cur = cur.plus({ weeks: 1 })) {
+        const from = startOfWeekMonday(cur);
+        const to = endOfWeekSunday2(cur);
+        const label = from.toFormat("LLL d");
+        periods.push({ label, from, to });
+      }
+      return periods;
+    }
+    const spanAcrossYears = minDate.year !== now.year;
+    const start2 = asCount ? now.startOf("month").minus({ months: asCount - 1 }) : minDate.startOf("month");
+    for (let cur = start2; cur <= now.startOf("month"); cur = cur.plus({ months: 1 })) {
+      const from = cur.startOf("month");
+      const to = cur.endOf("month");
+      const label = spanAcrossYears ? cur.toFormat("MMM yy") : cur.toFormat("MMM");
+      periods.push({ label, from, to });
+    }
+    return periods;
+  }
+  function buildYearlySummary(rows) {
+    if (!yearlySummaryCard || !yearlySummaryStats || !yearlySummaryYear) return;
+    const peakConfigured = !!((PEAK_SEASON == null ? void 0 : PEAK_SEASON.from) && (PEAK_SEASON == null ? void 0 : PEAK_SEASON.to));
+    if (yearlySummaryIncludePeak) {
+      yearlySummaryIncludePeak.disabled = !peakConfigured;
+      if (!peakConfigured) yearlySummaryIncludePeak.checked = false;
+    }
+    const includePeak = !!(yearlySummaryIncludePeak == null ? void 0 : yearlySummaryIncludePeak.checked);
+    const filtered = filterRowsForParser(rows, includePeak).filter((r) => r.status !== "off");
+    const years = getAvailableYears(filtered);
+    if (!years.length) {
+      yearlySummaryStats.textContent = "No data yet.";
+      return;
+    }
+    const current = Number(yearlySummaryYear.value) || years[0];
+    if (yearlySummaryYear.options.length !== years.length || !yearlySummaryYear.value) {
+      yearlySummaryYear.innerHTML = years.map((y) => `<option value="${y}">${y}</option>`).join("");
+      yearlySummaryYear.value = String(current);
+    }
+    const yearRows = filtered.filter((r) => {
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      return d.isValid && d.year === current;
+    });
+    const salary = (USPS_EVAL == null ? void 0 : USPS_EVAL.annualSalary) != null ? Number(USPS_EVAL.annualSalary) : null;
+    const totals = {
+      parcels: yearRows.reduce((t, r) => t + (Number(r.parcels) || 0), 0),
+      letters: yearRows.reduce((t, r) => t + (Number(r.letters) || 0), 0),
+      hours: yearRows.reduce((t, r) => t + (Number(r.hours) || 0), 0)
+    };
+    const hourlyRate = salary && totals.hours > 0 ? salary / totals.hours : null;
+    const byMonth = Array.from({ length: 12 }, (_, idx) => ({
+      idx,
+      label: DateTime.fromObject({ year: current, month: idx + 1, day: 1 }, { zone: ZONE }).toFormat("MMM"),
+      parcels: 0,
+      letters: 0,
+      hours: 0,
+      routeHours: 0,
+      volumeBase: 0
+    }));
+    const letterW = CURRENT_LETTER_WEIGHT || 0.33;
+    yearRows.forEach((r) => {
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      if (!d.isValid) return;
+      const bucket = byMonth[d.month - 1];
+      bucket.parcels += Number(r.parcels) || 0;
+      bucket.letters += Number(r.letters) || 0;
+      bucket.hours += Number(r.hours) || 0;
+      bucket.routeHours += routeAdjustedHours(r);
+      bucket.volumeBase += combinedVolumeBase(r, letterW);
+    });
+    const activeMonths = byMonth.filter((m) => m.parcels + m.letters + m.hours > 0);
+    const heaviest = activeMonths.reduce((max, m) => m.parcels > ((max == null ? void 0 : max.parcels) || -1) ? m : max, null);
+    const lightest = activeMonths.reduce((min, m) => {
+      var _a6;
+      return m.parcels < ((_a6 = min == null ? void 0 : min.parcels) != null ? _a6 : Infinity) ? m : min;
+    }, null);
+    const efficient = activeMonths.reduce((best, m) => {
+      const eff = m.volumeBase > 0 ? m.routeHours / m.volumeBase : null;
+      if (eff == null) return best;
+      if (!best) return { ...m, eff };
+      return eff < best.eff ? { ...m, eff } : best;
+    }, null);
+    const blocks = [
+      { label: "Total parcels", value: totals.parcels.toLocaleString() },
+      { label: "Total letters", value: totals.letters.toLocaleString() },
+      { label: "Total hours", value: totals.hours.toFixed(1) },
+      { label: "Hourly rate", value: hourlyRate ? `$${hourlyRate.toFixed(2)}` : "\u2014" },
+      { label: "Heaviest month", value: heaviest ? `${heaviest.label} (${heaviest.parcels.toLocaleString()})` : "\u2014" },
+      { label: "Lightest month", value: lightest ? `${lightest.label} (${lightest.parcels.toLocaleString()})` : "\u2014" },
+      { label: "Most efficient", value: efficient ? `${efficient.label}` : "\u2014" }
+    ];
+    yearlySummaryStats.innerHTML = blocks.map((b) => `<span class="pill"><small>${b.label}</small> <b>${b.value}</b></span>`).join("");
+  }
+  function buildParserChart(rows) {
+    if (!parserCard || !parserGranularity || !parserCount || !parserChartCanvas) return;
+    const peakConfigured = !!((PEAK_SEASON == null ? void 0 : PEAK_SEASON.from) && (PEAK_SEASON == null ? void 0 : PEAK_SEASON.to));
+    if (parserIncludePeak) {
+      parserIncludePeak.disabled = !peakConfigured;
+      if (!peakConfigured) parserIncludePeak.checked = false;
+    }
+    const includePeak = !!(parserIncludePeak == null ? void 0 : parserIncludePeak.checked);
+    const filtered = filterRowsForParser(rows, includePeak).filter((r) => r.status !== "off");
+    const granularity = parserGranularity.value || "month";
+    const count = parserCount.value || "12";
+    const periods = buildPeriods(granularity, count, filtered);
+    const letterW = CURRENT_LETTER_WEIGHT || 0.33;
+    const series = periods.map((period) => {
+      const inPeriod = filtered.filter((r) => dateInRangeISO(r.work_date, period.from.toISODate(), period.to.toISODate()));
+      const parcels2 = inPeriod.reduce((t, r) => t + (Number(r.parcels) || 0), 0);
+      const letters2 = inPeriod.reduce((t, r) => t + (Number(r.letters) || 0), 0);
+      const hours = inPeriod.reduce((t, r) => t + (Number(r.hours) || 0), 0);
+      const routeHours = inPeriod.reduce((t, r) => t + routeAdjustedHours(r), 0);
+      const volumeBase = inPeriod.reduce((t, r) => t + combinedVolumeBase(r, letterW), 0);
+      const efficiency = routeHours > 0 && volumeBase > 0 ? volumeBase / routeHours : 0;
+      return { label: period.label, parcels: parcels2, letters: letters2, hours, efficiency };
+    });
+    const labels = series.map((s) => s.label);
+    const parcelsVals = normalizeSeries(series.map((s) => s.parcels));
+    const lettersVals = normalizeSeries(series.map((s) => s.letters));
+    const hoursVals = normalizeSeries(series.map((s) => s.hours));
+    const effVals = normalizeSeries(series.map((s) => s.efficiency));
+    if (parserNote) {
+      parserNote.textContent = "Normalized scale (1\u201310). Helper parcels excluded from efficiency.";
+    }
+    if (!window.Chart) {
+      if (parserNote) parserNote.textContent = "Chart.js missing \u2014 unable to render parser view.";
+      return;
+    }
+    if (parserChart && typeof parserChart.destroy === "function") {
+      try {
+        parserChart.destroy();
+      } catch (_) {
+      }
+    }
+    parserChart = new Chart(parserChartCanvas, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          { label: "Parcels", data: parcelsVals, backgroundColor: getCssVar("--rs-parcels", "#2b7fff"), borderRadius: 4, barThickness: 12 },
+          { label: "Letters", data: lettersVals, backgroundColor: getCssVar("--rs-letters", "#f5c542"), borderRadius: 4, barThickness: 12 },
+          { label: "Hours", data: hoursVals, backgroundColor: getCssVar("--rs-hours", "#f59e0b"), borderRadius: 4, barThickness: 12 },
+          { label: "Efficiency", data: effVals, backgroundColor: getCssVar("--rs-eff", "#22c55e"), borderRadius: 4, barThickness: 6 }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: true } },
+        scales: {
+          y: { beginAtZero: true, max: 10, ticks: { stepSize: 2 } }
+        }
+      }
+    });
+  }
+  function initParserControls() {
+    if (parserCard == null ? void 0 : parserCard.dataset.ready) return;
+    if (parserCard) parserCard.dataset.ready = "1";
+    const rerender = () => {
+      buildYearlySummary(allRows || []);
+      buildParserChart(allRows || []);
+    };
+    [parserGranularity, parserCount, parserIncludePeak, yearlySummaryYear, yearlySummaryIncludePeak].forEach((el) => {
+      el == null ? void 0 : el.addEventListener("change", rerender);
+    });
   }
   try {
     sb.channel("entries-feed").on("postgres_changes", { event: "*", schema: "public", table: "entries" }, async () => {

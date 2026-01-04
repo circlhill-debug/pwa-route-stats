@@ -22,6 +22,10 @@
     --rs-button-hover:#256adf;
     --rs-button-muted:#1c2c55;
     --rs-card-shadow:none;
+    --rs-parcels:var(--rs-brand);
+    --rs-letters:#f5c542;
+    --rs-hours:#f59e0b;
+    --rs-eff:#22c55e;
     --forecast-badge-bg:#dce6f4;
     --forecast-badge-border:#3d6187;
     --forecast-badge-text:#0b1322;
@@ -576,6 +580,7 @@
           <small>Route Eff.</small>
           <span id="badgeRouteEff" class="statValue statValue--lg">—</span>
           <small class="muted">vs weekday baseline</small>
+          <small class="muted">Helper parcels excluded</small>
           <div id="helpRouteEff" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
         </div>
         <div class="stat">
@@ -1039,6 +1044,58 @@
         <tbody id="evalCompareBody"></tbody>
       </table>
     </div>
+  </section>
+
+  <!-- Yearly Summary -->
+  <section class="card" id="yearlySummaryCard" style="grid-column:1/-1">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">Yearly Summary</h3>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Year</small>
+          <select id="yearlySummaryYear" style="min-width:120px"></select>
+        </label>
+        <label class="pill" style="gap:6px;align-items:center">
+          <input id="yearlySummaryIncludePeak" type="checkbox">
+          <small>Include peak season</small>
+        </label>
+      </div>
+    </div>
+    <div id="yearlySummaryStats" class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"></div>
+  </section>
+
+  <!-- Parser -->
+  <section class="card" id="parserCard" style="grid-column:1/-1">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">Parser</h3>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Group by</small>
+          <select id="parserGranularity" style="min-width:120px">
+            <option value="month" selected>Month</option>
+            <option value="week">Week</option>
+            <option value="year">Year</option>
+          </select>
+        </label>
+        <label class="pill" style="gap:6px;align-items:center">
+          <small>Compare</small>
+          <select id="parserCount" style="min-width:120px">
+            <option value="2">Last 2</option>
+            <option value="3">Last 3</option>
+            <option value="4">Last 4</option>
+            <option value="6">Last 6</option>
+            <option value="12" selected>Last 12</option>
+            <option value="all">All</option>
+          </select>
+        </label>
+        <label class="pill" style="gap:6px;align-items:center">
+          <input id="parserIncludePeak" type="checkbox">
+          <small>Include peak season</small>
+        </label>
+      </div>
+    </div>
+    <div class="sparkline-labels" id="parserNote">Normalized scale (1–10). Higher bars = heavier month.</div>
+    <canvas id="parserChart" height="220"></canvas>
   </section>
  
   

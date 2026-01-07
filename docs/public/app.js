@@ -8108,7 +8108,12 @@ Score: ${overallScore}/10 (higher is better)`;
       letters: yearRows.reduce((t, r) => t + (Number(r.letters) || 0), 0),
       hours: yearRows.reduce((t, r) => t + (Number(r.hours) || 0), 0)
     };
-    const hourlyRate = salary && totals.hours > 0 ? salary / totals.hours : null;
+    const monthsWithData = Math.max(0, new Set(yearRows.map((r) => {
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      return d.isValid ? d.month : null;
+    }).filter(Boolean)).size);
+    const proratedSalary = salary && monthsWithData > 0 ? salary / 12 * monthsWithData : null;
+    const hourlyRate = proratedSalary && totals.hours > 0 ? proratedSalary / totals.hours : null;
     const byMonth = Array.from({ length: 12 }, (_, idx) => ({
       idx,
       label: DateTime.fromObject({ year: current, month: idx + 1, day: 1 }, { zone: ZONE }).toFormat("MMM"),
@@ -8145,7 +8150,7 @@ Score: ${overallScore}/10 (higher is better)`;
       { label: "Total parcels", value: totals.parcels.toLocaleString() },
       { label: "Total letters", value: totals.letters.toLocaleString() },
       { label: "Total hours", value: totals.hours.toFixed(1) },
-      { label: "Hourly rate", value: hourlyRate ? `$${hourlyRate.toFixed(2)}` : "\u2014" },
+      { label: "Hourly rate (prorated)", value: hourlyRate ? `$${hourlyRate.toFixed(2)}` : "\u2014" },
       { label: "Heaviest month", value: heaviest ? `${heaviest.label} (${heaviest.parcels.toLocaleString()})` : "\u2014" },
       { label: "Lightest month", value: lightest ? `${lightest.label} (${lightest.parcels.toLocaleString()})` : "\u2014" },
       { label: "Most efficient", value: efficient ? `${efficient.label}` : "\u2014" }
@@ -8380,6 +8385,8 @@ Score: ${overallScore}/10 (higher is better)`;
       { id: "parcelsOverTimeCard" },
       { id: "lettersOverTimeCard" },
       { id: "monthlyGlanceCard" },
+      { id: "yearlySummaryCard" },
+      { id: "parserCard" },
       { id: "evalCompareCard" },
       { id: "quickFilterCard" },
       { id: "milestoneCard" },

@@ -3321,6 +3321,7 @@ function getHourlyRateFromEval(){
       parcels: 0,
       letters: 0,
       hours: 0,
+      officeHours: 0,
       routeHours: 0,
       volumeBase: 0
     }));
@@ -3332,12 +3333,14 @@ function getHourlyRateFromEval(){
       bucket.parcels += Number(r.parcels)||0;
       bucket.letters += Number(r.letters)||0;
       bucket.hours += Number(r.hours)||0;
+      bucket.officeHours += normalizeHours(r.office_minutes ?? r.officeMinutes);
       bucket.routeHours += routeAdjustedHours(r);
       bucket.volumeBase += combinedVolumeBase(r, letterW);
     });
     const activeMonths = byMonth.filter(m => (m.parcels + m.letters + m.hours) > 0);
-    const heaviest = activeMonths.reduce((max, m)=> (m.parcels > (max?.parcels||-1)) ? m : max, null);
-    const lightest = activeMonths.reduce((min, m)=> (m.parcels < (min?.parcels??Infinity)) ? m : min, null);
+    const monthVolume = (m)=> (m.parcels + m.letters);
+    const heaviest = activeMonths.reduce((max, m)=> (monthVolume(m) > (max ? monthVolume(max) : -1)) ? m : max, null);
+    const lightest = activeMonths.reduce((min, m)=> (monthVolume(m) < (min ? monthVolume(min) : Infinity)) ? m : min, null);
     const efficient = activeMonths.reduce((best, m)=>{
       const eff = m.volumeBase > 0 ? (m.routeHours / m.volumeBase) : null;
       if (eff == null) return best;
@@ -3345,13 +3348,28 @@ function getHourlyRateFromEval(){
       return eff < best.eff ? { ...m, eff } : best;
     }, null);
 
+    const workedDays = yearRows.filter(r=> (Number(r.hours)||0) > 0).length;
+    const weekKeys = new Set(yearRows.map(r=>{
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      return d.isValid ? startOfWeekMonday(d).toISODate() : null;
+    }).filter(Boolean));
+    const weeksWithData = weekKeys.size || 0;
+    const totalOfficeHours = byMonth.reduce((t,m)=> t + m.officeHours, 0);
+    const totalRouteHours = byMonth.reduce((t,m)=> t + m.routeHours, 0);
+    const avgWeeklyHours = weeksWithData > 0 ? (totals.hours / weeksWithData) : null;
+    const avgOfficeHours = workedDays > 0 ? (totalOfficeHours / workedDays) : null;
+    const avgRouteHours = workedDays > 0 ? (totalRouteHours / workedDays) : null;
+
     const blocks = [
       { label:'Total parcels', value: totals.parcels.toLocaleString() },
       { label:'Total letters', value: totals.letters.toLocaleString() },
       { label:'Total hours', value: totals.hours.toFixed(1) },
       { label:'Hourly rate (prorated)', value: hourlyRate ? `$${hourlyRate.toFixed(2)}` : '—' },
-      { label:'Heaviest month', value: heaviest ? `${heaviest.label} (${heaviest.parcels.toLocaleString()})` : '—' },
-      { label:'Lightest month', value: lightest ? `${lightest.label} (${lightest.parcels.toLocaleString()})` : '—' },
+      { label:'Heaviest month (volume)', value: heaviest ? `${heaviest.label} (${monthVolume(heaviest).toLocaleString()})` : '—' },
+      { label:'Lightest month (volume)', value: lightest ? `${lightest.label} (${monthVolume(lightest).toLocaleString()})` : '—' },
+      { label:'Avg weekly hours', value: avgWeeklyHours != null ? avgWeeklyHours.toFixed(1) : '—' },
+      { label:'Avg office time (per day)', value: avgOfficeHours != null ? avgOfficeHours.toFixed(2) : '—' },
+      { label:'Avg route time (per day)', value: avgRouteHours != null ? avgRouteHours.toFixed(2) : '—' },
       { label:'Most efficient', value: efficient ? `${efficient.label}` : '—' }
     ];
     yearlySummaryStats.innerHTML = blocks.map(b=> `<span class="pill"><small>${b.label}</small> <b>${b.value}</b></span>`).join('');

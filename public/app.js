@@ -1542,8 +1542,8 @@
       const parcels2 = +row.parcels || 0;
       const letters2 = +row.letters || 0;
       const volume = combinedVolume2(parcels2, letters2);
-      const routeHours = normalizeHours((_a6 = row.route_minutes) != null ? _a6 : row.routeMinutes);
-      const officeHours = normalizeHours((_b = row.office_minutes) != null ? _b : row.officeMinutes);
+      const routeHours = normalizeHours2((_a6 = row.route_minutes) != null ? _a6 : row.routeMinutes);
+      const officeHours = normalizeHours2((_b = row.office_minutes) != null ? _b : row.officeMinutes);
       const storedHours = Number((_c = row.hours) != null ? _c : row.totalHours);
       const totalHours = Number.isFinite(storedHours) ? storedHours : routeHours + officeHours;
       const miles2 = Number(row.miles) || 0;
@@ -1570,8 +1570,8 @@
       if (!valid.length) return null;
       const totals = valid.reduce((acc, row) => {
         var _a6, _b, _c;
-        const routeHours = normalizeHours((_a6 = row.route_minutes) != null ? _a6 : row.routeMinutes);
-        const officeHours = normalizeHours((_b = row.office_minutes) != null ? _b : row.officeMinutes);
+        const routeHours = normalizeHours2((_a6 = row.route_minutes) != null ? _a6 : row.routeMinutes);
+        const officeHours = normalizeHours2((_b = row.office_minutes) != null ? _b : row.officeMinutes);
         const storedHours = Number((_c = row.hours) != null ? _c : row.totalHours);
         acc.totalHours += Number.isFinite(storedHours) ? storedHours : routeHours + officeHours;
         acc.routeHours += routeHours;
@@ -2121,7 +2121,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       if (n == null || !Number.isFinite(n)) return "\u2014";
       return `${n.toFixed(decimals)}${suffix}`;
     }
-    function normalizeHours(value) {
+    function normalizeHours2(value) {
       const n = Number(value);
       if (!Number.isFinite(n)) return 0;
       if (Math.abs(n) > 24) return n / 60;
@@ -8120,39 +8120,54 @@ Score: ${overallScore}/10 (higher is better)`;
       parcels: 0,
       letters: 0,
       hours: 0,
+      officeHours: 0,
       routeHours: 0,
       volumeBase: 0
     }));
     const letterW = CURRENT_LETTER_WEIGHT || 0.33;
     yearRows.forEach((r) => {
+      var _a6;
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       if (!d.isValid) return;
       const bucket = byMonth[d.month - 1];
       bucket.parcels += Number(r.parcels) || 0;
       bucket.letters += Number(r.letters) || 0;
       bucket.hours += Number(r.hours) || 0;
+      bucket.officeHours += normalizeHours((_a6 = r.office_minutes) != null ? _a6 : r.officeMinutes);
       bucket.routeHours += routeAdjustedHours(r);
       bucket.volumeBase += combinedVolumeBase(r, letterW);
     });
     const activeMonths = byMonth.filter((m) => m.parcels + m.letters + m.hours > 0);
-    const heaviest = activeMonths.reduce((max, m) => m.parcels > ((max == null ? void 0 : max.parcels) || -1) ? m : max, null);
-    const lightest = activeMonths.reduce((min, m) => {
-      var _a6;
-      return m.parcels < ((_a6 = min == null ? void 0 : min.parcels) != null ? _a6 : Infinity) ? m : min;
-    }, null);
+    const monthVolume = (m) => m.parcels + m.letters;
+    const heaviest = activeMonths.reduce((max, m) => monthVolume(m) > (max ? monthVolume(max) : -1) ? m : max, null);
+    const lightest = activeMonths.reduce((min, m) => monthVolume(m) < (min ? monthVolume(min) : Infinity) ? m : min, null);
     const efficient = activeMonths.reduce((best, m) => {
       const eff = m.volumeBase > 0 ? m.routeHours / m.volumeBase : null;
       if (eff == null) return best;
       if (!best) return { ...m, eff };
       return eff < best.eff ? { ...m, eff } : best;
     }, null);
+    const workedDays = yearRows.filter((r) => (Number(r.hours) || 0) > 0).length;
+    const weekKeys = new Set(yearRows.map((r) => {
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      return d.isValid ? startOfWeekMonday(d).toISODate() : null;
+    }).filter(Boolean));
+    const weeksWithData = weekKeys.size || 0;
+    const totalOfficeHours = byMonth.reduce((t, m) => t + m.officeHours, 0);
+    const totalRouteHours = byMonth.reduce((t, m) => t + m.routeHours, 0);
+    const avgWeeklyHours = weeksWithData > 0 ? totals.hours / weeksWithData : null;
+    const avgOfficeHours = workedDays > 0 ? totalOfficeHours / workedDays : null;
+    const avgRouteHours = workedDays > 0 ? totalRouteHours / workedDays : null;
     const blocks = [
       { label: "Total parcels", value: totals.parcels.toLocaleString() },
       { label: "Total letters", value: totals.letters.toLocaleString() },
       { label: "Total hours", value: totals.hours.toFixed(1) },
       { label: "Hourly rate (prorated)", value: hourlyRate ? `$${hourlyRate.toFixed(2)}` : "\u2014" },
-      { label: "Heaviest month", value: heaviest ? `${heaviest.label} (${heaviest.parcels.toLocaleString()})` : "\u2014" },
-      { label: "Lightest month", value: lightest ? `${lightest.label} (${lightest.parcels.toLocaleString()})` : "\u2014" },
+      { label: "Heaviest month (volume)", value: heaviest ? `${heaviest.label} (${monthVolume(heaviest).toLocaleString()})` : "\u2014" },
+      { label: "Lightest month (volume)", value: lightest ? `${lightest.label} (${monthVolume(lightest).toLocaleString()})` : "\u2014" },
+      { label: "Avg weekly hours", value: avgWeeklyHours != null ? avgWeeklyHours.toFixed(1) : "\u2014" },
+      { label: "Avg office time (per day)", value: avgOfficeHours != null ? avgOfficeHours.toFixed(2) : "\u2014" },
+      { label: "Avg route time (per day)", value: avgRouteHours != null ? avgRouteHours.toFixed(2) : "\u2014" },
       { label: "Most efficient", value: efficient ? `${efficient.label}` : "\u2014" }
     ];
     yearlySummaryStats.innerHTML = blocks.map((b) => `<span class="pill"><small>${b.label}</small> <b>${b.value}</b></span>`).join("");

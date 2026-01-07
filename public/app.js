@@ -8175,22 +8175,12 @@ Score: ${overallScore}/10 (higher is better)`;
       return { label: period.label, parcels: parcels2, letters: letters2, hours, efficiency };
     });
     const labels = series.map((s) => s.label);
-    const parcelsRaw = series.map((s) => s.parcels);
-    const lettersRaw = series.map((s) => s.letters);
-    const hoursRaw = series.map((s) => s.hours);
-    const effRaw = series.map((s) => s.efficiency);
-    const scaleTo100 = (values) => {
-      const max = Math.max(0, ...values);
-      const divisor = max > 0 ? max / 100 : 1;
-      const scaled = values.map((v) => divisor > 0 ? v / divisor : 0);
-      return { scaled, divisor };
-    };
-    const parcelsScaled = scaleTo100(parcelsRaw);
-    const lettersScaled = scaleTo100(lettersRaw);
-    const hoursScaled = scaleTo100(hoursRaw);
-    const effScaled = scaleTo100(effRaw);
+    const parcelsVals = series.map((s) => s.parcels);
+    const lettersVals = series.map((s) => (s.letters || 0) / 10);
+    const hoursVals = series.map((s) => s.hours);
+    const effVals = series.map((s) => s.efficiency);
     if (parserNote) {
-      parserNote.textContent = "Scaled to 0\u2013100 per metric. Helper parcels excluded from efficiency.";
+      parserNote.textContent = "Actual scale. Letters shown as \xF710. Helper parcels excluded from efficiency.";
     }
     if (!window.Chart) {
       if (parserNote) parserNote.textContent = "Chart.js missing \u2014 unable to render parser view.";
@@ -8204,24 +8194,16 @@ Score: ${overallScore}/10 (higher is better)`;
     }
     const datasets = [];
     if ((parserShowParcels == null ? void 0 : parserShowParcels.checked) !== false) {
-      const divisor = parcelsScaled.divisor;
-      const label = divisor > 1 ? `Parcels (\xF7${divisor.toFixed(0)})` : "Parcels";
-      datasets.push({ label, data: parcelsScaled.scaled, backgroundColor: getCssVar("--rs-parcels", "#2b7fff"), borderRadius: 4, barThickness: 12, _raw: parcelsRaw });
+      datasets.push({ label: "Parcels", data: parcelsVals, backgroundColor: getCssVar("--rs-parcels", "#2b7fff"), borderRadius: 4, barThickness: 12 });
     }
     if ((parserShowLetters == null ? void 0 : parserShowLetters.checked) !== false) {
-      const divisor = lettersScaled.divisor;
-      const label = divisor > 1 ? `Letters (\xF7${divisor.toFixed(0)})` : "Letters";
-      datasets.push({ label, data: lettersScaled.scaled, backgroundColor: getCssVar("--rs-letters", "#f5c542"), borderRadius: 4, barThickness: 12, _raw: lettersRaw });
+      datasets.push({ label: "Letters (\xF710)", data: lettersVals, backgroundColor: getCssVar("--rs-letters", "#f5c542"), borderRadius: 4, barThickness: 12 });
     }
     if ((parserShowHours == null ? void 0 : parserShowHours.checked) !== false) {
-      const divisor = hoursScaled.divisor;
-      const label = divisor > 1 ? `Hours (\xF7${divisor.toFixed(1)})` : "Hours";
-      datasets.push({ label, data: hoursScaled.scaled, backgroundColor: getCssVar("--rs-hours", "#f59e0b"), borderRadius: 4, barThickness: 12, _raw: hoursRaw });
+      datasets.push({ label: "Hours", data: hoursVals, backgroundColor: getCssVar("--rs-hours", "#f59e0b"), borderRadius: 4, barThickness: 12 });
     }
     if ((parserShowEfficiency == null ? void 0 : parserShowEfficiency.checked) !== false) {
-      const divisor = effScaled.divisor;
-      const label = divisor > 1 ? `Efficiency (\xF7${divisor.toFixed(2)})` : "Efficiency";
-      datasets.push({ label, data: effScaled.scaled, backgroundColor: getCssVar("--rs-eff", "#22c55e"), borderRadius: 4, barThickness: 6, _raw: effRaw });
+      datasets.push({ label: "Efficiency", data: effVals, backgroundColor: getCssVar("--rs-eff", "#22c55e"), borderRadius: 4, barThickness: 6 });
     }
     parserChart = new Chart(parserChartCanvas, {
       type: "bar",
@@ -8231,23 +8213,9 @@ Score: ${overallScore}/10 (higher is better)`;
       },
       options: {
         responsive: true,
-        plugins: {
-          legend: { display: true },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => {
-                const dataset = ctx.dataset;
-                const raw = Array.isArray(dataset._raw) ? dataset._raw[ctx.dataIndex] : null;
-                if (raw == null) return `${dataset.label}: \u2014`;
-                const val = typeof raw === "number" ? raw : Number(raw);
-                if (!Number.isFinite(val)) return `${dataset.label}: \u2014`;
-                return `${dataset.label}: ${val.toFixed(1)}`;
-              }
-            }
-          }
-        },
+        plugins: { legend: { display: true } },
         scales: {
-          y: { beginAtZero: true, max: 100, ticks: { stepSize: 20 } }
+          y: { beginAtZero: true }
         }
       }
     });

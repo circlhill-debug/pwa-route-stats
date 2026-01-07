@@ -5799,6 +5799,9 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var parserShowEfficiency = document.getElementById("parserShowEfficiency");
   var parserNote = document.getElementById("parserNote");
   var parserChartCanvas = document.getElementById("parserChart");
+  var sleepDrinkCard = document.getElementById("sleepDrinkCard");
+  var sleepDrinkNote = document.getElementById("sleepDrinkNote");
+  var sleepDrinkChartCanvas = document.getElementById("sleepDrinkChart");
   var CURRENT_USER_ID = null;
   (async () => {
     var _a6;
@@ -6272,6 +6275,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var miles = $("miles");
   var mood = $("mood");
   var notes = $("notes");
+  var sleepInput = $("sleepHours");
+  var drinkInput = $("drinkFlag");
   var secondTripMilesInput = $("secondTripMiles");
   var secondTripTimeInput = $("secondTripTime");
   var secondTripEmaInput = $("secondTripEma");
@@ -6581,6 +6586,15 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (helperParcels > 0) {
       parts.push(`HelperParcels:${helperParcels}`);
     }
+    const sleepValRaw = sleepInput == null ? void 0 : sleepInput.value;
+    const sleepVal = sleepValRaw === "" || sleepValRaw == null ? null : Number(sleepValRaw);
+    if (sleepVal != null && Number.isFinite(sleepVal) && sleepVal >= 0) {
+      parts.push(`Sleep:${sleepVal}`);
+    }
+    const drinkVal = (drinkInput == null ? void 0 : drinkInput.value) || "";
+    if (drinkVal) {
+      parts.push(`Drink:${drinkVal}`);
+    }
     return parts.length ? parts.join(" \xB7 ") : null;
   }
   function collectPayload(userId) {
@@ -6643,6 +6657,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       setSecondTripInputs(null);
       if (breakMinutesInput) breakMinutesInput.value = "0";
       if (parcelHelperInput) parcelHelperInput.value = "0";
+      if (sleepInput) sleepInput.value = "";
+      if (drinkInput) drinkInput.value = "";
     } else {
       const parts = String(raw).split("\xB7").map((s) => s.trim());
       let w = "", t = "", b = "";
@@ -6651,6 +6667,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       let stData = null;
       let brk = null;
       let helperParcels = "";
+      let sleepVal = "";
+      let drinkVal = "";
       for (const p of parts) {
         if (/°F$/.test(p)) t = p.replace("\xB0F", "").trim();
         else if (/^Box:/i.test(p)) b = p.split(":").slice(1).join(":").trim();
@@ -6666,6 +6684,10 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
           brk = Number.isFinite(val) && val >= 0 ? val : null;
         } else if (/^HelperParcels:/i.test(p)) {
           helperParcels = p.split(":").slice(1).join(":").trim();
+        } else if (/^Sleep:/i.test(p)) {
+          sleepVal = p.split(":").slice(1).join(":").trim();
+        } else if (/^Drink:/i.test(p)) {
+          drinkVal = p.split(":").slice(1).join(":").trim();
         } else if (/^Holiday$/i.test(p)) hol = true;
         else w = p;
       }
@@ -6678,6 +6700,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       setSecondTripInputs(stData);
       if (breakMinutesInput) breakMinutesInput.value = brk != null ? String(brk) : "0";
       if (parcelHelperInput) parcelHelperInput.value = helperParcels || "0";
+      if (sleepInput) sleepInput.value = sleepVal || "";
+      if (drinkInput) drinkInput.value = drinkVal || "";
     }
     try {
       computeBreakdown();
@@ -6794,6 +6818,30 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       return 0;
     }
   }
+  function parseSleepFromWeatherString(weatherStr) {
+    if (!weatherStr) return null;
+    try {
+      const part = String(weatherStr).split("\xB7").map((s) => s.trim()).find((p) => /^Sleep:/i.test(p));
+      if (!part) return null;
+      const raw = part.split(":").slice(1).join(":").trim();
+      const val = parseFloat(raw);
+      return Number.isFinite(val) ? val : null;
+    } catch (_) {
+      return null;
+    }
+  }
+  function parseDrinkFromWeatherString(weatherStr) {
+    if (!weatherStr) return null;
+    try {
+      const part = String(weatherStr).split("\xB7").map((s) => s.trim()).find((p) => /^Drink:/i.test(p));
+      if (!part) return null;
+      const raw = part.split(":").slice(1).join(":").trim().toUpperCase();
+      if (raw === "D" || raw === "ND") return raw;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
   function readTagHistoryForIso(iso) {
     if (!iso) return [];
     try {
@@ -6877,6 +6925,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     initParserControls();
     buildYearlySummary(rawRows);
     buildParserChart(rawRows);
+    buildSleepDrinkChart(rawRows);
   }
   async function loadByDate() {
     editingKey = null;
@@ -7017,6 +7066,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     weather.value = "";
     if (temp) temp.value = "";
     if (boxholders) boxholders.value = "";
+    if (sleepInput) sleepInput.value = "";
+    if (drinkInput) drinkInput.value = "";
     computeBreakdown();
     const rows = await fetchEntries();
     allRows = rows;
@@ -8366,6 +8417,104 @@ Score: ${overallScore}/10 (higher is better)`;
       el == null ? void 0 : el.addEventListener("change", rerender);
     });
   }
+  var sleepDrinkChart = null;
+  function buildSleepDrinkChart(rows) {
+    if (!sleepDrinkCard || !sleepDrinkChartCanvas) return;
+    if (!window.Chart) {
+      if (sleepDrinkNote) sleepDrinkNote.textContent = "Chart.js missing \u2014 unable to render sleep view.";
+      return;
+    }
+    const list = (rows || []).map((r) => {
+      const sleep = parseSleepFromWeatherString(r.weather_json || "");
+      const drink = parseDrinkFromWeatherString(r.weather_json || "");
+      return {
+        work_date: r.work_date,
+        sleep,
+        drink,
+        mood: r.mood || ""
+      };
+    }).filter((r) => r.work_date).sort((a, b) => a.work_date.localeCompare(b.work_date));
+    const labels = list.map((r) => r.work_date);
+    const sleepVals = list.map((r) => r.sleep == null ? null : r.sleep);
+    const drinkValsND = list.map((r) => r.drink === "ND" ? r.sleep != null ? r.sleep : 0 : null);
+    const drinkValsD = list.map((r) => r.drink === "D" ? r.sleep != null ? r.sleep : 0 : null);
+    const showAny = sleepVals.some((v) => v != null) || drinkValsD.some((v) => v != null) || drinkValsND.some((v) => v != null);
+    if (!showAny) {
+      if (sleepDrinkNote) sleepDrinkNote.textContent = "No sleep/drink entries yet.";
+    } else if (sleepDrinkNote) {
+      sleepDrinkNote.textContent = "Sleep entries show only on days you log them. Drink markers show D/ND.";
+    }
+    if (sleepDrinkChart && typeof sleepDrinkChart.destroy === "function") {
+      try {
+        sleepDrinkChart.destroy();
+      } catch (_) {
+      }
+    }
+    sleepDrinkChart = new Chart(sleepDrinkChartCanvas, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Sleep (hours)",
+            data: sleepVals,
+            borderColor: "#7dd3fc",
+            backgroundColor: "#7dd3fc",
+            tension: 0.3,
+            pointRadius: 3,
+            pointHoverRadius: 4,
+            spanGaps: false,
+            fill: false,
+            _meta: list
+          },
+          {
+            label: "Drink (D)",
+            data: drinkValsD,
+            borderColor: "#f59e0b",
+            backgroundColor: "#f59e0b",
+            pointStyle: "triangle",
+            pointRadius: 5,
+            pointHoverRadius: 6,
+            showLine: false,
+            _meta: list
+          },
+          {
+            label: "Drink (ND)",
+            data: drinkValsND,
+            borderColor: "#22c55e",
+            backgroundColor: "#22c55e",
+            pointStyle: "rectRot",
+            pointRadius: 5,
+            pointHoverRadius: 6,
+            showLine: false,
+            _meta: list
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: true },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                var _a6;
+                const meta = (_a6 = ctx.dataset._meta) == null ? void 0 : _a6[ctx.dataIndex];
+                if (!meta) return null;
+                const sleep = meta.sleep != null ? `${meta.sleep.toFixed(1)}h` : "\u2014";
+                const drink = meta.drink ? meta.drink : "\u2014";
+                const mood2 = meta.mood ? ` \xB7 Mood: ${meta.mood}` : "";
+                return `${ctx.dataset.label}: ${sleep} \xB7 Drink: ${drink}${mood2}`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: { beginAtZero: true, max: 12, ticks: { stepSize: 1 } }
+        }
+      }
+    });
+  }
   try {
     sb.channel("entries-feed").on("postgres_changes", { event: "*", schema: "public", table: "entries" }, async () => {
       const rows = await fetchEntries();
@@ -8412,6 +8561,7 @@ Score: ${overallScore}/10 (higher is better)`;
       { id: "monthlyGlanceCard" },
       { id: "yearlySummaryCard" },
       { id: "parserCard" },
+      { id: "sleepDrinkCard" },
       { id: "evalCompareCard" },
       { id: "quickFilterCard" },
       { id: "milestoneCard" },

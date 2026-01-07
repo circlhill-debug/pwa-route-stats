@@ -1266,6 +1266,9 @@ const parserShowHours = document.getElementById('parserShowHours');
 const parserShowEfficiency = document.getElementById('parserShowEfficiency');
 const parserNote = document.getElementById('parserNote');
 const parserChartCanvas = document.getElementById('parserChart');
+const sleepDrinkCard = document.getElementById('sleepDrinkCard');
+const sleepDrinkNote = document.getElementById('sleepDrinkNote');
+const sleepDrinkChartCanvas = document.getElementById('sleepDrinkChart');
 let CURRENT_USER_ID = null;
 (async () => {
   try{
@@ -1689,6 +1692,7 @@ aiSummary = createAiSummary({
 
 const date=$('date'), route=$('route'), start=$('start'), end=$('end'), departTime=$('departTime'), returnTime=$('returnTime');
 const parcels=$('parcels'), parcelHelperInput=$('parcelHelper'), letters=$('letters'), miles=$('miles'), mood=$('mood'), notes=$('notes');
+const sleepInput=$('sleepHours'), drinkInput=$('drinkFlag');
 const secondTripMilesInput=$('secondTripMiles'), secondTripTimeInput=$('secondTripTime'), secondTripEmaInput=$('secondTripEma');
 const breakMinutesInput=$('breakMinutes');
 const secondTripPaidEl=$('secondTripPaid'), secondTripActualEl=$('secondTripActual'), secondTripReimburseEl=$('secondTripReimburse'), secondTripEmaRateEl=$('secondTripEmaRate');
@@ -1958,6 +1962,15 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
     if (helperParcels > 0){
       parts.push(`HelperParcels:${helperParcels}`);
     }
+    const sleepValRaw = sleepInput?.value;
+    const sleepVal = sleepValRaw === '' || sleepValRaw == null ? null : Number(sleepValRaw);
+    if (sleepVal != null && Number.isFinite(sleepVal) && sleepVal >= 0){
+      parts.push(`Sleep:${sleepVal}`);
+    }
+    const drinkVal = drinkInput?.value || '';
+    if (drinkVal){
+      parts.push(`Drink:${drinkVal}`);
+    }
     return parts.length? parts.join(' · ') : null;
   }
 
@@ -2021,9 +2034,11 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
       setSecondTripInputs(null);
       if (breakMinutesInput) breakMinutesInput.value = '0';
       if (parcelHelperInput) parcelHelperInput.value = '0';
+      if (sleepInput) sleepInput.value = '';
+      if (drinkInput) drinkInput.value = '';
     } else {
       const parts = String(raw).split('·').map(s=>s.trim());
-      let w='', t='', b=''; let hol=false; let rsn=''; let stData=null; let brk=null; let helperParcels='';
+      let w='', t='', b=''; let hol=false; let rsn=''; let stData=null; let brk=null; let helperParcels=''; let sleepVal=''; let drinkVal='';
       for (const p of parts){
         if (/°F$/.test(p)) t = p.replace('°F','').trim();
         else if (/^Box:/i.test(p)) b = p.split(':').slice(1).join(':').trim();
@@ -2038,6 +2053,12 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
         else if (/^HelperParcels:/i.test(p)){
           helperParcels = p.split(':').slice(1).join(':').trim();
         }
+        else if (/^Sleep:/i.test(p)){
+          sleepVal = p.split(':').slice(1).join(':').trim();
+        }
+        else if (/^Drink:/i.test(p)){
+          drinkVal = p.split(':').slice(1).join(':').trim();
+        }
         else if (/^Holiday$/i.test(p)) hol = true;
         else w = p;
       }
@@ -2049,6 +2070,8 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
       setSecondTripInputs(stData);
       if (breakMinutesInput) breakMinutesInput.value = brk!=null ? String(brk) : '0';
       if (parcelHelperInput) parcelHelperInput.value = helperParcels || '0';
+      if (sleepInput) sleepInput.value = sleepVal || '';
+      if (drinkInput) drinkInput.value = drinkVal || '';
     }
     try { computeBreakdown(); } catch(_){}
   }
@@ -2155,6 +2178,32 @@ function parseHelperParcelsFromWeatherString(weatherStr){
   }
 }
 
+function parseSleepFromWeatherString(weatherStr){
+  if (!weatherStr) return null;
+  try{
+    const part = String(weatherStr).split('·').map(s => s.trim()).find(p => /^Sleep:/i.test(p));
+    if (!part) return null;
+    const raw = part.split(':').slice(1).join(':').trim();
+    const val = parseFloat(raw);
+    return Number.isFinite(val) ? val : null;
+  }catch(_){
+    return null;
+  }
+}
+
+function parseDrinkFromWeatherString(weatherStr){
+  if (!weatherStr) return null;
+  try{
+    const part = String(weatherStr).split('·').map(s => s.trim()).find(p => /^Drink:/i.test(p));
+    if (!part) return null;
+    const raw = part.split(':').slice(1).join(':').trim().toUpperCase();
+    if (raw === 'D' || raw === 'ND') return raw;
+    return null;
+  }catch(_){
+    return null;
+  }
+}
+
 function readTagHistoryForIso(iso){
   if (!iso) return [];
   try{
@@ -2242,6 +2291,7 @@ function getHourlyRateFromEval(){
     initParserControls();
     buildYearlySummary(rawRows);
     buildParserChart(rawRows);
+    buildSleepDrinkChart(rawRows);
   }
 
   async function loadByDate(){
@@ -2305,7 +2355,7 @@ function getHourlyRateFromEval(){
     if(!confirm(`Delete your entry for ${d}? This cannot be undone (unless you press Undo).`)) return;
     const { error } = await sb.from('entries').delete().eq('user_id',user.id).eq('work_date',d); if(error){ alert(error.message); return; }
     lastDeleted = rowToDelete; showUndo(true);
-    $('notes').value=''; parcels.value=0; if(parcelHelperInput) parcelHelperInput.value='0'; letters.value=0; miles.value=53; offDay.checked=false; start.value='08:00'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; computeBreakdown();
+    $('notes').value=''; parcels.value=0; if(parcelHelperInput) parcelHelperInput.value='0'; letters.value=0; miles.value=53; offDay.checked=false; start.value='08:00'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; if(sleepInput) sleepInput.value=''; if(drinkInput) drinkInput.value=''; computeBreakdown();
     const rows = await fetchEntries();
     allRows = rows;
     rebuildAll();
@@ -3570,6 +3620,104 @@ function getHourlyRateFromEval(){
     });
   }
 
+  let sleepDrinkChart = null;
+  function buildSleepDrinkChart(rows){
+    if (!sleepDrinkCard || !sleepDrinkChartCanvas) return;
+    if (!window.Chart){
+      if (sleepDrinkNote) sleepDrinkNote.textContent = 'Chart.js missing — unable to render sleep view.';
+      return;
+    }
+    const list = (rows || []).map(r=>{
+      const sleep = parseSleepFromWeatherString(r.weather_json || '');
+      const drink = parseDrinkFromWeatherString(r.weather_json || '');
+      return {
+        work_date: r.work_date,
+        sleep,
+        drink,
+        mood: r.mood || ''
+      };
+    }).filter(r=> r.work_date).sort((a,b)=> a.work_date.localeCompare(b.work_date));
+
+    const labels = list.map(r=> r.work_date);
+    const sleepVals = list.map(r=> (r.sleep == null ? null : r.sleep));
+    const drinkValsND = list.map(r=> (r.drink === 'ND' ? (r.sleep != null ? r.sleep : 0) : null));
+    const drinkValsD = list.map(r=> (r.drink === 'D' ? (r.sleep != null ? r.sleep : 0) : null));
+    const showAny = sleepVals.some(v=> v != null) || drinkValsD.some(v=> v != null) || drinkValsND.some(v=> v != null);
+    if (!showAny){
+      if (sleepDrinkNote) sleepDrinkNote.textContent = 'No sleep/drink entries yet.';
+    } else if (sleepDrinkNote){
+      sleepDrinkNote.textContent = 'Sleep entries show only on days you log them. Drink markers show D/ND.';
+    }
+
+    if (sleepDrinkChart && typeof sleepDrinkChart.destroy === 'function'){
+      try{ sleepDrinkChart.destroy(); }catch(_){ }
+    }
+
+    sleepDrinkChart = new Chart(sleepDrinkChartCanvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Sleep (hours)',
+            data: sleepVals,
+            borderColor: '#7dd3fc',
+            backgroundColor: '#7dd3fc',
+            tension: 0.3,
+            pointRadius: 3,
+            pointHoverRadius: 4,
+            spanGaps: false,
+            fill: false,
+            _meta: list
+          },
+          {
+            label: 'Drink (D)',
+            data: drinkValsD,
+            borderColor: '#f59e0b',
+            backgroundColor: '#f59e0b',
+            pointStyle: 'triangle',
+            pointRadius: 5,
+            pointHoverRadius: 6,
+            showLine: false,
+            _meta: list
+          },
+          {
+            label: 'Drink (ND)',
+            data: drinkValsND,
+            borderColor: '#22c55e',
+            backgroundColor: '#22c55e',
+            pointStyle: 'rectRot',
+            pointRadius: 5,
+            pointHoverRadius: 6,
+            showLine: false,
+            _meta: list
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: true },
+          tooltip: {
+            callbacks: {
+              label: (ctx)=>{
+                const meta = ctx.dataset._meta?.[ctx.dataIndex];
+                if (!meta) return null;
+                const sleep = meta.sleep != null ? `${meta.sleep.toFixed(1)}h` : '—';
+                const drink = meta.drink ? meta.drink : '—';
+                const mood = meta.mood ? ` · Mood: ${meta.mood}` : '';
+                return `${ctx.dataset.label}: ${sleep} · Drink: ${drink}${mood}`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: { beginAtZero: true, max: 12, ticks: { stepSize: 1 } }
+        }
+      }
+    });
+  }
+
   try{
     sb.channel('entries-feed').on('postgres_changes',{event:'*',schema:'public',table:'entries'}, async ()=>{
       const rows = await fetchEntries();
@@ -3598,6 +3746,7 @@ function getHourlyRateFromEval(){
       { id:'monthlyGlanceCard' },
       { id:'yearlySummaryCard' },
       { id:'parserCard' },
+      { id:'sleepDrinkCard' },
       { id:'evalCompareCard' },
       { id:'quickFilterCard' },
       { id:'milestoneCard' },

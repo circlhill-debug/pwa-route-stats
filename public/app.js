@@ -5178,7 +5178,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     aId: (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || null,
     bId: null
   };
-  var parserCharts = [];
+  var parserChart = null;
   var $ = (id) => document.getElementById(id);
   var dConn = $("dConn");
   var dAuth = $("dAuth");
@@ -5797,7 +5797,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var parserShowHours = document.getElementById("parserShowHours");
   var parserShowEfficiency = document.getElementById("parserShowEfficiency");
   var parserNote = document.getElementById("parserNote");
-  var parserChartsEl = document.getElementById("parserCharts");
+  var parserChartCanvas = document.getElementById("parserChart");
   var CURRENT_USER_ID = null;
   (async () => {
     var _a6;
@@ -8151,21 +8151,8 @@ Score: ${overallScore}/10 (higher is better)`;
     ];
     yearlySummaryStats.innerHTML = blocks.map((b) => `<span class="pill"><small>${b.label}</small> <b>${b.value}</b></span>`).join("");
   }
-  function clearParserCharts() {
-    if (!parserChartsEl) return;
-    if (parserCharts.length) {
-      parserCharts.forEach((chart) => {
-        try {
-          chart.destroy();
-        } catch (_) {
-        }
-      });
-    }
-    parserCharts = [];
-    parserChartsEl.innerHTML = "";
-  }
   function buildParserChart(rows) {
-    if (!parserCard || !parserGranularity || !parserCount || !parserChartsEl) return;
+    if (!parserCard || !parserGranularity || !parserCount || !parserChartCanvas) return;
     const peakConfigured = !!((PEAK_SEASON == null ? void 0 : PEAK_SEASON.from) && (PEAK_SEASON == null ? void 0 : PEAK_SEASON.to));
     if (parserIncludePeak) {
       parserIncludePeak.disabled = !peakConfigured;
@@ -8192,143 +8179,77 @@ Score: ${overallScore}/10 (higher is better)`;
     const lettersRaw = series.map((s) => s.letters);
     const hoursRaw = series.map((s) => s.hours);
     const effRaw = series.map((s) => s.efficiency);
-    const toIndex = (values) => {
-      const valid = values.filter((v) => Number.isFinite(v));
-      const avg = valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : 0;
-      const indexed = values.map((v) => avg > 0 && Number.isFinite(v) ? v / avg * 100 : 0);
-      return { indexed, avg };
+    const scaleTo100 = (values) => {
+      const max = Math.max(0, ...values);
+      const divisor = max > 0 ? max / 100 : 1;
+      const scaled = values.map((v) => divisor > 0 ? v / divisor : 0);
+      return { scaled, divisor };
     };
-    const parcelsIndexed = toIndex(parcelsRaw);
-    const lettersIndexed = toIndex(lettersRaw);
-    const hoursIndexed = toIndex(hoursRaw);
-    const effIndexed = toIndex(effRaw);
+    const parcelsScaled = scaleTo100(parcelsRaw);
+    const lettersScaled = scaleTo100(lettersRaw);
+    const hoursScaled = scaleTo100(hoursRaw);
+    const effScaled = scaleTo100(effRaw);
     if (parserNote) {
-      parserNote.textContent = "Small multiples: 100 = average per metric. Helper parcels excluded from efficiency.";
+      parserNote.textContent = "Scaled to 0\u2013100 per metric. Helper parcels excluded from efficiency.";
     }
     if (!window.Chart) {
       if (parserNote) parserNote.textContent = "Chart.js missing \u2014 unable to render parser view.";
-      clearParserCharts();
       return;
     }
-    clearParserCharts();
-    const metrics = [];
+    if (parserChart && typeof parserChart.destroy === "function") {
+      try {
+        parserChart.destroy();
+      } catch (_) {
+      }
+    }
+    const datasets = [];
     if ((parserShowParcels == null ? void 0 : parserShowParcels.checked) !== false) {
-      metrics.push({
-        label: "Parcels",
-        color: getCssVar("--rs-parcels", "#2b7fff"),
-        indexed: parcelsIndexed.indexed,
-        raw: parcelsRaw
-      });
+      const divisor = parcelsScaled.divisor;
+      const label = divisor > 1 ? `Parcels (\xF7${divisor.toFixed(0)})` : "Parcels";
+      datasets.push({ label, data: parcelsScaled.scaled, backgroundColor: getCssVar("--rs-parcels", "#2b7fff"), borderRadius: 4, barThickness: 12, _raw: parcelsRaw });
     }
     if ((parserShowLetters == null ? void 0 : parserShowLetters.checked) !== false) {
-      metrics.push({
-        label: "Letters",
-        color: getCssVar("--rs-letters", "#f5c542"),
-        indexed: lettersIndexed.indexed,
-        raw: lettersRaw
-      });
+      const divisor = lettersScaled.divisor;
+      const label = divisor > 1 ? `Letters (\xF7${divisor.toFixed(0)})` : "Letters";
+      datasets.push({ label, data: lettersScaled.scaled, backgroundColor: getCssVar("--rs-letters", "#f5c542"), borderRadius: 4, barThickness: 12, _raw: lettersRaw });
     }
     if ((parserShowHours == null ? void 0 : parserShowHours.checked) !== false) {
-      metrics.push({
-        label: "Hours",
-        color: getCssVar("--rs-hours", "#f59e0b"),
-        indexed: hoursIndexed.indexed,
-        raw: hoursRaw
-      });
+      const divisor = hoursScaled.divisor;
+      const label = divisor > 1 ? `Hours (\xF7${divisor.toFixed(1)})` : "Hours";
+      datasets.push({ label, data: hoursScaled.scaled, backgroundColor: getCssVar("--rs-hours", "#f59e0b"), borderRadius: 4, barThickness: 12, _raw: hoursRaw });
     }
     if ((parserShowEfficiency == null ? void 0 : parserShowEfficiency.checked) !== false) {
-      metrics.push({
-        label: "Efficiency",
-        color: getCssVar("--rs-eff", "#22c55e"),
-        indexed: effIndexed.indexed,
-        raw: effRaw
-      });
+      const divisor = effScaled.divisor;
+      const label = divisor > 1 ? `Efficiency (\xF7${divisor.toFixed(2)})` : "Efficiency";
+      datasets.push({ label, data: effScaled.scaled, backgroundColor: getCssVar("--rs-eff", "#22c55e"), borderRadius: 4, barThickness: 6, _raw: effRaw });
     }
-    if (!metrics.length) {
-      if (parserNote) parserNote.textContent = "Select at least one metric.";
-      return;
-    }
-    const baselineColor = "rgba(154,160,170,0.6)";
-    metrics.forEach((metric) => {
-      const panel = document.createElement("div");
-      panel.className = "parser-chart-panel";
-      const title = document.createElement("div");
-      title.className = "parser-chart-title";
-      title.textContent = metric.label;
-      const canvas = document.createElement("canvas");
-      canvas.className = "parser-chart-canvas";
-      canvas.height = 150;
-      panel.appendChild(title);
-      panel.appendChild(canvas);
-      parserChartsEl.appendChild(panel);
-      const values = metric.indexed;
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      const pad = Math.max(5, (max - min) * 0.1);
-      const suggestedMin = Math.max(0, min - pad);
-      const suggestedMax = max + pad;
-      const chart = new Chart(canvas, {
-        type: "line",
-        data: {
-          labels,
-          datasets: [
-            {
-              label: metric.label,
-              data: values,
-              borderColor: metric.color,
-              backgroundColor: metric.color,
-              tension: 0.3,
-              pointRadius: 2.5,
-              pointHoverRadius: 4,
-              fill: false,
-              _raw: metric.raw
-            },
-            {
-              label: "Baseline",
-              data: labels.map(() => 100),
-              borderColor: baselineColor,
-              borderDash: [4, 4],
-              pointRadius: 0,
-              pointHoverRadius: 0,
-              borderWidth: 1,
-              fill: false
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: (ctx) => {
-                  var _a6;
-                  const dataset = ctx.dataset;
-                  const raw = Array.isArray(dataset._raw) ? dataset._raw[ctx.dataIndex] : null;
-                  if (raw == null) return null;
-                  const val = typeof raw === "number" ? raw : Number(raw);
-                  if (!Number.isFinite(val)) return `${dataset.label}: \u2014`;
-                  const idx = (_a6 = ctx.parsed) == null ? void 0 : _a6.y;
-                  const idxTxt = Number.isFinite(idx) ? ` (idx ${Math.round(idx)})` : "";
-                  return `${dataset.label}: ${val.toFixed(1)}${idxTxt}`;
-                }
-              }
-            }
-          },
-          scales: {
-            y: {
-              beginAtZero: false,
-              suggestedMin,
-              suggestedMax,
-              ticks: {
-                callback: (value) => `${value}`
+    parserChart = new Chart(parserChartCanvas, {
+      type: "bar",
+      data: {
+        labels,
+        datasets
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: true },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const dataset = ctx.dataset;
+                const raw = Array.isArray(dataset._raw) ? dataset._raw[ctx.dataIndex] : null;
+                if (raw == null) return `${dataset.label}: \u2014`;
+                const val = typeof raw === "number" ? raw : Number(raw);
+                if (!Number.isFinite(val)) return `${dataset.label}: \u2014`;
+                return `${dataset.label}: ${val.toFixed(1)}`;
               }
             }
           }
+        },
+        scales: {
+          y: { beginAtZero: true, max: 100, ticks: { stepSize: 20 } }
         }
-      });
-      parserCharts.push(chart);
+      }
     });
   }
   function initParserControls() {

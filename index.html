@@ -460,10 +460,6 @@
   canvas.sparkline{ display:block; width:100%; border:none; padding:0; height:48px; max-height:48px; touch-action: manipulation; -webkit-tap-highlight-color: transparent }
   .sparkline-labels{ color:var(--muted); font-size:12px; margin-top:4px }
   .sparkline-summary{ color:var(--muted); font-size:12px; margin-top:4px }
-  .parser-charts{ display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); margin-top:8px }
-  .parser-chart-panel{ background:var(--card); border:1px solid var(--border); border-radius:10px; padding:8px }
-  .parser-chart-title{ font-size:11px; color:var(--muted); letter-spacing:.4px; text-transform:uppercase; margin-bottom:6px }
-  .parser-chart-canvas{ width:100%; height:150px }
   .fab{ position:fixed; right:16px; bottom:16px; z-index:10 }
   #diag{ position:sticky; top:0; z-index:999; background:#111; color:#ddd; font:12px/1.35 system-ui; padding:6px 10px; border-bottom:1px solid #222 }
   #diag b{ color:#fff }
@@ -1116,8 +1112,8 @@
         <small>Efficiency</small>
       </label>
     </div>
-    <div class="sparkline-labels" id="parserNote">Small multiples: 100 = average per metric. Helper parcels excluded from efficiency.</div>
-    <div id="parserCharts" class="parser-charts"></div>
+    <div class="sparkline-labels" id="parserNote">Scaled to 0-100 per metric. Helper parcels excluded from efficiency.</div>
+    <canvas id="parserChart" height="220"></canvas>
   </section>
  
   

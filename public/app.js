@@ -8156,6 +8156,10 @@ Score: ${overallScore}/10 (higher is better)`;
       { label: "Most efficient", value: efficient ? `${efficient.label}` : "\u2014" }
     ];
     yearlySummaryStats.innerHTML = blocks.map((b) => `<span class="pill"><small>${b.label}</small> <b>${b.value}</b></span>`).join("");
+    const note = document.getElementById("yearlySummaryNote");
+    if (note) {
+      note.textContent = "Hourly rate uses salary paid \xF7 logged hours, so vacations/holidays can raise the rate.";
+    }
   }
   function buildParserChart(rows) {
     if (!parserCard || !parserGranularity || !parserCount || !parserChartCanvas) return;

@@ -3355,6 +3355,10 @@ function getHourlyRateFromEval(){
       { label:'Most efficient', value: efficient ? `${efficient.label}` : '—' }
     ];
     yearlySummaryStats.innerHTML = blocks.map(b=> `<span class="pill"><small>${b.label}</small> <b>${b.value}</b></span>`).join('');
+    const note = document.getElementById('yearlySummaryNote');
+    if (note){
+      note.textContent = 'Hourly rate uses salary paid ÷ logged hours, so vacations/holidays can raise the rate.';
+    }
   }
 
   function buildParserChart(rows){

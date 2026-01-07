@@ -3404,7 +3404,7 @@ function getHourlyRateFromEval(){
     const effIndexed = toIndex(effRaw);
 
     if (parserNote){
-      parserNote.textContent = 'Small multiples: 100 = average per metric. Helper parcels excluded from efficiency.';
+      parserNote.textContent = 'Small multiples: 100 = average per metric (clamped to 60-140). Helper parcels excluded from efficiency.';
     }
 
     if (!window.Chart){
@@ -3469,8 +3469,13 @@ function getHourlyRateFromEval(){
       const min = Math.min(...values);
       const max = Math.max(...values);
       const pad = Math.max(5, (max - min) * 0.1);
-      const suggestedMin = Math.max(0, min - pad);
-      const suggestedMax = max + pad;
+      const rawMin = min - pad;
+      const rawMax = max + pad;
+      const clampedMin = Math.max(60, Math.floor(rawMin));
+      const clampedMax = Math.min(140, Math.ceil(rawMax));
+      const useClamp = clampedMax > clampedMin;
+      const yMin = useClamp ? clampedMin : 60;
+      const yMax = useClamp ? clampedMax : 140;
       const chart = new Chart(canvas, {
         type:'line',
         data:{
@@ -3522,8 +3527,8 @@ function getHourlyRateFromEval(){
           scales:{
             y:{
               beginAtZero:false,
-              suggestedMin,
-              suggestedMax,
+              min: yMin,
+              max: yMax,
               ticks:{
                 callback:(value)=> `${value}`
               }

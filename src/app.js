@@ -3302,6 +3302,12 @@ function getHourlyRateFromEval(){
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       return d.isValid && d.year === current;
     });
+    const normalizeHoursLocal = (value)=>{
+      const n = Number(value);
+      if (!Number.isFinite(n)) return 0;
+      if (Math.abs(n) > 24) return n / 60;
+      return n;
+    };
     const salary = USPS_EVAL?.annualSalary != null ? Number(USPS_EVAL.annualSalary) : null;
     const totals = {
       parcels: yearRows.reduce((t,r)=> t + (Number(r.parcels)||0), 0),
@@ -3333,7 +3339,7 @@ function getHourlyRateFromEval(){
       bucket.parcels += Number(r.parcels)||0;
       bucket.letters += Number(r.letters)||0;
       bucket.hours += Number(r.hours)||0;
-      bucket.officeHours += normalizeHours(r.office_minutes ?? r.officeMinutes);
+      bucket.officeHours += normalizeHoursLocal(r.office_minutes ?? r.officeMinutes);
       bucket.routeHours += routeAdjustedHours(r);
       bucket.volumeBase += combinedVolumeBase(r, letterW);
     });

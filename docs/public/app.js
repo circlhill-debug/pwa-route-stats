@@ -1542,8 +1542,8 @@
       const parcels2 = +row.parcels || 0;
       const letters2 = +row.letters || 0;
       const volume = combinedVolume2(parcels2, letters2);
-      const routeHours = normalizeHours2((_a6 = row.route_minutes) != null ? _a6 : row.routeMinutes);
-      const officeHours = normalizeHours2((_b = row.office_minutes) != null ? _b : row.officeMinutes);
+      const routeHours = normalizeHours((_a6 = row.route_minutes) != null ? _a6 : row.routeMinutes);
+      const officeHours = normalizeHours((_b = row.office_minutes) != null ? _b : row.officeMinutes);
       const storedHours = Number((_c = row.hours) != null ? _c : row.totalHours);
       const totalHours = Number.isFinite(storedHours) ? storedHours : routeHours + officeHours;
       const miles2 = Number(row.miles) || 0;
@@ -1570,8 +1570,8 @@
       if (!valid.length) return null;
       const totals = valid.reduce((acc, row) => {
         var _a6, _b, _c;
-        const routeHours = normalizeHours2((_a6 = row.route_minutes) != null ? _a6 : row.routeMinutes);
-        const officeHours = normalizeHours2((_b = row.office_minutes) != null ? _b : row.officeMinutes);
+        const routeHours = normalizeHours((_a6 = row.route_minutes) != null ? _a6 : row.routeMinutes);
+        const officeHours = normalizeHours((_b = row.office_minutes) != null ? _b : row.officeMinutes);
         const storedHours = Number((_c = row.hours) != null ? _c : row.totalHours);
         acc.totalHours += Number.isFinite(storedHours) ? storedHours : routeHours + officeHours;
         acc.routeHours += routeHours;
@@ -2121,7 +2121,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       if (n == null || !Number.isFinite(n)) return "\u2014";
       return `${n.toFixed(decimals)}${suffix}`;
     }
-    function normalizeHours2(value) {
+    function normalizeHours(value) {
       const n = Number(value);
       if (!Number.isFinite(n)) return 0;
       if (Math.abs(n) > 24) return n / 60;
@@ -8102,6 +8102,12 @@ Score: ${overallScore}/10 (higher is better)`;
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       return d.isValid && d.year === current;
     });
+    const normalizeHoursLocal = (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return 0;
+      if (Math.abs(n) > 24) return n / 60;
+      return n;
+    };
     const salary = (USPS_EVAL == null ? void 0 : USPS_EVAL.annualSalary) != null ? Number(USPS_EVAL.annualSalary) : null;
     const totals = {
       parcels: yearRows.reduce((t, r) => t + (Number(r.parcels) || 0), 0),
@@ -8133,7 +8139,7 @@ Score: ${overallScore}/10 (higher is better)`;
       bucket.parcels += Number(r.parcels) || 0;
       bucket.letters += Number(r.letters) || 0;
       bucket.hours += Number(r.hours) || 0;
-      bucket.officeHours += normalizeHours((_a6 = r.office_minutes) != null ? _a6 : r.officeMinutes);
+      bucket.officeHours += normalizeHoursLocal((_a6 = r.office_minutes) != null ? _a6 : r.officeMinutes);
       bucket.routeHours += routeAdjustedHours(r);
       bucket.volumeBase += combinedVolumeBase(r, letterW);
     });

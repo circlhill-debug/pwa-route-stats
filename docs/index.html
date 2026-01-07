@@ -1089,6 +1089,13 @@
           </select>
         </label>
         <label class="pill" style="gap:6px;align-items:center">
+          <small>View</small>
+          <select id="parserView" style="min-width:150px">
+            <option value="relationship" selected>Relationship (z-score)</option>
+            <option value="efficiency">Efficiency (z-score)</option>
+          </select>
+        </label>
+        <label class="pill" style="gap:6px;align-items:center">
           <input id="parserIncludePeak" type="checkbox">
           <small>Include peak season</small>
         </label>
@@ -1101,7 +1108,7 @@
       </label>
       <label class="pill" style="gap:6px;align-items:center">
         <input id="parserShowLetters" type="checkbox" checked>
-        <small>Letters (÷10)</small>
+        <small>Letters</small>
       </label>
       <label class="pill" style="gap:6px;align-items:center">
         <input id="parserShowHours" type="checkbox" checked>
@@ -1112,7 +1119,7 @@
         <small>Efficiency</small>
       </label>
     </div>
-    <div class="sparkline-labels" id="parserNote">Actual scale. Higher bars = heavier month.</div>
+    <div class="sparkline-labels" id="parserNote">Relationship view: z-score per metric (mean 0, std 1). Helper parcels excluded from efficiency.</div>
     <canvas id="parserChart" height="220"></canvas>
   </section>
  

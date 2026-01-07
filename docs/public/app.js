@@ -5791,6 +5791,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var parserCard = document.getElementById("parserCard");
   var parserGranularity = document.getElementById("parserGranularity");
   var parserCount = document.getElementById("parserCount");
+  var parserView = document.getElementById("parserView");
   var parserIncludePeak = document.getElementById("parserIncludePeak");
   var parserShowParcels = document.getElementById("parserShowParcels");
   var parserShowLetters = document.getElementById("parserShowLetters");
@@ -8175,12 +8176,36 @@ Score: ${overallScore}/10 (higher is better)`;
       return { label: period.label, parcels: parcels2, letters: letters2, hours, efficiency };
     });
     const labels = series.map((s) => s.label);
-    const parcelsVals = series.map((s) => s.parcels);
-    const lettersVals = series.map((s) => (s.letters || 0) / 10);
-    const hoursVals = series.map((s) => s.hours);
-    const effVals = series.map((s) => s.efficiency);
+    const parcelsRaw = series.map((s) => s.parcels);
+    const lettersRaw = series.map((s) => s.letters);
+    const hoursRaw = series.map((s) => s.hours);
+    const effRaw = series.map((s) => s.efficiency);
+    const zScore = (values) => {
+      const valid = values.filter((v) => Number.isFinite(v));
+      const mean = valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : 0;
+      const variance = valid.length ? valid.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / valid.length : 0;
+      const std = variance > 0 ? Math.sqrt(variance) : 0;
+      const z = values.map((v) => std > 0 && Number.isFinite(v) ? (v - mean) / std : 0);
+      return { z, mean, std };
+    };
+    const view = (parserView == null ? void 0 : parserView.value) || "relationship";
+    if (view === "efficiency") {
+      [parserShowParcels, parserShowLetters, parserShowHours].forEach((el) => {
+        if (!el) return;
+        el.checked = false;
+        el.disabled = true;
+      });
+      if (parserShowEfficiency) {
+        parserShowEfficiency.checked = true;
+        parserShowEfficiency.disabled = false;
+      }
+    } else {
+      [parserShowParcels, parserShowLetters, parserShowHours, parserShowEfficiency].forEach((el) => {
+        if (el) el.disabled = false;
+      });
+    }
     if (parserNote) {
-      parserNote.textContent = "Actual scale. Letters shown as \xF710. Helper parcels excluded from efficiency.";
+      parserNote.textContent = view === "efficiency" ? "Efficiency view: z-score of volume per route hour. Helper parcels excluded from efficiency." : "Relationship view: z-score per metric (mean 0, std 1). Helper parcels excluded from efficiency.";
     }
     if (!window.Chart) {
       if (parserNote) parserNote.textContent = "Chart.js missing \u2014 unable to render parser view.";
@@ -8192,30 +8217,110 @@ Score: ${overallScore}/10 (higher is better)`;
       } catch (_) {
       }
     }
-    const datasets = [];
-    if ((parserShowParcels == null ? void 0 : parserShowParcels.checked) !== false) {
-      datasets.push({ label: "Parcels", data: parcelsVals, backgroundColor: getCssVar("--rs-parcels", "#2b7fff"), borderRadius: 4, barThickness: 12 });
+    const metrics = [];
+    if (view === "efficiency") {
+      metrics.push({
+        label: "Efficiency",
+        color: getCssVar("--rs-eff", "#22c55e"),
+        raw: effRaw
+      });
+    } else {
+      if ((parserShowParcels == null ? void 0 : parserShowParcels.checked) !== false) {
+        metrics.push({ label: "Parcels", color: getCssVar("--rs-parcels", "#2b7fff"), raw: parcelsRaw });
+      }
+      if ((parserShowLetters == null ? void 0 : parserShowLetters.checked) !== false) {
+        metrics.push({ label: "Letters", color: getCssVar("--rs-letters", "#f5c542"), raw: lettersRaw });
+      }
+      if ((parserShowHours == null ? void 0 : parserShowHours.checked) !== false) {
+        metrics.push({ label: "Hours", color: getCssVar("--rs-hours", "#f59e0b"), raw: hoursRaw });
+      }
+      if ((parserShowEfficiency == null ? void 0 : parserShowEfficiency.checked) !== false) {
+        metrics.push({ label: "Efficiency", color: getCssVar("--rs-eff", "#22c55e"), raw: effRaw });
+      }
     }
-    if ((parserShowLetters == null ? void 0 : parserShowLetters.checked) !== false) {
-      datasets.push({ label: "Letters (\xF710)", data: lettersVals, backgroundColor: getCssVar("--rs-letters", "#f5c542"), borderRadius: 4, barThickness: 12 });
+    if (!metrics.length) {
+      if (parserNote) parserNote.textContent = "Select at least one metric.";
+      return;
     }
-    if ((parserShowHours == null ? void 0 : parserShowHours.checked) !== false) {
-      datasets.push({ label: "Hours", data: hoursVals, backgroundColor: getCssVar("--rs-hours", "#f59e0b"), borderRadius: 4, barThickness: 12 });
+    metrics.forEach((metric) => {
+      const stats = zScore(metric.raw);
+      metric.z = stats.z;
+    });
+    const allZ = metrics.flatMap((m) => m.z || []).filter((v) => Number.isFinite(v));
+    const minZ = allZ.length ? Math.min(...allZ) : -2;
+    const maxZ = allZ.length ? Math.max(...allZ) : 2;
+    const pad = 0.5;
+    let yMin = Math.floor(minZ - pad);
+    let yMax = Math.ceil(maxZ + pad);
+    if (!Number.isFinite(yMin) || !Number.isFinite(yMax) || yMax <= yMin) {
+      yMin = -2;
+      yMax = 2;
     }
-    if ((parserShowEfficiency == null ? void 0 : parserShowEfficiency.checked) !== false) {
-      datasets.push({ label: "Efficiency", data: effVals, backgroundColor: getCssVar("--rs-eff", "#22c55e"), borderRadius: 4, barThickness: 6 });
+    yMin = Math.max(-4, yMin);
+    yMax = Math.min(4, yMax);
+    if (yMax <= yMin) {
+      yMin = -2;
+      yMax = 2;
     }
+    const baselineColor = "rgba(154,160,170,0.6)";
+    const datasets = metrics.map((metric) => ({
+      label: metric.label,
+      data: metric.z,
+      borderColor: metric.color,
+      backgroundColor: metric.color,
+      tension: 0.3,
+      pointRadius: 3,
+      pointHoverRadius: 4,
+      fill: false,
+      _raw: metric.raw,
+      _z: metric.z
+    }));
+    datasets.push({
+      label: "Baseline",
+      data: labels.map(() => 0),
+      borderColor: baselineColor,
+      borderDash: [4, 4],
+      pointRadius: 0,
+      pointHoverRadius: 0,
+      borderWidth: 1,
+      fill: false,
+      _baseline: true
+    });
     parserChart = new Chart(parserChartCanvas, {
-      type: "bar",
+      type: "line",
       data: {
         labels,
         datasets
       },
       options: {
         responsive: true,
-        plugins: { legend: { display: true } },
+        plugins: {
+          legend: {
+            display: true,
+            labels: {
+              filter: (item, data) => {
+                var _a6, _b;
+                return !((_b = (_a6 = data == null ? void 0 : data.datasets) == null ? void 0 : _a6[item.datasetIndex]) == null ? void 0 : _b._baseline);
+              }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const dataset = ctx.dataset;
+                const raw = Array.isArray(dataset._raw) ? dataset._raw[ctx.dataIndex] : null;
+                if (raw == null) return null;
+                const val = typeof raw === "number" ? raw : Number(raw);
+                if (!Number.isFinite(val)) return `${dataset.label}: \u2014`;
+                const z = Array.isArray(dataset._z) ? dataset._z[ctx.dataIndex] : null;
+                const zTxt = Number.isFinite(z) ? ` (z ${z.toFixed(2)})` : "";
+                return `${dataset.label}: ${val.toFixed(1)}${zTxt}`;
+              }
+            }
+          }
+        },
         scales: {
-          y: { beginAtZero: true }
+          y: { beginAtZero: false, min: yMin, max: yMax, ticks: { stepSize: 1 } }
         }
       }
     });
@@ -8227,7 +8332,7 @@ Score: ${overallScore}/10 (higher is better)`;
       buildYearlySummary(allRows || []);
       buildParserChart(allRows || []);
     };
-    [parserGranularity, parserCount, parserIncludePeak, parserShowParcels, parserShowLetters, parserShowHours, parserShowEfficiency, yearlySummaryYear, yearlySummaryIncludePeak].forEach((el) => {
+    [parserGranularity, parserCount, parserView, parserIncludePeak, parserShowParcels, parserShowLetters, parserShowHours, parserShowEfficiency, yearlySummaryYear, yearlySummaryIncludePeak].forEach((el) => {
       el == null ? void 0 : el.addEventListener("change", rerender);
     });
   }

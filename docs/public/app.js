@@ -8144,7 +8144,7 @@ Score: ${overallScore}/10 (higher is better)`;
       bucket.volumeBase += combinedVolumeBase(r, letterW);
     });
     const activeMonths = byMonth.filter((m) => m.parcels + m.letters + m.hours > 0);
-    const monthVolume = (m) => m.parcels + m.letters;
+    const monthVolume = (m) => m.parcels;
     const heaviest = activeMonths.reduce((max, m) => monthVolume(m) > (max ? monthVolume(max) : -1) ? m : max, null);
     const lightest = activeMonths.reduce((min, m) => monthVolume(m) < (min ? monthVolume(min) : Infinity) ? m : min, null);
     const efficient = activeMonths.reduce((best, m) => {
@@ -8169,8 +8169,8 @@ Score: ${overallScore}/10 (higher is better)`;
       { label: "Total letters", value: totals.letters.toLocaleString() },
       { label: "Total hours", value: totals.hours.toFixed(1) },
       { label: "Hourly rate (prorated)", value: hourlyRate ? `$${hourlyRate.toFixed(2)}` : "\u2014" },
-      { label: "Heaviest month (volume)", value: heaviest ? `${heaviest.label} (${monthVolume(heaviest).toLocaleString()})` : "\u2014" },
-      { label: "Lightest month (volume)", value: lightest ? `${lightest.label} (${monthVolume(lightest).toLocaleString()})` : "\u2014" },
+      { label: "Heaviest month (parcels)", value: heaviest ? `${heaviest.label} (${monthVolume(heaviest).toLocaleString()})` : "\u2014" },
+      { label: "Lightest month (parcels)", value: lightest ? `${lightest.label} (${monthVolume(lightest).toLocaleString()})` : "\u2014" },
       { label: "Avg weekly hours", value: avgWeeklyHours != null ? avgWeeklyHours.toFixed(1) : "\u2014" },
       { label: "Avg office time (per day)", value: avgOfficeHours != null ? avgOfficeHours.toFixed(2) : "\u2014" },
       { label: "Avg route time (per day)", value: avgRouteHours != null ? avgRouteHours.toFixed(2) : "\u2014" },

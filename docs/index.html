@@ -1137,10 +1137,15 @@
   <section class="card" id="sleepDrinkCard" data-collapsible="true" style="grid-column:1/-1">
     <h3 style="margin:0 0 8px 0">Sleep &amp; Drink</h3>
     <div class="row" style="gap:12px;align-items:center;flex-wrap:wrap">
-      <span class="pill" id="drinkWeekBadge">—</span>
-      <small class="muted" id="drinkWeekMeta">Drink days (this week)</small>
+      <div class="row" style="gap:10px;align-items:center">
+        <span class="pill" id="drinkWeekBadge">—</span>
+        <small class="muted" id="drinkWeekMeta">Drink days (this week)</small>
+      </div>
+      <div style="min-width:220px;flex:1">
+        <canvas id="sleepWeekChart" height="90"></canvas>
+      </div>
     </div>
-    <div class="sparkline-labels" id="sleepDrinkNote">Sleep tracking chart coming soon.</div>
+    <div class="sparkline-labels" id="sleepDrinkNote">Sleep bars show hours logged for the current week (Mon–Sun).</div>
   </section>
  
   

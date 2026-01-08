@@ -5803,6 +5803,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var sleepDrinkNote = document.getElementById("sleepDrinkNote");
   var drinkWeekBadge = document.getElementById("drinkWeekBadge");
   var drinkWeekMeta = document.getElementById("drinkWeekMeta");
+  var sleepWeekChartCanvas = document.getElementById("sleepWeekChart");
   var CURRENT_USER_ID = null;
   (async () => {
     var _a6;
@@ -6817,6 +6818,18 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       return Number.isFinite(val) && val > 0 ? val : 0;
     } catch (_) {
       return 0;
+    }
+  }
+  function parseSleepFromWeatherString(weatherStr) {
+    if (!weatherStr) return null;
+    try {
+      const part = String(weatherStr).split("\xB7").map((s) => s.trim()).find((p) => /^Sleep:/i.test(p));
+      if (!part) return null;
+      const raw = part.split(":").slice(1).join(":").trim();
+      const val = parseFloat(raw);
+      return Number.isFinite(val) ? val : null;
+    } catch (_) {
+      return null;
     }
   }
   function parseDrinkFromWeatherString(weatherStr) {
@@ -8406,11 +8419,12 @@ Score: ${overallScore}/10 (higher is better)`;
       el == null ? void 0 : el.addEventListener("change", rerender);
     });
   }
+  var sleepWeekChart = null;
   function buildSleepDrinkChart(rows) {
     if (!sleepDrinkCard || !drinkWeekBadge) return;
     const list = (rows || []).map((r) => {
       const drink = parseDrinkFromWeatherString(r.weather_json || "");
-      return { work_date: r.work_date, drink };
+      return { work_date: r.work_date, drink, weather_json: r.weather_json || "" };
     }).filter((r) => r.work_date);
     const now = DateTime.now().setZone(ZONE);
     const start2 = startOfWeekMonday(now);
@@ -8436,9 +8450,62 @@ Score: ${overallScore}/10 (higher is better)`;
     drinkWeekBadge.textContent = `${weekCount}/7`;
     if (drinkWeekMeta) drinkWeekMeta.textContent = "Drink days (this week)";
     if (sleepDrinkNote) {
-      sleepDrinkNote.textContent = avg != null ? `Avg = ${avg.toFixed(1)} days per week.` : "Avg = \u2014";
+      const avgTxt = avg != null ? `Avg = ${avg.toFixed(1)} days per week.` : "Avg = \u2014";
+      sleepDrinkNote.textContent = `Sleep bars show hours logged for the current week (Mon\u2013Sun). ${avgTxt}`;
     }
     drinkWeekBadge.title = avg != null ? `Avg = ${avg.toFixed(1)} days per week` : "";
+    if (!sleepWeekChartCanvas || !window.Chart) return;
+    const dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const weekDates = dayLabels.map((_, idx) => start2.plus({ days: idx }).toISODate());
+    const sleepByDate = /* @__PURE__ */ new Map();
+    list.forEach((r) => {
+      if (!r.work_date) return;
+      const sleep = parseSleepFromWeatherString(r.weather_json || "");
+      if (sleep == null || !Number.isFinite(sleep)) return;
+      sleepByDate.set(r.work_date, sleep);
+    });
+    const sleepVals = weekDates.map((d) => sleepByDate.has(d) ? sleepByDate.get(d) : null);
+    if (sleepWeekChart && typeof sleepWeekChart.destroy === "function") {
+      try {
+        sleepWeekChart.destroy();
+      } catch (_) {
+      }
+    }
+    sleepWeekChart = new Chart(sleepWeekChartCanvas, {
+      type: "bar",
+      data: {
+        labels: dayLabels,
+        datasets: [
+          {
+            label: "Sleep (h)",
+            data: sleepVals,
+            backgroundColor: "#7dd3fc",
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                var _a6;
+                const val = (_a6 = ctx.parsed) == null ? void 0 : _a6.y;
+                const date2 = weekDates[ctx.dataIndex];
+                if (!Number.isFinite(val)) return `Sleep: \u2014 (${date2})`;
+                return `Sleep: ${val.toFixed(1)}h (${date2})`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, max: 10, ticks: { stepSize: 2 } }
+        }
+      }
+    });
   }
   try {
     sb.channel("entries-feed").on("postgres_changes", { event: "*", schema: "public", table: "entries" }, async () => {

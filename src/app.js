@@ -1270,6 +1270,7 @@ const sleepDrinkCard = document.getElementById('sleepDrinkCard');
 const sleepDrinkNote = document.getElementById('sleepDrinkNote');
 const drinkWeekBadge = document.getElementById('drinkWeekBadge');
 const drinkWeekMeta = document.getElementById('drinkWeekMeta');
+const sleepWeekChartCanvas = document.getElementById('sleepWeekChart');
 let CURRENT_USER_ID = null;
 (async () => {
   try{
@@ -3621,11 +3622,12 @@ function getHourlyRateFromEval(){
     });
   }
 
+  let sleepWeekChart = null;
   function buildSleepDrinkChart(rows){
     if (!sleepDrinkCard || !drinkWeekBadge) return;
     const list = (rows || []).map(r=>{
       const drink = parseDrinkFromWeatherString(r.weather_json || '');
-      return { work_date: r.work_date, drink };
+      return { work_date: r.work_date, drink, weather_json: r.weather_json || '' };
     }).filter(r=> r.work_date);
 
     const now = DateTime.now().setZone(ZONE);
@@ -3654,9 +3656,60 @@ function getHourlyRateFromEval(){
     drinkWeekBadge.textContent = `${weekCount}/7`;
     if (drinkWeekMeta) drinkWeekMeta.textContent = 'Drink days (this week)';
     if (sleepDrinkNote){
-      sleepDrinkNote.textContent = avg != null ? `Avg = ${avg.toFixed(1)} days per week.` : 'Avg = —';
+      const avgTxt = avg != null ? `Avg = ${avg.toFixed(1)} days per week.` : 'Avg = —';
+      sleepDrinkNote.textContent = `Sleep bars show hours logged for the current week (Mon–Sun). ${avgTxt}`;
     }
     drinkWeekBadge.title = avg != null ? `Avg = ${avg.toFixed(1)} days per week` : '';
+
+    if (!sleepWeekChartCanvas || !window.Chart) return;
+    const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const weekDates = dayLabels.map((_, idx)=> start.plus({ days: idx }).toISODate());
+    const sleepByDate = new Map();
+    list.forEach(r=>{
+      if (!r.work_date) return;
+      const sleep = parseSleepFromWeatherString(r.weather_json || '');
+      if (sleep == null || !Number.isFinite(sleep)) return;
+      sleepByDate.set(r.work_date, sleep);
+    });
+    const sleepVals = weekDates.map(d=> sleepByDate.has(d) ? sleepByDate.get(d) : null);
+
+    if (sleepWeekChart && typeof sleepWeekChart.destroy === 'function'){
+      try{ sleepWeekChart.destroy(); }catch(_){ }
+    }
+    sleepWeekChart = new Chart(sleepWeekChartCanvas, {
+      type: 'bar',
+      data: {
+        labels: dayLabels,
+        datasets: [
+          {
+            label: 'Sleep (h)',
+            data: sleepVals,
+            backgroundColor: '#7dd3fc',
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx)=>{
+                const val = ctx.parsed?.y;
+                const date = weekDates[ctx.dataIndex];
+                if (!Number.isFinite(val)) return `Sleep: — (${date})`;
+                return `Sleep: ${val.toFixed(1)}h (${date})`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, max: 10, ticks: { stepSize: 2 } }
+        }
+      }
+    });
   }
 
   try{

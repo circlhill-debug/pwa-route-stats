@@ -1268,7 +1268,8 @@ const parserNote = document.getElementById('parserNote');
 const parserChartCanvas = document.getElementById('parserChart');
 const sleepDrinkCard = document.getElementById('sleepDrinkCard');
 const sleepDrinkNote = document.getElementById('sleepDrinkNote');
-const sleepDrinkChartCanvas = document.getElementById('sleepDrinkChart');
+const drinkWeekBadge = document.getElementById('drinkWeekBadge');
+const drinkWeekMeta = document.getElementById('drinkWeekMeta');
 let CURRENT_USER_ID = null;
 (async () => {
   try{
@@ -3620,101 +3621,42 @@ function getHourlyRateFromEval(){
     });
   }
 
-  let sleepDrinkChart = null;
   function buildSleepDrinkChart(rows){
-    if (!sleepDrinkCard || !sleepDrinkChartCanvas) return;
-    if (!window.Chart){
-      if (sleepDrinkNote) sleepDrinkNote.textContent = 'Chart.js missing — unable to render sleep view.';
-      return;
-    }
+    if (!sleepDrinkCard || !drinkWeekBadge) return;
     const list = (rows || []).map(r=>{
-      const sleep = parseSleepFromWeatherString(r.weather_json || '');
       const drink = parseDrinkFromWeatherString(r.weather_json || '');
-      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-      return {
-        work_date: r.work_date,
-        dow: d.isValid ? d.weekday % 7 : null,
-        sleep,
-        drink
-      };
-    }).filter(r=> r.work_date && r.dow != null);
+      return { work_date: r.work_date, drink };
+    }).filter(r=> r.work_date);
 
-    const labels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const drinkCountsD = Array(7).fill(0);
-    const drinkCountsND = Array(7).fill(0);
-    const sleepTotals = Array(7).fill(0);
-    const sleepCounts = Array(7).fill(0);
+    const now = DateTime.now().setZone(ZONE);
+    const start = startOfWeekMonday(now);
+    const end = endOfWeekSunday(now);
+    const weekDrinkDays = new Set();
     list.forEach(r=>{
-      if (r.drink === 'D') drinkCountsD[r.dow] += 1;
-      if (r.drink === 'ND') drinkCountsND[r.dow] += 1;
-      if (r.sleep != null && Number.isFinite(r.sleep)){
-        sleepTotals[r.dow] += r.sleep;
-        sleepCounts[r.dow] += 1;
-      }
+      if (r.drink !== 'D') return;
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      if (!d.isValid) return;
+      if (d >= start && d <= end) weekDrinkDays.add(r.work_date);
     });
-    const sleepAvg = sleepTotals.map((t, i)=> sleepCounts[i] ? (t / sleepCounts[i]) : null);
-    const showAny = drinkCountsD.some(v=> v > 0) || drinkCountsND.some(v=> v > 0) || sleepAvg.some(v=> v != null);
-    if (!showAny){
-      if (sleepDrinkNote) sleepDrinkNote.textContent = 'No sleep/drink entries yet.';
-    } else if (sleepDrinkNote){
-      sleepDrinkNote.textContent = 'Bars count D/ND by weekday. Sleep line shows average hours when logged.';
-    }
+    const weekCount = weekDrinkDays.size;
 
-    if (sleepDrinkChart && typeof sleepDrinkChart.destroy === 'function'){
-      try{ sleepDrinkChart.destroy(); }catch(_){ }
-    }
-
-    sleepDrinkChart = new Chart(sleepDrinkChartCanvas, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'Drink (D)',
-            data: drinkCountsD,
-            backgroundColor: '#f59e0b'
-          },
-          {
-            label: 'Drink (ND)',
-            data: drinkCountsND,
-            backgroundColor: '#22c55e'
-          },
-          {
-            type: 'line',
-            label: 'Sleep avg (h)',
-            data: sleepAvg,
-            borderColor: '#7dd3fc',
-            backgroundColor: '#7dd3fc',
-            tension: 0.3,
-            pointRadius: 3,
-            pointHoverRadius: 4,
-            spanGaps: true,
-            yAxisID: 'ySleep'
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: true },
-          tooltip: {
-            callbacks: {
-              label: (ctx)=>{
-                if (ctx.dataset.label === 'Sleep avg (h)'){
-                  const val = ctx.parsed?.y;
-                  return `Sleep avg: ${Number.isFinite(val) ? val.toFixed(1) : '—'}h`;
-                }
-                return `${ctx.dataset.label}: ${ctx.parsed?.y ?? 0}`;
-              }
-            }
-          }
-        },
-        scales: {
-          y: { beginAtZero: true, ticks: { stepSize: 1 } },
-          ySleep: { beginAtZero: true, position: 'right', max: 12, grid: { drawOnChartArea: false } }
-        }
-      }
+    const weeksWithData = new Set();
+    const drinkDaysAll = new Set();
+    list.forEach(r=>{
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      if (!d.isValid) return;
+      const wk = startOfWeekMonday(d).toISODate();
+      if (wk) weeksWithData.add(wk);
+      if (r.drink === 'D') drinkDaysAll.add(r.work_date);
     });
+    const avg = weeksWithData.size > 0 ? (drinkDaysAll.size / weeksWithData.size) : null;
+
+    drinkWeekBadge.textContent = `${weekCount}/7`;
+    if (drinkWeekMeta) drinkWeekMeta.textContent = 'Drink days (this week)';
+    if (sleepDrinkNote){
+      sleepDrinkNote.textContent = avg != null ? `Avg = ${avg.toFixed(1)} days per week.` : 'Avg = —';
+    }
+    drinkWeekBadge.title = avg != null ? `Avg = ${avg.toFixed(1)} days per week` : '';
   }
 
   try{

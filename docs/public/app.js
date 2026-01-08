@@ -8427,22 +8427,33 @@ Score: ${overallScore}/10 (higher is better)`;
     const list = (rows || []).map((r) => {
       const sleep = parseSleepFromWeatherString(r.weather_json || "");
       const drink = parseDrinkFromWeatherString(r.weather_json || "");
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       return {
         work_date: r.work_date,
+        dow: d.isValid ? d.weekday % 7 : null,
         sleep,
-        drink,
-        mood: r.mood || ""
+        drink
       };
-    }).filter((r) => r.work_date).sort((a, b) => a.work_date.localeCompare(b.work_date));
-    const labels = list.map((r) => r.work_date);
-    const sleepVals = list.map((r) => r.sleep == null ? null : r.sleep);
-    const drinkValsND = list.map((r) => r.drink === "ND" ? r.sleep != null ? r.sleep : 0 : null);
-    const drinkValsD = list.map((r) => r.drink === "D" ? r.sleep != null ? r.sleep : 0 : null);
-    const showAny = sleepVals.some((v) => v != null) || drinkValsD.some((v) => v != null) || drinkValsND.some((v) => v != null);
+    }).filter((r) => r.work_date && r.dow != null);
+    const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const drinkCountsD = Array(7).fill(0);
+    const drinkCountsND = Array(7).fill(0);
+    const sleepTotals = Array(7).fill(0);
+    const sleepCounts = Array(7).fill(0);
+    list.forEach((r) => {
+      if (r.drink === "D") drinkCountsD[r.dow] += 1;
+      if (r.drink === "ND") drinkCountsND[r.dow] += 1;
+      if (r.sleep != null && Number.isFinite(r.sleep)) {
+        sleepTotals[r.dow] += r.sleep;
+        sleepCounts[r.dow] += 1;
+      }
+    });
+    const sleepAvg = sleepTotals.map((t, i) => sleepCounts[i] ? t / sleepCounts[i] : null);
+    const showAny = drinkCountsD.some((v) => v > 0) || drinkCountsND.some((v) => v > 0) || sleepAvg.some((v) => v != null);
     if (!showAny) {
       if (sleepDrinkNote) sleepDrinkNote.textContent = "No sleep/drink entries yet.";
     } else if (sleepDrinkNote) {
-      sleepDrinkNote.textContent = "Sleep entries show only on days you log them. Drink markers show D/ND.";
+      sleepDrinkNote.textContent = "Bars count D/ND by weekday. Sleep line shows average hours when logged.";
     }
     if (sleepDrinkChart && typeof sleepDrinkChart.destroy === "function") {
       try {
@@ -8451,43 +8462,31 @@ Score: ${overallScore}/10 (higher is better)`;
       }
     }
     sleepDrinkChart = new Chart(sleepDrinkChartCanvas, {
-      type: "line",
+      type: "bar",
       data: {
         labels,
         datasets: [
           {
-            label: "Sleep (hours)",
-            data: sleepVals,
+            label: "Drink (D)",
+            data: drinkCountsD,
+            backgroundColor: "#f59e0b"
+          },
+          {
+            label: "Drink (ND)",
+            data: drinkCountsND,
+            backgroundColor: "#22c55e"
+          },
+          {
+            type: "line",
+            label: "Sleep avg (h)",
+            data: sleepAvg,
             borderColor: "#7dd3fc",
             backgroundColor: "#7dd3fc",
             tension: 0.3,
             pointRadius: 3,
             pointHoverRadius: 4,
-            spanGaps: false,
-            fill: false,
-            _meta: list
-          },
-          {
-            label: "Drink (D)",
-            data: drinkValsD,
-            borderColor: "#f59e0b",
-            backgroundColor: "#f59e0b",
-            pointStyle: "triangle",
-            pointRadius: 5,
-            pointHoverRadius: 6,
-            showLine: false,
-            _meta: list
-          },
-          {
-            label: "Drink (ND)",
-            data: drinkValsND,
-            borderColor: "#22c55e",
-            backgroundColor: "#22c55e",
-            pointStyle: "rectRot",
-            pointRadius: 5,
-            pointHoverRadius: 6,
-            showLine: false,
-            _meta: list
+            spanGaps: true,
+            yAxisID: "ySleep"
           }
         ]
       },
@@ -8498,19 +8497,19 @@ Score: ${overallScore}/10 (higher is better)`;
           tooltip: {
             callbacks: {
               label: (ctx) => {
-                var _a6;
-                const meta = (_a6 = ctx.dataset._meta) == null ? void 0 : _a6[ctx.dataIndex];
-                if (!meta) return null;
-                const sleep = meta.sleep != null ? `${meta.sleep.toFixed(1)}h` : "\u2014";
-                const drink = meta.drink ? meta.drink : "\u2014";
-                const mood2 = meta.mood ? ` \xB7 Mood: ${meta.mood}` : "";
-                return `${ctx.dataset.label}: ${sleep} \xB7 Drink: ${drink}${mood2}`;
+                var _a6, _b, _c;
+                if (ctx.dataset.label === "Sleep avg (h)") {
+                  const val = (_a6 = ctx.parsed) == null ? void 0 : _a6.y;
+                  return `Sleep avg: ${Number.isFinite(val) ? val.toFixed(1) : "\u2014"}h`;
+                }
+                return `${ctx.dataset.label}: ${(_c = (_b = ctx.parsed) == null ? void 0 : _b.y) != null ? _c : 0}`;
               }
             }
           }
         },
         scales: {
-          y: { beginAtZero: true, max: 12, ticks: { stepSize: 1 } }
+          y: { beginAtZero: true, ticks: { stepSize: 1 } },
+          ySleep: { beginAtZero: true, position: "right", max: 12, grid: { drawOnChartArea: false } }
         }
       }
     });

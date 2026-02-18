@@ -388,9 +388,29 @@ function buildTrendForecast_core(targetDow, badgeData) {
   }
   const recent = matching.slice(-3);
   const prior = matching.slice(-6, -3);
+  const collectTrendValues = (entries, config) => {
+    if (!Array.isArray(entries) || !entries.length) return [];
+    const values = [];
+    entries.forEach((entry) => {
+      const val = getMetricValue(entry, config);
+      if (!Number.isFinite(val)) return;
+      // Route/office times of 0 are usually off-days or incomplete rows and can distort percent deltas.
+      if (val <= 0) return;
+      values.push(val);
+    });
+    return values;
+  };
+  const averageValues = (values) => {
+    if (!Array.isArray(values) || !values.length) return null;
+    const total = values.reduce((sum, val) => sum + val, 0);
+    return total / values.length;
+  };
   const deltas = METRIC_CONFIGS.map((config) => {
-    const recentAvg = averageMetric(recent, config);
-    const priorAvg = averageMetric(prior, config);
+    const recentValues = collectTrendValues(recent, config);
+    const priorValues = collectTrendValues(prior, config);
+    if (recentValues.length < 2 || priorValues.length < 2) return null;
+    const recentAvg = averageValues(recentValues);
+    const priorAvg = averageValues(priorValues);
     if (!Number.isFinite(recentAvg) || !Number.isFinite(priorAvg) || priorAvg === 0) return null;
     return { config, delta: ((recentAvg - priorAvg) / priorAvg) * 100 };
   }).filter(Boolean);

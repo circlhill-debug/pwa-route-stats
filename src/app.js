@@ -2222,6 +2222,7 @@ function readTagHistoryForIso(iso){
 
 function buildForecastSnapshotFromPayload(payload, userId){
   if (!payload || !payload.work_date) return null;
+  if (payload.status === 'off') return null;
   const iso = payload.work_date;
   const dt = DateTime.fromISO(iso, { zone: ZONE });
   const weekday = dt.isValid ? (dt.weekday % 7) : (new Date(iso)).getDay();

@@ -413,7 +413,81 @@
   .delta.neg{ color:var(--rs-neg); }
   .delta.zero{ color:var(--rs-mute); }
   .delta.outlier{ box-shadow:0 0 0 1.5px currentColor inset; }
-  .eval-tf-btn.active{ background:var(--brand); color:#fff; border-color:var(--brand); }
+  .eval-hero{
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:14px;
+    background:color-mix(in srgb, var(--card) 88%, var(--brand) 12%);
+  }
+  .eval-hero .label{
+    display:block;
+    font-size:12px;
+    color:var(--muted);
+    margin-bottom:6px;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+  }
+  .eval-hero .value{
+    font-size:30px;
+    line-height:1.1;
+    font-weight:700;
+    font-variant-numeric:tabular-nums;
+    letter-spacing:-0.02em;
+  }
+  .eval-hero .meta{
+    margin-top:8px;
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    color:var(--muted);
+    font-size:12px;
+  }
+  .eval-grid{
+    margin-top:10px;
+    display:grid;
+    gap:10px;
+    grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+  }
+  .eval-box{
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+    min-height:72px;
+  }
+  .eval-box .k{ display:block; color:var(--muted); font-size:12px; margin-bottom:6px; }
+  .eval-box .v{ font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
+  .eval-good{ color:var(--good); }
+  .eval-bad{ color:var(--bad); }
+  .eval-neutral{ color:var(--muted); }
+  .eval-compare-grid{
+    display:grid;
+    gap:10px;
+    grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+    margin-top:8px;
+  }
+  .eval-pane{
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+  }
+  .eval-pane h4{ margin:0 0 8px 0; }
+  .eval-list{
+    margin:0;
+    padding:0;
+    list-style:none;
+    display:grid;
+    gap:6px;
+  }
+  .eval-list li{
+    display:flex;
+    justify-content:space-between;
+    gap:8px;
+    font-size:13px;
+  }
+  .eval-list li .num{
+    font-variant-numeric:tabular-nums;
+    text-align:right;
+  }
   .num, .delta{ font-variant-numeric:tabular-nums; font-size:clamp(1rem, 3.4vw, 1.15rem); }
   .scope-badge{
     display:inline-flex;
@@ -1015,43 +1089,61 @@
     <div id="officeSummary" class="sparkline-labels">—</div>
   </section>
 
-  <!-- Evaluation Compare -->
+  <!-- Route Evaluation -->
   <section class="card" id="evalCompareCard" data-collapsible="true" style="grid-column:1/-1; display:none">
     <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-      <h3 style="margin:0">Evaluation Compare</h3>
+      <h3 style="margin:0">Route Evaluation</h3>
       <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
         <label class="pill" style="gap:6px;align-items:center">
-          <small>Baseline</small>
-          <select id="evalCompareSelectA" style="min-width:150px"></select>
+          <small>Window</small>
+          <select id="evalWindowPrimary" style="min-width:180px"></select>
         </label>
         <label class="pill" style="gap:6px;align-items:center">
-          <small>Compare to</small>
-          <select id="evalCompareSelectB" style="min-width:150px"></select>
+          <input id="evalWindowRecent14" type="checkbox">
+          <small>Last 14 worked days</small>
         </label>
-        <div class="pill" style="gap:4px;align-items:center;padding:4px 6px">
-          <button type="button" class="ghost eval-tf-btn" data-tf="day" style="font-size:12px;padding:6px 10px">Days</button>
-          <button type="button" class="ghost eval-tf-btn active" data-tf="week" style="font-size:12px;padding:6px 10px">Weeks</button>
-          <button type="button" class="ghost eval-tf-btn" data-tf="month" style="font-size:12px;padding:6px 10px">Months</button>
-        </div>
+        <button id="evalCompareToggle" class="ghost" type="button">Compare</button>
       </div>
     </div>
+    <div class="row" id="evalCompareControls" style="margin-top:8px;display:none;gap:8px;flex-wrap:wrap;align-items:center">
+      <label class="pill" style="gap:6px;align-items:center">
+        <small>Compare to</small>
+        <select id="evalWindowCompare" style="min-width:180px"></select>
+      </label>
+      <button id="evalCompareClose" class="ghost" type="button">Single View</button>
+    </div>
     <div class="sparkline-labels" id="evalCompareSummary">—</div>
-    <div style="margin-top:8px;overflow:auto;border:1px solid var(--border);border-radius:10px">
-      <table id="evalCompareTable" style="min-width:640px">
-        <thead>
-          <tr>
-            <th data-sort="label">Period</th>
-            <th class="right" data-sort="volumeA">Baseline volume</th>
-            <th class="right" data-sort="volumeB">Compare volume</th>
-            <th class="right" data-sort="deltaVolume">Δ volume</th>
-            <th class="right" data-sort="hoursA">Baseline hours</th>
-            <th class="right" data-sort="hoursB">Compare hours</th>
-            <th class="right" data-sort="deltaHours">Δ hours</th>
-            <th class="right" data-sort="countB">Days A/B</th>
-          </tr>
-        </thead>
-        <tbody id="evalCompareBody"></tbody>
-      </table>
+
+    <div id="evalSingleDashboard" style="margin-top:8px">
+      <div class="eval-hero">
+        <span class="label">Average Daily Delta vs Evaluation</span>
+        <div id="evalPrimaryDelta" class="value">—</div>
+        <div id="evalPrimaryMeta" class="meta">—</div>
+      </div>
+      <div class="eval-grid" id="evalSingleGrid"></div>
+    </div>
+
+    <div id="evalCompareDashboard" style="display:none;margin-top:8px">
+      <div class="eval-hero">
+        <span class="label">Change in Avg Delta vs Evaluation</span>
+        <div id="evalComparePrimaryDelta" class="value">—</div>
+        <div id="evalComparePrimaryMeta" class="meta">—</div>
+      </div>
+      <div class="eval-compare-grid">
+        <div class="eval-pane">
+          <h4 style="margin:0 0 8px 0">Window A</h4>
+          <ul id="evalPaneA" class="eval-list"></ul>
+        </div>
+        <div class="eval-pane">
+          <h4 style="margin:0 0 8px 0">Window B</h4>
+          <ul id="evalPaneB" class="eval-list"></ul>
+        </div>
+        <div class="eval-pane">
+          <h4 style="margin:0 0 8px 0">Delta (B - A)</h4>
+          <ul id="evalPaneDelta" class="eval-list"></ul>
+        </div>
+      </div>
+      <div id="evalCompareNarrative" class="sparkline-labels" style="margin-top:8px">—</div>
     </div>
   </section>
 
@@ -1383,6 +1475,10 @@
         <div>
           <label>Annual salary ($)</label>
           <input id="evalSalaryIn" type="number" min="0" step="100" placeholder="e.g., 68000" />
+        </div>
+        <div>
+          <label>Evaluated work days/year (optional)</label>
+          <input id="evalWorkDaysYearIn" type="number" min="1" step="1" placeholder="e.g., 260" />
         </div>
       </div>
     </div>

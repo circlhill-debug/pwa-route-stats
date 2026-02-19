@@ -246,6 +246,7 @@ window.__sb = createSupabaseClient();
       hoursPerDay: profile.hoursPerDay ?? null,
       officeHoursPerDay: profile.officeHoursPerDay ?? null,
       annualSalary: profile.annualSalary ?? null,
+      evalDaysPerYear: profile.evalDaysPerYear ?? null,
       effectiveFrom: profile.effectiveFrom ?? null,
       effectiveTo: profile.effectiveTo ?? null
     }));
@@ -409,6 +410,7 @@ window.__sb = createSupabaseClient();
     if (evalHoursIn) evalHoursIn.value = profile.hoursPerDay != null ? profile.hoursPerDay : '';
     if (evalOfficeHoursIn) evalOfficeHoursIn.value = profile.officeHoursPerDay != null ? profile.officeHoursPerDay : '';
     if (evalSalaryIn) evalSalaryIn.value = profile.annualSalary != null ? profile.annualSalary : '';
+    if (evalWorkDaysYearIn) evalWorkDaysYearIn.value = profile.evalDaysPerYear != null ? profile.evalDaysPerYear : '';
     if (evalEffectiveFromInput) evalEffectiveFromInput.value = profile.effectiveFrom || '';
     if (evalEffectiveToInput) evalEffectiveToInput.value = profile.effectiveTo || '';
   }
@@ -457,6 +459,7 @@ window.__sb = createSupabaseClient();
       hoursPerDay: readNumberInput(evalHoursIn),
       officeHoursPerDay: readNumberInput(evalOfficeHoursIn),
       annualSalary: readNumberInput(evalSalaryIn),
+      evalDaysPerYear: readNumberInput(evalWorkDaysYearIn),
       effectiveFrom: (evalEffectiveFromInput?.value || '').trim() || null,
       effectiveTo: (evalEffectiveToInput?.value || '').trim() || null
     };
@@ -488,80 +491,6 @@ window.__sb = createSupabaseClient();
     });
   }
 
-  function groupRowsByTimeframeForEval(rows, timeframe){
-    const buckets = new Map();
-    (rows||[]).forEach(row=>{
-      if (!row || row.status === 'off') return;
-      if (!row.work_date) return;
-      let dt;
-      try{
-        dt = DateTime.fromISO(row.work_date, { zone: ZONE });
-      }catch(_){ return; }
-      if (!dt || !dt.isValid) return;
-      let key, label;
-      if (timeframe === 'day'){
-        key = dt.toISODate();
-        label = dt.toFormat('LLL dd, yyyy');
-      }else if (timeframe === 'month'){
-        key = dt.toFormat('yyyy-MM');
-        label = dt.toFormat('LLLL yyyy');
-      }else{
-        const start = startOfWeekMonday(dt);
-        const end = endOfWeekSunday(dt);
-        key = start.toISODate();
-        label = `${start.toFormat('LLL dd')} → ${end.toFormat('LLL dd')}`;
-      }
-      const bucket = buckets.get(key) || { key, label, count:0, hours:0, parcels:0, letters:0, miles:0 };
-      bucket.count += 1;
-      bucket.hours += Number(row.hours || 0);
-      bucket.parcels += Number(row.parcels || 0);
-      bucket.letters += Number(row.letters || 0);
-      bucket.miles += Number(row.miles || 0);
-      buckets.set(key, bucket);
-    });
-    return Array.from(buckets.values()).map(b=>({
-      ...b,
-      volume: b.parcels + b.letters
-    }));
-  }
-
-  function combineEvalGroups(groupsA, groupsB){
-    const mapA = new Map((groupsA||[]).map(g=> [g.key, g]));
-    const mapB = new Map((groupsB||[]).map(g=> [g.key, g]));
-    const keys = new Set([...mapA.keys(), ...mapB.keys()]);
-    const merged = [];
-    keys.forEach(key=>{
-      const a = mapA.get(key);
-      const b = mapB.get(key);
-      merged.push({
-        key,
-        label: (a && a.label) || (b && b.label) || key,
-        volumeA: a ? a.volume : 0,
-        volumeB: b ? b.volume : 0,
-        deltaVolume: (b ? b.volume : 0) - (a ? a.volume : 0),
-        hoursA: a ? a.hours : 0,
-        hoursB: b ? b.hours : 0,
-        deltaHours: (b ? b.hours : 0) - (a ? a.hours : 0),
-        countA: a ? a.count : 0,
-        countB: b ? b.count : 0
-      });
-    });
-    return merged;
-  }
-
-  function summarizeEvalGroups(groups){
-    return (groups||[]).reduce((acc, g)=>{
-      acc.volume += g.volume || 0;
-      acc.hours += g.hours || 0;
-      acc.parcels += g.parcels || 0;
-      acc.letters += g.letters || 0;
-      acc.miles += g.miles || 0;
-      acc.days += g.count || 0;
-      acc.periods += 1;
-      return acc;
-    }, { volume:0, hours:0, parcels:0, letters:0, miles:0, days:0, periods:0 });
-  }
-
   function formatNumber(value, digits=0){
     const num = Number(value || 0);
     if (!Number.isFinite(num)) return '0';
@@ -574,64 +503,224 @@ window.__sb = createSupabaseClient();
     return `${prefix}${formatNumber(num, digits)}`;
   }
 
-  function formatDeltaCell(value, digits){
-    const num = Number(value || 0);
-    const cls = num > 0 ? 'delta pos' : num < 0 ? 'delta neg' : 'delta zero';
-    const prefix = num > 0 ? '+' : '';
-    return `<span class="${cls}">${prefix}${formatNumber(num, digits)}</span>`;
+  function formatMoney(value, digits=2){
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    return `$${num.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
   }
 
-  function populateEvalCompareSelect(selectEl, selectedId){
-    if (!selectEl) return;
-    selectEl.innerHTML = '';
-    (EVAL_PROFILES || []).forEach(profile=>{
-      const opt = document.createElement('option');
-      opt.value = profile.profileId;
-      opt.textContent = getEvalProfileDisplayName(profile);
-      selectEl.appendChild(opt);
-    });
-    if (selectedId && getEvalProfileById(selectedId)){
-      selectEl.value = selectedId;
-    }else if (EVAL_PROFILES && EVAL_PROFILES[0]){
-      selectEl.value = EVAL_PROFILES[0].profileId;
+  function formatMaybe(value, digits=1, suffix=''){
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    return `${formatNumber(num, digits)}${suffix}`;
+  }
+
+  function formatSignedMaybe(value, digits=1, suffix=''){
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    const prefix = num > 0 ? '+' : '';
+    return `${prefix}${formatNumber(num, digits)}${suffix}`;
+  }
+
+  function parseFlatsFromWeatherValue(weather){
+    if (!weather) return 0;
+    try{
+      const text = String(weather);
+      const flatsMatch = text.match(/\bFlats:\s*([0-9.]+)/i);
+      if (flatsMatch && Number.isFinite(Number(flatsMatch[1]))) return Number(flatsMatch[1]);
+      const boxMatch = text.match(/\bBox:\s*([0-9.]+)/i);
+      if (boxMatch && Number.isFinite(Number(boxMatch[1]))) return Number(boxMatch[1]);
+      return 0;
+    }catch(_){
+      return 0;
     }
   }
 
-  function renderEvalCompareRow(row){
-    return `<tr>
-      <td>${row.label}</td>
-      <td class="right">${formatNumber(row.volumeA, 0)}</td>
-      <td class="right">${formatNumber(row.volumeB, 0)}</td>
-      <td class="right">${formatDeltaCell(row.deltaVolume, 0)}</td>
-      <td class="right">${formatNumber(row.hoursA, 1)}</td>
-      <td class="right">${formatNumber(row.hoursB, 1)}</td>
-      <td class="right">${formatDeltaCell(row.deltaHours, 1)}</td>
-      <td class="right">${row.countA}/${row.countB}</td>
-    </tr>`;
+  function getFlatCount(row){
+    const direct = Number(row?.flats ?? row?.flat_count ?? row?.flatCount);
+    if (Number.isFinite(direct)) return direct;
+    return parseFlatsFromWeatherValue(row?.weather_json);
   }
 
-  function formatEvalCompareSummary(profileA, summaryA, profileB, summaryB){
-    const tf = evalCompareState.timeframe === 'month' ? 'month' : (evalCompareState.timeframe === 'week' ? 'week' : 'day');
-    const labelA = getEvalProfileDisplayName(profileA);
-    const labelB = getEvalProfileDisplayName(profileB);
-    const volumeDiff = summaryB.volume - summaryA.volume;
-    const hoursDiff = summaryB.hours - summaryA.hours;
-    const avgVolumeA = summaryA.periods ? summaryA.volume / summaryA.periods : 0;
-    const avgVolumeB = summaryB.periods ? summaryB.volume / summaryB.periods : 0;
-    const avgHoursA = summaryA.periods ? summaryA.hours / summaryA.periods : 0;
-    const avgHoursB = summaryB.periods ? summaryB.hours / summaryB.periods : 0;
-    return `${labelB} vs ${labelA} (${tf}s). Volume change ${formatSigned(volumeDiff, 0)} (${formatNumber(avgVolumeB, 1)} vs ${formatNumber(avgVolumeA, 1)} avg/${tf}). Hours change ${formatSigned(hoursDiff, 1)} (${formatNumber(avgHoursB, 1)} vs ${formatNumber(avgHoursA, 1)} avg/${tf}). Days logged ${summaryB.days} vs ${summaryA.days}.`;
+  function getProfileRange(profile){
+    if (!profile) return { from: null, to: null };
+    let from = null;
+    let to = null;
+    try{
+      if (profile.effectiveFrom){
+        const dt = DateTime.fromISO(profile.effectiveFrom, { zone: ZONE });
+        if (dt.isValid) from = dt.startOf('day');
+      }
+      if (profile.effectiveTo){
+        const dt = DateTime.fromISO(profile.effectiveTo, { zone: ZONE });
+        if (dt.isValid) to = dt.endOf('day');
+      }
+    }catch(_){ /* ignore */ }
+    return { from, to };
+  }
+
+  function profileIncludesDay(profile, day){
+    const { from, to } = getProfileRange(profile);
+    if (from && day < from) return false;
+    if (to && day > to) return false;
+    return true;
+  }
+
+  function findActiveEvalProfileId(){
+    const profiles = EVAL_PROFILES || [];
+    if (!profiles.length) return null;
+    const now = DateTime.now().setZone(ZONE).startOf('day');
+    const activeCandidates = profiles
+      .filter(profile => profileIncludesDay(profile, now))
+      .sort((a, b) => {
+        const aFrom = getProfileRange(a).from;
+        const bFrom = getProfileRange(b).from;
+        const aTs = aFrom && aFrom.isValid ? aFrom.toMillis() : -Infinity;
+        const bTs = bFrom && bFrom.isValid ? bFrom.toMillis() : -Infinity;
+        return bTs - aTs;
+      });
+    if (activeCandidates.length) return activeCandidates[0].profileId;
+
+    const pastCandidates = profiles
+      .map(profile => ({ profile, range: getProfileRange(profile) }))
+      .filter(({ range }) => {
+        if (range.to && range.to.isValid) return range.to < now;
+        if (range.from && range.from.isValid) return range.from < now;
+        return false;
+      })
+      .sort((a, b) => {
+        const aTs = a.range.to?.toMillis?.() ?? a.range.from?.toMillis?.() ?? -Infinity;
+        const bTs = b.range.to?.toMillis?.() ?? b.range.from?.toMillis?.() ?? -Infinity;
+        return bTs - aTs;
+      });
+    if (pastCandidates.length) return pastCandidates[0].profile.profileId;
+
+    const stored = getActiveEvalId();
+    if (stored && getEvalProfileById(stored)) return stored;
+    return profiles[0].profileId;
+  }
+
+  function selectWorkedRows(rows){
+    return (rows || []).filter(row => row && row.status !== 'off' && row.work_date);
+  }
+
+  function computeWindowMetrics(profile, rows, options = {}){
+    const threshold = 0.1;
+    const worked = rowsForEvaluationRange(selectWorkedRows(rows), profile)
+      .sort((a, b) => String(a.work_date).localeCompare(String(b.work_date)));
+    const selected = options.last14 ? worked.slice(-14) : worked;
+    const days = selected.length;
+    const evalHoursPerDay = Number(profile?.hoursPerDay);
+    let totals = { parcels:0, letters:0, flats:0, volume:0, hours:0 };
+    let deltaSum = 0;
+    let deltaCount = 0;
+    let overEvalDays = 0;
+    let underEvalDays = 0;
+
+    selected.forEach((row) => {
+      const parcels = Number(row?.parcels) || 0;
+      const letters = Number(row?.letters) || 0;
+      const flats = getFlatCount(row);
+      const hours = Number(row?.hours) || 0;
+      const volume = parcels + letters + flats;
+      totals.parcels += parcels;
+      totals.letters += letters;
+      totals.flats += flats;
+      totals.volume += volume;
+      totals.hours += hours;
+      if (Number.isFinite(evalHoursPerDay)){
+        const delta = hours - evalHoursPerDay;
+        deltaSum += delta;
+        deltaCount += 1;
+        if (delta > threshold) overEvalDays += 1;
+        if (delta < -threshold) underEvalDays += 1;
+      }
+    });
+
+    const avg = (value) => (days > 0 ? value / days : null);
+    const avgDeltaHoursPerDay = deltaCount > 0 ? deltaSum / deltaCount : null;
+    const quarterlyPay = Number.isFinite(Number(profile?.annualSalary)) ? Number(profile.annualSalary) / 4 : null;
+    const effectiveHourly = quarterlyPay && totals.hours > 0 ? quarterlyPay / totals.hours : null;
+
+    return {
+      profile,
+      rows: selected,
+      workedDays: days,
+      totals,
+      averages: {
+        parcelsPerDay: avg(totals.parcels),
+        lettersPerDay: avg(totals.letters),
+        flatsPerDay: avg(totals.flats),
+        volumePerDay: avg(totals.volume),
+        hoursPerDay: avg(totals.hours)
+      },
+      evalHoursPerDay: Number.isFinite(evalHoursPerDay) ? evalHoursPerDay : null,
+      avgDeltaHoursPerDay,
+      overEvalDays,
+      underEvalDays,
+      quarterlyPay,
+      effectiveHourly
+    };
+  }
+
+  function metricClassByDelta(delta, meaning = 'neutral'){
+    const n = Number(delta);
+    if (!Number.isFinite(n)) return 'eval-neutral';
+    if (meaning === 'overUnder'){
+      if (Math.abs(n) <= 0.1) return 'eval-neutral';
+      return n > 0 ? 'eval-bad' : 'eval-good';
+    }
+    if (meaning === 'efficiencyGoodUp'){
+      if (Math.abs(n) <= 0.0001) return 'eval-neutral';
+      return n > 0 ? 'eval-good' : 'eval-bad';
+    }
+    if (meaning === 'loadGoodDown'){
+      if (Math.abs(n) <= 0.0001) return 'eval-neutral';
+      return n > 0 ? 'eval-bad' : 'eval-good';
+    }
+    return 'eval-neutral';
+  }
+
+  function buildEvalNarrative(a, b){
+    if (!a || !b) return 'No comparison data available.';
+    const payDelta = (b.profile?.annualSalary ?? 0) - (a.profile?.annualSalary ?? 0);
+    const payPct = (a.profile?.annualSalary > 0) ? (payDelta / a.profile.annualSalary) * 100 : null;
+    const evalHoursDelta = (b.evalHoursPerDay ?? 0) - (a.evalHoursPerDay ?? 0);
+    const volDelta = (b.averages.volumePerDay ?? 0) - (a.averages.volumePerDay ?? 0);
+    const hrsDelta = (b.averages.hoursPerDay ?? 0) - (a.averages.hoursPerDay ?? 0);
+    const deltaDelta = (b.avgDeltaHoursPerDay ?? 0) - (a.avgDeltaHoursPerDay ?? 0);
+    const effDelta = (b.effectiveHourly ?? 0) - (a.effectiveHourly ?? 0);
+
+    const line1 = `USPS changed evaluated pay by ${formatSignedMaybe(payDelta, 0, '')}${payPct == null ? '' : ` (${formatSignedMaybe(payPct, 1, '%')})`} and expected hours/day by ${formatSignedMaybe(evalHoursDelta, 2, 'h')}.`;
+    const line2 = `Workload moved ${formatSignedMaybe(volDelta, 1)} volume/day while actual time moved ${formatSignedMaybe(hrsDelta, 2, 'h/day')}.`;
+    const line3 = `Over/under performance shifted by ${formatSignedMaybe(deltaDelta, 2, 'h/day')} and effective $/hour changed ${formatSignedMaybe(effDelta, 2)} (${formatMoney(a.effectiveHourly)} → ${formatMoney(b.effectiveHourly)}).`;
+    let alignment = 'mixed';
+    if (deltaDelta < -0.1 && effDelta > 0) alignment = 'better aligned';
+    else if (deltaDelta > 0.1 && effDelta <= 0) alignment = 'misaligned';
+    const line4 = `Overall this looks ${alignment} between USPS evaluation changes and your actual workload/time.`;
+    return [line1, line2, line3, line4].join(' ');
+  }
+
+  function renderEvalList(container, items){
+    if (!container) return;
+    container.innerHTML = items.map((item) => `
+      <li>
+        <span>${item.label}</span>
+        <span class="num ${item.cls || 'eval-neutral'}">${item.value}</span>
+      </li>
+    `).join('');
   }
 
   // === Feature Flags (localStorage) ===
   let FLAGS = loadFlags();
   let evalCompareState = {
-    timeframe:'week',
-    sortKey:'deltaVolume',
-    sortDir:'desc',
-    aId: USPS_EVAL?.profileId || null,
-    bId: null
+    activeId: null,
+    compareEnabled: false,
+    compareId: null,
+    last14: false
   };
+
+  // === Feature Flags (localStorage) ===
   let parserChart = null;
 
   // === Helpers ===
@@ -1206,6 +1295,7 @@ const authReadyPromise = handleAuthCallback(sb);
   const evalHoursIn = document.getElementById('evalHoursIn');
   const evalOfficeHoursIn = document.getElementById('evalOfficeHoursIn');
   const evalSalaryIn = document.getElementById('evalSalaryIn');
+  const evalWorkDaysYearIn = document.getElementById('evalWorkDaysYearIn');
   const evalProfileSelect = document.getElementById('evalProfileSelect');
   const evalProfileAddBtn = document.getElementById('evalProfileAdd');
   const evalProfileDeleteBtn = document.getElementById('evalProfileDelete');
@@ -1245,12 +1335,24 @@ const tokenMonthInput = document.getElementById('tokenUsageMonth');
 const tokenLimitInput = document.getElementById('tokenUsageLimit');
 const aiPromptTextarea = document.getElementById('aiSummaryBasePrompt');
 const evalCompareCard = document.getElementById('evalCompareCard');
-const evalCompareSelectA = document.getElementById('evalCompareSelectA');
-const evalCompareSelectB = document.getElementById('evalCompareSelectB');
+const evalWindowPrimary = document.getElementById('evalWindowPrimary');
+const evalWindowRecent14 = document.getElementById('evalWindowRecent14');
+const evalCompareToggle = document.getElementById('evalCompareToggle');
+const evalCompareControls = document.getElementById('evalCompareControls');
+const evalWindowCompare = document.getElementById('evalWindowCompare');
+const evalCompareClose = document.getElementById('evalCompareClose');
 const evalCompareSummary = document.getElementById('evalCompareSummary');
-const evalCompareBody = document.getElementById('evalCompareBody');
-const evalCompareTable = document.getElementById('evalCompareTable');
-const evalCompareTfButtons = Array.from(document.querySelectorAll('#evalCompareCard .eval-tf-btn'));
+const evalSingleDashboard = document.getElementById('evalSingleDashboard');
+const evalPrimaryDelta = document.getElementById('evalPrimaryDelta');
+const evalPrimaryMeta = document.getElementById('evalPrimaryMeta');
+const evalSingleGrid = document.getElementById('evalSingleGrid');
+const evalCompareDashboard = document.getElementById('evalCompareDashboard');
+const evalComparePrimaryDelta = document.getElementById('evalComparePrimaryDelta');
+const evalComparePrimaryMeta = document.getElementById('evalComparePrimaryMeta');
+const evalPaneA = document.getElementById('evalPaneA');
+const evalPaneB = document.getElementById('evalPaneB');
+const evalPaneDelta = document.getElementById('evalPaneDelta');
+const evalCompareNarrative = document.getElementById('evalCompareNarrative');
 const yearlySummaryCard = document.getElementById('yearlySummaryCard');
 const yearlySummaryYear = document.getElementById('yearlySummaryYear');
 const yearlySummaryIncludePeak = document.getElementById('yearlySummaryIncludePeak');
@@ -1388,6 +1490,7 @@ aiSummary = createAiSummary({
         hoursPerDay: base.hoursPerDay ?? null,
         officeHoursPerDay: base.officeHoursPerDay ?? null,
         annualSalary: base.annualSalary ?? null,
+        evalDaysPerYear: base.evalDaysPerYear ?? null,
         effectiveFrom: null,
         effectiveTo: null
       });
@@ -1443,8 +1546,8 @@ aiSummary = createAiSummary({
       syncEvalGlobals();
       USPS_EVAL = getEvalProfileById(updated.profileId) || updated;
       populateEvalProfileSelectUI(USPS_EVAL?.profileId);
-      if (!evalCompareState.aId || evalCompareState.aId === selectedId){
-        evalCompareState.aId = USPS_EVAL?.profileId || selectedId || evalCompareState.aId;
+      if (!evalCompareState.activeId || evalCompareState.activeId === selectedId){
+        evalCompareState.activeId = USPS_EVAL?.profileId || selectedId || evalCompareState.activeId;
       }
     }catch(_){ }
     // read Vacation Mode
@@ -1510,51 +1613,38 @@ aiSummary = createAiSummary({
     aiSummary.renderLastSummary();
   });
 
-  evalCompareSelectA?.addEventListener('change', ()=>{
-    evalCompareState.aId = evalCompareSelectA.value;
-    if (evalCompareState.aId === evalCompareState.bId){
-      const alternative = (EVAL_PROFILES || []).find(p => p.profileId !== evalCompareState.aId);
-      if (alternative){
-        evalCompareState.bId = alternative.profileId;
-        if (evalCompareSelectB) evalCompareSelectB.value = evalCompareState.bId;
-      }
+  evalWindowPrimary?.addEventListener('change', ()=>{
+    const next = evalWindowPrimary.value;
+    if (next) evalCompareState.activeId = next;
+    if (evalCompareState.compareId === evalCompareState.activeId){
+      const alternative = (EVAL_PROFILES || []).find(p => p.profileId !== evalCompareState.activeId);
+      evalCompareState.compareId = alternative?.profileId || null;
     }
     buildEvalCompare(allRows || []);
   });
 
-  evalCompareSelectB?.addEventListener('change', ()=>{
-    evalCompareState.bId = evalCompareSelectB.value;
-    if (evalCompareState.bId === evalCompareState.aId){
-      const alternative = (EVAL_PROFILES || []).find(p => p.profileId !== evalCompareState.aId);
-      if (alternative){
-        evalCompareState.aId = alternative.profileId;
-        if (evalCompareSelectA) evalCompareSelectA.value = evalCompareState.aId;
-      }
+  evalWindowRecent14?.addEventListener('change', ()=>{
+    evalCompareState.last14 = !!evalWindowRecent14.checked;
+    buildEvalCompare(allRows || []);
+  });
+
+  evalCompareToggle?.addEventListener('click', ()=>{
+    evalCompareState.compareEnabled = true;
+    if (!evalCompareState.compareId || evalCompareState.compareId === evalCompareState.activeId){
+      const alternative = (EVAL_PROFILES || []).find(p => p.profileId !== evalCompareState.activeId);
+      evalCompareState.compareId = alternative?.profileId || null;
     }
     buildEvalCompare(allRows || []);
   });
 
-  evalCompareTfButtons.forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const tf = btn.dataset.tf || 'week';
-      if (tf === evalCompareState.timeframe) return;
-      evalCompareState.timeframe = tf;
-      evalCompareTfButtons.forEach(b => b.classList.toggle('active', b === btn));
-      buildEvalCompare(allRows || []);
-    });
+  evalCompareClose?.addEventListener('click', ()=>{
+    evalCompareState.compareEnabled = false;
+    buildEvalCompare(allRows || []);
   });
 
-  evalCompareTable?.addEventListener('click', (event)=>{
-    const th = event.target.closest('th[data-sort]');
-    if (!th) return;
-    const key = th.getAttribute('data-sort');
-    if (!key) return;
-    if (evalCompareState.sortKey === key){
-      evalCompareState.sortDir = evalCompareState.sortDir === 'asc' ? 'desc' : 'asc';
-    }else{
-      evalCompareState.sortKey = key;
-      evalCompareState.sortDir = 'desc';
-    }
+  evalWindowCompare?.addEventListener('change', ()=>{
+    if (evalWindowCompare.value) evalCompareState.compareId = evalWindowCompare.value;
+    evalCompareState.compareEnabled = true;
     buildEvalCompare(allRows || []);
   });
 
@@ -3189,62 +3279,134 @@ function getHourlyRateFromEval(){
       if (!evalCompareCard) return;
       syncEvalGlobals();
       const profiles = EVAL_PROFILES || [];
-      const enabled = FLAGS.uspsEval && profiles.length >= 2;
+      const enabled = FLAGS.uspsEval && profiles.length >= 1;
       evalCompareCard.style.display = enabled ? '' : 'none';
       if (!enabled){
-        if (evalCompareSummary) evalCompareSummary.textContent = profiles.length ? 'Add another evaluation profile to compare.' : 'Add evaluation profiles in Settings.';
-        if (evalCompareBody) evalCompareBody.innerHTML = '';
+        if (evalCompareSummary) evalCompareSummary.textContent = 'Add evaluation profiles in Settings.';
         return;
       }
-      if (!evalCompareState.aId || !getEvalProfileById(evalCompareState.aId)){
-        evalCompareState.aId = USPS_EVAL?.profileId || profiles[0].profileId;
+      const activeByDateId = findActiveEvalProfileId();
+      if (!evalCompareState.activeId || !getEvalProfileById(evalCompareState.activeId)){
+        evalCompareState.activeId = activeByDateId || USPS_EVAL?.profileId || profiles[0].profileId;
       }
-      if (!evalCompareState.bId || evalCompareState.bId === evalCompareState.aId || !getEvalProfileById(evalCompareState.bId)){
-        const fallback = profiles.find(p => p.profileId !== evalCompareState.aId);
-        evalCompareState.bId = fallback ? fallback.profileId : profiles[0].profileId;
-        if (evalCompareState.bId === evalCompareState.aId && profiles.length > 1){
-          evalCompareState.bId = profiles[1].profileId;
+      setActiveEvalId(evalCompareState.activeId);
+      if (!evalCompareState.compareId || evalCompareState.compareId === evalCompareState.activeId || !getEvalProfileById(evalCompareState.compareId)){
+        const fallback = profiles.find(p => p.profileId !== evalCompareState.activeId);
+        evalCompareState.compareId = fallback ? fallback.profileId : null;
+      }
+
+      if (evalWindowPrimary){
+        evalWindowPrimary.innerHTML = profiles.map(profile => `<option value="${profile.profileId}">${getEvalProfileDisplayName(profile)}</option>`).join('');
+        if (evalCompareState.activeId) evalWindowPrimary.value = evalCompareState.activeId;
+      }
+      if (evalWindowCompare){
+        evalWindowCompare.innerHTML = profiles
+          .filter(profile => profile.profileId !== evalCompareState.activeId)
+          .map(profile => `<option value="${profile.profileId}">${getEvalProfileDisplayName(profile)}</option>`)
+          .join('');
+        if (evalCompareState.compareId && evalWindowCompare.querySelector(`option[value="${evalCompareState.compareId}"]`)){
+          evalWindowCompare.value = evalCompareState.compareId;
         }
       }
-      populateEvalCompareSelect(evalCompareSelectA, evalCompareState.aId);
-      populateEvalCompareSelect(evalCompareSelectB, evalCompareState.bId);
-      evalCompareTfButtons.forEach(btn=>{
-        btn.classList.toggle('active', btn.dataset.tf === evalCompareState.timeframe);
-      });
-      const profileA = getEvalProfileById(evalCompareState.aId);
-      const profileB = getEvalProfileById(evalCompareState.bId);
-      if (!profileA || !profileB){
-        if (evalCompareSummary) evalCompareSummary.textContent = 'Select two evaluation profiles to compare.';
-        if (evalCompareBody) evalCompareBody.innerHTML = '';
+      if (evalWindowRecent14) evalWindowRecent14.checked = !!evalCompareState.last14;
+
+      const activeProfile = getEvalProfileById(evalCompareState.activeId);
+      if (!activeProfile){
+        if (evalCompareSummary) evalCompareSummary.textContent = 'Select an evaluation window to view details.';
         return;
       }
+
       const scopedRows = filterRowsForView(rows || []);
-      const rowsA = rowsForEvaluationRange(scopedRows, profileA);
-      const rowsB = rowsForEvaluationRange(scopedRows, profileB);
-      const groupsA = groupRowsByTimeframeForEval(rowsA, evalCompareState.timeframe);
-      const groupsB = groupRowsByTimeframeForEval(rowsB, evalCompareState.timeframe);
-      const combined = combineEvalGroups(groupsA, groupsB);
-      const summaryA = summarizeEvalGroups(groupsA);
-      const summaryB = summarizeEvalGroups(groupsB);
+      const activeMetrics = computeWindowMetrics(activeProfile, scopedRows, { last14: !!evalCompareState.last14 });
+      const compareProfile = evalCompareState.compareEnabled ? getEvalProfileById(evalCompareState.compareId) : null;
+      const compareMetrics = compareProfile ? computeWindowMetrics(compareProfile, scopedRows, { last14: !!evalCompareState.last14 }) : null;
+
+      const modeLabel = evalCompareState.last14 ? 'Last 14 worked days' : 'Full evaluation window';
+      const activeLabel = getEvalProfileDisplayName(activeProfile);
+      const activeDays = activeMetrics.workedDays;
       if (evalCompareSummary){
-        evalCompareSummary.textContent = formatEvalCompareSummary(profileA, summaryA, profileB, summaryB);
+        evalCompareSummary.textContent = `${activeLabel} • ${modeLabel} • ${activeDays} worked day(s)`;
       }
-      const sortKey = evalCompareState.sortKey;
-      const sortDir = evalCompareState.sortDir === 'asc' ? 1 : -1;
-      combined.sort((a,b)=>{
-        if (sortKey === 'label'){
-          const cmp = (a.label||'').localeCompare(b.label||'');
-          return sortDir * cmp;
+
+      const deltaText = Number.isFinite(activeMetrics.avgDeltaHoursPerDay)
+        ? `${formatSigned(activeMetrics.avgDeltaHoursPerDay, 2)} hrs ${activeMetrics.avgDeltaHoursPerDay >= 0 ? 'over' : 'under'} evaluation`
+        : 'No eval hours/day set';
+      if (evalPrimaryDelta){
+        evalPrimaryDelta.textContent = deltaText;
+        evalPrimaryDelta.className = `value ${metricClassByDelta(activeMetrics.avgDeltaHoursPerDay, 'overUnder')}`;
+      }
+      if (evalPrimaryMeta){
+        evalPrimaryMeta.innerHTML = `
+          <span>Over-eval days: <b>${activeMetrics.overEvalDays}</b></span>
+          <span>Under-eval days: <b>${activeMetrics.underEvalDays}</b></span>
+          <span>Days logged: <b>${activeMetrics.workedDays}</b></span>
+        `;
+      }
+
+      if (evalSingleGrid){
+        const avgHoursCls = metricClassByDelta((activeMetrics.averages.hoursPerDay ?? 0) - (activeMetrics.evalHoursPerDay ?? 0), 'overUnder');
+        evalSingleGrid.innerHTML = [
+          { k:'Avg hours/worked day', v: formatMaybe(activeMetrics.averages.hoursPerDay, 2, 'h'), cls: avgHoursCls },
+          { k:'Evaluated hours/day', v: formatMaybe(activeMetrics.evalHoursPerDay, 2, 'h'), cls: 'eval-neutral' },
+          { k:'Effective $/hour', v: formatMoney(activeMetrics.effectiveHourly), cls: 'eval-neutral' },
+          { k:'Avg volume/day', v: formatMaybe(activeMetrics.averages.volumePerDay, 1), cls: 'eval-neutral' },
+          { k:'Total hours', v: formatMaybe(activeMetrics.totals.hours, 1, 'h'), cls: 'eval-neutral' },
+          { k:'Days logged', v: formatNumber(activeMetrics.workedDays, 0), cls: 'eval-neutral' },
+          { k:'Quarterly pay', v: formatMoney(activeMetrics.quarterlyPay, 0), cls: 'eval-neutral' },
+          { k:'Avg delta/day', v: formatSignedMaybe(activeMetrics.avgDeltaHoursPerDay, 2, 'h'), cls: metricClassByDelta(activeMetrics.avgDeltaHoursPerDay, 'overUnder') }
+        ].map(item => `<div class="eval-box"><span class="k">${item.k}</span><span class="v ${item.cls}">${item.v}</span></div>`).join('');
+      }
+
+      const canCompare = !!compareProfile;
+      if (evalCompareToggle) evalCompareToggle.style.display = profiles.length > 1 ? '' : 'none';
+      if (evalCompareControls) evalCompareControls.style.display = evalCompareState.compareEnabled && canCompare ? '' : 'none';
+      if (evalSingleDashboard) evalSingleDashboard.style.display = (evalCompareState.compareEnabled && canCompare) ? 'none' : '';
+      if (evalCompareDashboard) evalCompareDashboard.style.display = (evalCompareState.compareEnabled && canCompare) ? '' : 'none';
+
+      if (evalCompareState.compareEnabled && canCompare && compareMetrics){
+        const deltaDelta = (compareMetrics.avgDeltaHoursPerDay ?? 0) - (activeMetrics.avgDeltaHoursPerDay ?? 0);
+        if (evalComparePrimaryDelta){
+          evalComparePrimaryDelta.textContent = `${formatSignedMaybe(deltaDelta, 2, ' hrs/day')}`;
+          evalComparePrimaryDelta.className = `value ${metricClassByDelta(deltaDelta, 'overUnder')}`;
         }
-        const valA = Number(a[sortKey] || 0);
-        const valB = Number(b[sortKey] || 0);
-        return sortDir * (valA - valB);
-      });
-      if (evalCompareBody){
-        if (!combined.length){
-          evalCompareBody.innerHTML = `<tr><td colspan="8" class="muted">No worked entries for these evaluations in the selected window.</td></tr>`;
-        }else{
-          evalCompareBody.innerHTML = combined.map(renderEvalCompareRow).join('');
+        if (evalComparePrimaryMeta){
+          evalComparePrimaryMeta.innerHTML = `<span>${getEvalProfileDisplayName(compareProfile)} minus ${activeLabel}</span>`;
+        }
+
+        const paneItems = (metrics) => ([
+          { label: 'Days logged', value: formatNumber(metrics.workedDays, 0) },
+          { label: 'Total volume', value: formatNumber(metrics.totals.volume, 0) },
+          { label: 'Total hours', value: formatMaybe(metrics.totals.hours, 1, 'h') },
+          { label: 'Avg volume/day', value: formatMaybe(metrics.averages.volumePerDay, 1) },
+          { label: 'Avg hours/day', value: formatMaybe(metrics.averages.hoursPerDay, 2, 'h') },
+          { label: 'Avg delta/day', value: formatSignedMaybe(metrics.avgDeltaHoursPerDay, 2, 'h'), cls: metricClassByDelta(metrics.avgDeltaHoursPerDay, 'overUnder') },
+          { label: 'Effective $/hour', value: formatMoney(metrics.effectiveHourly) },
+          { label: 'Evaluated pay', value: formatMoney(metrics.profile?.annualSalary, 0) }
+        ]);
+        renderEvalList(evalPaneA, paneItems(activeMetrics));
+        renderEvalList(evalPaneB, paneItems(compareMetrics));
+
+        const payDelta = (compareProfile?.annualSalary ?? 0) - (activeProfile?.annualSalary ?? 0);
+        const payPct = (activeProfile?.annualSalary > 0) ? (payDelta / activeProfile.annualSalary) * 100 : null;
+        const evalHoursDelta = (compareMetrics.evalHoursPerDay ?? 0) - (activeMetrics.evalHoursPerDay ?? 0);
+        const effectiveDelta = (compareMetrics.effectiveHourly ?? 0) - (activeMetrics.effectiveHourly ?? 0);
+        const effectivePct = (activeMetrics.effectiveHourly > 0) ? (effectiveDelta / activeMetrics.effectiveHourly) * 100 : null;
+        const volDelta = (compareMetrics.averages.volumePerDay ?? 0) - (activeMetrics.averages.volumePerDay ?? 0);
+        const hrsDelta = (compareMetrics.averages.hoursPerDay ?? 0) - (activeMetrics.averages.hoursPerDay ?? 0);
+
+        renderEvalList(evalPaneDelta, [
+          { label: 'Δ days logged', value: formatSigned(compareMetrics.workedDays - activeMetrics.workedDays, 0), cls: 'eval-neutral' },
+          { label: 'Δ total volume', value: formatSigned(compareMetrics.totals.volume - activeMetrics.totals.volume, 0), cls: metricClassByDelta(compareMetrics.totals.volume - activeMetrics.totals.volume, 'loadGoodDown') },
+          { label: 'Δ total hours', value: formatSigned(compareMetrics.totals.hours - activeMetrics.totals.hours, 1), cls: metricClassByDelta(compareMetrics.totals.hours - activeMetrics.totals.hours, 'loadGoodDown') },
+          { label: 'Δ avg volume/day', value: formatSignedMaybe(volDelta, 1), cls: metricClassByDelta(volDelta, 'loadGoodDown') },
+          { label: 'Δ avg hours/day', value: formatSignedMaybe(hrsDelta, 2, 'h'), cls: metricClassByDelta(hrsDelta, 'loadGoodDown') },
+          { label: 'Δ avg delta/day', value: formatSignedMaybe(deltaDelta, 2, 'h'), cls: metricClassByDelta(deltaDelta, 'overUnder') },
+          { label: 'Δ effective $/hour', value: `${formatSignedMaybe(effectiveDelta, 2)}${effectivePct == null ? '' : ` (${formatSignedMaybe(effectivePct, 1, '%')})`}`, cls: metricClassByDelta(effectiveDelta, 'efficiencyGoodUp') },
+          { label: 'USPS pay change', value: `${formatSignedMaybe(payDelta, 0)}${payPct == null ? '' : ` (${formatSignedMaybe(payPct, 1, '%')})`}`, cls: metricClassByDelta(payDelta, 'efficiencyGoodUp') },
+          { label: 'USPS eval hours/day change', value: formatSignedMaybe(evalHoursDelta, 2, 'h'), cls: 'eval-neutral' }
+        ]);
+        if (evalCompareNarrative){
+          evalCompareNarrative.textContent = buildEvalNarrative(activeMetrics, compareMetrics);
         }
       }
     }catch(err){

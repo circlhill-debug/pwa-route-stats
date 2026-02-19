@@ -93,8 +93,39 @@ export function createDiagnostics({
 
   function collectWorkedDays(rows, limit = 365) {
     const all = filterRowsForView(rows || []).filter(r => r && r.status !== 'off' && r.work_date);
-    const sorted = [...all].sort((a, b) => (a.work_date < b.work_date ? 1 : -1));
+    const byDate = new Map();
+    all.forEach(row => {
+      const key = row.work_date;
+      const prev = byDate.get(key);
+      if (!prev) {
+        byDate.set(key, row);
+        return;
+      }
+      byDate.set(key, choosePreferredDayRow(prev, row));
+    });
+    const sorted = [...byDate.values()].sort((a, b) => (a.work_date < b.work_date ? 1 : -1));
     return limit && sorted.length > limit ? sorted.slice(0, limit) : sorted;
+  }
+
+  function choosePreferredDayRow(a, b) {
+    const updatedA = Date.parse(a?.updated_at || a?.created_at || '');
+    const updatedB = Date.parse(b?.updated_at || b?.created_at || '');
+    if (Number.isFinite(updatedA) && Number.isFinite(updatedB) && updatedA !== updatedB) {
+      return updatedA > updatedB ? a : b;
+    }
+    const score = (row) => {
+      const routeHours = normalizeHours(row?.route_minutes ?? row?.routeMinutes);
+      const officeHours = normalizeHours(row?.office_minutes ?? row?.officeMinutes);
+      const combined = routeHours + officeHours;
+      const total = normalizeHours(row?.hours ?? row?.totalHours);
+      if (!combined || !total) return 0;
+      const ratio = total > combined ? total / combined : combined / total;
+      return ratio <= 1.35 ? 2 : 1;
+    };
+    const scoreA = score(a);
+    const scoreB = score(b);
+    if (scoreA !== scoreB) return scoreA > scoreB ? a : b;
+    return b;
   }
 
   function buildDayCompareContext(rows, limit = 365) {
@@ -145,8 +176,7 @@ export function createDiagnostics({
     const volume = combinedVolume(parcels, letters);
     const routeHours = normalizeHours(row.route_minutes ?? row.routeMinutes);
     const officeHours = normalizeHours(row.office_minutes ?? row.officeMinutes);
-    const storedHours = Number(row.hours ?? row.totalHours);
-    const totalHours = Number.isFinite(storedHours) ? storedHours : (routeHours + officeHours);
+    const totalHours = normalizeTotalHours(row, routeHours, officeHours);
     const miles = Number(row.miles) || 0;
     const efficiencyMinutes = volume > 0 ? (routeHours * 60) / volume : null;
     return {
@@ -173,8 +203,7 @@ export function createDiagnostics({
     const totals = valid.reduce((acc, row) => {
       const routeHours = normalizeHours(row.route_minutes ?? row.routeMinutes);
       const officeHours = normalizeHours(row.office_minutes ?? row.officeMinutes);
-      const storedHours = Number(row.hours ?? row.totalHours);
-      acc.totalHours += Number.isFinite(storedHours) ? storedHours : (routeHours + officeHours);
+      acc.totalHours += normalizeTotalHours(row, routeHours, officeHours);
       acc.routeHours += routeHours;
       acc.officeHours += officeHours;
       acc.parcels += +row.parcels || 0;
@@ -772,6 +801,17 @@ export function createDiagnostics({
     if (!Number.isFinite(n)) return 0;
     if (Math.abs(n) > 24) return n / 60;
     return n;
+  }
+
+  function normalizeTotalHours(row, routeHours, officeHours) {
+    const stored = normalizeHours(row?.hours ?? row?.totalHours);
+    const combined = routeHours + officeHours;
+    if (!Number.isFinite(stored) || stored <= 0) return combined;
+    if (combined > 0) {
+      const suspiciouslyHigh = stored - combined >= 2 && stored > (combined * 1.5);
+      if (suspiciouslyHigh) return combined;
+    }
+    return stored;
   }
 
   function buildDayCompare(rows) {

@@ -63,6 +63,13 @@ describe('day metrics normalization', () => {
     expect(metrics.officeHours).toBeCloseTo(1.5, 4);
     expect(metrics.totalHours).toBeCloseTo(7, 4);
   });
+
+  it('falls back to route + office when stored total is implausibly high', () => {
+    const testApi = harness();
+    const inflatedTotal = createSubject(90, 40, 5.2, 1.6, 14.25);
+    const metrics = testApi.dayMetricsFromRow(inflatedTotal, {});
+    expect(metrics.totalHours).toBeCloseTo(6.8, 4);
+  });
 });
 
 describe('delta details formatting', () => {

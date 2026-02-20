@@ -417,7 +417,7 @@
     border:1px solid var(--border);
     border-radius:14px;
     padding:14px;
-    background:color-mix(in srgb, var(--card) 88%, var(--brand) 12%);
+    background:var(--card);
   }
   .eval-hero .label{
     display:block;
@@ -428,7 +428,7 @@
     letter-spacing:0.06em;
   }
   .eval-hero .value{
-    font-size:30px;
+    font-size:24px;
     line-height:1.1;
     font-weight:700;
     font-variant-numeric:tabular-nums;
@@ -1092,7 +1092,7 @@
   <!-- Route Evaluation -->
   <section class="card" id="evalCompareCard" data-collapsible="true" style="grid-column:1/-1; display:none">
     <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-      <h3 style="margin:0">Route Evaluation</h3>
+      <h3 style="margin:0;font-size:1.17em">Route Evaluation</h3>
       <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
         <label class="pill" style="gap:6px;align-items:center">
           <small>Window</small>
@@ -1106,7 +1106,7 @@
       </div>
     </div>
     <div class="row" id="evalCompareControls" style="margin-top:8px;display:none;gap:8px;flex-wrap:wrap;align-items:center">
-      <label class="pill" style="gap:6px;align-items:center">
+      <label class="pill" style="gap:6px;align-items:center" title="This is the baseline window used for comparison (left column).">
         <small>Compare to</small>
         <select id="evalWindowCompare" style="min-width:180px"></select>
       </label>
@@ -1131,19 +1131,23 @@
       </div>
       <div class="eval-compare-grid">
         <div class="eval-pane">
-          <h4 style="margin:0 0 8px 0">Window A</h4>
+          <h4 style="margin:0 0 8px 0" title="Baseline values (left side).">Baseline Window</h4>
           <ul id="evalPaneA" class="eval-list"></ul>
         </div>
         <div class="eval-pane">
-          <h4 style="margin:0 0 8px 0">Window B</h4>
+          <h4 style="margin:0 0 8px 0" title="Current/selected active window values.">Active Window</h4>
           <ul id="evalPaneB" class="eval-list"></ul>
         </div>
         <div class="eval-pane">
-          <h4 style="margin:0 0 8px 0">Delta (B - A)</h4>
+          <h4 style="margin:0 0 8px 0" title="Difference is computed as Active minus Baseline.">Delta (Active - Baseline)</h4>
           <ul id="evalPaneDelta" class="eval-list"></ul>
         </div>
       </div>
       <div id="evalCompareNarrative" class="sparkline-labels" style="margin-top:8px">—</div>
+      <div class="eval-pane" style="margin-top:8px">
+        <h4 style="margin:0 0 8px 0">Across Evaluations Trend (Recent)</h4>
+        <ul id="evalTrendList" class="eval-list"></ul>
+      </div>
     </div>
   </section>
 

@@ -46,6 +46,7 @@ const DEFAULT_EVAL_PROFILE = {
   hoursPerDay:9.4,
   officeHoursPerDay:2.0,
   annualSalary:68000,
+  evalDaysPerYear:260,
   effectiveFrom:null,
   effectiveTo:null
 };
@@ -217,6 +218,7 @@ function sanitizeEvalProfile(input, fallback){
     hoursPerDay: toNumberOrNull(merged.hoursPerDay),
     officeHoursPerDay: toNumberOrNull(merged.officeHoursPerDay),
     annualSalary: toNumberOrNull(merged.annualSalary),
+    evalDaysPerYear: toNumberOrNull(merged.evalDaysPerYear ?? merged.workDaysPerYear),
     effectiveFrom: normalizeDateValue(merged.effectiveFrom ?? merged.from),
     effectiveTo: normalizeDateValue(merged.effectiveTo ?? merged.to)
   };
@@ -248,6 +250,7 @@ function legacyEvalPayload(profile){
     hoursPerDay,
     officeHoursPerDay,
     annualSalary,
+    evalDaysPerYear,
     effectiveFrom,
     effectiveTo,
     profileId,
@@ -261,6 +264,7 @@ function legacyEvalPayload(profile){
     hoursPerDay,
     officeHoursPerDay,
     annualSalary,
+    evalDaysPerYear,
     effectiveFrom,
     effectiveTo,
     profileId,

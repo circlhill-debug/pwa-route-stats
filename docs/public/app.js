@@ -123,6 +123,7 @@
     hoursPerDay: 9.4,
     officeHoursPerDay: 2,
     annualSalary: 68e3,
+    evalDaysPerYear: 260,
     effectiveFrom: null,
     effectiveTo: null
   };
@@ -243,7 +244,7 @@
     }
   }
   function sanitizeEvalProfile(input, fallback) {
-    var _a6, _b;
+    var _a6, _b, _c;
     const base = { ...DEFAULT_EVAL_PROFILE, ...fallback || {} };
     const merged = { ...base, ...input || {} };
     const providedId = typeof merged.profileId === "string" && merged.profileId.trim() ? merged.profileId.trim() : typeof merged.id === "string" && merged.id.trim() ? merged.id.trim() : null;
@@ -263,8 +264,9 @@
       hoursPerDay: toNumberOrNull(merged.hoursPerDay),
       officeHoursPerDay: toNumberOrNull(merged.officeHoursPerDay),
       annualSalary: toNumberOrNull(merged.annualSalary),
-      effectiveFrom: normalizeDateValue((_a6 = merged.effectiveFrom) != null ? _a6 : merged.from),
-      effectiveTo: normalizeDateValue((_b = merged.effectiveTo) != null ? _b : merged.to)
+      evalDaysPerYear: toNumberOrNull((_a6 = merged.evalDaysPerYear) != null ? _a6 : merged.workDaysPerYear),
+      effectiveFrom: normalizeDateValue((_b = merged.effectiveFrom) != null ? _b : merged.from),
+      effectiveTo: normalizeDateValue((_c = merged.effectiveTo) != null ? _c : merged.to)
     };
   }
   function sanitizeEvalProfileList(list) {
@@ -292,6 +294,7 @@
       hoursPerDay,
       officeHoursPerDay,
       annualSalary,
+      evalDaysPerYear,
       effectiveFrom,
       effectiveTo,
       profileId,
@@ -305,6 +308,7 @@
       hoursPerDay,
       officeHoursPerDay,
       annualSalary,
+      evalDaysPerYear,
       effectiveFrom,
       effectiveTo,
       profileId,
@@ -4816,7 +4820,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var settingsSaveTimer = null;
   function buildUserSettingsPayload() {
     const evalProfiles = (EVAL_PROFILES || []).map((profile) => {
-      var _a6, _b, _c, _d, _e, _f, _g;
+      var _a6, _b, _c, _d, _e, _f, _g, _h;
       return {
         profileId: profile.profileId,
         label: profile.label,
@@ -4827,8 +4831,9 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         hoursPerDay: (_c = profile.hoursPerDay) != null ? _c : null,
         officeHoursPerDay: (_d = profile.officeHoursPerDay) != null ? _d : null,
         annualSalary: (_e = profile.annualSalary) != null ? _e : null,
-        effectiveFrom: (_f = profile.effectiveFrom) != null ? _f : null,
-        effectiveTo: (_g = profile.effectiveTo) != null ? _g : null
+        evalDaysPerYear: (_f = profile.evalDaysPerYear) != null ? _f : null,
+        effectiveFrom: (_g = profile.effectiveFrom) != null ? _g : null,
+        effectiveTo: (_h = profile.effectiveTo) != null ? _h : null
       };
     });
     const vacationRanges = listVacationRanges().map((r) => ({ from: r.from, to: r.to }));
@@ -4971,6 +4976,14 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     const parts = [profile.routeId, profile.evalCode].filter(Boolean);
     return parts.length ? parts.join(" ") : "Evaluation";
   }
+  function getEvalHeaderLabel(profile) {
+    if (!profile) return "Evaluation";
+    const base = getEvalProfileDisplayName(profile);
+    const code = String(profile.evalCode || "").trim();
+    if (!code) return base;
+    const hasCode = base.toLowerCase().includes(code.toLowerCase());
+    return hasCode ? base : `${base} ${code}`;
+  }
   function applyEvalProfileToInputs(profileId) {
     const profile = getEvalProfileById(profileId) || USPS_EVAL || EVAL_PROFILES && EVAL_PROFILES[0] || null;
     if (!profile) return;
@@ -4983,6 +4996,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (evalHoursIn) evalHoursIn.value = profile.hoursPerDay != null ? profile.hoursPerDay : "";
     if (evalOfficeHoursIn) evalOfficeHoursIn.value = profile.officeHoursPerDay != null ? profile.officeHoursPerDay : "";
     if (evalSalaryIn) evalSalaryIn.value = profile.annualSalary != null ? profile.annualSalary : "";
+    if (evalWorkDaysYearIn) evalWorkDaysYearIn.value = profile.evalDaysPerYear != null ? profile.evalDaysPerYear : "";
     if (evalEffectiveFromInput) evalEffectiveFromInput.value = profile.effectiveFrom || "";
     if (evalEffectiveToInput) evalEffectiveToInput.value = profile.effectiveTo || "";
   }
@@ -5029,6 +5043,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       hoursPerDay: readNumberInput(evalHoursIn),
       officeHoursPerDay: readNumberInput(evalOfficeHoursIn),
       annualSalary: readNumberInput(evalSalaryIn),
+      evalDaysPerYear: readNumberInput(evalWorkDaysYearIn),
       effectiveFrom: ((evalEffectiveFromInput == null ? void 0 : evalEffectiveFromInput.value) || "").trim() || null,
       effectiveTo: ((evalEffectiveToInput == null ? void 0 : evalEffectiveToInput.value) || "").trim() || null
     };
@@ -5061,79 +5076,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       }
     });
   }
-  function groupRowsByTimeframeForEval(rows, timeframe) {
-    const buckets = /* @__PURE__ */ new Map();
-    (rows || []).forEach((row) => {
-      if (!row || row.status === "off") return;
-      if (!row.work_date) return;
-      let dt;
-      try {
-        dt = DateTime.fromISO(row.work_date, { zone: ZONE });
-      } catch (_) {
-        return;
-      }
-      if (!dt || !dt.isValid) return;
-      let key, label;
-      if (timeframe === "day") {
-        key = dt.toISODate();
-        label = dt.toFormat("LLL dd, yyyy");
-      } else if (timeframe === "month") {
-        key = dt.toFormat("yyyy-MM");
-        label = dt.toFormat("LLLL yyyy");
-      } else {
-        const start2 = startOfWeekMonday(dt);
-        const end2 = endOfWeekSunday2(dt);
-        key = start2.toISODate();
-        label = `${start2.toFormat("LLL dd")} \u2192 ${end2.toFormat("LLL dd")}`;
-      }
-      const bucket = buckets.get(key) || { key, label, count: 0, hours: 0, parcels: 0, letters: 0, miles: 0 };
-      bucket.count += 1;
-      bucket.hours += Number(row.hours || 0);
-      bucket.parcels += Number(row.parcels || 0);
-      bucket.letters += Number(row.letters || 0);
-      bucket.miles += Number(row.miles || 0);
-      buckets.set(key, bucket);
-    });
-    return Array.from(buckets.values()).map((b) => ({
-      ...b,
-      volume: b.parcels + b.letters
-    }));
-  }
-  function combineEvalGroups(groupsA, groupsB) {
-    const mapA = new Map((groupsA || []).map((g) => [g.key, g]));
-    const mapB = new Map((groupsB || []).map((g) => [g.key, g]));
-    const keys = /* @__PURE__ */ new Set([...mapA.keys(), ...mapB.keys()]);
-    const merged = [];
-    keys.forEach((key) => {
-      const a = mapA.get(key);
-      const b = mapB.get(key);
-      merged.push({
-        key,
-        label: a && a.label || b && b.label || key,
-        volumeA: a ? a.volume : 0,
-        volumeB: b ? b.volume : 0,
-        deltaVolume: (b ? b.volume : 0) - (a ? a.volume : 0),
-        hoursA: a ? a.hours : 0,
-        hoursB: b ? b.hours : 0,
-        deltaHours: (b ? b.hours : 0) - (a ? a.hours : 0),
-        countA: a ? a.count : 0,
-        countB: b ? b.count : 0
-      });
-    });
-    return merged;
-  }
-  function summarizeEvalGroups(groups) {
-    return (groups || []).reduce((acc, g) => {
-      acc.volume += g.volume || 0;
-      acc.hours += g.hours || 0;
-      acc.parcels += g.parcels || 0;
-      acc.letters += g.letters || 0;
-      acc.miles += g.miles || 0;
-      acc.days += g.count || 0;
-      acc.periods += 1;
-      return acc;
-    }, { volume: 0, hours: 0, parcels: 0, letters: 0, miles: 0, days: 0, periods: 0 });
-  }
   function formatNumber(value, digits = 0) {
     const num = Number(value || 0);
     if (!Number.isFinite(num)) return "0";
@@ -5144,58 +5086,333 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     const prefix = num > 0 ? "+" : "";
     return `${prefix}${formatNumber(num, digits)}`;
   }
-  function formatDeltaCell(value, digits) {
-    const num = Number(value || 0);
-    const cls = num > 0 ? "delta pos" : num < 0 ? "delta neg" : "delta zero";
-    const prefix = num > 0 ? "+" : "";
-    return `<span class="${cls}">${prefix}${formatNumber(num, digits)}</span>`;
+  function formatMoney(value, digits = 2) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "\u2014";
+    return `$${num.toLocaleString(void 0, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
   }
-  function populateEvalCompareSelect(selectEl, selectedId) {
-    if (!selectEl) return;
-    selectEl.innerHTML = "";
-    (EVAL_PROFILES || []).forEach((profile) => {
-      const opt = document.createElement("option");
-      opt.value = profile.profileId;
-      opt.textContent = getEvalProfileDisplayName(profile);
-      selectEl.appendChild(opt);
-    });
-    if (selectedId && getEvalProfileById(selectedId)) {
-      selectEl.value = selectedId;
-    } else if (EVAL_PROFILES && EVAL_PROFILES[0]) {
-      selectEl.value = EVAL_PROFILES[0].profileId;
+  function formatMaybe(value, digits = 1, suffix = "") {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "\u2014";
+    return `${formatNumber(num, digits)}${suffix}`;
+  }
+  function formatSignedMaybe(value, digits = 1, suffix = "") {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "\u2014";
+    const prefix = num > 0 ? "+" : "";
+    return `${prefix}${formatNumber(num, digits)}${suffix}`;
+  }
+  function parseFlatsFromWeatherValue(weather2) {
+    if (!weather2) return 0;
+    try {
+      const text = String(weather2);
+      const flatsMatch = text.match(/\bFlats:\s*([0-9.]+)/i);
+      if (flatsMatch && Number.isFinite(Number(flatsMatch[1]))) return Number(flatsMatch[1]);
+      const boxMatch = text.match(/\bBox:\s*([0-9.]+)/i);
+      if (boxMatch && Number.isFinite(Number(boxMatch[1]))) return Number(boxMatch[1]);
+      return 0;
+    } catch (_) {
+      return 0;
     }
   }
-  function renderEvalCompareRow(row) {
-    return `<tr>
-      <td>${row.label}</td>
-      <td class="right">${formatNumber(row.volumeA, 0)}</td>
-      <td class="right">${formatNumber(row.volumeB, 0)}</td>
-      <td class="right">${formatDeltaCell(row.deltaVolume, 0)}</td>
-      <td class="right">${formatNumber(row.hoursA, 1)}</td>
-      <td class="right">${formatNumber(row.hoursB, 1)}</td>
-      <td class="right">${formatDeltaCell(row.deltaHours, 1)}</td>
-      <td class="right">${row.countA}/${row.countB}</td>
-    </tr>`;
+  function getFlatCount(row) {
+    var _a6, _b;
+    const direct = Number((_b = (_a6 = row == null ? void 0 : row.flats) != null ? _a6 : row == null ? void 0 : row.flat_count) != null ? _b : row == null ? void 0 : row.flatCount);
+    if (Number.isFinite(direct)) return direct;
+    return parseFlatsFromWeatherValue(row == null ? void 0 : row.weather_json);
   }
-  function formatEvalCompareSummary(profileA, summaryA, profileB, summaryB) {
-    const tf = evalCompareState.timeframe === "month" ? "month" : evalCompareState.timeframe === "week" ? "week" : "day";
-    const labelA = getEvalProfileDisplayName(profileA);
-    const labelB = getEvalProfileDisplayName(profileB);
-    const volumeDiff = summaryB.volume - summaryA.volume;
-    const hoursDiff = summaryB.hours - summaryA.hours;
-    const avgVolumeA = summaryA.periods ? summaryA.volume / summaryA.periods : 0;
-    const avgVolumeB = summaryB.periods ? summaryB.volume / summaryB.periods : 0;
-    const avgHoursA = summaryA.periods ? summaryA.hours / summaryA.periods : 0;
-    const avgHoursB = summaryB.periods ? summaryB.hours / summaryB.periods : 0;
-    return `${labelB} vs ${labelA} (${tf}s). Volume change ${formatSigned(volumeDiff, 0)} (${formatNumber(avgVolumeB, 1)} vs ${formatNumber(avgVolumeA, 1)} avg/${tf}). Hours change ${formatSigned(hoursDiff, 1)} (${formatNumber(avgHoursB, 1)} vs ${formatNumber(avgHoursA, 1)} avg/${tf}). Days logged ${summaryB.days} vs ${summaryA.days}.`;
+  function getProfileRange(profile) {
+    if (!profile) return { from: null, to: null };
+    let from = null;
+    let to = null;
+    try {
+      if (profile.effectiveFrom) {
+        const dt = DateTime.fromISO(profile.effectiveFrom, { zone: ZONE });
+        if (dt.isValid) from = dt.startOf("day");
+      }
+      if (profile.effectiveTo) {
+        const dt = DateTime.fromISO(profile.effectiveTo, { zone: ZONE });
+        if (dt.isValid) to = dt.endOf("day");
+      }
+    } catch (_) {
+    }
+    return { from, to };
+  }
+  function profileIncludesDay(profile, day) {
+    const { from, to } = getProfileRange(profile);
+    if (from && day < from) return false;
+    if (to && day > to) return false;
+    return true;
+  }
+  function findActiveEvalProfileId() {
+    const profiles = EVAL_PROFILES || [];
+    if (!profiles.length) return null;
+    const now = DateTime.now().setZone(ZONE).startOf("day");
+    const activeCandidates = profiles.filter((profile) => profileIncludesDay(profile, now)).sort((a, b) => {
+      const aFrom = getProfileRange(a).from;
+      const bFrom = getProfileRange(b).from;
+      const aTs = aFrom && aFrom.isValid ? aFrom.toMillis() : -Infinity;
+      const bTs = bFrom && bFrom.isValid ? bFrom.toMillis() : -Infinity;
+      return bTs - aTs;
+    });
+    if (activeCandidates.length) return activeCandidates[0].profileId;
+    const pastCandidates = profiles.map((profile) => ({ profile, range: getProfileRange(profile) })).filter(({ range }) => {
+      if (range.to && range.to.isValid) return range.to < now;
+      if (range.from && range.from.isValid) return range.from < now;
+      return false;
+    }).sort((a, b) => {
+      var _a6, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+      const aTs = (_f = (_e = (_b = (_a6 = a.range.to) == null ? void 0 : _a6.toMillis) == null ? void 0 : _b.call(_a6)) != null ? _e : (_d = (_c = a.range.from) == null ? void 0 : _c.toMillis) == null ? void 0 : _d.call(_c)) != null ? _f : -Infinity;
+      const bTs = (_l = (_k = (_h = (_g = b.range.to) == null ? void 0 : _g.toMillis) == null ? void 0 : _h.call(_g)) != null ? _k : (_j = (_i = b.range.from) == null ? void 0 : _i.toMillis) == null ? void 0 : _j.call(_i)) != null ? _l : -Infinity;
+      return bTs - aTs;
+    });
+    if (pastCandidates.length) return pastCandidates[0].profile.profileId;
+    const stored = getActiveEvalId();
+    if (stored && getEvalProfileById(stored)) return stored;
+    return profiles[0].profileId;
+  }
+  function getEvalProfileSortValue(profile) {
+    var _a6, _b, _c, _d, _e, _f;
+    const range = getProfileRange(profile);
+    return (_f = (_e = (_b = (_a6 = range.from) == null ? void 0 : _a6.toMillis) == null ? void 0 : _b.call(_a6)) != null ? _e : (_d = (_c = range.to) == null ? void 0 : _c.toMillis) == null ? void 0 : _d.call(_c)) != null ? _f : -Infinity;
+  }
+  function getOrderedEvalProfiles() {
+    return [...EVAL_PROFILES || []].sort((a, b) => getEvalProfileSortValue(a) - getEvalProfileSortValue(b));
+  }
+  function getPreviousEvalProfile(activeId) {
+    const ordered = getOrderedEvalProfiles();
+    const idx = ordered.findIndex((p) => p.profileId === activeId);
+    if (idx <= 0) return null;
+    return ordered[idx - 1] || null;
+  }
+  function getPriorEvalProfiles(activeProfile) {
+    if (!activeProfile) return [];
+    const ordered = getOrderedEvalProfiles();
+    const activeIdx = ordered.findIndex((p) => p.profileId === activeProfile.profileId);
+    if (activeIdx <= 0) return ordered.filter((p) => p.profileId !== activeProfile.profileId);
+    return ordered.slice(0, activeIdx);
+  }
+  function selectWorkedRows(rows) {
+    return (rows || []).filter((row) => row && row.status !== "off" && row.work_date);
+  }
+  function computeWindowMetrics(profile, rows, options = {}) {
+    const threshold = 0.1;
+    const worked = rowsForEvaluationRange(selectWorkedRows(rows), profile).sort((a, b) => String(a.work_date).localeCompare(String(b.work_date)));
+    const wantsLast14 = !!options.last14;
+    const baselineFallback = !!options.baselineFallbackToWindow;
+    let sampleMode = "window";
+    let selected = worked;
+    if (wantsLast14) {
+      if (baselineFallback && worked.length < 14) {
+        sampleMode = "windowFallback";
+      } else {
+        selected = worked.slice(-14);
+        sampleMode = worked.length >= 14 ? "last14" : "last14Partial";
+      }
+    }
+    const days = selected.length;
+    const evalHoursPerDay = Number(profile == null ? void 0 : profile.hoursPerDay);
+    let totals = { parcels: 0, letters: 0, flats: 0, volume: 0, hours: 0, officeTime: 0, miles: 0 };
+    let deltaSum = 0;
+    let deltaCount = 0;
+    let overEvalDays = 0;
+    let underEvalDays = 0;
+    selected.forEach((row) => {
+      var _a6;
+      const parcels2 = Number(row == null ? void 0 : row.parcels) || 0;
+      const letters2 = Number(row == null ? void 0 : row.letters) || 0;
+      const flats = getFlatCount(row);
+      const hours = Number(row == null ? void 0 : row.hours) || 0;
+      const officeTime = Number((_a6 = row == null ? void 0 : row.office_minutes) != null ? _a6 : row == null ? void 0 : row.officeMinutes) || 0;
+      const miles2 = Number(row == null ? void 0 : row.miles) || 0;
+      const volume = parcels2 + letters2 + flats;
+      totals.parcels += parcels2;
+      totals.letters += letters2;
+      totals.flats += flats;
+      totals.volume += volume;
+      totals.hours += hours;
+      totals.officeTime += officeTime;
+      totals.miles += miles2;
+      if (Number.isFinite(evalHoursPerDay)) {
+        const delta = hours - evalHoursPerDay;
+        deltaSum += delta;
+        deltaCount += 1;
+        if (delta > threshold) overEvalDays += 1;
+        if (delta < -threshold) underEvalDays += 1;
+      }
+    });
+    const avg = (value) => days > 0 ? value / days : null;
+    const avgDeltaHoursPerDay = deltaCount > 0 ? deltaSum / deltaCount : null;
+    const quarterlyPay = Number.isFinite(Number(profile == null ? void 0 : profile.annualSalary)) ? Number(profile.annualSalary) / 4 : null;
+    const effectiveHourly = quarterlyPay && totals.hours > 0 ? quarterlyPay / totals.hours : null;
+    const volumePerHour = totals.hours > 0 ? totals.volume / totals.hours : null;
+    const parcelsPerHour = totals.hours > 0 ? totals.parcels / totals.hours : null;
+    const volumePerEvalHour = Number.isFinite(evalHoursPerDay) && evalHoursPerDay > 0 ? avg(totals.volume) / evalHoursPerDay : null;
+    const deltaPer1000Volume = avg(totals.volume) > 0 && Number.isFinite(avgDeltaHoursPerDay) ? avgDeltaHoursPerDay / avg(totals.volume) * 1e3 : null;
+    return {
+      profile,
+      rows: selected,
+      allRowsInWindow: worked,
+      sampleMode,
+      workedDays: days,
+      totals,
+      averages: {
+        parcelsPerDay: avg(totals.parcels),
+        lettersPerDay: avg(totals.letters),
+        flatsPerDay: avg(totals.flats),
+        volumePerDay: avg(totals.volume),
+        hoursPerDay: avg(totals.hours),
+        officeTimePerDay: avg(totals.officeTime),
+        milesPerDay: avg(totals.miles)
+      },
+      evalHoursPerDay: Number.isFinite(evalHoursPerDay) ? evalHoursPerDay : null,
+      avgDeltaHoursPerDay,
+      overEvalDays,
+      underEvalDays,
+      quarterlyPay,
+      effectiveHourly,
+      density: {
+        volumePerHour,
+        parcelsPerHour,
+        volumePerEvalHour,
+        deltaPer1000Volume
+      }
+    };
+  }
+  function metricClassByDelta(delta, meaning = "neutral") {
+    const n = Number(delta);
+    if (!Number.isFinite(n)) return "eval-neutral";
+    if (meaning === "overUnder") {
+      if (Math.abs(n) <= 0.1) return "eval-neutral";
+      return n > 0 ? "eval-bad" : "eval-good";
+    }
+    if (meaning === "efficiencyGoodUp") {
+      if (Math.abs(n) <= 1e-4) return "eval-neutral";
+      return n > 0 ? "eval-good" : "eval-bad";
+    }
+    if (meaning === "loadGoodDown") {
+      if (Math.abs(n) <= 1e-4) return "eval-neutral";
+      return n > 0 ? "eval-bad" : "eval-good";
+    }
+    return "eval-neutral";
+  }
+  function computeDelta(active, baseline) {
+    const a = Number(active);
+    const b = Number(baseline);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return { value: null, pct: null };
+    const value = a - b;
+    const pct = Math.abs(b) > 1e-6 ? value / b * 100 : null;
+    return { value, pct };
+  }
+  function makeComparisonRow(group, label, baseline, active, options = {}) {
+    var _a6;
+    const { value, pct } = computeDelta(active, baseline);
+    return {
+      group,
+      label,
+      baseline,
+      active,
+      delta: value,
+      pct,
+      digits: (_a6 = options.digits) != null ? _a6 : 2,
+      suffix: options.suffix || "",
+      meaning: options.meaning || "neutral"
+    };
+  }
+  function buildComparisonSummary(activeMetrics, baselineMetrics) {
+    var _a6, _b, _c, _d;
+    if (!activeMetrics || !baselineMetrics) return null;
+    const rows = [
+      makeComparisonRow("time", "Avg hours/day", baselineMetrics.averages.hoursPerDay, activeMetrics.averages.hoursPerDay, { digits: 2, suffix: "h", meaning: "loadGoodDown" }),
+      makeComparisonRow("time", "Total hours", baselineMetrics.totals.hours, activeMetrics.totals.hours, { digits: 1, suffix: "h", meaning: "loadGoodDown" }),
+      makeComparisonRow("time", "Avg delta vs eval/day", baselineMetrics.avgDeltaHoursPerDay, activeMetrics.avgDeltaHoursPerDay, { digits: 2, suffix: "h", meaning: "overUnder" }),
+      makeComparisonRow("workload", "Avg parcels/day", baselineMetrics.averages.parcelsPerDay, activeMetrics.averages.parcelsPerDay, { digits: 1, meaning: "loadGoodDown" }),
+      makeComparisonRow("workload", "Avg letters/day", baselineMetrics.averages.lettersPerDay, activeMetrics.averages.lettersPerDay, { digits: 1, meaning: "loadGoodDown" }),
+      makeComparisonRow("workload", "Avg flats/day", baselineMetrics.averages.flatsPerDay, activeMetrics.averages.flatsPerDay, { digits: 1, meaning: "loadGoodDown" }),
+      makeComparisonRow("workload", "Avg volume/day", baselineMetrics.averages.volumePerDay, activeMetrics.averages.volumePerDay, { digits: 1, meaning: "loadGoodDown" }),
+      makeComparisonRow("workload", "Office time/day", baselineMetrics.averages.officeTimePerDay, activeMetrics.averages.officeTimePerDay, { digits: 2, suffix: "h", meaning: "loadGoodDown" }),
+      makeComparisonRow("workload", "Miles/day", baselineMetrics.averages.milesPerDay, activeMetrics.averages.milesPerDay, { digits: 1, meaning: "loadGoodDown" }),
+      makeComparisonRow("efficiency", "Volume/hour", baselineMetrics.density.volumePerHour, activeMetrics.density.volumePerHour, { digits: 2, meaning: "efficiencyGoodUp" }),
+      makeComparisonRow("efficiency", "Parcels/hour", baselineMetrics.density.parcelsPerHour, activeMetrics.density.parcelsPerHour, { digits: 2, meaning: "efficiencyGoodUp" }),
+      makeComparisonRow("efficiency", "Volume/eval hour", baselineMetrics.density.volumePerEvalHour, activeMetrics.density.volumePerEvalHour, { digits: 2, meaning: "efficiencyGoodUp" }),
+      makeComparisonRow("efficiency", "Delta hours per 1000 volume", baselineMetrics.density.deltaPer1000Volume, activeMetrics.density.deltaPer1000Volume, { digits: 2, suffix: "h", meaning: "overUnder" }),
+      makeComparisonRow("pay", "Eval annual pay", (_a6 = baselineMetrics.profile) == null ? void 0 : _a6.annualSalary, (_b = activeMetrics.profile) == null ? void 0 : _b.annualSalary, { digits: 0, meaning: "efficiencyGoodUp" }),
+      makeComparisonRow("pay", "Eval route hours/day", baselineMetrics.evalHoursPerDay, activeMetrics.evalHoursPerDay, { digits: 2, suffix: "h", meaning: "neutral" }),
+      makeComparisonRow("pay", "Effective $/hour", baselineMetrics.effectiveHourly, activeMetrics.effectiveHourly, { digits: 2, meaning: "efficiencyGoodUp" })
+    ];
+    const topDelta = rows.find((row) => row.label === "Avg delta vs eval/day") || null;
+    const hrsDelta = rows.find((row) => row.label === "Avg hours/day");
+    const volDelta = rows.find((row) => row.label === "Avg volume/day");
+    const effDelta = rows.find((row) => row.label === "Volume/hour");
+    const deltaDir = ((_c = topDelta == null ? void 0 : topDelta.delta) != null ? _c : 0) < -0.1 ? "improving" : ((_d = topDelta == null ? void 0 : topDelta.delta) != null ? _d : 0) > 0.1 ? "worsening" : "steady";
+    const narrative = [
+      `Time per day is ${formatSignedMaybe(hrsDelta == null ? void 0 : hrsDelta.delta, 2, "h")} and workload per day is ${formatSignedMaybe(volDelta == null ? void 0 : volDelta.delta, 1)} vs baseline.`,
+      `Efficiency (volume/hour) shifted ${formatSignedMaybe(effDelta == null ? void 0 : effDelta.delta, 2)} and over/under evaluation is ${deltaDir} (${formatSignedMaybe(topDelta == null ? void 0 : topDelta.delta, 2, "h/day")}).`,
+      `Effective $/hour moved ${formatSignedMaybe((rows.find((r) => r.label === "Effective $/hour") || {}).delta, 2)} (${formatMoney(baselineMetrics.effectiveHourly)} \u2192 ${formatMoney(activeMetrics.effectiveHourly)}).`
+    ].join(" ");
+    return { rows, narrative, topDelta };
+  }
+  function buildEvalNarrative(summary) {
+    if (!summary) return "No comparison data available.";
+    return summary.narrative;
+  }
+  function computeEvaluationProgress(profile) {
+    if (!profile) return { hasActiveWindow: false };
+    const today = DateTime.now().setZone(ZONE).startOf("day");
+    const { from, to } = getProfileRange(profile);
+    if (!from || !to || !from.isValid || !to.isValid) return { hasActiveWindow: false };
+    const hasActiveWindow = today >= from && today <= to;
+    if (!hasActiveWindow) {
+      return { hasActiveWindow: false, start: from, end: to };
+    }
+    const totalDays = Math.max(1, Math.floor(to.diff(from, "days").days) + 1);
+    const elapsedDays = Math.max(0, Math.floor(today.diff(from, "days").days) + 1);
+    const remainingDays = Math.max(0, totalDays - elapsedDays);
+    const progressPct = elapsedDays / totalDays * 100;
+    return { hasActiveWindow: true, start: from, end: to, totalDays, elapsedDays, remainingDays, progressPct, today };
+  }
+  function computeTwoWeekBlock(progress) {
+    if (!(progress == null ? void 0 : progress.hasActiveWindow) || !progress.start || !progress.today) return null;
+    const daysFromStart = Math.max(0, Math.floor(progress.today.diff(progress.start, "days").days));
+    const blockNumber = Math.floor(daysFromStart / 14) + 1;
+    const blockStart = progress.start.plus({ days: (blockNumber - 1) * 14 }).startOf("day");
+    const theoreticalEnd = blockStart.plus({ days: 13 }).endOf("day");
+    const blockEnd = theoreticalEnd > progress.end ? progress.end : theoreticalEnd;
+    const daysRemaining = Math.max(0, Math.floor(blockEnd.diff(progress.today, "days").days));
+    const nextCheck = blockEnd < progress.end ? blockEnd.plus({ days: 1 }).startOf("day") : null;
+    return { blockNumber, blockStart, blockEnd, daysRemaining, nextCheck };
+  }
+  function renderEvalTrendList(container, profiles, rows, options = {}) {
+    if (!container) return;
+    const ordered = [...profiles || []].sort((a, b) => getEvalProfileSortValue(a) - getEvalProfileSortValue(b)).slice(-6);
+    if (!ordered.length) {
+      container.innerHTML = '<li><span>No evaluation history yet.</span><span class="num eval-neutral">\u2014</span></li>';
+      return;
+    }
+    const items = ordered.map((profile) => {
+      const metrics = computeWindowMetrics(profile, rows, { last14: !!options.last14, baselineFallbackToWindow: false });
+      const label = getEvalProfileDisplayName(profile);
+      const delta = formatSignedMaybe(metrics.avgDeltaHoursPerDay, 2, "h/day");
+      const eff = formatMoney(metrics.effectiveHourly);
+      return `<li><span>${label}</span><span class="num ${metricClassByDelta(metrics.avgDeltaHoursPerDay, "overUnder")}">${delta} \u2022 ${eff}</span></li>`;
+    });
+    container.innerHTML = items.join("");
+  }
+  function renderEvalList(container, items) {
+    if (!container) return;
+    container.innerHTML = items.map((item) => `
+      <li>
+        <span>${item.label}</span>
+        <span class="num ${item.cls || "eval-neutral"}">${item.value}</span>
+      </li>
+    `).join("");
   }
   var FLAGS = loadFlags();
   var evalCompareState = {
-    timeframe: "week",
-    sortKey: "deltaVolume",
-    sortDir: "desc",
-    aId: (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || null,
-    bId: null
+    activeId: null,
+    compareEnabled: false,
+    compareId: null,
+    last14: false
   };
   var parserChart = null;
   var $ = (id) => document.getElementById(id);
@@ -5760,6 +5977,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var evalHoursIn = document.getElementById("evalHoursIn");
   var evalOfficeHoursIn = document.getElementById("evalOfficeHoursIn");
   var evalSalaryIn = document.getElementById("evalSalaryIn");
+  var evalWorkDaysYearIn = document.getElementById("evalWorkDaysYearIn");
   var evalProfileSelect = document.getElementById("evalProfileSelect");
   var evalProfileAddBtn = document.getElementById("evalProfileAdd");
   var evalProfileDeleteBtn = document.getElementById("evalProfileDelete");
@@ -5797,12 +6015,25 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var tokenLimitInput = document.getElementById("tokenUsageLimit");
   var aiPromptTextarea = document.getElementById("aiSummaryBasePrompt");
   var evalCompareCard = document.getElementById("evalCompareCard");
-  var evalCompareSelectA = document.getElementById("evalCompareSelectA");
-  var evalCompareSelectB = document.getElementById("evalCompareSelectB");
+  var evalWindowPrimary = document.getElementById("evalWindowPrimary");
+  var evalWindowRecent14 = document.getElementById("evalWindowRecent14");
+  var evalCompareToggle = document.getElementById("evalCompareToggle");
+  var evalCompareControls = document.getElementById("evalCompareControls");
+  var evalWindowCompare = document.getElementById("evalWindowCompare");
+  var evalCompareClose = document.getElementById("evalCompareClose");
   var evalCompareSummary = document.getElementById("evalCompareSummary");
-  var evalCompareBody = document.getElementById("evalCompareBody");
-  var evalCompareTable = document.getElementById("evalCompareTable");
-  var evalCompareTfButtons = Array.from(document.querySelectorAll("#evalCompareCard .eval-tf-btn"));
+  var evalSingleDashboard = document.getElementById("evalSingleDashboard");
+  var evalPrimaryDelta = document.getElementById("evalPrimaryDelta");
+  var evalPrimaryMeta = document.getElementById("evalPrimaryMeta");
+  var evalSingleGrid = document.getElementById("evalSingleGrid");
+  var evalCompareDashboard = document.getElementById("evalCompareDashboard");
+  var evalComparePrimaryDelta = document.getElementById("evalComparePrimaryDelta");
+  var evalComparePrimaryMeta = document.getElementById("evalComparePrimaryMeta");
+  var evalPaneA = document.getElementById("evalPaneA");
+  var evalPaneB = document.getElementById("evalPaneB");
+  var evalPaneDelta = document.getElementById("evalPaneDelta");
+  var evalCompareNarrative = document.getElementById("evalCompareNarrative");
+  var evalTrendList = document.getElementById("evalTrendList");
   var yearlySummaryCard = document.getElementById("yearlySummaryCard");
   var yearlySummaryYear = document.getElementById("yearlySummaryYear");
   var yearlySummaryIncludePeak = document.getElementById("yearlySummaryIncludePeak");
@@ -5928,7 +6159,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     }
   });
   evalProfileAddBtn == null ? void 0 : evalProfileAddBtn.addEventListener("click", () => {
-    var _a6, _b, _c, _d, _e;
+    var _a6, _b, _c, _d, _e, _f;
     try {
       const base = getEvalProfileById(evalProfileSelect == null ? void 0 : evalProfileSelect.value) || USPS_EVAL || {};
       const newProfile = createEvalProfile({
@@ -5940,6 +6171,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         hoursPerDay: (_c = base.hoursPerDay) != null ? _c : null,
         officeHoursPerDay: (_d = base.officeHoursPerDay) != null ? _d : null,
         annualSalary: (_e = base.annualSalary) != null ? _e : null,
+        evalDaysPerYear: (_f = base.evalDaysPerYear) != null ? _f : null,
         effectiveFrom: null,
         effectiveTo: null
       });
@@ -5994,8 +6226,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       syncEvalGlobals();
       USPS_EVAL = getEvalProfileById(updated.profileId) || updated;
       populateEvalProfileSelectUI(USPS_EVAL == null ? void 0 : USPS_EVAL.profileId);
-      if (!evalCompareState.aId || evalCompareState.aId === selectedId) {
-        evalCompareState.aId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || selectedId || evalCompareState.aId;
+      if (!evalCompareState.activeId || evalCompareState.activeId === selectedId) {
+        evalCompareState.activeId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || selectedId || evalCompareState.activeId;
       }
     } catch (_) {
     }
@@ -6072,48 +6304,40 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     aiSummary.updateAvailability();
     aiSummary.renderLastSummary();
   });
-  evalCompareSelectA == null ? void 0 : evalCompareSelectA.addEventListener("change", () => {
-    evalCompareState.aId = evalCompareSelectA.value;
-    if (evalCompareState.aId === evalCompareState.bId) {
-      const alternative = (EVAL_PROFILES || []).find((p) => p.profileId !== evalCompareState.aId);
-      if (alternative) {
-        evalCompareState.bId = alternative.profileId;
-        if (evalCompareSelectB) evalCompareSelectB.value = evalCompareState.bId;
-      }
+  evalWindowPrimary == null ? void 0 : evalWindowPrimary.addEventListener("change", () => {
+    var _a6;
+    const next = evalWindowPrimary.value;
+    if (next) evalCompareState.activeId = next;
+    const activeProfile = getEvalProfileById(evalCompareState.activeId);
+    const priorProfiles = getPriorEvalProfiles(activeProfile);
+    if (!priorProfiles.find((p) => p.profileId === evalCompareState.compareId)) {
+      const previous = getPreviousEvalProfile(evalCompareState.activeId);
+      evalCompareState.compareId = (previous == null ? void 0 : previous.profileId) || ((_a6 = priorProfiles[priorProfiles.length - 1]) == null ? void 0 : _a6.profileId) || null;
     }
     buildEvalCompare(allRows || []);
   });
-  evalCompareSelectB == null ? void 0 : evalCompareSelectB.addEventListener("change", () => {
-    evalCompareState.bId = evalCompareSelectB.value;
-    if (evalCompareState.bId === evalCompareState.aId) {
-      const alternative = (EVAL_PROFILES || []).find((p) => p.profileId !== evalCompareState.aId);
-      if (alternative) {
-        evalCompareState.aId = alternative.profileId;
-        if (evalCompareSelectA) evalCompareSelectA.value = evalCompareState.aId;
-      }
+  evalWindowRecent14 == null ? void 0 : evalWindowRecent14.addEventListener("change", () => {
+    evalCompareState.last14 = !!evalWindowRecent14.checked;
+    buildEvalCompare(allRows || []);
+  });
+  evalCompareToggle == null ? void 0 : evalCompareToggle.addEventListener("click", () => {
+    var _a6;
+    const activeProfile = getEvalProfileById(evalCompareState.activeId);
+    const priorProfiles = getPriorEvalProfiles(activeProfile);
+    evalCompareState.compareEnabled = priorProfiles.length > 0;
+    if (!evalCompareState.compareId || !priorProfiles.find((p) => p.profileId === evalCompareState.compareId)) {
+      const previous = getPreviousEvalProfile(evalCompareState.activeId);
+      evalCompareState.compareId = (previous == null ? void 0 : previous.profileId) || ((_a6 = priorProfiles[priorProfiles.length - 1]) == null ? void 0 : _a6.profileId) || null;
     }
     buildEvalCompare(allRows || []);
   });
-  evalCompareTfButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const tf = btn.dataset.tf || "week";
-      if (tf === evalCompareState.timeframe) return;
-      evalCompareState.timeframe = tf;
-      evalCompareTfButtons.forEach((b) => b.classList.toggle("active", b === btn));
-      buildEvalCompare(allRows || []);
-    });
+  evalCompareClose == null ? void 0 : evalCompareClose.addEventListener("click", () => {
+    evalCompareState.compareEnabled = false;
+    buildEvalCompare(allRows || []);
   });
-  evalCompareTable == null ? void 0 : evalCompareTable.addEventListener("click", (event) => {
-    const th = event.target.closest("th[data-sort]");
-    if (!th) return;
-    const key = th.getAttribute("data-sort");
-    if (!key) return;
-    if (evalCompareState.sortKey === key) {
-      evalCompareState.sortDir = evalCompareState.sortDir === "asc" ? "desc" : "asc";
-    } else {
-      evalCompareState.sortKey = key;
-      evalCompareState.sortDir = "desc";
-    }
+  evalWindowCompare == null ? void 0 : evalWindowCompare.addEventListener("change", () => {
+    if (evalWindowCompare.value) evalCompareState.compareId = evalWindowCompare.value;
+    evalCompareState.compareEnabled = true;
     buildEvalCompare(allRows || []);
   });
   clearOpenAiKeyBtn == null ? void 0 : clearOpenAiKeyBtn.addEventListener("click", () => {
@@ -8004,67 +8228,146 @@ Score: ${overallScore}/10 (higher is better)`;
     })();
   }
   function buildEvalCompare(rows) {
+    var _a6, _b, _c, _d;
     try {
       if (!evalCompareCard) return;
       syncEvalGlobals();
       const profiles = EVAL_PROFILES || [];
-      const enabled = FLAGS.uspsEval && profiles.length >= 2;
+      const enabled = FLAGS.uspsEval && profiles.length >= 1;
       evalCompareCard.style.display = enabled ? "" : "none";
       if (!enabled) {
-        if (evalCompareSummary) evalCompareSummary.textContent = profiles.length ? "Add another evaluation profile to compare." : "Add evaluation profiles in Settings.";
-        if (evalCompareBody) evalCompareBody.innerHTML = "";
+        if (evalCompareSummary) evalCompareSummary.textContent = "Add evaluation profiles in Settings.";
         return;
       }
-      if (!evalCompareState.aId || !getEvalProfileById(evalCompareState.aId)) {
-        evalCompareState.aId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || profiles[0].profileId;
+      const activeByDateId = findActiveEvalProfileId();
+      if (!evalCompareState.activeId || !getEvalProfileById(evalCompareState.activeId)) {
+        evalCompareState.activeId = activeByDateId || (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || profiles[0].profileId;
       }
-      if (!evalCompareState.bId || evalCompareState.bId === evalCompareState.aId || !getEvalProfileById(evalCompareState.bId)) {
-        const fallback = profiles.find((p) => p.profileId !== evalCompareState.aId);
-        evalCompareState.bId = fallback ? fallback.profileId : profiles[0].profileId;
-        if (evalCompareState.bId === evalCompareState.aId && profiles.length > 1) {
-          evalCompareState.bId = profiles[1].profileId;
+      setActiveEvalId(evalCompareState.activeId);
+      const activeProfile = getEvalProfileById(evalCompareState.activeId);
+      const priorProfiles = getPriorEvalProfiles(activeProfile);
+      const previousProfile = getPreviousEvalProfile(evalCompareState.activeId);
+      if (!evalCompareState.compareId || evalCompareState.compareId === evalCompareState.activeId || !getEvalProfileById(evalCompareState.compareId) || !priorProfiles.find((p) => p.profileId === evalCompareState.compareId)) {
+        evalCompareState.compareId = (previousProfile == null ? void 0 : previousProfile.profileId) || ((_a6 = priorProfiles[priorProfiles.length - 1]) == null ? void 0 : _a6.profileId) || null;
+      }
+      if (evalWindowPrimary) {
+        evalWindowPrimary.innerHTML = profiles.map((profile) => `<option value="${profile.profileId}">${getEvalProfileDisplayName(profile)}</option>`).join("");
+        if (evalCompareState.activeId) evalWindowPrimary.value = evalCompareState.activeId;
+      }
+      if (evalWindowCompare) {
+        evalWindowCompare.innerHTML = priorProfiles.map((profile) => `<option value="${profile.profileId}">${getEvalProfileDisplayName(profile)}</option>`).join("");
+        if (evalCompareState.compareId && evalWindowCompare.querySelector(`option[value="${evalCompareState.compareId}"]`)) {
+          evalWindowCompare.value = evalCompareState.compareId;
         }
       }
-      populateEvalCompareSelect(evalCompareSelectA, evalCompareState.aId);
-      populateEvalCompareSelect(evalCompareSelectB, evalCompareState.bId);
-      evalCompareTfButtons.forEach((btn) => {
-        btn.classList.toggle("active", btn.dataset.tf === evalCompareState.timeframe);
-      });
-      const profileA = getEvalProfileById(evalCompareState.aId);
-      const profileB = getEvalProfileById(evalCompareState.bId);
-      if (!profileA || !profileB) {
-        if (evalCompareSummary) evalCompareSummary.textContent = "Select two evaluation profiles to compare.";
-        if (evalCompareBody) evalCompareBody.innerHTML = "";
+      if (evalWindowRecent14) evalWindowRecent14.checked = !!evalCompareState.last14;
+      if (!activeProfile) {
+        if (evalCompareSummary) evalCompareSummary.textContent = "Select an evaluation window to view details.";
         return;
       }
       const scopedRows = filterRowsForView(rows || []);
-      const rowsA = rowsForEvaluationRange(scopedRows, profileA);
-      const rowsB = rowsForEvaluationRange(scopedRows, profileB);
-      const groupsA = groupRowsByTimeframeForEval(rowsA, evalCompareState.timeframe);
-      const groupsB = groupRowsByTimeframeForEval(rowsB, evalCompareState.timeframe);
-      const combined = combineEvalGroups(groupsA, groupsB);
-      const summaryA = summarizeEvalGroups(groupsA);
-      const summaryB = summarizeEvalGroups(groupsB);
-      if (evalCompareSummary) {
-        evalCompareSummary.textContent = formatEvalCompareSummary(profileA, summaryA, profileB, summaryB);
-      }
-      const sortKey = evalCompareState.sortKey;
-      const sortDir = evalCompareState.sortDir === "asc" ? 1 : -1;
-      combined.sort((a, b) => {
-        if (sortKey === "label") {
-          const cmp = (a.label || "").localeCompare(b.label || "");
-          return sortDir * cmp;
-        }
-        const valA = Number(a[sortKey] || 0);
-        const valB = Number(b[sortKey] || 0);
-        return sortDir * (valA - valB);
+      const activeMetrics = computeWindowMetrics(activeProfile, scopedRows, {
+        last14: !!evalCompareState.last14,
+        baselineFallbackToWindow: false
       });
-      if (evalCompareBody) {
-        if (!combined.length) {
-          evalCompareBody.innerHTML = `<tr><td colspan="8" class="muted">No worked entries for these evaluations in the selected window.</td></tr>`;
-        } else {
-          evalCompareBody.innerHTML = combined.map(renderEvalCompareRow).join("");
+      const compareProfile = evalCompareState.compareEnabled ? getEvalProfileById(evalCompareState.compareId) : null;
+      const compareMetrics = compareProfile ? computeWindowMetrics(compareProfile, scopedRows, {
+        last14: !!evalCompareState.last14,
+        baselineFallbackToWindow: true
+      }) : null;
+      const modeLabel = evalCompareState.last14 ? "Last 14 worked days" : "Full evaluation window";
+      const activeLabel = getEvalHeaderLabel(activeProfile);
+      const activeDays = activeMetrics.workedDays;
+      if (evalCompareSummary) {
+        const baselineMode = (compareMetrics == null ? void 0 : compareMetrics.sampleMode) === "windowFallback" ? " \u2022 Baseline uses full-window average (fewer than 14 worked days)" : "";
+        evalCompareSummary.textContent = `${activeLabel} \u2022 ${modeLabel} \u2022 ${activeDays} worked day(s)${baselineMode}`;
+      }
+      const deltaText = Number.isFinite(activeMetrics.avgDeltaHoursPerDay) ? `${formatSigned(activeMetrics.avgDeltaHoursPerDay, 2)} hrs ${activeMetrics.avgDeltaHoursPerDay >= 0 ? "over" : "under"} evaluation` : "No eval hours/day set";
+      if (evalPrimaryDelta) {
+        evalPrimaryDelta.textContent = deltaText;
+        evalPrimaryDelta.className = `value ${metricClassByDelta(activeMetrics.avgDeltaHoursPerDay, "overUnder")}`;
+      }
+      if (evalPrimaryMeta) {
+        const progress = computeEvaluationProgress(activeProfile);
+        const block = computeTwoWeekBlock(progress);
+        const progressText = progress.hasActiveWindow ? `Evaluation progress: ${formatNumber(progress.progressPct, 1)}% (${progress.elapsedDays}/${progress.totalDays} days, ${progress.remainingDays} remaining)` : "Evaluation progress: No active eval window";
+        const blockText = block ? `2-week check: Block ${block.blockNumber} (${block.blockStart.toFormat("LLL d")} - ${block.blockEnd.toFormat("LLL d")}), ${block.daysRemaining} day(s) left${block.nextCheck ? ` \u2022 Next check around ${block.nextCheck.toFormat("LLL d")}` : ""}` : "2-week check: No active eval window";
+        evalPrimaryMeta.innerHTML = `
+          <span>Over-eval days: <b>${activeMetrics.overEvalDays}</b></span>
+          <span>Under-eval days: <b>${activeMetrics.underEvalDays}</b></span>
+          <span>Days logged: <b>${activeMetrics.workedDays}</b></span>
+          <span>${progressText}</span>
+          <span>${blockText}</span>
+        `;
+      }
+      if (evalSingleGrid) {
+        const avgHoursCls = metricClassByDelta(((_b = activeMetrics.averages.hoursPerDay) != null ? _b : 0) - ((_c = activeMetrics.evalHoursPerDay) != null ? _c : 0), "overUnder");
+        evalSingleGrid.innerHTML = [
+          { k: "Avg hours/worked day", v: formatMaybe(activeMetrics.averages.hoursPerDay, 2, "h"), cls: avgHoursCls },
+          { k: "Evaluated hours/day", v: formatMaybe(activeMetrics.evalHoursPerDay, 2, "h"), cls: "eval-neutral" },
+          { k: "Effective $/hour", v: formatMoney(activeMetrics.effectiveHourly), cls: "eval-neutral" },
+          { k: "Avg volume/day", v: formatMaybe(activeMetrics.averages.volumePerDay, 1), cls: "eval-neutral" },
+          { k: "Avg parcels/day", v: formatMaybe(activeMetrics.averages.parcelsPerDay, 1), cls: "eval-neutral" },
+          { k: "Avg letters/day", v: formatMaybe(activeMetrics.averages.lettersPerDay, 1), cls: "eval-neutral" },
+          { k: "Avg flats/day", v: formatMaybe(activeMetrics.averages.flatsPerDay, 1), cls: "eval-neutral" },
+          { k: "Total hours", v: formatMaybe(activeMetrics.totals.hours, 1, "h"), cls: "eval-neutral" },
+          { k: "Days logged", v: formatNumber(activeMetrics.workedDays, 0), cls: "eval-neutral" },
+          { k: "Quarterly pay", v: formatMoney(activeMetrics.quarterlyPay, 0), cls: "eval-neutral" },
+          { k: "Volume/hour", v: formatMaybe(activeMetrics.density.volumePerHour, 2), cls: "eval-neutral" },
+          { k: "Parcels/hour", v: formatMaybe(activeMetrics.density.parcelsPerHour, 2), cls: "eval-neutral" },
+          { k: "Avg delta/day", v: formatSignedMaybe(activeMetrics.avgDeltaHoursPerDay, 2, "h"), cls: metricClassByDelta(activeMetrics.avgDeltaHoursPerDay, "overUnder") }
+        ].map((item) => `<div class="eval-box"><span class="k">${item.k}</span><span class="v ${item.cls}">${item.v}</span></div>`).join("");
+      }
+      const canCompare = !!compareProfile && priorProfiles.length > 0;
+      if (evalCompareToggle) evalCompareToggle.style.display = priorProfiles.length > 0 ? "" : "none";
+      if (evalCompareControls) evalCompareControls.style.display = evalCompareState.compareEnabled && canCompare ? "" : "none";
+      if (evalSingleDashboard) evalSingleDashboard.style.display = evalCompareState.compareEnabled && canCompare ? "none" : "";
+      if (evalCompareDashboard) evalCompareDashboard.style.display = evalCompareState.compareEnabled && canCompare ? "" : "none";
+      if (evalCompareState.compareEnabled && canCompare && compareMetrics) {
+        const comparison = buildComparisonSummary(activeMetrics, compareMetrics);
+        const topDelta = (_d = comparison == null ? void 0 : comparison.topDelta) == null ? void 0 : _d.delta;
+        if (evalComparePrimaryDelta) {
+          evalComparePrimaryDelta.textContent = `${formatSignedMaybe(topDelta, 2, " hrs/day")}`;
+          evalComparePrimaryDelta.className = `value ${metricClassByDelta(topDelta, "overUnder")}`;
         }
+        if (evalComparePrimaryMeta) {
+          evalComparePrimaryMeta.innerHTML = `<span>${activeLabel} minus ${getEvalHeaderLabel(compareProfile)} (Active - Baseline)</span>`;
+        }
+        const paneItems = (metrics) => {
+          var _a7;
+          return [
+            { label: "Days logged", value: formatNumber(metrics.workedDays, 0) },
+            { label: "Total volume", value: formatNumber(metrics.totals.volume, 0) },
+            { label: "Total hours", value: formatMaybe(metrics.totals.hours, 1, "h") },
+            { label: "Avg volume/day", value: formatMaybe(metrics.averages.volumePerDay, 1) },
+            { label: "Avg hours/day", value: formatMaybe(metrics.averages.hoursPerDay, 2, "h") },
+            { label: "Avg delta/day", value: formatSignedMaybe(metrics.avgDeltaHoursPerDay, 2, "h"), cls: metricClassByDelta(metrics.avgDeltaHoursPerDay, "overUnder") },
+            { label: "Effective $/hour", value: formatMoney(metrics.effectiveHourly) },
+            { label: "Evaluated pay", value: formatMoney((_a7 = metrics.profile) == null ? void 0 : _a7.annualSalary, 0) }
+          ];
+        };
+        renderEvalList(evalPaneA, paneItems(compareMetrics));
+        renderEvalList(evalPaneB, paneItems(activeMetrics));
+        const orderedGroups = ["time", "workload", "efficiency", "pay"];
+        const deltaRows = orderedGroups.flatMap((group) => {
+          const groupRows = ((comparison == null ? void 0 : comparison.rows) || []).filter((row) => row.group === group);
+          return groupRows.map((row) => {
+            const deltaText2 = formatSignedMaybe(row.delta, row.digits, row.suffix);
+            const pctText = row.pct == null ? "" : ` (${formatSignedMaybe(row.pct, 1, "%")})`;
+            return {
+              label: `${row.label}`,
+              value: `${deltaText2}${pctText}`,
+              cls: metricClassByDelta(row.delta, row.meaning)
+            };
+          });
+        });
+        renderEvalList(evalPaneDelta, deltaRows);
+        if (evalCompareNarrative) {
+          evalCompareNarrative.textContent = buildEvalNarrative(comparison);
+        }
+        renderEvalTrendList(evalTrendList, profiles, scopedRows, { last14: !!evalCompareState.last14 });
+      } else {
+        renderEvalTrendList(evalTrendList, profiles, scopedRows, { last14: !!evalCompareState.last14 });
       }
     } catch (err) {
       console.warn("buildEvalCompare error", err);

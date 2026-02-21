@@ -3260,7 +3260,7 @@ function getHourlyRateFromEval(){
           <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\">${summaryHtml}</div>
           <table style="width:100%;border-collapse:collapse">
             <thead>
-              <tr><th>Day</th><th class="right">This week</th><th class="right">Last week</th><th class="right">Δ%</th></tr>
+              <tr><th>Day</th><th class="right">This week</th><th class="right">Baseline</th><th class="right">Δ%</th></tr>
             </thead>
             <tbody>
               ${rowsHtml.join('')}
@@ -3303,7 +3303,7 @@ function getHourlyRateFromEval(){
         panelBody.innerHTML = `
           <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\">${summaryHtml}</div>
           <table style=\"width:100%;border-collapse:collapse\">
-            <thead><tr><th>Day</th><th class=\"right\">This week</th><th class=\"right\">Last week</th><th class=\"right\">Δ%</th></tr></thead>
+            <thead><tr><th>Day</th><th class=\"right\">This week</th><th class=\"right\">Baseline</th><th class=\"right\">Δ%</th></tr></thead>
             <tbody>${rowsHtml.join('')}</tbody>
             <tfoot>${totalRow}</tfoot>
           </table>`;
@@ -3340,7 +3340,7 @@ function getHourlyRateFromEval(){
         panelBody.innerHTML = `
           <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\">${summaryHtml}</div>
           <table style=\"width:100%;border-collapse:collapse\">
-            <thead><tr><th>Day</th><th class=\"right\">This week</th><th class=\"right\">Last week</th><th class=\"right\">Δ%</th></tr></thead>
+            <thead><tr><th>Day</th><th class=\"right\">This week</th><th class=\"right\">Baseline</th><th class=\"right\">Δ%</th></tr></thead>
             <tbody>${rowsHtml.join('')}</tbody>
             <tfoot>${totalRow}</tfoot>
           </table>`;
@@ -3377,7 +3377,7 @@ function getHourlyRateFromEval(){
       const { fg: cFg } = colorForDelta(cumulativeVal || 0);
       body.innerHTML = `
         <table style="width:100%;border-collapse:collapse">
-          <thead><tr><th>Day</th><th class=\"right\">This week</th><th class=\"right\">Last week</th><th class=\"right\">Δ%</th></tr></thead>
+          <thead><tr><th>Day</th><th class=\"right\">This week</th><th class=\"right\">Baseline</th><th class=\"right\">Δ%</th></tr></thead>
           <tbody>${rows.join('')}</tbody>
           <tfoot>
             <tr><th colspan=\"3\" class=\"right\">Weekly Avg Δ% ${sc ? `<small class=\\"muted\\">(N=${sc.n}${(sc.m&&sc.m!==sc.n)?`, last N=${Math.min(sc.n, sc.m)}`:''})</small>` : ''}</th><th class=\"right\" style=\"color:${sFg}\">${sTxt}</th></tr>

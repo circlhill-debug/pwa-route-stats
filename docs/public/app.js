@@ -1520,8 +1520,39 @@
     }
     function collectWorkedDays(rows, limit = 365) {
       const all = filterRowsForView2(rows || []).filter((r) => r && r.status !== "off" && r.work_date);
-      const sorted = [...all].sort((a, b) => a.work_date < b.work_date ? 1 : -1);
+      const byDate = /* @__PURE__ */ new Map();
+      all.forEach((row) => {
+        const key = row.work_date;
+        const prev = byDate.get(key);
+        if (!prev) {
+          byDate.set(key, row);
+          return;
+        }
+        byDate.set(key, choosePreferredDayRow(prev, row));
+      });
+      const sorted = [...byDate.values()].sort((a, b) => a.work_date < b.work_date ? 1 : -1);
       return limit && sorted.length > limit ? sorted.slice(0, limit) : sorted;
+    }
+    function choosePreferredDayRow(a, b) {
+      const updatedA = Date.parse((a == null ? void 0 : a.updated_at) || (a == null ? void 0 : a.created_at) || "");
+      const updatedB = Date.parse((b == null ? void 0 : b.updated_at) || (b == null ? void 0 : b.created_at) || "");
+      if (Number.isFinite(updatedA) && Number.isFinite(updatedB) && updatedA !== updatedB) {
+        return updatedA > updatedB ? a : b;
+      }
+      const score = (row) => {
+        var _a6, _b, _c;
+        const routeHours = normalizeHours((_a6 = row == null ? void 0 : row.route_minutes) != null ? _a6 : row == null ? void 0 : row.routeMinutes);
+        const officeHours = normalizeHours((_b = row == null ? void 0 : row.office_minutes) != null ? _b : row == null ? void 0 : row.officeMinutes);
+        const combined = routeHours + officeHours;
+        const total = normalizeHours((_c = row == null ? void 0 : row.hours) != null ? _c : row == null ? void 0 : row.totalHours);
+        if (!combined || !total) return 0;
+        const ratio = total > combined ? total / combined : combined / total;
+        return ratio <= 1.35 ? 2 : 1;
+      };
+      const scoreA = score(a);
+      const scoreB = score(b);
+      if (scoreA !== scoreB) return scoreA > scoreB ? a : b;
+      return b;
     }
     function buildDayCompareContext(rows, limit = 365) {
       const worked = collectWorkedDays(rows, limit);
@@ -1560,15 +1591,14 @@
       return row ? dayMetricsFromRow(row, { source: "manualReference", label: row.work_date }) : null;
     }
     function dayMetricsFromRow(row, meta) {
-      var _a6, _b, _c;
+      var _a6, _b;
       if (!row) return null;
       const parcels2 = +row.parcels || 0;
       const letters2 = +row.letters || 0;
       const volume = combinedVolume2(parcels2, letters2);
       const routeHours = normalizeHours((_a6 = row.route_minutes) != null ? _a6 : row.routeMinutes);
       const officeHours = normalizeHours((_b = row.office_minutes) != null ? _b : row.officeMinutes);
-      const storedHours = Number((_c = row.hours) != null ? _c : row.totalHours);
-      const totalHours = Number.isFinite(storedHours) ? storedHours : routeHours + officeHours;
+      const totalHours = normalizeTotalHours(row, routeHours, officeHours);
       const miles2 = Number(row.miles) || 0;
       const efficiencyMinutes = volume > 0 ? routeHours * 60 / volume : null;
       return {
@@ -1592,11 +1622,10 @@
       const valid = rows.filter(Boolean);
       if (!valid.length) return null;
       const totals = valid.reduce((acc, row) => {
-        var _a6, _b, _c;
+        var _a6, _b;
         const routeHours = normalizeHours((_a6 = row.route_minutes) != null ? _a6 : row.routeMinutes);
         const officeHours = normalizeHours((_b = row.office_minutes) != null ? _b : row.officeMinutes);
-        const storedHours = Number((_c = row.hours) != null ? _c : row.totalHours);
-        acc.totalHours += Number.isFinite(storedHours) ? storedHours : routeHours + officeHours;
+        acc.totalHours += normalizeTotalHours(row, routeHours, officeHours);
         acc.routeHours += routeHours;
         acc.officeHours += officeHours;
         acc.parcels += +row.parcels || 0;
@@ -1685,7 +1714,12 @@
     const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
     function summarizeEntry(row, model, stats, dismissedMap) {
       const iso = row.work_date;
-      const dt = DateTime.fromISO(iso, { zone: ZONE }).toFormat("ccc LLL dd");
+      const dtObj = DateTime.fromISO(iso, { zone: ZONE });
+      const weekday = dtObj.toFormat("ccc");
+      const monthDay = dtObj.toFormat("LLL dd");
+      const isHolidayCatchup = hasTag2(row, "holiday_catchup");
+      const dt = `${weekday} ${monthDay}`;
+      const dtHtml = isHolidayCatchup ? `<span class="diag-day-amber" title="Holiday catch-up day">${escapeHtml(dt)}</span>` : escapeHtml(dt);
       const actualMinutes = routeAdjustedMinutes2(row);
       const expectedMinutes = model ? model.a + model.bp * (+row.parcels || 0) + model.bl * (+row.letters || 0) : null;
       const deltaMinutes = minutesDelta(actualMinutes, expectedMinutes);
@@ -1700,19 +1734,7 @@
       const weatherSnippet = weatherRaw.replace(/Reason:\s*[^·]+/ig, "").trim();
       const weatherShort = weatherDisplayParts.length ? weatherDisplayParts.slice(0, 2).join(" \xB7 ") : "\u2014";
       const weather2 = escapeHtml(weatherShort);
-      const badges = [];
-      if (hasTag2(row, "holiday_catchup")) {
-        const ctx = row._holidayCatchup || {};
-        const formatRatio = (ratio) => ratio != null && isFinite(ratio) ? `${ratio.toFixed(2)}\xD7` : "\u2014";
-        const fmt = (val, decimals) => val != null && isFinite(val) ? Number(val).toFixed(decimals) : "\u2014";
-        const tipParts = [];
-        if (ctx.prevHoliday) tipParts.push(`Holiday on ${ctx.prevHoliday}`);
-        if (ctx.baselineParcels != null) tipParts.push(`Parcels ${fmt(ctx.parcels, 0)} vs avg ${fmt(ctx.baselineParcels, 1)} (${formatRatio(ctx.ratioParcels)})`);
-        if (ctx.baselineRouteMinutes != null) tipParts.push(`Route ${fmt((ctx.routeMinutes || 0) / 60, 2)}h vs avg ${fmt((ctx.baselineRouteMinutes || 0) / 60, 2)}h (${formatRatio(ctx.ratioRoute)})`);
-        const badgeTitle = escapeHtml(tipParts.join(" \u2022 ") || "Follows holiday off-day with higher-than-baseline load");
-        badges.push(`<span class="pill badge-holiday" title="${badgeTitle}">Holiday catch-up</span>`);
-      }
-      const weatherCell = badges.length ? `${weather2} ${badges.join(" ")}` : weather2;
+      const weatherCell = weather2;
       const rawNotes = (row.notes || "").trim();
       const notePlainFull = rawNotes.replace(/\s+/g, " ").trim();
       const noteFullEncoded = encodeURIComponent(notePlainFull);
@@ -1720,6 +1742,7 @@
       return {
         iso,
         dt,
+        dtHtml,
         parcels: parcels2,
         letters: letters2,
         expectedMinutes,
@@ -2012,7 +2035,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             tags: Array.isArray((_a7 = d.row) == null ? void 0 : _a7._tags) ? d.row._tags : []
           });
           return `<tr>
-          <td class="text-left">${rowSummary.dt}</td>
+          <td class="text-left">${rowSummary.dtHtml || escapeHtml(rowSummary.dt)}</td>
           <td>${rowSummary.parcels}</td>
           <td>${rowSummary.letters}</td>
           <td>${(d.predMin / 60).toFixed(2)}</td>
@@ -2149,6 +2172,17 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       if (!Number.isFinite(n)) return 0;
       if (Math.abs(n) > 24) return n / 60;
       return n;
+    }
+    function normalizeTotalHours(row, routeHours, officeHours) {
+      var _a6;
+      const stored = normalizeHours((_a6 = row == null ? void 0 : row.hours) != null ? _a6 : row == null ? void 0 : row.totalHours);
+      const combined = routeHours + officeHours;
+      if (!Number.isFinite(stored) || stored <= 0) return combined;
+      if (combined > 0) {
+        const suspiciouslyHigh = stored - combined >= 2 && stored > combined * 1.5;
+        if (suspiciouslyHigh) return combined;
+      }
+      return stored;
     }
     function buildDayCompare2(rows) {
       var _a6;
@@ -8041,7 +8075,7 @@ Score: ${overallScore}/10 (higher is better)`;
           <div style="padding:8px 10px;border-bottom:1px solid var(--border)">${summaryHtml}</div>
           <table style="width:100%;border-collapse:collapse">
             <thead>
-              <tr><th>Day</th><th class="right">This week</th><th class="right">Last week</th><th class="right">\u0394%</th></tr>
+              <tr><th>Day</th><th class="right">This week</th><th class="right">Baseline</th><th class="right">\u0394%</th></tr>
             </thead>
             <tbody>
               ${rowsHtml.join("")}
@@ -8085,7 +8119,7 @@ Score: ${overallScore}/10 (higher is better)`;
         panelBody.innerHTML = `
           <div style="padding:8px 10px;border-bottom:1px solid var(--border)">${summaryHtml}</div>
           <table style="width:100%;border-collapse:collapse">
-            <thead><tr><th>Day</th><th class="right">This week</th><th class="right">Last week</th><th class="right">\u0394%</th></tr></thead>
+            <thead><tr><th>Day</th><th class="right">This week</th><th class="right">Baseline</th><th class="right">\u0394%</th></tr></thead>
             <tbody>${rowsHtml.join("")}</tbody>
             <tfoot>${totalRow}</tfoot>
           </table>`;
@@ -8123,7 +8157,7 @@ Score: ${overallScore}/10 (higher is better)`;
         panelBody.innerHTML = `
           <div style="padding:8px 10px;border-bottom:1px solid var(--border)">${summaryHtml}</div>
           <table style="width:100%;border-collapse:collapse">
-            <thead><tr><th>Day</th><th class="right">This week</th><th class="right">Last week</th><th class="right">\u0394%</th></tr></thead>
+            <thead><tr><th>Day</th><th class="right">This week</th><th class="right">Baseline</th><th class="right">\u0394%</th></tr></thead>
             <tbody>${rowsHtml.join("")}</tbody>
             <tfoot>${totalRow}</tfoot>
           </table>`;
@@ -8162,7 +8196,7 @@ Score: ${overallScore}/10 (higher is better)`;
       const { fg: cFg } = colorForDelta(cumulativeVal || 0);
       body.innerHTML = `
         <table style="width:100%;border-collapse:collapse">
-          <thead><tr><th>Day</th><th class="right">This week</th><th class="right">Last week</th><th class="right">\u0394%</th></tr></thead>
+          <thead><tr><th>Day</th><th class="right">This week</th><th class="right">Baseline</th><th class="right">\u0394%</th></tr></thead>
           <tbody>${rows2.join("")}</tbody>
           <tfoot>
             <tr><th colspan="3" class="right">Weekly Avg \u0394% ${sc ? `<small class=\\"muted\\">(N=${sc.n}${sc.m && sc.m !== sc.n ? `, last N=${Math.min(sc.n, sc.m)}` : ""})</small>` : ""}</th><th class="right" style="color:${sFg}">${sTxt}</th></tr>

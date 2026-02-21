@@ -302,7 +302,14 @@ export function createDiagnostics({
 
   function summarizeEntry(row, model, stats, dismissedMap) {
     const iso = row.work_date;
-    const dt = DateTime.fromISO(iso, { zone: ZONE }).toFormat('ccc LLL dd');
+    const dtObj = DateTime.fromISO(iso, { zone: ZONE });
+    const weekday = dtObj.toFormat('ccc');
+    const monthDay = dtObj.toFormat('LLL dd');
+    const isHolidayCatchup = hasTag(row, 'holiday_catchup');
+    const dt = `${weekday} ${monthDay}`;
+    const dtHtml = isHolidayCatchup
+      ? `<span class="diag-day-amber" title="Holiday catch-up day">${escapeHtml(dt)}</span>`
+      : escapeHtml(dt);
     const actualMinutes = routeAdjustedMinutes(row);
     const expectedMinutes = model ? (model.a + model.bp * (+row.parcels || 0) + model.bl * (+row.letters || 0)) : null;
     const deltaMinutes = minutesDelta(actualMinutes, expectedMinutes);
@@ -319,19 +326,7 @@ export function createDiagnostics({
     const weatherSnippet = weatherRaw.replace(/Reason:\s*[^·]+/ig, '').trim();
     const weatherShort = weatherDisplayParts.length ? weatherDisplayParts.slice(0, 2).join(' · ') : '—';
     const weather = escapeHtml(weatherShort);
-    const badges = [];
-    if (hasTag(row, 'holiday_catchup')) {
-      const ctx = row._holidayCatchup || {};
-      const formatRatio = ratio => (ratio != null && isFinite(ratio) ? `${ratio.toFixed(2)}×` : '—');
-      const fmt = (val, decimals) => (val != null && isFinite(val) ? Number(val).toFixed(decimals) : '—');
-      const tipParts = [];
-      if (ctx.prevHoliday) tipParts.push(`Holiday on ${ctx.prevHoliday}`);
-      if (ctx.baselineParcels != null) tipParts.push(`Parcels ${fmt(ctx.parcels, 0)} vs avg ${fmt(ctx.baselineParcels, 1)} (${formatRatio(ctx.ratioParcels)})`);
-      if (ctx.baselineRouteMinutes != null) tipParts.push(`Route ${fmt((ctx.routeMinutes || 0) / 60, 2)}h vs avg ${fmt((ctx.baselineRouteMinutes || 0) / 60, 2)}h (${formatRatio(ctx.ratioRoute)})`);
-      const badgeTitle = escapeHtml(tipParts.join(' • ') || 'Follows holiday off-day with higher-than-baseline load');
-      badges.push(`<span class="pill badge-holiday" title="${badgeTitle}">Holiday catch-up</span>`);
-    }
-    const weatherCell = badges.length ? `${weather} ${badges.join(' ')}` : weather;
+    const weatherCell = weather;
     const rawNotes = (row.notes || '').trim();
     const notePlainFull = rawNotes.replace(/\s+/g, ' ').trim();
     const noteFullEncoded = encodeURIComponent(notePlainFull);
@@ -339,6 +334,7 @@ export function createDiagnostics({
     return {
       iso,
       dt,
+      dtHtml,
       parcels,
       letters,
       expectedMinutes,
@@ -660,7 +656,7 @@ export function createDiagnostics({
           tags: Array.isArray(d.row?._tags) ? d.row._tags : []
         });
         return `<tr>
-          <td class="text-left">${rowSummary.dt}</td>
+          <td class="text-left">${rowSummary.dtHtml || escapeHtml(rowSummary.dt)}</td>
           <td>${rowSummary.parcels}</td>
           <td>${rowSummary.letters}</td>
           <td>${(d.predMin / 60).toFixed(2)}</td>

@@ -177,26 +177,26 @@
     justify-content:flex-start;
   }
   @supports (-webkit-touch-callout: none){
-    html:not([data-theme="night"]) body{
+    html[data-theme="classic"] body{
       background:#0f1115!important;
       color:#e8e8ea;
     }
-    html:not([data-theme="night"]) .card,
-    html:not([data-theme="night"]) .box,
-    html:not([data-theme="night"]) .panel,
-    html:not([data-theme="night"]) .stats-card,
-    html:not([data-theme="night"]) .route-box,
-    html:not([data-theme="night"]) .summary-card{
+    html[data-theme="classic"] .card,
+    html[data-theme="classic"] .box,
+    html[data-theme="classic"] .panel,
+    html[data-theme="classic"] .stats-card,
+    html[data-theme="classic"] .route-box,
+    html[data-theme="classic"] .summary-card{
       background:#141821!important;
       border:1px solid #22262e!important;
       box-shadow:none;
     }
-    html:not([data-theme="night"]) .snapshot-section{
+    html[data-theme="classic"] .snapshot-section{
       background:#141821!important;
       border:1px solid #22262e!important;
       box-shadow:none;
     }
-    html:not([data-theme="night"]) .forecast-badge{
+    html[data-theme="classic"] .forecast-badge{
       background:#dce6f4!important;
       border:2px solid #3d6187!important;
       color:#0b1322!important;
@@ -478,8 +478,18 @@
     gap:8px!important;
   }
   #dayCompareCard #dcHighlights .pill{
-    padding:5px 8px;
-    font-size:12px;
+    padding:6px 9px;
+    font-size:13px;
+  }
+  #dayCompareCard .dc-focus-card > small{
+    font-size:1rem!important;
+    line-height:1.25;
+    font-weight:600;
+    color:var(--text)!important;
+  }
+  #dayCompareCard #dcHighlights .pill b{
+    font-size:1rem;
+    font-weight:650;
   }
 
   /* ==== Diagnostics density + type cleanup ==== */
@@ -568,6 +578,20 @@
   .badge-history-item.achieved small{ color:#fde68a; }
   .badge-history-name{ margin-top:6px; font-size:0.9rem; font-weight:600; color:#fde68a; }
   .badge-history-note{ margin-top:6px; font-size:0.8rem; color:var(--muted); }
+  html[data-theme="polish"] .badge-count,
+  html[data-theme="classic"] .badge-count,
+  html[data-theme="night"] .badge-count{
+    font-size:1.02rem;
+    line-height:1.25;
+    font-weight:600;
+  }
+  html[data-theme="polish"] .badge-history-value,
+  html[data-theme="classic"] .badge-history-value,
+  html[data-theme="night"] .badge-history-value{
+    font-size:1rem;
+    line-height:1.25;
+    font-weight:600;
+  }
   .trip-summary{ font-size:13px; line-height:1.5; }
   .diag-wrap{
     overflow:auto;
@@ -809,6 +833,120 @@
   }
   @media (prefers-reduced-motion: reduce){
     *{ animation:none!important; transition:none!important; }
+  }
+
+  /* Classic theme restores the original UI look before polish pass */
+  html[data-theme="classic"]{
+    --rs-bg:#0f1115;
+    --rs-card-bg:#141821;
+    --rs-border:#22262e;
+    --rs-text-primary:#e8e8ea;
+    --rs-text-secondary:#9aa0aa;
+    --rs-brand:#2b7fff;
+    --rs-button-hover:#256adf;
+    --rs-button-muted:#1c2c55;
+    --rs-card-shadow:none;
+    --button-bg:#2b7fff;
+  }
+  html[data-theme="classic"] body{
+    font-family:system-ui,-apple-system,Inter,Segoe UI,Roboto,Arial,sans-serif;
+    position:static;
+    isolation:auto;
+  }
+  html[data-theme="classic"] body::before{
+    background:none;
+  }
+  html[data-theme="classic"] body::after{
+    display:none;
+  }
+  html[data-theme="classic"] header{
+    position:static;
+    top:auto;
+    z-index:auto;
+    backdrop-filter:none;
+    background:transparent;
+    border-bottom:1px solid var(--border);
+    padding:14px 16px;
+  }
+  html[data-theme="classic"] .wrap{
+    max-width:1120px;
+    padding:16px;
+  }
+  html[data-theme="classic"] h1{
+    font-family:system-ui,-apple-system,Inter,Segoe UI,Roboto,Arial,sans-serif;
+    font-weight:600;
+  }
+  html[data-theme="classic"] .card,
+  html[data-theme="classic"] .box,
+  html[data-theme="classic"] .panel,
+  html[data-theme="classic"] .stats-card,
+  html[data-theme="classic"] .route-box,
+  html[data-theme="classic"] .summary-card{
+    border-radius:10px;
+    padding:12px;
+    backdrop-filter:none;
+    transition:none;
+    box-shadow:none!important;
+  }
+  html[data-theme="classic"] .card:hover,
+  html[data-theme="classic"] .box:hover{
+    transform:none;
+    border-color:var(--rs-border)!important;
+    box-shadow:none!important;
+  }
+  html[data-theme="classic"] button,
+  html[data-theme="classic"] .btn,
+  html[data-theme="classic"] .action-btn{
+    border-radius:8px;
+    padding:8px 14px;
+    box-shadow:none;
+    letter-spacing:normal;
+    transition:background .15s ease;
+  }
+  html[data-theme="classic"] button:hover,
+  html[data-theme="classic"] .btn:hover,
+  html[data-theme="classic"] .action-btn:hover{
+    transform:none;
+  }
+  html[data-theme="classic"] button.ghost{
+    background:transparent;
+    border:1px solid var(--rs-border);
+  }
+  html[data-theme="classic"] .pill{
+    background:transparent;
+    border:1px solid var(--border);
+    box-shadow:none;
+    padding:6px 8px;
+  }
+  html[data-theme="classic"] .snapshot-section{
+    background:var(--snapshot-bg);
+  }
+  html[data-theme="classic"] .stat{
+    background:transparent;
+    border:1px solid var(--border);
+    padding:10px;
+  }
+  html[data-theme="classic"] canvas{
+    background:transparent;
+    border:1px solid var(--border);
+    border-radius:10px;
+  }
+  html[data-theme="classic"] #diag{
+    background:#111;
+    color:#ddd;
+    border-bottom:1px solid #222;
+    backdrop-filter:none;
+    font:12px/1.35 system-ui;
+    padding:6px 10px;
+  }
+  html[data-theme="classic"] dialog{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:12px;
+    box-shadow:none;
+  }
+  html[data-theme="classic"] main.wrap > .card{
+    animation:none;
   }
 
   /* Visibility + focus upgrades */
@@ -1118,13 +1256,14 @@
         <input id="route" type="text" value="R1" readonly>
       </div>
 
-      <div><label>Start (defaults 08:00)</label><div class="row"><input id="start" type="time" value="08:00"><button id="btnStartNow2" class="ghost">Now</button></div></div>
+      <div><label>Start (defaults 08:30)</label><div class="row"><input id="start" type="time" value="08:30"><button id="btnStartNow2" class="ghost">Now</button></div></div>
       <div><label>Hit Street</label><div class="row"><input id="departTime" type="time" placeholder="--:--"><button id="btnStreetNow2" class="ghost">Now</button></div></div>
 
       <div><label>Return (optional)</label><div class="row"><input id="returnTime" type="time" placeholder="--:--"><button id="btnReturnNow" class="ghost">Now</button></div></div>
       <div><label>Clock Out</label><div class="row"><input id="end" type="time" placeholder="--:--"><button id="btnClockNow2" class="ghost">Now</button></div></div>
 
       <div><label>Parcels</label><input id="parcels" type="number" min="0" value="0"></div>
+      <div><label>Misdeliveries</label><input id="misdeliveryCount" type="number" min="0" value="0" placeholder="e.g., 1"></div>
       <div><label>Helper parcels</label><input id="parcelHelper" type="number" min="0" value="0" placeholder="e.g., 120"></div>
       <div><label>Letters</label><input id="letters" type="number" min="0" value="0"></div>
       <div><label>Miles</label><input id="miles" type="number" step="0.1" min="0" value="53"></div>
@@ -1675,6 +1814,14 @@
       <select id="modelScope" style="min-width:160px">
         <option value="rolling">Rolling (120 days)</option>
         <option value="all">All-time</option>
+      </select>
+    </label>
+    <label class="row" style="justify-content:space-between;align-items:center;gap:12px">
+      <span>Theme</span>
+      <select id="themeSelect" style="min-width:180px">
+        <option value="polish">Polish (new)</option>
+        <option value="classic">Classic (original)</option>
+        <option value="night">Night</option>
       </select>
     </label>
     <!-- Feature flags -->

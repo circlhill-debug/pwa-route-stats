@@ -1934,7 +1934,7 @@ aiSummary = createAiSummary({
   function routeEndTime(){ return ($('returnTime').value || $('end').value || ''); }
 
 const date=$('date'), route=$('route'), start=$('start'), end=$('end'), departTime=$('departTime'), returnTime=$('returnTime');
-const parcels=$('parcels'), misdeliveryInput=$('misdeliveryCount'), parcelHelperInput=$('parcelHelper'), letters=$('letters'), miles=$('miles'), mood=$('mood'), notes=$('notes');
+const parcels=$('parcels'), misdeliveryInput=$('misdeliveryCount'), parcelHelperInput=$('parcelHelper'), flatsMinutesInput=$('flatsMinutes'), letters=$('letters'), miles=$('miles'), mood=$('mood'), notes=$('notes');
 const sleepInput=$('sleepHours'), drinkInput=$('drinkFlag');
 const secondTripMilesInput=$('secondTripMiles'), secondTripTimeInput=$('secondTripTime'), secondTripEmaInput=$('secondTripEma');
 const breakMinutesInput=$('breakMinutes');
@@ -1957,6 +1957,7 @@ setSecondTripInputs(null);
 if (breakMinutesInput) breakMinutesInput.value = '0';
 if (parcelHelperInput) parcelHelperInput.value = '0';
 if (misdeliveryInput) misdeliveryInput.value = '0';
+if (flatsMinutesInput) flatsMinutesInput.value = '';
   const weather=$('weather'), temp=$('temp'), boxholders=$('boxholders'), holiday=$('holiday');
   const offDay=$('offDay');
   const officeH=$('officeH'), routeH=$('routeH'), totalH=$('totalH');
@@ -2184,8 +2185,8 @@ if (misdeliveryInput) misdeliveryInput.value = '0';
   $('btnReturnNow').addEventListener('click',()=> setNow(returnTime));
   $('btnClockNow2').addEventListener('click',()=>{ setNow(end); if(!returnTime.value){ returnTime.value = end.value; } });
 
-  offDay.addEventListener('change', ()=>{ if(offDay.checked){ end.value=hhmmNow(); parcels.value=letters.value=miles.value=0; if(misdeliveryInput) misdeliveryInput.value='0'; mood.value='🛑 off'; computeBreakdown(); }});
-;[date,start,departTime,returnTime,end,parcels,misdeliveryInput,letters,miles,offDay,weather,temp,boxholders].forEach(el=> el?.addEventListener('input', computeBreakdown));
+  offDay.addEventListener('change', ()=>{ if(offDay.checked){ end.value=hhmmNow(); parcels.value=letters.value=miles.value=0; if(misdeliveryInput) misdeliveryInput.value='0'; if(flatsMinutesInput) flatsMinutesInput.value=''; mood.value='🛑 off'; computeBreakdown(); }});
+;[date,start,departTime,returnTime,end,parcels,misdeliveryInput,letters,miles,offDay,weather,temp,boxholders,flatsMinutesInput].forEach(el=> el?.addEventListener('input', computeBreakdown));
 secondTripMilesInput?.addEventListener('input', updateSecondTripSummary);
 secondTripTimeInput?.addEventListener('input', updateSecondTripSummary);
 secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
@@ -2209,6 +2210,10 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
     const misdeliveryCount = readMisdeliveryInput();
     if (misdeliveryCount > 0){
       parts.push(`Misdelivery:${misdeliveryCount}`);
+    }
+    const flatsMinutes = readFlatsMinutesInput();
+    if (flatsMinutes != null){
+      parts.push(`FlatsTime:${flatsMinutes}`);
     }
     const sleepValRaw = sleepInput?.value;
     const sleepVal = sleepValRaw === '' || sleepValRaw == null ? null : Number(sleepValRaw);
@@ -2283,11 +2288,17 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
       if (breakMinutesInput) breakMinutesInput.value = '0';
       if (parcelHelperInput) parcelHelperInput.value = '0';
       if (misdeliveryInput) misdeliveryInput.value = String(Number(r?.misdelivery_count || 0) || 0);
+      if (flatsMinutesInput) {
+        const flatsMinutes = Number.isFinite(Number(r?.flats_minutes))
+          ? Math.max(0, Math.round(Number(r.flats_minutes)))
+          : parseFlatsMinutesFromWeatherString(r?.weather_json || '');
+        flatsMinutesInput.value = flatsMinutes == null ? '' : String(flatsMinutes);
+      }
       if (sleepInput) sleepInput.value = '';
       if (drinkInput) drinkInput.value = '';
     } else {
       const parts = String(raw).split('·').map(s=>s.trim());
-      let w='', t='', b=''; let hol=false; let rsn=''; let stData=null; let brk=null; let helperParcels=''; let misdeliveryVal=''; let sleepVal=''; let drinkVal='';
+      let w='', t='', b=''; let hol=false; let rsn=''; let stData=null; let brk=null; let helperParcels=''; let misdeliveryVal=''; let flatsMinutesVal=''; let sleepVal=''; let drinkVal='';
       for (const p of parts){
         if (/°F$/.test(p)) t = p.replace('°F','').trim();
         else if (/^Box:/i.test(p)) b = p.split(':').slice(1).join(':').trim();
@@ -2304,6 +2315,9 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
         }
         else if (/^Misdelivery:/i.test(p)){
           misdeliveryVal = p.split(':').slice(1).join(':').trim();
+        }
+        else if (/^FlatsTime:/i.test(p)){
+          flatsMinutesVal = p.split(':').slice(1).join(':').trim();
         }
         else if (/^Sleep:/i.test(p)){
           sleepVal = p.split(':').slice(1).join(':').trim();
@@ -2327,6 +2341,14 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
         if (Number.isFinite(parsed) && parsed >= 0) misdeliveryInput.value = String(Math.round(parsed));
         else misdeliveryInput.value = String(Number(r?.misdelivery_count || 0) || 0);
       }
+      if (flatsMinutesInput){
+        const parsed = parseFloat(flatsMinutesVal);
+        if (Number.isFinite(parsed) && parsed >= 0) flatsMinutesInput.value = String(Math.round(parsed));
+        else {
+          const fromRow = Number(r?.flats_minutes);
+          flatsMinutesInput.value = Number.isFinite(fromRow) && fromRow >= 0 ? String(Math.round(fromRow)) : '';
+        }
+      }
       if (sleepInput) sleepInput.value = sleepVal || '';
       if (drinkInput) drinkInput.value = drinkVal || '';
     }
@@ -2340,7 +2362,7 @@ const searchBox = $('searchBox'); let allRows = [];
 function applySearch(rows){
     const q = (searchBox.value||'').trim().toLowerCase(); if(!q) return rows;
     return rows.filter(r=>{
-      const fields=[ r.work_date, r.status, r.mood, r.weather_json, r.notes, String(r.parcels||''), String(r.letters||''), String(r.miles||''), String(r.misdelivery_count||'') ];
+      const fields=[ r.work_date, r.status, r.mood, r.weather_json, r.notes, String(r.parcels||''), String(r.letters||''), String(r.miles||''), String(r.misdelivery_count||''), String(r.flats_minutes||'') ];
       return fields.some(v=> String(v||'').toLowerCase().includes(q));
     });
   }
@@ -2382,6 +2404,15 @@ function readMisdeliveryInput(){
   if (!misdeliveryInput) return 0;
   const val = parseFloat(misdeliveryInput.value || '');
   if (!Number.isFinite(val) || val <= 0) return 0;
+  return Math.max(0, Math.round(val));
+}
+
+function readFlatsMinutesInput(){
+  if (!flatsMinutesInput) return null;
+  const raw = String(flatsMinutesInput.value ?? '').trim();
+  if (raw === '') return null;
+  const val = parseFloat(raw);
+  if (!Number.isFinite(val) || val < 0) return null;
   return Math.max(0, Math.round(val));
 }
 
@@ -2453,6 +2484,20 @@ function parseMisdeliveryFromWeatherString(weatherStr){
     return Math.max(0, Math.round(val));
   }catch(_){
     return 0;
+  }
+}
+
+function parseFlatsMinutesFromWeatherString(weatherStr){
+  if (!weatherStr) return null;
+  try{
+    const part = String(weatherStr).split('·').map(s => s.trim()).find(p => /^FlatsTime:/i.test(p));
+    if (!part) return null;
+    const raw = part.split(':').slice(1).join(':').trim();
+    const val = parseFloat(raw);
+    if (!Number.isFinite(val) || val < 0) return null;
+    return Math.max(0, Math.round(val));
+  }catch(_){
+    return null;
   }
 }
 
@@ -2634,7 +2679,7 @@ function getHourlyRateFromEval(){
     if(!confirm(`Delete your entry for ${d}? This cannot be undone (unless you press Undo).`)) return;
     const { error } = await sb.from('entries').delete().eq('user_id',user.id).eq('work_date',d); if(error){ alert(error.message); return; }
     lastDeleted = rowToDelete; showUndo(true);
-    $('notes').value=''; parcels.value=0; if(parcelHelperInput) parcelHelperInput.value='0'; if(misdeliveryInput) misdeliveryInput.value='0'; letters.value=0; miles.value=53; offDay.checked=false; start.value='08:30'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; if(sleepInput) sleepInput.value=''; if(drinkInput) drinkInput.value=''; computeBreakdown();
+    $('notes').value=''; parcels.value=0; if(parcelHelperInput) parcelHelperInput.value='0'; if(misdeliveryInput) misdeliveryInput.value='0'; if(flatsMinutesInput) flatsMinutesInput.value=''; letters.value=0; miles.value=53; offDay.checked=false; start.value='08:30'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; if(sleepInput) sleepInput.value=''; if(drinkInput) drinkInput.value=''; computeBreakdown();
     const rows = await fetchEntries();
     allRows = rows;
     rebuildAll();
@@ -2701,10 +2746,14 @@ function getHourlyRateFromEval(){
       const misdelivery = Number.isFinite(Number(row?.misdelivery_count))
         ? Math.max(0, Math.round(Number(row.misdelivery_count)))
         : parseMisdeliveryFromWeatherString(row.weather_json || '');
+      const flatsMinutes = Number.isFinite(Number(row?.flats_minutes))
+        ? Math.max(0, Math.round(Number(row.flats_minutes)))
+        : parseFlatsMinutesFromWeatherString(row.weather_json || '');
       const base = Number(row.parcels) || 0;
       return {
         ...row,
         misdelivery_count: misdelivery,
+        flats_minutes: flatsMinutes,
         parcels_helper: helper,
         parcels_base: base,
         parcels: base + helper
@@ -2844,7 +2893,7 @@ function getHourlyRateFromEval(){
   // Dynamic version tag with today's date (for exports)
   const VERSION_TAG = (function(){ try{ return 'v' + DateTime.now().setZone(ZONE).toFormat('yyyy-MM-dd'); }catch(_){ return 'v-current'; } })();
   function toCsv(rows){
-    const headers=['work_date','route','status','start_time','depart_time','return_time','end_time','hours','office_minutes','route_minutes','parcels','letters','miles','misdelivery_count','mood','notes','weather_json','created_at'];
+    const headers=['work_date','route','status','start_time','depart_time','return_time','end_time','hours','office_minutes','route_minutes','parcels','letters','miles','misdelivery_count','flats_minutes','mood','notes','weather_json','created_at'];
     const lines=[headers.join(',')];
     for(const r of rows){
       const vals=headers.map(h=>{
@@ -2853,6 +2902,10 @@ function getHourlyRateFromEval(){
         else if (h === 'misdelivery_count') {
           const fromRow = Number(r?.misdelivery_count);
           v = Number.isFinite(fromRow) ? Math.max(0, Math.round(fromRow)) : parseMisdeliveryFromWeatherString(r?.weather_json || '');
+        } else if (h === 'flats_minutes') {
+          const fromRow = Number(r?.flats_minutes);
+          const parsed = Number.isFinite(fromRow) && fromRow >= 0 ? Math.round(fromRow) : parseFlatsMinutesFromWeatherString(r?.weather_json || '');
+          v = (parsed == null ? '' : parsed);
         } else v=r[h];
         if(v==null) return '';
         const s=String(v).replace(/"/g,'""');
@@ -2876,7 +2929,7 @@ function getHourlyRateFromEval(){
     const headers=lines[0].split(',').map(h=> h.trim().replace(/^"|"$/g,'')); const idx=(n)=> headers.indexOf(n);
     const splitCsv=(row)=> row.split(/,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)/); const unq=(v)=> (/^".*"$/.test(v)? v.slice(1,-1).replace(/""/g,'"') : v);
     const { data:{ user } } = await sb.auth.getUser(); if(!user){ alert('No session. Use Link devices.'); return; }
-    const rows=[]; for(let i=1;i<lines.length;i++){ const cols=splitCsv(lines[i]); const get=(name)=> unq(cols[idx(name)] ?? ''); const misRaw = +(get('misdelivery_count')||0); const misCount = Number.isFinite(misRaw) && misRaw > 0 ? Math.round(misRaw) : 0; let weatherJson = get('weather_json')||null; if (misCount > 0 && !/Misdelivery:/i.test(String(weatherJson||''))) weatherJson = weatherJson ? `${weatherJson} · Misdelivery:${misCount}` : `Misdelivery:${misCount}`; const r={ user_id:user.id, work_date:get('work_date'), route:'R1', status:get('status')||'worked', start_time:get('start_time')||null, depart_time:get('depart_time')||null, return_time:get('return_time')||null, end_time:get('end_time')||null, hours:+(get('hours')||0)||null, office_minutes:get('office_minutes')||null, route_minutes:get('route_minutes')||null, parcels:+(get('parcels')||0)||0, letters:+(get('letters')||0)||0, miles:+(get('miles')||0)||0, mood:get('mood')||null, notes:get('notes')||null, weather_json:weatherJson }; if(r.work_date) rows.push(r); }
+    const rows=[]; for(let i=1;i<lines.length;i++){ const cols=splitCsv(lines[i]); const get=(name)=> unq(cols[idx(name)] ?? ''); const misRaw = +(get('misdelivery_count')||0); const misCount = Number.isFinite(misRaw) && misRaw > 0 ? Math.round(misRaw) : 0; const flatsRaw = +(get('flats_minutes')||0); const flatsMinutes = Number.isFinite(flatsRaw) && flatsRaw >= 0 ? Math.round(flatsRaw) : null; let weatherJson = get('weather_json')||null; if (misCount > 0 && !/Misdelivery:/i.test(String(weatherJson||''))) weatherJson = weatherJson ? `${weatherJson} · Misdelivery:${misCount}` : `Misdelivery:${misCount}`; if (flatsMinutes != null && !/FlatsTime:/i.test(String(weatherJson||''))) weatherJson = weatherJson ? `${weatherJson} · FlatsTime:${flatsMinutes}` : `FlatsTime:${flatsMinutes}`; const r={ user_id:user.id, work_date:get('work_date'), route:'R1', status:get('status')||'worked', start_time:get('start_time')||null, depart_time:get('depart_time')||null, return_time:get('return_time')||null, end_time:get('end_time')||null, hours:+(get('hours')||0)||null, office_minutes:get('office_minutes')||null, route_minutes:get('route_minutes')||null, parcels:+(get('parcels')||0)||0, letters:+(get('letters')||0)||0, miles:+(get('miles')||0)||0, mood:get('mood')||null, notes:get('notes')||null, weather_json:weatherJson }; if(r.work_date) rows.push(r); }
     if(!rows.length){ alert('No rows detected'); return; }
     const chunk=200; for(let i=0;i<rows.length;i+=chunk){ const slice=rows.slice(i,i+chunk); const { error } = await sb.from('entries').insert(slice); if(error){ alert('Import failed: '+error.message); return; } }
     const fresh = await fetchEntries();

@@ -6543,6 +6543,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var parcels = $("parcels");
   var misdeliveryInput = $("misdeliveryCount");
   var parcelHelperInput = $("parcelHelper");
+  var flatsMinutesInput = $("flatsMinutes");
   var letters = $("letters");
   var miles = $("miles");
   var mood = $("mood");
@@ -6575,6 +6576,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   if (breakMinutesInput) breakMinutesInput.value = "0";
   if (parcelHelperInput) parcelHelperInput.value = "0";
   if (misdeliveryInput) misdeliveryInput.value = "0";
+  if (flatsMinutesInput) flatsMinutesInput.value = "";
   var weather = $("weather");
   var temp = $("temp");
   var boxholders = $("boxholders");
@@ -6819,11 +6821,12 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       end.value = hhmmNow();
       parcels.value = letters.value = miles.value = 0;
       if (misdeliveryInput) misdeliveryInput.value = "0";
+      if (flatsMinutesInput) flatsMinutesInput.value = "";
       mood.value = "\u{1F6D1} off";
       computeBreakdown();
     }
   });
-  [date, start, departTime, returnTime, end, parcels, misdeliveryInput, letters, miles, offDay, weather, temp, boxholders].forEach((el) => el == null ? void 0 : el.addEventListener("input", computeBreakdown));
+  [date, start, departTime, returnTime, end, parcels, misdeliveryInput, letters, miles, offDay, weather, temp, boxholders, flatsMinutesInput].forEach((el) => el == null ? void 0 : el.addEventListener("input", computeBreakdown));
   secondTripMilesInput == null ? void 0 : secondTripMilesInput.addEventListener("input", updateSecondTripSummary);
   secondTripTimeInput == null ? void 0 : secondTripTimeInput.addEventListener("input", updateSecondTripSummary);
   secondTripEmaInput == null ? void 0 : secondTripEmaInput.addEventListener("input", updateSecondTripSummary);
@@ -6863,6 +6866,10 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     const misdeliveryCount = readMisdeliveryInput();
     if (misdeliveryCount > 0) {
       parts.push(`Misdelivery:${misdeliveryCount}`);
+    }
+    const flatsMinutes = readFlatsMinutesInput();
+    if (flatsMinutes != null) {
+      parts.push(`FlatsTime:${flatsMinutes}`);
     }
     const sleepValRaw = sleepInput == null ? void 0 : sleepInput.value;
     const sleepVal = sleepValRaw === "" || sleepValRaw == null ? null : Number(sleepValRaw);
@@ -6936,6 +6943,10 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       if (breakMinutesInput) breakMinutesInput.value = "0";
       if (parcelHelperInput) parcelHelperInput.value = "0";
       if (misdeliveryInput) misdeliveryInput.value = String(Number((r == null ? void 0 : r.misdelivery_count) || 0) || 0);
+      if (flatsMinutesInput) {
+        const flatsMinutes = Number.isFinite(Number(r == null ? void 0 : r.flats_minutes)) ? Math.max(0, Math.round(Number(r.flats_minutes))) : parseFlatsMinutesFromWeatherString((r == null ? void 0 : r.weather_json) || "");
+        flatsMinutesInput.value = flatsMinutes == null ? "" : String(flatsMinutes);
+      }
       if (sleepInput) sleepInput.value = "";
       if (drinkInput) drinkInput.value = "";
     } else {
@@ -6947,6 +6958,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       let brk = null;
       let helperParcels = "";
       let misdeliveryVal = "";
+      let flatsMinutesVal = "";
       let sleepVal = "";
       let drinkVal = "";
       for (const p of parts) {
@@ -6966,6 +6978,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
           helperParcels = p.split(":").slice(1).join(":").trim();
         } else if (/^Misdelivery:/i.test(p)) {
           misdeliveryVal = p.split(":").slice(1).join(":").trim();
+        } else if (/^FlatsTime:/i.test(p)) {
+          flatsMinutesVal = p.split(":").slice(1).join(":").trim();
         } else if (/^Sleep:/i.test(p)) {
           sleepVal = p.split(":").slice(1).join(":").trim();
         } else if (/^Drink:/i.test(p)) {
@@ -6986,6 +7000,14 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         const parsed = parseFloat(misdeliveryVal);
         if (Number.isFinite(parsed) && parsed >= 0) misdeliveryInput.value = String(Math.round(parsed));
         else misdeliveryInput.value = String(Number((r == null ? void 0 : r.misdelivery_count) || 0) || 0);
+      }
+      if (flatsMinutesInput) {
+        const parsed = parseFloat(flatsMinutesVal);
+        if (Number.isFinite(parsed) && parsed >= 0) flatsMinutesInput.value = String(Math.round(parsed));
+        else {
+          const fromRow = Number(r == null ? void 0 : r.flats_minutes);
+          flatsMinutesInput.value = Number.isFinite(fromRow) && fromRow >= 0 ? String(Math.round(fromRow)) : "";
+        }
       }
       if (sleepInput) sleepInput.value = sleepVal || "";
       if (drinkInput) drinkInput.value = drinkVal || "";
@@ -7008,7 +7030,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     const q = (searchBox.value || "").trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((r) => {
-      const fields = [r.work_date, r.status, r.mood, r.weather_json, r.notes, String(r.parcels || ""), String(r.letters || ""), String(r.miles || ""), String(r.misdelivery_count || "")];
+      const fields = [r.work_date, r.status, r.mood, r.weather_json, r.notes, String(r.parcels || ""), String(r.letters || ""), String(r.miles || ""), String(r.misdelivery_count || ""), String(r.flats_minutes || "")];
       return fields.some((v) => String(v || "").toLowerCase().includes(q));
     });
   }
@@ -7046,6 +7068,15 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (!misdeliveryInput) return 0;
     const val = parseFloat(misdeliveryInput.value || "");
     if (!Number.isFinite(val) || val <= 0) return 0;
+    return Math.max(0, Math.round(val));
+  }
+  function readFlatsMinutesInput() {
+    var _a5;
+    if (!flatsMinutesInput) return null;
+    const raw = String((_a5 = flatsMinutesInput.value) != null ? _a5 : "").trim();
+    if (raw === "") return null;
+    const val = parseFloat(raw);
+    if (!Number.isFinite(val) || val < 0) return null;
     return Math.max(0, Math.round(val));
   }
   function updateSecondTripSummary() {
@@ -7122,6 +7153,19 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       return Math.max(0, Math.round(val));
     } catch (_) {
       return 0;
+    }
+  }
+  function parseFlatsMinutesFromWeatherString(weatherStr) {
+    if (!weatherStr) return null;
+    try {
+      const part = String(weatherStr).split("\xB7").map((s) => s.trim()).find((p) => /^FlatsTime:/i.test(p));
+      if (!part) return null;
+      const raw = part.split(":").slice(1).join(":").trim();
+      const val = parseFloat(raw);
+      if (!Number.isFinite(val) || val < 0) return null;
+      return Math.max(0, Math.round(val));
+    } catch (_) {
+      return null;
     }
   }
   function parseDrinkFromWeatherString(weatherStr) {
@@ -7351,6 +7395,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     parcels.value = 0;
     if (parcelHelperInput) parcelHelperInput.value = "0";
     if (misdeliveryInput) misdeliveryInput.value = "0";
+    if (flatsMinutesInput) flatsMinutesInput.value = "";
     letters.value = 0;
     miles.value = 53;
     offDay.checked = false;
@@ -7440,10 +7485,12 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     return (rows || []).map((row) => {
       const helper = parseHelperParcelsFromWeatherString(row.weather_json || "");
       const misdelivery = Number.isFinite(Number(row == null ? void 0 : row.misdelivery_count)) ? Math.max(0, Math.round(Number(row.misdelivery_count))) : parseMisdeliveryFromWeatherString(row.weather_json || "");
+      const flatsMinutes = Number.isFinite(Number(row == null ? void 0 : row.flats_minutes)) ? Math.max(0, Math.round(Number(row.flats_minutes))) : parseFlatsMinutesFromWeatherString(row.weather_json || "");
       const base = Number(row.parcels) || 0;
       return {
         ...row,
         misdelivery_count: misdelivery,
+        flats_minutes: flatsMinutes,
         parcels_helper: helper,
         parcels_base: base,
         parcels: base + helper
@@ -7581,7 +7628,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     }
   })();
   function toCsv(rows) {
-    const headers = ["work_date", "route", "status", "start_time", "depart_time", "return_time", "end_time", "hours", "office_minutes", "route_minutes", "parcels", "letters", "miles", "misdelivery_count", "mood", "notes", "weather_json", "created_at"];
+    const headers = ["work_date", "route", "status", "start_time", "depart_time", "return_time", "end_time", "hours", "office_minutes", "route_minutes", "parcels", "letters", "miles", "misdelivery_count", "flats_minutes", "mood", "notes", "weather_json", "created_at"];
     const lines = [headers.join(",")];
     for (const r of rows) {
       const vals = headers.map((h) => {
@@ -7590,6 +7637,10 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         else if (h === "misdelivery_count") {
           const fromRow = Number(r == null ? void 0 : r.misdelivery_count);
           v = Number.isFinite(fromRow) ? Math.max(0, Math.round(fromRow)) : parseMisdeliveryFromWeatherString((r == null ? void 0 : r.weather_json) || "");
+        } else if (h === "flats_minutes") {
+          const fromRow = Number(r == null ? void 0 : r.flats_minutes);
+          const parsed = Number.isFinite(fromRow) && fromRow >= 0 ? Math.round(fromRow) : parseFlatsMinutesFromWeatherString((r == null ? void 0 : r.weather_json) || "");
+          v = parsed == null ? "" : parsed;
         } else v = r[h];
         if (v == null) return "";
         const s = String(v).replace(/"/g, '""');
@@ -7658,8 +7709,11 @@ Entries are filtered by this id.`);
       };
       const misRaw = +(get("misdelivery_count") || 0);
       const misCount = Number.isFinite(misRaw) && misRaw > 0 ? Math.round(misRaw) : 0;
+      const flatsRaw = +(get("flats_minutes") || 0);
+      const flatsMinutes = Number.isFinite(flatsRaw) && flatsRaw >= 0 ? Math.round(flatsRaw) : null;
       let weatherJson = get("weather_json") || null;
       if (misCount > 0 && !/Misdelivery:/i.test(String(weatherJson || ""))) weatherJson = weatherJson ? `${weatherJson} \xB7 Misdelivery:${misCount}` : `Misdelivery:${misCount}`;
+      if (flatsMinutes != null && !/FlatsTime:/i.test(String(weatherJson || ""))) weatherJson = weatherJson ? `${weatherJson} \xB7 FlatsTime:${flatsMinutes}` : `FlatsTime:${flatsMinutes}`;
       const r = { user_id: user.id, work_date: get("work_date"), route: "R1", status: get("status") || "worked", start_time: get("start_time") || null, depart_time: get("depart_time") || null, return_time: get("return_time") || null, end_time: get("end_time") || null, hours: +(get("hours") || 0) || null, office_minutes: get("office_minutes") || null, route_minutes: get("route_minutes") || null, parcels: +(get("parcels") || 0) || 0, letters: +(get("letters") || 0) || 0, miles: +(get("miles") || 0) || 0, mood: get("mood") || null, notes: get("notes") || null, weather_json: weatherJson };
       if (r.work_date) rows.push(r);
     }

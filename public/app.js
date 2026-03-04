@@ -111,7 +111,8 @@
     focusMode: false,
     quickEntry: false,
     uspsEval: true,
-    dayCompare: true
+    dayCompare: true,
+    mobileFocusMode: false
   };
   var DEFAULT_EVAL_PROFILE = {
     profileId: "eval-default",
@@ -5993,6 +5994,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var flagSmartSummary = document.getElementById("flagSmartSummary");
   var flagDayCompare = document.getElementById("flagDayCompare");
   var flagUspsEval = document.getElementById("flagUspsEval");
+  var flagMobileFocusMode = document.getElementById("flagMobileFocusMode");
   var settingsEmaRate = document.getElementById("settingsEmaRate");
   if (themeSelect) {
     themeSelect.value = CURRENT_THEME;
@@ -6020,6 +6022,24 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var peakExclude = document.getElementById("peakExclude");
   var peakClear = document.getElementById("peakClear");
   var saveSettings = document.getElementById("saveSettings");
+  var focusShell = document.getElementById("focusShell");
+  var focusTitle = document.getElementById("focusTitle");
+  var focusPrev = document.getElementById("focusPrev");
+  var focusNext = document.getElementById("focusNext");
+  var focusPageNodes = Array.from(document.querySelectorAll("#focusShell .focus-page"));
+  var focusNavNodes = Array.from(document.querySelectorAll("#focusShell .focus-nav [data-page]"));
+  var focusDeepLinks = Array.from(document.querySelectorAll("#focusShell .focus-deep-link"));
+  var focusRunButtons = Array.from(document.querySelectorAll("#focusShell .focus-run-btn"));
+  var MOBILE_FOCUS_MAX_WIDTH = 900;
+  var FOCUS_PAGE_ORDER = ["today", "week", "entry", "insights"];
+  var FOCUS_PAGE_LABELS = {
+    today: "Today",
+    week: "Week",
+    entry: "Quick Entry",
+    insights: "Insights"
+  };
+  var focusShellPage = "today";
+  var focusTouchStartX = null;
   var settingsOpenAiKey = document.getElementById("settingsOpenAiKey");
   var clearOpenAiKeyBtn = document.getElementById("clearOpenAiKey");
   var aiSummaryCard = document.getElementById("aiSummaryCard");
@@ -6133,6 +6153,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
+    if (flagMobileFocusMode) flagMobileFocusMode.checked = !!FLAGS.mobileFocusMode;
     if (themeSelect) themeSelect.value = CURRENT_THEME;
     try {
       populateEvalProfileSelectUI(USPS_EVAL == null ? void 0 : USPS_EVAL.profileId);
@@ -6246,6 +6267,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (flagSmartSummary) FLAGS.smartSummary = !!flagSmartSummary.checked;
     if (flagDayCompare) FLAGS.dayCompare = !!flagDayCompare.checked;
     if (flagUspsEval) FLAGS.uspsEval = !!flagUspsEval.checked;
+    if (flagMobileFocusMode) FLAGS.mobileFocusMode = !!flagMobileFocusMode.checked;
     try {
       const selectedId = (evalProfileSelect == null ? void 0 : evalProfileSelect.value) || (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || null;
       const updated = collectEvalFormValues(selectedId);
@@ -6328,6 +6350,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     applyTrendPillsVisibility();
     applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
+    applyFocusMode();
+    applyMobileFocusShell();
     aiSummary.updateAvailability();
     aiSummary.renderLastSummary();
   });
@@ -7265,6 +7289,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     buildYearlySummary(rawRows);
     buildParserChart(rawRows);
     buildSleepDrinkChart(rawRows);
+    updateMobileFocusShellData();
   }
   async function loadByDate() {
     editingKey = null;
@@ -9120,6 +9145,153 @@ Score: ${overallScore}/10 (higher is better)`;
     } catch (_) {
     }
   }
+  function isMobileFocusViewport() {
+    try {
+      return !!window.matchMedia && window.matchMedia(`(max-width:${MOBILE_FOCUS_MAX_WIDTH}px)`).matches;
+    } catch (_) {
+      return window.innerWidth <= MOBILE_FOCUS_MAX_WIDTH;
+    }
+  }
+  function shouldShowMobileFocusShell() {
+    return !!(FLAGS && FLAGS.mobileFocusMode) && isMobileFocusViewport();
+  }
+  function readTextValue(id, fallback = "\u2014") {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    const text = (el.textContent || "").trim();
+    return text || fallback;
+  }
+  function setFocusText(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const next = (value == null ? "" : String(value)).trim();
+    el.textContent = next || "\u2014";
+  }
+  function compactText(text, limit = 36) {
+    const raw = (text == null ? "" : String(text)).trim();
+    if (!raw) return "\u2014";
+    return raw.length > limit ? `${raw.slice(0, limit - 1)}\u2026` : raw;
+  }
+  function updateMobileFocusShellData() {
+    setFocusText("fsTodayEnd", readTextValue("expEnd"));
+    setFocusText("fsTodayTotal", readTextValue("totalH"));
+    setFocusText("fsTodayVolume", readTextValue("badgeVolume"));
+    setFocusText("fsTodayRouteEff", readTextValue("badgeRouteEff"));
+    setFocusText("fsTodayOverall", readTextValue("badgeOverall"));
+    setFocusText("fsTodayOfficeDelta", readTextValue("todayOfficeDelta"));
+    setFocusText("fsWeekHours", readTextValue("wkHours"));
+    setFocusText("fsWeekHoursDelta", readTextValue("wkHoursDelta"));
+    setFocusText("fsWeekParcels", readTextValue("wkParcels"));
+    setFocusText("fsWeekParcelsDelta", readTextValue("wkParcelsDelta"));
+    setFocusText("fsWeekLetters", readTextValue("wkLetters"));
+    setFocusText("fsWeekLettersDelta", readTextValue("wkLettersDelta"));
+    const qfDays = readTextValue("qfDaysBadge", "").trim();
+    const qfSelect = document.getElementById("qfSelect");
+    const qfSelected = qfSelect && qfSelect.selectedOptions && qfSelect.selectedOptions[0] ? (qfSelect.selectedOptions[0].textContent || "").trim() : "";
+    const qfLabel = qfDays || qfSelected || "Ready";
+    const compareLabel = readTextValue("dcSubjectLabel", "").trim();
+    setFocusText("fsInsightDiag", compactText(readTextValue("diagModelBadge")));
+    setFocusText("fsInsightEval", compactText(readTextValue("evalPrimaryDelta")));
+    setFocusText("fsInsightCompare", compactText(compareLabel || "Ready"));
+    setFocusText("fsInsightFilter", compactText(qfLabel, 24));
+  }
+  function setMobileFocusShellPage(nextPage) {
+    const page = FOCUS_PAGE_ORDER.includes(nextPage) ? nextPage : "today";
+    focusShellPage = page;
+    focusPageNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.page) === page;
+      node.classList.toggle("active", !!active);
+    });
+    focusNavNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.page) === page;
+      node.classList.toggle("active", !!active);
+      node.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    if (focusTitle) focusTitle.textContent = FOCUS_PAGE_LABELS[page] || "Focus";
+  }
+  function stepMobileFocusShellPage(delta) {
+    const currentIndex = Math.max(0, FOCUS_PAGE_ORDER.indexOf(focusShellPage));
+    const nextIndex = (currentIndex + delta + FOCUS_PAGE_ORDER.length) % FOCUS_PAGE_ORDER.length;
+    setMobileFocusShellPage(FOCUS_PAGE_ORDER[nextIndex]);
+  }
+  function applyMobileFocusShell() {
+    updateMobileFocusShellData();
+    const active = shouldShowMobileFocusShell();
+    document.body.classList.toggle("focus-shell-on", !!active);
+    if (active) setMobileFocusShellPage(focusShellPage);
+  }
+  function exitMobileFocusShellTo(targetId) {
+    FLAGS.mobileFocusMode = false;
+    saveFlags(FLAGS);
+    if (flagMobileFocusMode) flagMobileFocusMode.checked = false;
+    applyMobileFocusShell();
+    window.requestAnimationFrame(() => {
+      const target = targetId ? document.getElementById(targetId) : null;
+      if (!target) return;
+      try {
+        (window.__collapse_set || (() => {
+        }))(targetId, false);
+      } catch (_) {
+      }
+      try {
+        target.style.display = "";
+      } catch (_) {
+      }
+      try {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (_) {
+      }
+    });
+  }
+  function bindMobileFocusShell() {
+    if (!focusShell) return;
+    focusPrev == null ? void 0 : focusPrev.addEventListener("click", () => stepMobileFocusShellPage(-1));
+    focusNext == null ? void 0 : focusNext.addEventListener("click", () => stepMobileFocusShellPage(1));
+    focusNavNodes.forEach((node) => {
+      node.addEventListener("click", () => {
+        var _a5;
+        const page = (_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.page;
+        if (!page) return;
+        setMobileFocusShellPage(page);
+      });
+    });
+    focusRunButtons.forEach((node) => {
+      node.addEventListener("click", () => {
+        var _a5, _b;
+        const targetId = (_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.click;
+        if (!targetId) return;
+        (_b = document.getElementById(targetId)) == null ? void 0 : _b.click();
+        updateMobileFocusShellData();
+      });
+    });
+    focusDeepLinks.forEach((node) => {
+      node.addEventListener("click", () => {
+        var _a5;
+        const targetId = (_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.target;
+        exitMobileFocusShellTo(targetId);
+      });
+    });
+    focusShell.addEventListener("touchstart", (event) => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      focusTouchStartX = touch ? touch.clientX : null;
+    }, { passive: true });
+    focusShell.addEventListener("touchend", (event) => {
+      if (focusTouchStartX == null) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      const endX = touch ? touch.clientX : null;
+      if (endX == null) {
+        focusTouchStartX = null;
+        return;
+      }
+      const delta = endX - focusTouchStartX;
+      focusTouchStartX = null;
+      if (Math.abs(delta) < 45) return;
+      stepMobileFocusShellPage(delta < 0 ? 1 : -1);
+    }, { passive: true });
+    window.addEventListener("resize", applyMobileFocusShell);
+  }
   function ensureQuickEntryControls(headerEl) {
     if (!FLAGS.quickEntry) return;
     let bar = document.getElementById("quickEntryBar");
@@ -9233,6 +9405,7 @@ Score: ${overallScore}/10 (higher is better)`;
     enable("tileAdvParcels", "advParcelsDetails", "closeAdvParcelsDetails");
     enable("tileAdvLetters", "advLettersDetails", "closeAdvLettersDetails");
   })();
+  bindMobileFocusShell();
   (async () => {
     $("date").value = todayStr();
     await loadByDate();
@@ -9255,6 +9428,7 @@ Score: ${overallScore}/10 (higher is better)`;
     applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
     applyFocusMode();
+    applyMobileFocusShell();
   })();
   console.log("Route Stats loaded \u2014", VERSION_TAG);
   window.__sb.auth.getUser().then(async ({ data, error }) => {

@@ -1430,6 +1430,7 @@ const authReadyPromise = handleAuthCallback(sb);
   const flagSmartSummary = document.getElementById('flagSmartSummary');
   const flagDayCompare = document.getElementById('flagDayCompare');
   const flagUspsEval = document.getElementById('flagUspsEval');
+  const flagMobileFocusMode = document.getElementById('flagMobileFocusMode');
   const settingsEmaRate = document.getElementById('settingsEmaRate');
   if (themeSelect){
     themeSelect.value = CURRENT_THEME;
@@ -1459,6 +1460,24 @@ const authReadyPromise = handleAuthCallback(sb);
   const peakExclude = document.getElementById('peakExclude');
   const peakClear = document.getElementById('peakClear');
   const saveSettings = document.getElementById('saveSettings');
+  const focusShell = document.getElementById('focusShell');
+  const focusTitle = document.getElementById('focusTitle');
+  const focusPrev = document.getElementById('focusPrev');
+  const focusNext = document.getElementById('focusNext');
+  const focusPageNodes = Array.from(document.querySelectorAll('#focusShell .focus-page'));
+  const focusNavNodes = Array.from(document.querySelectorAll('#focusShell .focus-nav [data-page]'));
+  const focusDeepLinks = Array.from(document.querySelectorAll('#focusShell .focus-deep-link'));
+  const focusRunButtons = Array.from(document.querySelectorAll('#focusShell .focus-run-btn'));
+  const MOBILE_FOCUS_MAX_WIDTH = 900;
+  const FOCUS_PAGE_ORDER = ['today','week','entry','insights'];
+  const FOCUS_PAGE_LABELS = {
+    today: 'Today',
+    week: 'Week',
+    entry: 'Quick Entry',
+    insights: 'Insights'
+  };
+  let focusShellPage = 'today';
+  let focusTouchStartX = null;
 const settingsOpenAiKey = document.getElementById('settingsOpenAiKey');
 const clearOpenAiKeyBtn = document.getElementById('clearOpenAiKey');
 
@@ -1573,6 +1592,7 @@ aiSummary = createAiSummary({
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
+    if (flagMobileFocusMode) flagMobileFocusMode.checked = !!FLAGS.mobileFocusMode;
     if (themeSelect) themeSelect.value = CURRENT_THEME;
     // populate USPS eval fields
     try{
@@ -1686,6 +1706,7 @@ aiSummary = createAiSummary({
     if (flagSmartSummary) FLAGS.smartSummary = !!flagSmartSummary.checked;
     if (flagDayCompare) FLAGS.dayCompare = !!flagDayCompare.checked;
     if (flagUspsEval) FLAGS.uspsEval = !!flagUspsEval.checked;
+    if (flagMobileFocusMode) FLAGS.mobileFocusMode = !!flagMobileFocusMode.checked;
     // read USPS eval fields
     try{
       const selectedId = evalProfileSelect?.value || USPS_EVAL?.profileId || null;
@@ -1757,6 +1778,8 @@ aiSummary = createAiSummary({
     applyTrendPillsVisibility();
     applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
+    applyFocusMode();
+    applyMobileFocusShell();
     aiSummary.updateAvailability();
     aiSummary.renderLastSummary();
   });
@@ -2616,6 +2639,7 @@ function getHourlyRateFromEval(){
     buildYearlySummary(rawRows);
     buildParserChart(rawRows);
     buildSleepDrinkChart(rawRows);
+    updateMobileFocusShellData();
   }
 
   async function loadByDate(){
@@ -4308,6 +4332,138 @@ function getHourlyRateFromEval(){
     }catch(_){ /* no-op */ }
   }
 
+  function isMobileFocusViewport(){
+    try{
+      return !!window.matchMedia && window.matchMedia(`(max-width:${MOBILE_FOCUS_MAX_WIDTH}px)`).matches;
+    }catch(_){
+      return window.innerWidth <= MOBILE_FOCUS_MAX_WIDTH;
+    }
+  }
+  function shouldShowMobileFocusShell(){
+    return !!(FLAGS && FLAGS.mobileFocusMode) && isMobileFocusViewport();
+  }
+  function readTextValue(id, fallback = '—'){
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    const text = (el.textContent || '').trim();
+    return text || fallback;
+  }
+  function setFocusText(id, value){
+    const el = document.getElementById(id);
+    if (!el) return;
+    const next = (value == null ? '' : String(value)).trim();
+    el.textContent = next || '—';
+  }
+  function compactText(text, limit = 36){
+    const raw = (text == null ? '' : String(text)).trim();
+    if (!raw) return '—';
+    return raw.length > limit ? `${raw.slice(0, limit - 1)}…` : raw;
+  }
+  function updateMobileFocusShellData(){
+    setFocusText('fsTodayEnd', readTextValue('expEnd'));
+    setFocusText('fsTodayTotal', readTextValue('totalH'));
+    setFocusText('fsTodayVolume', readTextValue('badgeVolume'));
+    setFocusText('fsTodayRouteEff', readTextValue('badgeRouteEff'));
+    setFocusText('fsTodayOverall', readTextValue('badgeOverall'));
+    setFocusText('fsTodayOfficeDelta', readTextValue('todayOfficeDelta'));
+    setFocusText('fsWeekHours', readTextValue('wkHours'));
+    setFocusText('fsWeekHoursDelta', readTextValue('wkHoursDelta'));
+    setFocusText('fsWeekParcels', readTextValue('wkParcels'));
+    setFocusText('fsWeekParcelsDelta', readTextValue('wkParcelsDelta'));
+    setFocusText('fsWeekLetters', readTextValue('wkLetters'));
+    setFocusText('fsWeekLettersDelta', readTextValue('wkLettersDelta'));
+    const qfDays = readTextValue('qfDaysBadge', '').trim();
+    const qfSelect = document.getElementById('qfSelect');
+    const qfSelected = qfSelect && qfSelect.selectedOptions && qfSelect.selectedOptions[0]
+      ? (qfSelect.selectedOptions[0].textContent || '').trim()
+      : '';
+    const qfLabel = qfDays || qfSelected || 'Ready';
+    const compareLabel = readTextValue('dcSubjectLabel', '').trim();
+    setFocusText('fsInsightDiag', compactText(readTextValue('diagModelBadge')));
+    setFocusText('fsInsightEval', compactText(readTextValue('evalPrimaryDelta')));
+    setFocusText('fsInsightCompare', compactText(compareLabel || 'Ready'));
+    setFocusText('fsInsightFilter', compactText(qfLabel, 24));
+  }
+  function setMobileFocusShellPage(nextPage){
+    const page = FOCUS_PAGE_ORDER.includes(nextPage) ? nextPage : 'today';
+    focusShellPage = page;
+    focusPageNodes.forEach(node => {
+      const active = node?.dataset?.page === page;
+      node.classList.toggle('active', !!active);
+    });
+    focusNavNodes.forEach(node => {
+      const active = node?.dataset?.page === page;
+      node.classList.toggle('active', !!active);
+      node.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (focusTitle) focusTitle.textContent = FOCUS_PAGE_LABELS[page] || 'Focus';
+  }
+  function stepMobileFocusShellPage(delta){
+    const currentIndex = Math.max(0, FOCUS_PAGE_ORDER.indexOf(focusShellPage));
+    const nextIndex = (currentIndex + delta + FOCUS_PAGE_ORDER.length) % FOCUS_PAGE_ORDER.length;
+    setMobileFocusShellPage(FOCUS_PAGE_ORDER[nextIndex]);
+  }
+  function applyMobileFocusShell(){
+    updateMobileFocusShellData();
+    const active = shouldShowMobileFocusShell();
+    document.body.classList.toggle('focus-shell-on', !!active);
+    if (active) setMobileFocusShellPage(focusShellPage);
+  }
+  function exitMobileFocusShellTo(targetId){
+    FLAGS.mobileFocusMode = false;
+    saveFlags(FLAGS);
+    if (flagMobileFocusMode) flagMobileFocusMode.checked = false;
+    applyMobileFocusShell();
+    window.requestAnimationFrame(()=>{
+      const target = targetId ? document.getElementById(targetId) : null;
+      if (!target) return;
+      try{ (window.__collapse_set || (()=>{}))(targetId, false); }catch(_){ }
+      try{ target.style.display = ''; }catch(_){ }
+      try{ target.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+    });
+  }
+  function bindMobileFocusShell(){
+    if (!focusShell) return;
+    focusPrev?.addEventListener('click', ()=> stepMobileFocusShellPage(-1));
+    focusNext?.addEventListener('click', ()=> stepMobileFocusShellPage(1));
+    focusNavNodes.forEach(node=>{
+      node.addEventListener('click', ()=>{
+        const page = node?.dataset?.page;
+        if (!page) return;
+        setMobileFocusShellPage(page);
+      });
+    });
+    focusRunButtons.forEach(node=>{
+      node.addEventListener('click', ()=>{
+        const targetId = node?.dataset?.click;
+        if (!targetId) return;
+        document.getElementById(targetId)?.click();
+        updateMobileFocusShellData();
+      });
+    });
+    focusDeepLinks.forEach(node=>{
+      node.addEventListener('click', ()=>{
+        const targetId = node?.dataset?.target;
+        exitMobileFocusShellTo(targetId);
+      });
+    });
+    focusShell.addEventListener('touchstart', (event)=>{
+      const touch = event.changedTouches && event.changedTouches[0];
+      focusTouchStartX = touch ? touch.clientX : null;
+    }, { passive:true });
+    focusShell.addEventListener('touchend', (event)=>{
+      if (focusTouchStartX == null) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      const endX = touch ? touch.clientX : null;
+      if (endX == null){ focusTouchStartX = null; return; }
+      const delta = endX - focusTouchStartX;
+      focusTouchStartX = null;
+      if (Math.abs(delta) < 45) return;
+      stepMobileFocusShellPage(delta < 0 ? 1 : -1);
+    }, { passive:true });
+    window.addEventListener('resize', applyMobileFocusShell);
+  }
+
   // Quick Entry (experimental): show Hit Street / Return buttons when Add Entry is collapsed
   function ensureQuickEntryControls(headerEl){
     if (!FLAGS.quickEntry) return;
@@ -4373,6 +4529,7 @@ function getHourlyRateFromEval(){
     enable('tileAdvParcels','advParcelsDetails','closeAdvParcelsDetails');
     enable('tileAdvLetters','advLettersDetails','closeAdvLettersDetails');
   })();
+  bindMobileFocusShell();
 
   (async()=>{
     $('date').value = todayStr();
@@ -4398,6 +4555,7 @@ function getHourlyRateFromEval(){
     applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
     applyFocusMode();
+    applyMobileFocusShell();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);

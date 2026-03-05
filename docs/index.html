@@ -1035,6 +1035,44 @@
     color:var(--brand);
     background:rgba(43,127,255,.12);
   }
+  .focus-insights-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-top:8px;
+  }
+  .focus-insights-title{ font-size:.95rem; font-weight:650; letter-spacing:.01em; }
+  .focus-insight-page{
+    display:none;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+    background:rgba(12,18,30,.18);
+    margin-top:8px;
+  }
+  .focus-insight-page.active{ display:block; }
+  .focus-insight-content{
+    margin-top:6px;
+    font-size:13px;
+    color:var(--text);
+  }
+  .focus-insight-nav{
+    display:grid;
+    grid-template-columns:repeat(5,1fr);
+    gap:6px;
+    margin-top:8px;
+  }
+  .focus-insight-nav button{
+    padding:6px 4px;
+    font-size:11px;
+    border-radius:999px;
+  }
+  .focus-insight-nav button.active{
+    border-color:var(--brand);
+    color:var(--brand);
+    background:rgba(43,127,255,.12);
+  }
   @media (min-width:901px){
     body.focus-shell-on #focusShell{ display:none!important; }
     body.focus-shell-on main.wrap > section{ display:initial!important; }
@@ -1139,13 +1177,47 @@
 
     <div id="focusPageInsights" class="focus-page" data-page="insights">
       <small class="muted">Insights</small>
-      <div class="focus-grid">
-        <div class="focus-kpi"><small>Diagnostics</small><b id="fsInsightDiag">—</b></div>
-        <div class="focus-kpi"><small>Evaluation</small><b id="fsInsightEval">—</b></div>
-        <div class="focus-kpi"><small>Day Compare</small><b id="fsInsightCompare">—</b></div>
-        <div class="focus-kpi"><small>Quick Filter</small><b id="fsInsightFilter">Ready</b></div>
+      <div class="focus-insights-head">
+        <button id="focusInsightPrev" class="ghost" type="button" title="Previous insight">◀</button>
+        <div id="focusInsightTitle" class="focus-insights-title">Weekly Movers</div>
+        <button id="focusInsightNext" class="ghost" type="button" title="Next insight">▶</button>
+      </div>
+      <div id="focusInsightMovers" class="focus-insight-page active" data-insight-page="movers">
+        <small class="muted">Weekly Movers</small>
+        <div id="fsInsightMovers" class="focus-insight-content">—</div>
+      </div>
+      <div id="focusInsightTodayHeaviness" class="focus-insight-page" data-insight-page="todayHeaviness">
+        <small class="muted">Heaviness Today</small>
+        <div id="fsInsightTodayHeaviness" class="focus-insight-content">—</div>
+      </div>
+      <div id="focusInsightWeekHeaviness" class="focus-insight-page" data-insight-page="weekHeaviness">
+        <small class="muted">Heaviness Week</small>
+        <div id="fsInsightWeekHeaviness" class="focus-insight-content">—</div>
+      </div>
+      <div id="focusInsightDiagnostics" class="focus-insight-page" data-insight-page="diagnostics">
+        <small class="muted">Diagnostics</small>
+        <div class="focus-grid" style="margin-top:6px">
+          <div class="focus-kpi"><small>Model</small><b id="fsInsightDiagModel">—</b></div>
+          <div class="focus-kpi"><small>Status</small><b id="fsInsightDiagStatus">—</b></div>
+        </div>
+      </div>
+      <div id="focusInsightDayCompare" class="focus-insight-page" data-insight-page="dayCompare">
+        <small class="muted">Day Compare</small>
+        <div class="focus-grid" style="margin-top:6px">
+          <div class="focus-kpi"><small>Subject</small><b id="fsInsightCompareLabel">—</b></div>
+          <div class="focus-kpi"><small>Summary</small><b id="fsInsightCompareSummary">—</b></div>
+        </div>
+      </div>
+      <div class="focus-insight-nav" role="tablist" aria-label="Insights navigation">
+        <button class="ghost active" type="button" data-insight-page="movers">Movers</button>
+        <button class="ghost" type="button" data-insight-page="todayHeaviness">Today</button>
+        <button class="ghost" type="button" data-insight-page="weekHeaviness">Week</button>
+        <button class="ghost" type="button" data-insight-page="diagnostics">Diag</button>
+        <button class="ghost" type="button" data-insight-page="dayCompare">Compare</button>
       </div>
       <div class="focus-actions">
+        <button class="ghost focus-deep-link" type="button" data-target="snapshotCard">Open full Today/Week snapshot</button>
+        <button class="ghost focus-deep-link" type="button" data-target="quickFilterCard">Open Quick Filter</button>
         <button class="ghost focus-deep-link" type="button" data-target="diagnosticsCard">Open Diagnostics</button>
         <button class="ghost focus-deep-link" type="button" data-target="dayCompareCard">Open Day Compare</button>
       </div>

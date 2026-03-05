@@ -1464,20 +1464,36 @@ const authReadyPromise = handleAuthCallback(sb);
   const focusTitle = document.getElementById('focusTitle');
   const focusPrev = document.getElementById('focusPrev');
   const focusNext = document.getElementById('focusNext');
+  const focusPageInsights = document.getElementById('focusPageInsights');
   const focusPageNodes = Array.from(document.querySelectorAll('#focusShell .focus-page'));
   const focusNavNodes = Array.from(document.querySelectorAll('#focusShell .focus-nav [data-page]'));
   const focusDeepLinks = Array.from(document.querySelectorAll('#focusShell .focus-deep-link'));
   const focusRunButtons = Array.from(document.querySelectorAll('#focusShell .focus-run-btn'));
+  const focusInsightTitle = document.getElementById('focusInsightTitle');
+  const focusInsightPrev = document.getElementById('focusInsightPrev');
+  const focusInsightNext = document.getElementById('focusInsightNext');
+  const focusInsightPageNodes = Array.from(document.querySelectorAll('#focusShell .focus-insight-page'));
+  const focusInsightNavNodes = Array.from(document.querySelectorAll('#focusShell .focus-insight-nav [data-insight-page]'));
   const MOBILE_FOCUS_MAX_WIDTH = 900;
   const FOCUS_PAGE_ORDER = ['today','week','entry','insights'];
+  const FOCUS_INSIGHT_ORDER = ['movers','todayHeaviness','weekHeaviness','diagnostics','dayCompare'];
   const FOCUS_PAGE_LABELS = {
     today: 'Today',
     week: 'Week',
     entry: 'Quick Entry',
     insights: 'Insights'
   };
+  const FOCUS_INSIGHT_LABELS = {
+    movers: 'Weekly Movers',
+    todayHeaviness: 'Heaviness Today',
+    weekHeaviness: 'Heaviness Week',
+    diagnostics: 'Diagnostics',
+    dayCompare: 'Day Compare'
+  };
   let focusShellPage = 'today';
+  let focusInsightPage = 'movers';
   let focusTouchStartX = null;
+  let focusInsightTouchStartX = null;
 const settingsOpenAiKey = document.getElementById('settingsOpenAiKey');
 const clearOpenAiKeyBtn = document.getElementById('clearOpenAiKey');
 
@@ -4354,10 +4370,35 @@ function getHourlyRateFromEval(){
     const next = (value == null ? '' : String(value)).trim();
     el.textContent = next || '—';
   }
+  function setFocusHtml(id, value){
+    const el = document.getElementById(id);
+    if (!el) return;
+    const next = (value == null ? '' : String(value)).trim();
+    el.innerHTML = next || '—';
+  }
   function compactText(text, limit = 36){
     const raw = (text == null ? '' : String(text)).trim();
     if (!raw) return '—';
     return raw.length > limit ? `${raw.slice(0, limit - 1)}…` : raw;
+  }
+  function setMobileFocusInsightPage(nextPage){
+    const page = FOCUS_INSIGHT_ORDER.includes(nextPage) ? nextPage : 'movers';
+    focusInsightPage = page;
+    focusInsightPageNodes.forEach(node=>{
+      const active = node?.dataset?.insightPage === page;
+      node.classList.toggle('active', !!active);
+    });
+    focusInsightNavNodes.forEach(node=>{
+      const active = node?.dataset?.insightPage === page;
+      node.classList.toggle('active', !!active);
+      node.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (focusInsightTitle) focusInsightTitle.textContent = FOCUS_INSIGHT_LABELS[page] || 'Insights';
+  }
+  function stepMobileFocusInsightPage(delta){
+    const currentIndex = Math.max(0, FOCUS_INSIGHT_ORDER.indexOf(focusInsightPage));
+    const nextIndex = (currentIndex + delta + FOCUS_INSIGHT_ORDER.length) % FOCUS_INSIGHT_ORDER.length;
+    setMobileFocusInsightPage(FOCUS_INSIGHT_ORDER[nextIndex]);
   }
   function updateMobileFocusShellData(){
     setFocusText('fsTodayEnd', readTextValue('expEnd'));
@@ -4372,17 +4413,18 @@ function getHourlyRateFromEval(){
     setFocusText('fsWeekParcelsDelta', readTextValue('wkParcelsDelta'));
     setFocusText('fsWeekLetters', readTextValue('wkLetters'));
     setFocusText('fsWeekLettersDelta', readTextValue('wkLettersDelta'));
-    const qfDays = readTextValue('qfDaysBadge', '').trim();
-    const qfSelect = document.getElementById('qfSelect');
-    const qfSelected = qfSelect && qfSelect.selectedOptions && qfSelect.selectedOptions[0]
-      ? (qfSelect.selectedOptions[0].textContent || '').trim()
-      : '';
-    const qfLabel = qfDays || qfSelected || 'Ready';
+    const moversHtml = document.getElementById('trendFactors')?.innerHTML || '';
+    const todayHeavinessHtml = document.getElementById('todayHeaviness')?.innerHTML || '';
+    const weekHeavinessHtml = document.getElementById('weekHeaviness')?.innerHTML || '';
+    setFocusHtml('fsInsightMovers', moversHtml || '<span class="muted">No major movers yet.</span>');
+    setFocusHtml('fsInsightTodayHeaviness', todayHeavinessHtml || '<span class="muted">No worked day selected yet.</span>');
+    setFocusHtml('fsInsightWeekHeaviness', weekHeavinessHtml || '<span class="muted">Need this week and last week data.</span>');
+    setFocusText('fsInsightDiagModel', compactText(readTextValue('diagModelBadge')));
+    setFocusText('fsInsightDiagStatus', compactText(readTextValue('diagSummary'), 44));
     const compareLabel = readTextValue('dcSubjectLabel', '').trim();
-    setFocusText('fsInsightDiag', compactText(readTextValue('diagModelBadge')));
-    setFocusText('fsInsightEval', compactText(readTextValue('evalPrimaryDelta')));
-    setFocusText('fsInsightCompare', compactText(compareLabel || 'Ready'));
-    setFocusText('fsInsightFilter', compactText(qfLabel, 24));
+    const compareSummary = readTextValue('dcReasoning', '').trim();
+    setFocusText('fsInsightCompareLabel', compactText(compareLabel || 'Ready'));
+    setFocusText('fsInsightCompareSummary', compactText(compareSummary || 'Open Day Compare'));
   }
   function setMobileFocusShellPage(nextPage){
     const page = FOCUS_PAGE_ORDER.includes(nextPage) ? nextPage : 'today';
@@ -4397,6 +4439,7 @@ function getHourlyRateFromEval(){
       node.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
     if (focusTitle) focusTitle.textContent = FOCUS_PAGE_LABELS[page] || 'Focus';
+    if (page === 'insights') setMobileFocusInsightPage(focusInsightPage);
   }
   function stepMobileFocusShellPage(delta){
     const currentIndex = Math.max(0, FOCUS_PAGE_ORDER.indexOf(focusShellPage));
@@ -4426,11 +4469,20 @@ function getHourlyRateFromEval(){
     if (!focusShell) return;
     focusPrev?.addEventListener('click', ()=> stepMobileFocusShellPage(-1));
     focusNext?.addEventListener('click', ()=> stepMobileFocusShellPage(1));
+    focusInsightPrev?.addEventListener('click', ()=> stepMobileFocusInsightPage(-1));
+    focusInsightNext?.addEventListener('click', ()=> stepMobileFocusInsightPage(1));
     focusNavNodes.forEach(node=>{
       node.addEventListener('click', ()=>{
         const page = node?.dataset?.page;
         if (!page) return;
         setMobileFocusShellPage(page);
+      });
+    });
+    focusInsightNavNodes.forEach(node=>{
+      node.addEventListener('click', ()=>{
+        const page = node?.dataset?.insightPage;
+        if (!page) return;
+        setMobileFocusInsightPage(page);
       });
     });
     focusRunButtons.forEach(node=>{
@@ -4460,6 +4512,21 @@ function getHourlyRateFromEval(){
       focusTouchStartX = null;
       if (Math.abs(delta) < 45) return;
       stepMobileFocusShellPage(delta < 0 ? 1 : -1);
+    }, { passive:true });
+    focusPageInsights?.addEventListener('touchstart', (event)=>{
+      const touch = event.changedTouches && event.changedTouches[0];
+      focusInsightTouchStartX = touch ? touch.clientX : null;
+    }, { passive:true });
+    focusPageInsights?.addEventListener('touchend', (event)=>{
+      if (focusShellPage !== 'insights' || focusInsightTouchStartX == null) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      const endX = touch ? touch.clientX : null;
+      if (endX == null){ focusInsightTouchStartX = null; return; }
+      const delta = endX - focusInsightTouchStartX;
+      focusInsightTouchStartX = null;
+      if (Math.abs(delta) < 45) return;
+      stepMobileFocusInsightPage(delta < 0 ? 1 : -1);
+      event.stopPropagation();
     }, { passive:true });
     window.addEventListener('resize', applyMobileFocusShell);
   }

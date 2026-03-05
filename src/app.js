@@ -1474,6 +1474,15 @@ const authReadyPromise = handleAuthCallback(sb);
   const focusInsightNext = document.getElementById('focusInsightNext');
   const focusInsightPageNodes = Array.from(document.querySelectorAll('#focusShell .focus-insight-page'));
   const focusInsightNavNodes = Array.from(document.querySelectorAll('#focusShell .focus-insight-nav [data-insight-page]'));
+  const focusInsightsHead = document.querySelector('#focusPageInsights .focus-insights-head');
+  const focusInsightsNav = document.querySelector('#focusPageInsights .focus-insight-nav');
+  const focusInsightsActions = Array.from(document.querySelectorAll('#focusPageInsights > .focus-actions'));
+  const focusInsightDrill = document.getElementById('focusInsightDrill');
+  const focusInsightBack = document.getElementById('focusInsightBack');
+  const focusInsightDrillTitle = document.getElementById('focusInsightDrillTitle');
+  const focusInsightDrillBody = document.getElementById('focusInsightDrillBody');
+  const focusOpenDiagLite = document.getElementById('focusOpenDiagLite');
+  const focusOpenCompareLite = document.getElementById('focusOpenCompareLite');
   const MOBILE_FOCUS_MAX_WIDTH = 900;
   const FOCUS_PAGE_ORDER = ['today','week','entry','insights'];
   const FOCUS_INSIGHT_ORDER = ['movers','todayHeaviness','weekHeaviness','diagnostics','dayCompare'];
@@ -1492,6 +1501,7 @@ const authReadyPromise = handleAuthCallback(sb);
   };
   let focusShellPage = 'today';
   let focusInsightPage = 'movers';
+  let focusInsightDrillMode = null;
   let focusTouchStartX = null;
   let focusInsightTouchStartX = null;
 const settingsOpenAiKey = document.getElementById('settingsOpenAiKey');
@@ -4381,6 +4391,88 @@ function getHourlyRateFromEval(){
     if (!raw) return '—';
     return raw.length > limit ? `${raw.slice(0, limit - 1)}…` : raw;
   }
+  function escapeFocusHtml(text){
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+  function setMobileFocusInsightDrill(mode){
+    focusInsightDrillMode = mode || null;
+    const active = !!focusInsightDrillMode;
+    if (focusInsightDrill){
+      focusInsightDrill.classList.toggle('active', active);
+    }
+    if (focusInsightsHead) focusInsightsHead.style.display = active ? 'none' : '';
+    if (focusInsightsNav) focusInsightsNav.style.display = active ? 'none' : '';
+    focusInsightPageNodes.forEach(node=>{ node.style.display = active ? 'none' : ''; });
+    focusInsightsActions.forEach(node=>{ node.style.display = active ? 'none' : 'grid'; });
+  }
+  function buildDiagnosticsLiteHtml(){
+    const model = readTextValue('diagModelBadge');
+    const summary = readTextValue('diagSummary');
+    const rows = Array.from(document.querySelectorAll('#diagTableBody tr')).slice(0, 3);
+    const items = rows.map(row=>{
+      const cells = Array.from(row.querySelectorAll('td'));
+      const date = (cells[0]?.textContent || '').trim();
+      const delta = (cells[5]?.textContent || '').trim();
+      const note = (cells[8]?.textContent || '').trim();
+      if (!date && !delta) return null;
+      const detail = [delta, note].filter(Boolean).join(' • ');
+      return `<li><b>${escapeFocusHtml(date || 'Day')}</b>${detail ? `: ${escapeFocusHtml(detail)}` : ''}</li>`;
+    }).filter(Boolean);
+    const list = items.length ? `<ul class="focus-lite-list">${items.join('')}</ul>` : '<small class="muted">No residual outliers yet.</small>';
+    return `
+      <div class="focus-grid" style="margin-top:0">
+        <div class="focus-kpi"><small>Model</small><b>${escapeFocusHtml(compactText(model, 44))}</b></div>
+        <div class="focus-kpi"><small>Status</small><b>${escapeFocusHtml(compactText(summary, 44))}</b></div>
+      </div>
+      <small class="muted" style="display:block;margin-top:8px">Top residual days</small>
+      ${list}
+    `;
+  }
+  function buildDayCompareLiteHtml(){
+    const subject = readTextValue('dcSubjectLabel');
+    const summary = readTextValue('dcReasoning');
+    const highlights = Array.from(document.querySelectorAll('#dcHighlights .pill')).slice(0, 3).map(el=>{
+      const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      return txt ? `<li>${escapeFocusHtml(txt)}</li>` : null;
+    }).filter(Boolean);
+    const rows = Array.from(document.querySelectorAll('#dcTableBody tr')).slice(0, 4).map(row=>{
+      const cells = Array.from(row.querySelectorAll('td'));
+      const metric = (cells[0]?.textContent || '').trim();
+      const delta = (cells[3]?.textContent || '').trim();
+      if (!metric && !delta) return null;
+      return `<li><b>${escapeFocusHtml(metric || 'Metric')}</b>: ${escapeFocusHtml(delta || '—')}</li>`;
+    }).filter(Boolean);
+    const topList = highlights.length ? highlights : rows;
+    const list = topList.length ? `<ul class="focus-lite-list">${topList.join('')}</ul>` : '<small class="muted">No compare data yet.</small>';
+    return `
+      <div class="focus-grid" style="margin-top:0">
+        <div class="focus-kpi"><small>Subject</small><b>${escapeFocusHtml(compactText(subject || 'Ready', 44))}</b></div>
+        <div class="focus-kpi"><small>Summary</small><b>${escapeFocusHtml(compactText(summary || 'Open full compare', 44))}</b></div>
+      </div>
+      <small class="muted" style="display:block;margin-top:8px">Top deltas</small>
+      ${list}
+    `;
+  }
+  function renderFocusInsightDrill(){
+    if (!focusInsightDrillBody || !focusInsightDrillTitle) return;
+    if (focusInsightDrillMode === 'diagnostics'){
+      focusInsightDrillTitle.textContent = 'Diagnostics Lite';
+      focusInsightDrillBody.innerHTML = buildDiagnosticsLiteHtml();
+      return;
+    }
+    if (focusInsightDrillMode === 'dayCompare'){
+      focusInsightDrillTitle.textContent = 'Day Compare Lite';
+      focusInsightDrillBody.innerHTML = buildDayCompareLiteHtml();
+      return;
+    }
+    focusInsightDrillTitle.textContent = 'Lite View';
+    focusInsightDrillBody.innerHTML = '—';
+  }
   function setMobileFocusInsightPage(nextPage){
     const page = FOCUS_INSIGHT_ORDER.includes(nextPage) ? nextPage : 'movers';
     focusInsightPage = page;
@@ -4394,6 +4486,7 @@ function getHourlyRateFromEval(){
       node.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
     if (focusInsightTitle) focusInsightTitle.textContent = FOCUS_INSIGHT_LABELS[page] || 'Insights';
+    setMobileFocusInsightDrill(null);
   }
   function stepMobileFocusInsightPage(delta){
     const currentIndex = Math.max(0, FOCUS_INSIGHT_ORDER.indexOf(focusInsightPage));
@@ -4425,6 +4518,7 @@ function getHourlyRateFromEval(){
     const compareSummary = readTextValue('dcReasoning', '').trim();
     setFocusText('fsInsightCompareLabel', compactText(compareLabel || 'Ready'));
     setFocusText('fsInsightCompareSummary', compactText(compareSummary || 'Open Day Compare'));
+    renderFocusInsightDrill();
   }
   function setMobileFocusShellPage(nextPage){
     const page = FOCUS_PAGE_ORDER.includes(nextPage) ? nextPage : 'today';
@@ -4440,6 +4534,7 @@ function getHourlyRateFromEval(){
     });
     if (focusTitle) focusTitle.textContent = FOCUS_PAGE_LABELS[page] || 'Focus';
     if (page === 'insights') setMobileFocusInsightPage(focusInsightPage);
+    else setMobileFocusInsightDrill(null);
   }
   function stepMobileFocusShellPage(delta){
     const currentIndex = Math.max(0, FOCUS_PAGE_ORDER.indexOf(focusShellPage));
@@ -4484,6 +4579,17 @@ function getHourlyRateFromEval(){
         if (!page) return;
         setMobileFocusInsightPage(page);
       });
+    });
+    focusOpenDiagLite?.addEventListener('click', ()=>{
+      setMobileFocusInsightDrill('diagnostics');
+      renderFocusInsightDrill();
+    });
+    focusOpenCompareLite?.addEventListener('click', ()=>{
+      setMobileFocusInsightDrill('dayCompare');
+      renderFocusInsightDrill();
+    });
+    focusInsightBack?.addEventListener('click', ()=>{
+      setMobileFocusInsightDrill(null);
     });
     focusRunButtons.forEach(node=>{
       node.addEventListener('click', ()=>{

@@ -1073,6 +1073,29 @@
     color:var(--brand);
     background:rgba(43,127,255,.12);
   }
+  .focus-insight-drill{
+    display:none;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+    background:rgba(12,18,30,.2);
+    margin-top:8px;
+  }
+  .focus-insight-drill.active{ display:block; }
+  .focus-insight-drill-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-bottom:8px;
+  }
+  .focus-lite-list{
+    margin:0;
+    padding-left:18px;
+    font-size:13px;
+    color:var(--text);
+  }
+  .focus-lite-list li{ margin:4px 0; }
   @media (min-width:901px){
     body.focus-shell-on #focusShell{ display:none!important; }
     body.focus-shell-on main.wrap > section{ display:initial!important; }
@@ -1200,6 +1223,9 @@
           <div class="focus-kpi"><small>Model</small><b id="fsInsightDiagModel">—</b></div>
           <div class="focus-kpi"><small>Status</small><b id="fsInsightDiagStatus">—</b></div>
         </div>
+        <div class="focus-actions">
+          <button id="focusOpenDiagLite" class="ghost" type="button">Open Diagnostics Lite</button>
+        </div>
       </div>
       <div id="focusInsightDayCompare" class="focus-insight-page" data-insight-page="dayCompare">
         <small class="muted">Day Compare</small>
@@ -1207,6 +1233,16 @@
           <div class="focus-kpi"><small>Subject</small><b id="fsInsightCompareLabel">—</b></div>
           <div class="focus-kpi"><small>Summary</small><b id="fsInsightCompareSummary">—</b></div>
         </div>
+        <div class="focus-actions">
+          <button id="focusOpenCompareLite" class="ghost" type="button">Open Day Compare Lite</button>
+        </div>
+      </div>
+      <div id="focusInsightDrill" class="focus-insight-drill">
+        <div class="focus-insight-drill-head">
+          <button id="focusInsightBack" class="ghost" type="button">Back to Insights</button>
+          <div id="focusInsightDrillTitle" class="focus-insights-title">Lite View</div>
+        </div>
+        <div id="focusInsightDrillBody" class="focus-insight-content">—</div>
       </div>
       <div class="focus-insight-nav" role="tablist" aria-label="Insights navigation">
         <button class="ghost active" type="button" data-insight-page="movers">Movers</button>

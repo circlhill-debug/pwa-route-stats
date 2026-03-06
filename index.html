@@ -989,7 +989,7 @@
   #focusShell{ display:none; }
   body.focus-shell-on main.wrap > section:not(#focusShell){ display:none!important; }
   body.focus-shell-on #focusShell{ display:block!important; }
-  body.focus-shell-on header{ display:none!important; }
+  body.focus-shell-on:not(.focus-home-chrome) header{ display:none!important; }
   .focus-shell{
     min-height:calc(100vh - 156px);
     display:flex;
@@ -1147,7 +1147,7 @@
 <body>
 <div id="diag">
   ROUTE STATS · Supabase: <b id="dConn">…</b> · Auth: <b id="dAuth">…</b> · Write: <b id="dWrite">—</b>
-  <button id="btnBackToFocusTop" class="ghost" type="button" style="display:none;margin-left:8px;padding:2px 8px;font-size:11px">Back to Focus</button>
+  <button id="btnBackToFocusTop" class="btn" type="button" style="display:none;margin-left:8px;padding:3px 10px;font-size:11px;line-height:1.2">Back to Focus</button>
 </div>
 
 <!-- Version tag -->

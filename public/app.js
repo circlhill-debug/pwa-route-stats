@@ -9236,6 +9236,10 @@ Score: ${overallScore}/10 (higher is better)`;
       node.style.display = active ? "none" : "grid";
     });
   }
+  function updateFocusHomeChrome() {
+    const home = shouldShowMobileFocusShell() && focusShellPage === "today" && focusTodayPage === "quick";
+    document.body.classList.toggle("focus-home-chrome", !!home);
+  }
   function setMobileFocusTodayPage(nextPage) {
     const page = FOCUS_TODAY_ORDER.includes(nextPage) ? nextPage : "quick";
     focusTodayPage = page;
@@ -9251,6 +9255,7 @@ Score: ${overallScore}/10 (higher is better)`;
       node.setAttribute("aria-pressed", active ? "true" : "false");
     });
     if (focusTodayTitle) focusTodayTitle.textContent = FOCUS_TODAY_LABELS[page] || "Today";
+    updateFocusHomeChrome();
   }
   function stepMobileFocusTodayPage(delta) {
     const currentIndex = Math.max(0, FOCUS_TODAY_ORDER.indexOf(focusTodayPage));
@@ -9399,6 +9404,7 @@ Score: ${overallScore}/10 (higher is better)`;
     if (page === "insights") setMobileFocusInsightPage(focusInsightPage);
     else setMobileFocusInsightDrill(null);
     if (page === "today") setMobileFocusTodayPage(focusTodayPage);
+    updateFocusHomeChrome();
   }
   function stepMobileFocusShellPage(delta) {
     const currentIndex = Math.max(0, FOCUS_PAGE_ORDER.indexOf(focusShellPage));
@@ -9413,6 +9419,7 @@ Score: ${overallScore}/10 (higher is better)`;
     if (btnBackToFocus) btnBackToFocus.style.display = showBack ? "" : "none";
     if (btnBackToFocusTop) btnBackToFocusTop.style.display = showBack ? "" : "none";
     if (active) setMobileFocusShellPage(focusShellPage);
+    else document.body.classList.remove("focus-home-chrome");
   }
   function exitMobileFocusShellTo(targetId) {
     FLAGS.mobileFocusMode = false;

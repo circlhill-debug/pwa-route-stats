@@ -1097,6 +1097,39 @@
     color:var(--text);
   }
   .focus-lite-list li{ margin:4px 0; }
+  .focus-today-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-top:8px;
+  }
+  .focus-today-page{
+    display:none;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+    background:rgba(12,18,30,.18);
+    margin-top:8px;
+  }
+  .focus-today-page.active{ display:block; }
+  .focus-today-nav{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:6px;
+    margin-top:8px;
+  }
+  .focus-today-nav button{
+    padding:6px 4px;
+    font-size:11px;
+    border-radius:999px;
+  }
+  .focus-today-nav button.active{
+    border-color:var(--brand);
+    color:var(--brand);
+    background:rgba(43,127,255,.12);
+  }
+  .focus-note{ font-size:12px; color:var(--muted); margin-top:6px; }
   #btnBackToFocus{
     position:fixed;
     right:12px;
@@ -1114,6 +1147,7 @@
 <body>
 <div id="diag">
   ROUTE STATS · Supabase: <b id="dConn">…</b> · Auth: <b id="dAuth">…</b> · Write: <b id="dWrite">—</b>
+  <button id="btnBackToFocusTop" class="ghost" type="button" style="display:none;margin-left:8px;padding:2px 8px;font-size:11px">Back to Focus</button>
 </div>
 
 <!-- Version tag -->
@@ -1169,14 +1203,43 @@
     </div>
 
     <div id="focusPageToday" class="focus-page active" data-page="today">
-      <small class="muted">Quick Look · Today</small>
-      <div class="focus-grid">
-        <div class="focus-kpi"><small>Expected End</small><b id="fsTodayEnd">—</b></div>
-        <div class="focus-kpi"><small>Total Hours</small><b id="fsTodayTotal">—</b></div>
-        <div class="focus-kpi"><small>Volume</small><b id="fsTodayVolume">—</b></div>
-        <div class="focus-kpi"><small>Route Eff.</small><b id="fsTodayRouteEff">—</b></div>
-        <div class="focus-kpi"><small>Overall</small><b id="fsTodayOverall">—</b></div>
-        <div class="focus-kpi"><small>Office Δ</small><b id="fsTodayOfficeDelta">—</b></div>
+      <small class="muted">Today</small>
+      <div class="focus-today-head">
+        <button id="focusTodayPrev" class="ghost" type="button" title="Previous today page">◀</button>
+        <div id="focusTodayTitle" class="focus-insights-title">Quick</div>
+        <button id="focusTodayNext" class="ghost" type="button" title="Next today page">▶</button>
+      </div>
+      <div id="focusTodayQuick" class="focus-today-page active" data-today-page="quick">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Expected End</small><b id="fsTodayEnd">—</b></div>
+          <div class="focus-kpi"><small>Total Hours</small><b id="fsTodayTotal">—</b></div>
+          <div class="focus-kpi"><small>Volume</small><b id="fsTodayVolume">—</b></div>
+          <div class="focus-kpi"><small>Route Eff.</small><b id="fsTodayRouteEff">—</b></div>
+        </div>
+      </div>
+      <div id="focusTodayFull" class="focus-today-page" data-today-page="full">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Expected End</small><b id="fsTodayEndFull">—</b></div>
+          <div class="focus-kpi"><small>Total Hours</small><b id="fsTodayTotalFull">—</b></div>
+          <div class="focus-kpi"><small>Volume</small><b id="fsTodayVolumeFull">—</b></div>
+          <div class="focus-kpi"><small>Route Eff.</small><b id="fsTodayRouteEffFull">—</b></div>
+          <div class="focus-kpi"><small>Overall</small><b id="fsTodayOverall">—</b></div>
+          <div class="focus-kpi"><small>Office Δ</small><b id="fsTodayOfficeDelta">—</b></div>
+          <div class="focus-kpi"><small>Parcels Δ</small><b id="fsTodayParcelsDelta">—</b></div>
+          <div class="focus-kpi"><small>Letters Δ</small><b id="fsTodayLettersDelta">—</b></div>
+        </div>
+      </div>
+      <div id="focusTodayDetail" class="focus-today-page" data-today-page="detail">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Today Forecast</small><b id="fsTodayForecast">—</b></div>
+          <div class="focus-kpi"><small>Heaviness</small><b id="fsTodayHeaviness">—</b></div>
+        </div>
+        <div class="focus-note">Tip: Swipe left/right to move Today pages. Use snapshot tiles for deeper daily tools.</div>
+      </div>
+      <div class="focus-today-nav" role="tablist" aria-label="Today navigation">
+        <button class="ghost active" type="button" data-today-page="quick">Quick</button>
+        <button class="ghost" type="button" data-today-page="full">Full</button>
+        <button class="ghost" type="button" data-today-page="detail">Detail</button>
       </div>
       <div class="focus-actions">
         <button class="ghost focus-deep-link" type="button" data-target="snapshotCard">Open full Today snapshot</button>

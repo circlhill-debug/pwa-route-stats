@@ -6024,6 +6024,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var saveSettings = document.getElementById("saveSettings");
   var focusShell = document.getElementById("focusShell");
   var btnBackToFocus = document.getElementById("btnBackToFocus");
+  var btnBackToFocusTop = document.getElementById("btnBackToFocusTop");
   var focusTitle = document.getElementById("focusTitle");
   var focusPrev = document.getElementById("focusPrev");
   var focusNext = document.getElementById("focusNext");
@@ -6046,9 +6047,15 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var focusInsightDrillBody = document.getElementById("focusInsightDrillBody");
   var focusOpenDiagLite = document.getElementById("focusOpenDiagLite");
   var focusOpenCompareLite = document.getElementById("focusOpenCompareLite");
+  var focusTodayTitle = document.getElementById("focusTodayTitle");
+  var focusTodayPrev = document.getElementById("focusTodayPrev");
+  var focusTodayNext = document.getElementById("focusTodayNext");
+  var focusTodayPageNodes = Array.from(document.querySelectorAll("#focusShell .focus-today-page"));
+  var focusTodayNavNodes = Array.from(document.querySelectorAll("#focusShell .focus-today-nav [data-today-page]"));
   var MOBILE_FOCUS_MAX_WIDTH = 900;
   var FOCUS_PAGE_ORDER = ["today", "week", "entry", "insights"];
   var FOCUS_INSIGHT_ORDER = ["movers", "todayHeaviness", "weekHeaviness", "diagnostics", "dayCompare"];
+  var FOCUS_TODAY_ORDER = ["quick", "full", "detail"];
   var FOCUS_PAGE_LABELS = {
     today: "Today",
     week: "Week",
@@ -6062,10 +6069,15 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     diagnostics: "Diagnostics",
     dayCompare: "Day Compare"
   };
+  var FOCUS_TODAY_LABELS = {
+    quick: "Quick",
+    full: "Full Today",
+    detail: "Detail"
+  };
   var focusShellPage = "today";
+  var focusTodayPage = "quick";
   var focusInsightPage = "movers";
   var focusInsightDrillMode = null;
-  var showBackToFocus = false;
   var focusTouchStartX = null;
   var focusInsightTouchStartX = null;
   var settingsOpenAiKey = document.getElementById("settingsOpenAiKey");
@@ -9224,6 +9236,27 @@ Score: ${overallScore}/10 (higher is better)`;
       node.style.display = active ? "none" : "grid";
     });
   }
+  function setMobileFocusTodayPage(nextPage) {
+    const page = FOCUS_TODAY_ORDER.includes(nextPage) ? nextPage : "quick";
+    focusTodayPage = page;
+    focusTodayPageNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.todayPage) === page;
+      node.classList.toggle("active", !!active);
+    });
+    focusTodayNavNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.todayPage) === page;
+      node.classList.toggle("active", !!active);
+      node.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    if (focusTodayTitle) focusTodayTitle.textContent = FOCUS_TODAY_LABELS[page] || "Today";
+  }
+  function stepMobileFocusTodayPage(delta) {
+    const currentIndex = Math.max(0, FOCUS_TODAY_ORDER.indexOf(focusTodayPage));
+    const nextIndex = (currentIndex + delta + FOCUS_TODAY_ORDER.length) % FOCUS_TODAY_ORDER.length;
+    setMobileFocusTodayPage(FOCUS_TODAY_ORDER[nextIndex]);
+  }
   function buildDiagnosticsLiteHtml() {
     const model = readTextValue("diagModelBadge");
     const summary = readTextValue("diagSummary");
@@ -9312,22 +9345,31 @@ Score: ${overallScore}/10 (higher is better)`;
     setMobileFocusInsightPage(FOCUS_INSIGHT_ORDER[nextIndex]);
   }
   function updateMobileFocusShellData() {
-    var _a5, _b, _c;
+    var _a5, _b, _c, _d;
     setFocusText("fsTodayEnd", readTextValue("expEnd"));
     setFocusText("fsTodayTotal", readTextValue("totalH"));
     setFocusText("fsTodayVolume", readTextValue("badgeVolume"));
     setFocusText("fsTodayRouteEff", readTextValue("badgeRouteEff"));
+    setFocusText("fsTodayEndFull", readTextValue("expEnd"));
+    setFocusText("fsTodayTotalFull", readTextValue("totalH"));
+    setFocusText("fsTodayVolumeFull", readTextValue("badgeVolume"));
+    setFocusText("fsTodayRouteEffFull", readTextValue("badgeRouteEff"));
     setFocusText("fsTodayOverall", readTextValue("badgeOverall"));
     setFocusText("fsTodayOfficeDelta", readTextValue("todayOfficeDelta"));
+    setFocusText("fsTodayParcelsDelta", readTextValue("todayParcelsDelta"));
+    setFocusText("fsTodayLettersDelta", readTextValue("todayLettersDelta"));
+    setFocusText("fsTodayForecast", compactText(readTextValue("expMeta"), 30));
+    const heavinessText = compactText((((_a5 = document.getElementById("todayHeaviness")) == null ? void 0 : _a5.textContent) || "").replace(/\s+/g, " ").trim(), 40);
+    setFocusText("fsTodayHeaviness", heavinessText || "\u2014");
     setFocusText("fsWeekHours", readTextValue("wkHours"));
     setFocusText("fsWeekHoursDelta", readTextValue("wkHoursDelta"));
     setFocusText("fsWeekParcels", readTextValue("wkParcels"));
     setFocusText("fsWeekParcelsDelta", readTextValue("wkParcelsDelta"));
     setFocusText("fsWeekLetters", readTextValue("wkLetters"));
     setFocusText("fsWeekLettersDelta", readTextValue("wkLettersDelta"));
-    const moversHtml = ((_a5 = document.getElementById("trendFactors")) == null ? void 0 : _a5.innerHTML) || "";
-    const todayHeavinessHtml = ((_b = document.getElementById("todayHeaviness")) == null ? void 0 : _b.innerHTML) || "";
-    const weekHeavinessHtml = ((_c = document.getElementById("weekHeaviness")) == null ? void 0 : _c.innerHTML) || "";
+    const moversHtml = ((_b = document.getElementById("trendFactors")) == null ? void 0 : _b.innerHTML) || "";
+    const todayHeavinessHtml = ((_c = document.getElementById("todayHeaviness")) == null ? void 0 : _c.innerHTML) || "";
+    const weekHeavinessHtml = ((_d = document.getElementById("weekHeaviness")) == null ? void 0 : _d.innerHTML) || "";
     setFocusHtml("fsInsightMovers", moversHtml || '<span class="muted">No major movers yet.</span>');
     setFocusHtml("fsInsightTodayHeaviness", todayHeavinessHtml || '<span class="muted">No worked day selected yet.</span>');
     setFocusHtml("fsInsightWeekHeaviness", weekHeavinessHtml || '<span class="muted">Need this week and last week data.</span>');
@@ -9356,6 +9398,7 @@ Score: ${overallScore}/10 (higher is better)`;
     if (focusTitle) focusTitle.textContent = FOCUS_PAGE_LABELS[page] || "Focus";
     if (page === "insights") setMobileFocusInsightPage(focusInsightPage);
     else setMobileFocusInsightDrill(null);
+    if (page === "today") setMobileFocusTodayPage(focusTodayPage);
   }
   function stepMobileFocusShellPage(delta) {
     const currentIndex = Math.max(0, FOCUS_PAGE_ORDER.indexOf(focusShellPage));
@@ -9366,12 +9409,12 @@ Score: ${overallScore}/10 (higher is better)`;
     updateMobileFocusShellData();
     const active = shouldShowMobileFocusShell();
     document.body.classList.toggle("focus-shell-on", !!active);
-    if (active) showBackToFocus = false;
-    if (btnBackToFocus) btnBackToFocus.style.display = !active && showBackToFocus ? "" : "none";
+    const showBack = !active && isMobileFocusViewport();
+    if (btnBackToFocus) btnBackToFocus.style.display = showBack ? "" : "none";
+    if (btnBackToFocusTop) btnBackToFocusTop.style.display = showBack ? "" : "none";
     if (active) setMobileFocusShellPage(focusShellPage);
   }
   function exitMobileFocusShellTo(targetId) {
-    showBackToFocus = true;
     FLAGS.mobileFocusMode = false;
     saveFlags(FLAGS);
     if (flagMobileFocusMode) flagMobileFocusMode.checked = false;
@@ -9398,6 +9441,8 @@ Score: ${overallScore}/10 (higher is better)`;
     if (!focusShell) return;
     focusPrev == null ? void 0 : focusPrev.addEventListener("click", () => stepMobileFocusShellPage(-1));
     focusNext == null ? void 0 : focusNext.addEventListener("click", () => stepMobileFocusShellPage(1));
+    focusTodayPrev == null ? void 0 : focusTodayPrev.addEventListener("click", () => stepMobileFocusTodayPage(-1));
+    focusTodayNext == null ? void 0 : focusTodayNext.addEventListener("click", () => stepMobileFocusTodayPage(1));
     focusInsightPrev == null ? void 0 : focusInsightPrev.addEventListener("click", () => stepMobileFocusInsightPage(-1));
     focusInsightNext == null ? void 0 : focusInsightNext.addEventListener("click", () => stepMobileFocusInsightPage(1));
     focusNavNodes.forEach((node) => {
@@ -9416,6 +9461,14 @@ Score: ${overallScore}/10 (higher is better)`;
         setMobileFocusInsightPage(page);
       });
     });
+    focusTodayNavNodes.forEach((node) => {
+      node.addEventListener("click", () => {
+        var _a5;
+        const page = (_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.todayPage;
+        if (!page) return;
+        setMobileFocusTodayPage(page);
+      });
+    });
     focusOpenDiagLite == null ? void 0 : focusOpenDiagLite.addEventListener("click", () => {
       setMobileFocusInsightDrill("diagnostics");
       renderFocusInsightDrill();
@@ -9427,17 +9480,18 @@ Score: ${overallScore}/10 (higher is better)`;
     focusInsightBack == null ? void 0 : focusInsightBack.addEventListener("click", () => {
       setMobileFocusInsightDrill(null);
     });
-    btnBackToFocus == null ? void 0 : btnBackToFocus.addEventListener("click", () => {
+    const goBackToFocus = () => {
       FLAGS.mobileFocusMode = true;
       saveFlags(FLAGS);
       if (flagMobileFocusMode) flagMobileFocusMode.checked = true;
-      showBackToFocus = false;
       applyMobileFocusShell();
       try {
         window.scrollTo({ top: 0, behavior: "smooth" });
       } catch (_) {
       }
-    });
+    };
+    btnBackToFocus == null ? void 0 : btnBackToFocus.addEventListener("click", goBackToFocus);
+    btnBackToFocusTop == null ? void 0 : btnBackToFocusTop.addEventListener("click", goBackToFocus);
     focusRunButtons.forEach((node) => {
       node.addEventListener("click", () => {
         var _a5, _b;
@@ -9487,6 +9541,26 @@ Score: ${overallScore}/10 (higher is better)`;
       focusInsightTouchStartX = null;
       if (Math.abs(delta) < 45) return;
       stepMobileFocusInsightPage(delta < 0 ? 1 : -1);
+      event.stopPropagation();
+    }, { passive: true });
+    const focusPageToday = document.getElementById("focusPageToday");
+    let focusTodayTouchStartX = null;
+    focusPageToday == null ? void 0 : focusPageToday.addEventListener("touchstart", (event) => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      focusTodayTouchStartX = touch ? touch.clientX : null;
+    }, { passive: true });
+    focusPageToday == null ? void 0 : focusPageToday.addEventListener("touchend", (event) => {
+      if (focusShellPage !== "today" || focusTodayTouchStartX == null) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      const endX = touch ? touch.clientX : null;
+      if (endX == null) {
+        focusTodayTouchStartX = null;
+        return;
+      }
+      const delta = endX - focusTodayTouchStartX;
+      focusTodayTouchStartX = null;
+      if (Math.abs(delta) < 45) return;
+      stepMobileFocusTodayPage(delta < 0 ? 1 : -1);
       event.stopPropagation();
     }, { passive: true });
     window.addEventListener("resize", applyMobileFocusShell);

@@ -1462,6 +1462,7 @@ const authReadyPromise = handleAuthCallback(sb);
   const saveSettings = document.getElementById('saveSettings');
   const focusShell = document.getElementById('focusShell');
   const btnBackToFocus = document.getElementById('btnBackToFocus');
+  const btnBackToFocusTop = document.getElementById('btnBackToFocusTop');
   const focusTitle = document.getElementById('focusTitle');
   const focusPrev = document.getElementById('focusPrev');
   const focusNext = document.getElementById('focusNext');
@@ -1484,9 +1485,15 @@ const authReadyPromise = handleAuthCallback(sb);
   const focusInsightDrillBody = document.getElementById('focusInsightDrillBody');
   const focusOpenDiagLite = document.getElementById('focusOpenDiagLite');
   const focusOpenCompareLite = document.getElementById('focusOpenCompareLite');
+  const focusTodayTitle = document.getElementById('focusTodayTitle');
+  const focusTodayPrev = document.getElementById('focusTodayPrev');
+  const focusTodayNext = document.getElementById('focusTodayNext');
+  const focusTodayPageNodes = Array.from(document.querySelectorAll('#focusShell .focus-today-page'));
+  const focusTodayNavNodes = Array.from(document.querySelectorAll('#focusShell .focus-today-nav [data-today-page]'));
   const MOBILE_FOCUS_MAX_WIDTH = 900;
   const FOCUS_PAGE_ORDER = ['today','week','entry','insights'];
   const FOCUS_INSIGHT_ORDER = ['movers','todayHeaviness','weekHeaviness','diagnostics','dayCompare'];
+  const FOCUS_TODAY_ORDER = ['quick','full','detail'];
   const FOCUS_PAGE_LABELS = {
     today: 'Today',
     week: 'Week',
@@ -1500,10 +1507,15 @@ const authReadyPromise = handleAuthCallback(sb);
     diagnostics: 'Diagnostics',
     dayCompare: 'Day Compare'
   };
+  const FOCUS_TODAY_LABELS = {
+    quick: 'Quick',
+    full: 'Full Today',
+    detail: 'Detail'
+  };
   let focusShellPage = 'today';
+  let focusTodayPage = 'quick';
   let focusInsightPage = 'movers';
   let focusInsightDrillMode = null;
-  let showBackToFocus = false;
   let focusTouchStartX = null;
   let focusInsightTouchStartX = null;
 const settingsOpenAiKey = document.getElementById('settingsOpenAiKey');
@@ -4412,6 +4424,25 @@ function getHourlyRateFromEval(){
     focusInsightPageNodes.forEach(node=>{ node.style.display = active ? 'none' : ''; });
     focusInsightsActions.forEach(node=>{ node.style.display = active ? 'none' : 'grid'; });
   }
+  function setMobileFocusTodayPage(nextPage){
+    const page = FOCUS_TODAY_ORDER.includes(nextPage) ? nextPage : 'quick';
+    focusTodayPage = page;
+    focusTodayPageNodes.forEach(node=>{
+      const active = node?.dataset?.todayPage === page;
+      node.classList.toggle('active', !!active);
+    });
+    focusTodayNavNodes.forEach(node=>{
+      const active = node?.dataset?.todayPage === page;
+      node.classList.toggle('active', !!active);
+      node.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (focusTodayTitle) focusTodayTitle.textContent = FOCUS_TODAY_LABELS[page] || 'Today';
+  }
+  function stepMobileFocusTodayPage(delta){
+    const currentIndex = Math.max(0, FOCUS_TODAY_ORDER.indexOf(focusTodayPage));
+    const nextIndex = (currentIndex + delta + FOCUS_TODAY_ORDER.length) % FOCUS_TODAY_ORDER.length;
+    setMobileFocusTodayPage(FOCUS_TODAY_ORDER[nextIndex]);
+  }
   function buildDiagnosticsLiteHtml(){
     const model = readTextValue('diagModelBadge');
     const summary = readTextValue('diagSummary');
@@ -4500,8 +4531,17 @@ function getHourlyRateFromEval(){
     setFocusText('fsTodayTotal', readTextValue('totalH'));
     setFocusText('fsTodayVolume', readTextValue('badgeVolume'));
     setFocusText('fsTodayRouteEff', readTextValue('badgeRouteEff'));
+    setFocusText('fsTodayEndFull', readTextValue('expEnd'));
+    setFocusText('fsTodayTotalFull', readTextValue('totalH'));
+    setFocusText('fsTodayVolumeFull', readTextValue('badgeVolume'));
+    setFocusText('fsTodayRouteEffFull', readTextValue('badgeRouteEff'));
     setFocusText('fsTodayOverall', readTextValue('badgeOverall'));
     setFocusText('fsTodayOfficeDelta', readTextValue('todayOfficeDelta'));
+    setFocusText('fsTodayParcelsDelta', readTextValue('todayParcelsDelta'));
+    setFocusText('fsTodayLettersDelta', readTextValue('todayLettersDelta'));
+    setFocusText('fsTodayForecast', compactText(readTextValue('expMeta'), 30));
+    const heavinessText = compactText((document.getElementById('todayHeaviness')?.textContent || '').replace(/\s+/g,' ').trim(), 40);
+    setFocusText('fsTodayHeaviness', heavinessText || '—');
     setFocusText('fsWeekHours', readTextValue('wkHours'));
     setFocusText('fsWeekHoursDelta', readTextValue('wkHoursDelta'));
     setFocusText('fsWeekParcels', readTextValue('wkParcels'));
@@ -4537,6 +4577,7 @@ function getHourlyRateFromEval(){
     if (focusTitle) focusTitle.textContent = FOCUS_PAGE_LABELS[page] || 'Focus';
     if (page === 'insights') setMobileFocusInsightPage(focusInsightPage);
     else setMobileFocusInsightDrill(null);
+    if (page === 'today') setMobileFocusTodayPage(focusTodayPage);
   }
   function stepMobileFocusShellPage(delta){
     const currentIndex = Math.max(0, FOCUS_PAGE_ORDER.indexOf(focusShellPage));
@@ -4547,12 +4588,12 @@ function getHourlyRateFromEval(){
     updateMobileFocusShellData();
     const active = shouldShowMobileFocusShell();
     document.body.classList.toggle('focus-shell-on', !!active);
-    if (active) showBackToFocus = false;
-    if (btnBackToFocus) btnBackToFocus.style.display = (!active && showBackToFocus) ? '' : 'none';
+    const showBack = (!active && isMobileFocusViewport());
+    if (btnBackToFocus) btnBackToFocus.style.display = showBack ? '' : 'none';
+    if (btnBackToFocusTop) btnBackToFocusTop.style.display = showBack ? '' : 'none';
     if (active) setMobileFocusShellPage(focusShellPage);
   }
   function exitMobileFocusShellTo(targetId){
-    showBackToFocus = true;
     FLAGS.mobileFocusMode = false;
     saveFlags(FLAGS);
     if (flagMobileFocusMode) flagMobileFocusMode.checked = false;
@@ -4569,6 +4610,8 @@ function getHourlyRateFromEval(){
     if (!focusShell) return;
     focusPrev?.addEventListener('click', ()=> stepMobileFocusShellPage(-1));
     focusNext?.addEventListener('click', ()=> stepMobileFocusShellPage(1));
+    focusTodayPrev?.addEventListener('click', ()=> stepMobileFocusTodayPage(-1));
+    focusTodayNext?.addEventListener('click', ()=> stepMobileFocusTodayPage(1));
     focusInsightPrev?.addEventListener('click', ()=> stepMobileFocusInsightPage(-1));
     focusInsightNext?.addEventListener('click', ()=> stepMobileFocusInsightPage(1));
     focusNavNodes.forEach(node=>{
@@ -4585,6 +4628,13 @@ function getHourlyRateFromEval(){
         setMobileFocusInsightPage(page);
       });
     });
+    focusTodayNavNodes.forEach(node=>{
+      node.addEventListener('click', ()=>{
+        const page = node?.dataset?.todayPage;
+        if (!page) return;
+        setMobileFocusTodayPage(page);
+      });
+    });
     focusOpenDiagLite?.addEventListener('click', ()=>{
       setMobileFocusInsightDrill('diagnostics');
       renderFocusInsightDrill();
@@ -4596,14 +4646,15 @@ function getHourlyRateFromEval(){
     focusInsightBack?.addEventListener('click', ()=>{
       setMobileFocusInsightDrill(null);
     });
-    btnBackToFocus?.addEventListener('click', ()=>{
+    const goBackToFocus = ()=>{
       FLAGS.mobileFocusMode = true;
       saveFlags(FLAGS);
       if (flagMobileFocusMode) flagMobileFocusMode.checked = true;
-      showBackToFocus = false;
       applyMobileFocusShell();
       try{ window.scrollTo({ top:0, behavior:'smooth' }); }catch(_){ }
-    });
+    };
+    btnBackToFocus?.addEventListener('click', goBackToFocus);
+    btnBackToFocusTop?.addEventListener('click', goBackToFocus);
     focusRunButtons.forEach(node=>{
       node.addEventListener('click', ()=>{
         const targetId = node?.dataset?.click;
@@ -4645,6 +4696,23 @@ function getHourlyRateFromEval(){
       focusInsightTouchStartX = null;
       if (Math.abs(delta) < 45) return;
       stepMobileFocusInsightPage(delta < 0 ? 1 : -1);
+      event.stopPropagation();
+    }, { passive:true });
+    const focusPageToday = document.getElementById('focusPageToday');
+    let focusTodayTouchStartX = null;
+    focusPageToday?.addEventListener('touchstart', (event)=>{
+      const touch = event.changedTouches && event.changedTouches[0];
+      focusTodayTouchStartX = touch ? touch.clientX : null;
+    }, { passive:true });
+    focusPageToday?.addEventListener('touchend', (event)=>{
+      if (focusShellPage !== 'today' || focusTodayTouchStartX == null) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      const endX = touch ? touch.clientX : null;
+      if (endX == null){ focusTodayTouchStartX = null; return; }
+      const delta = endX - focusTodayTouchStartX;
+      focusTodayTouchStartX = null;
+      if (Math.abs(delta) < 45) return;
+      stepMobileFocusTodayPage(delta < 0 ? 1 : -1);
       event.stopPropagation();
     }, { passive:true });
     window.addEventListener('resize', applyMobileFocusShell);

@@ -6023,6 +6023,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var peakClear = document.getElementById("peakClear");
   var saveSettings = document.getElementById("saveSettings");
   var focusShell = document.getElementById("focusShell");
+  var btnBackToFocus = document.getElementById("btnBackToFocus");
   var focusTitle = document.getElementById("focusTitle");
   var focusPrev = document.getElementById("focusPrev");
   var focusNext = document.getElementById("focusNext");
@@ -6064,6 +6065,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var focusShellPage = "today";
   var focusInsightPage = "movers";
   var focusInsightDrillMode = null;
+  var showBackToFocus = false;
   var focusTouchStartX = null;
   var focusInsightTouchStartX = null;
   var settingsOpenAiKey = document.getElementById("settingsOpenAiKey");
@@ -9364,9 +9366,12 @@ Score: ${overallScore}/10 (higher is better)`;
     updateMobileFocusShellData();
     const active = shouldShowMobileFocusShell();
     document.body.classList.toggle("focus-shell-on", !!active);
+    if (active) showBackToFocus = false;
+    if (btnBackToFocus) btnBackToFocus.style.display = !active && showBackToFocus ? "" : "none";
     if (active) setMobileFocusShellPage(focusShellPage);
   }
   function exitMobileFocusShellTo(targetId) {
+    showBackToFocus = true;
     FLAGS.mobileFocusMode = false;
     saveFlags(FLAGS);
     if (flagMobileFocusMode) flagMobileFocusMode.checked = false;
@@ -9421,6 +9426,17 @@ Score: ${overallScore}/10 (higher is better)`;
     });
     focusInsightBack == null ? void 0 : focusInsightBack.addEventListener("click", () => {
       setMobileFocusInsightDrill(null);
+    });
+    btnBackToFocus == null ? void 0 : btnBackToFocus.addEventListener("click", () => {
+      FLAGS.mobileFocusMode = true;
+      saveFlags(FLAGS);
+      if (flagMobileFocusMode) flagMobileFocusMode.checked = true;
+      showBackToFocus = false;
+      applyMobileFocusShell();
+      try {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch (_) {
+      }
     });
     focusRunButtons.forEach((node) => {
       node.addEventListener("click", () => {

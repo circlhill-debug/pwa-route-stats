@@ -989,6 +989,7 @@
   #focusShell{ display:none; }
   body.focus-shell-on main.wrap > section:not(#focusShell){ display:none!important; }
   body.focus-shell-on #focusShell{ display:block!important; }
+  body.focus-shell-on header{ display:none!important; }
   .focus-shell{
     min-height:calc(100vh - 156px);
     display:flex;
@@ -1096,6 +1097,14 @@
     color:var(--text);
   }
   .focus-lite-list li{ margin:4px 0; }
+  #btnBackToFocus{
+    position:fixed;
+    right:12px;
+    bottom:16px;
+    z-index:10001;
+    display:none;
+    box-shadow:0 8px 20px rgba(0,0,0,.28);
+  }
   @media (min-width:901px){
     body.focus-shell-on #focusShell{ display:none!important; }
     body.focus-shell-on main.wrap > section{ display:initial!important; }
@@ -1149,6 +1158,7 @@
     </div>
   </div>
 </header>
+<button id="btnBackToFocus" class="btn" type="button">Back to Focus</button>
 
 <main class="wrap grid grid-2">
   <section id="focusShell" class="card fullWidth focus-shell" aria-live="polite">

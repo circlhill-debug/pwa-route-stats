@@ -1461,6 +1461,7 @@ const authReadyPromise = handleAuthCallback(sb);
   const peakClear = document.getElementById('peakClear');
   const saveSettings = document.getElementById('saveSettings');
   const focusShell = document.getElementById('focusShell');
+  const btnBackToFocus = document.getElementById('btnBackToFocus');
   const focusTitle = document.getElementById('focusTitle');
   const focusPrev = document.getElementById('focusPrev');
   const focusNext = document.getElementById('focusNext');
@@ -1502,6 +1503,7 @@ const authReadyPromise = handleAuthCallback(sb);
   let focusShellPage = 'today';
   let focusInsightPage = 'movers';
   let focusInsightDrillMode = null;
+  let showBackToFocus = false;
   let focusTouchStartX = null;
   let focusInsightTouchStartX = null;
 const settingsOpenAiKey = document.getElementById('settingsOpenAiKey');
@@ -4545,9 +4547,12 @@ function getHourlyRateFromEval(){
     updateMobileFocusShellData();
     const active = shouldShowMobileFocusShell();
     document.body.classList.toggle('focus-shell-on', !!active);
+    if (active) showBackToFocus = false;
+    if (btnBackToFocus) btnBackToFocus.style.display = (!active && showBackToFocus) ? '' : 'none';
     if (active) setMobileFocusShellPage(focusShellPage);
   }
   function exitMobileFocusShellTo(targetId){
+    showBackToFocus = true;
     FLAGS.mobileFocusMode = false;
     saveFlags(FLAGS);
     if (flagMobileFocusMode) flagMobileFocusMode.checked = false;
@@ -4590,6 +4595,14 @@ function getHourlyRateFromEval(){
     });
     focusInsightBack?.addEventListener('click', ()=>{
       setMobileFocusInsightDrill(null);
+    });
+    btnBackToFocus?.addEventListener('click', ()=>{
+      FLAGS.mobileFocusMode = true;
+      saveFlags(FLAGS);
+      if (flagMobileFocusMode) flagMobileFocusMode.checked = true;
+      showBackToFocus = false;
+      applyMobileFocusShell();
+      try{ window.scrollTo({ top:0, behavior:'smooth' }); }catch(_){ }
     });
     focusRunButtons.forEach(node=>{
       node.addEventListener('click', ()=>{

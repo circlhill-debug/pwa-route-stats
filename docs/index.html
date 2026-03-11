@@ -806,6 +806,24 @@
     backdrop-filter:blur(8px);
   }
   #diag b{ color:#fff }
+  @media (max-width:900px){
+    #diag{
+      font-size:11px;
+      line-height:1.25;
+      padding:6px 8px;
+      white-space:normal;
+      word-break:break-word;
+    }
+    #diag #btnBackToFocusTop{
+      margin-top:4px;
+      margin-left:0!important;
+    }
+    #uspsEvalTag{
+      top:56px!important;
+      right:8px!important;
+    }
+    #verTag{ top:4px!important; right:8px!important; }
+  }
   tr.light td{ background:linear-gradient(90deg, rgba(124,227,139,.07), transparent) }
   tr.heavy td{ background:linear-gradient(90deg, rgba(255,143,161,.10), transparent) }
   tr.typical td{ background:linear-gradient(90deg, rgba(255,210,122,.08), transparent) }
@@ -1130,6 +1148,13 @@
     background:rgba(43,127,255,.12);
   }
   .focus-note{ font-size:12px; color:var(--muted); margin-top:6px; }
+  #focusTodayFull .focus-grid{
+    grid-template-columns:repeat(2, minmax(0,1fr));
+  }
+  #focusTodayFull .focus-kpi,
+  #focusTodayQuick .focus-kpi{
+    min-width:0;
+  }
   #btnBackToFocus{
     position:fixed;
     right:12px;

@@ -1462,7 +1462,6 @@ const authReadyPromise = handleAuthCallback(sb);
   const saveSettings = document.getElementById('saveSettings');
   const focusShell = document.getElementById('focusShell');
   const btnBackToFocus = document.getElementById('btnBackToFocus');
-  const btnBackToFocusTop = document.getElementById('btnBackToFocusTop');
   const focusTitle = document.getElementById('focusTitle');
   const focusPrev = document.getElementById('focusPrev');
   const focusNext = document.getElementById('focusNext');
@@ -2068,8 +2067,15 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
     if (diag){
       const extraTxt = extraHours ? ` · <b>Extra:</b> ${trip.actualMinutes.toFixed(0)}m (${extraPaidMinutes.toFixed(0)}m paid)` : '';
       const breakTxt = breakHours ? ` · <b>Break:</b> ${breakMinutesVal.toFixed(0)}m` : '';
-      diag.innerHTML = `ROUTE STATS · Supabase: <b id="dConn">${dConn.textContent}</b> · Auth: <b id="dAuth">${dAuth.textContent}</b> · Write: <b id="dWrite">${dWrite.textContent}</b> · <b>Off:</b> ${off ?? '—'}h · <b>Route:</b> ${rte ?? '—'}h · <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
+      const compactFocus = shouldShowMobileFocusShell();
+      if (compactFocus){
+        diag.innerHTML = `ROUTE STATS · <b>Off:</b> ${off ?? '—'}h · <b>Route:</b> ${rte ?? '—'}h · <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
+      } else {
+        diag.innerHTML = `ROUTE STATS · Supabase: <b id="dConn">${dConn.textContent}</b> · Auth: <b id="dAuth">${dAuth.textContent}</b> · Write: <b id="dWrite">${dWrite.textContent}</b> · <b>Off:</b> ${off ?? '—'}h · <b>Route:</b> ${rte ?? '—'}h · <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
+      }
       if (breakTxt) diag.innerHTML += breakTxt;
+      diag.innerHTML += ' <button id="btnBackToFocusTop" class="btn" type="button" style="display:none;margin-left:8px;padding:3px 10px;font-size:11px;line-height:1.2">Back to Focus</button>';
+      applyMobileFocusShell();
     }
     return tot;
   }
@@ -4679,9 +4685,10 @@ function getHourlyRateFromEval(){
     updateMobileFocusShellData();
     const active = shouldShowMobileFocusShell();
     document.body.classList.toggle('focus-shell-on', !!active);
-    const showBack = (!active && isMobileFocusViewport());
+    const showBack = (!active && isMobileFocusViewport() && !!(FLAGS && FLAGS.mobileFocusMode === false));
     if (btnBackToFocus) btnBackToFocus.style.display = showBack ? '' : 'none';
-    if (btnBackToFocusTop) btnBackToFocusTop.style.display = showBack ? '' : 'none';
+    const topBackBtn = document.getElementById('btnBackToFocusTop');
+    if (topBackBtn) topBackBtn.style.display = showBack ? 'inline-block' : 'none';
     if (active) setMobileFocusShellPage(focusShellPage, { persist:false });
     else document.body.classList.remove('focus-home-chrome');
   }
@@ -4781,7 +4788,12 @@ function getHourlyRateFromEval(){
       try{ window.scrollTo({ top:0, behavior:'smooth' }); }catch(_){ }
     };
     btnBackToFocus?.addEventListener('click', goBackToFocus);
-    btnBackToFocusTop?.addEventListener('click', goBackToFocus);
+    document.addEventListener('click', (event)=>{
+      const target = event.target;
+      if (target && target.id === 'btnBackToFocusTop'){
+        goBackToFocus();
+      }
+    });
     focusRunButtons.forEach(node=>{
       node.addEventListener('click', ()=>{
         const targetId = node?.dataset?.click;

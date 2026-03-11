@@ -6024,7 +6024,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var saveSettings = document.getElementById("saveSettings");
   var focusShell = document.getElementById("focusShell");
   var btnBackToFocus = document.getElementById("btnBackToFocus");
-  var btnBackToFocusTop = document.getElementById("btnBackToFocusTop");
   var focusTitle = document.getElementById("focusTitle");
   var focusPrev = document.getElementById("focusPrev");
   var focusNext = document.getElementById("focusNext");
@@ -6696,8 +6695,15 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (diag) {
       const extraTxt = extraHours ? ` \xB7 <b>Extra:</b> ${trip.actualMinutes.toFixed(0)}m (${extraPaidMinutes.toFixed(0)}m paid)` : "";
       const breakTxt = breakHours ? ` \xB7 <b>Break:</b> ${breakMinutesVal.toFixed(0)}m` : "";
-      diag.innerHTML = `ROUTE STATS \xB7 Supabase: <b id="dConn">${dConn.textContent}</b> \xB7 Auth: <b id="dAuth">${dAuth.textContent}</b> \xB7 Write: <b id="dWrite">${dWrite.textContent}</b> \xB7 <b>Off:</b> ${off != null ? off : "\u2014"}h \xB7 <b>Route:</b> ${rte != null ? rte : "\u2014"}h \xB7 <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
+      const compactFocus = shouldShowMobileFocusShell();
+      if (compactFocus) {
+        diag.innerHTML = `ROUTE STATS \xB7 <b>Off:</b> ${off != null ? off : "\u2014"}h \xB7 <b>Route:</b> ${rte != null ? rte : "\u2014"}h \xB7 <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
+      } else {
+        diag.innerHTML = `ROUTE STATS \xB7 Supabase: <b id="dConn">${dConn.textContent}</b> \xB7 Auth: <b id="dAuth">${dAuth.textContent}</b> \xB7 Write: <b id="dWrite">${dWrite.textContent}</b> \xB7 <b>Off:</b> ${off != null ? off : "\u2014"}h \xB7 <b>Route:</b> ${rte != null ? rte : "\u2014"}h \xB7 <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
+      }
       if (breakTxt) diag.innerHTML += breakTxt;
+      diag.innerHTML += ' <button id="btnBackToFocusTop" class="btn" type="button" style="display:none;margin-left:8px;padding:3px 10px;font-size:11px;line-height:1.2">Back to Focus</button>';
+      applyMobileFocusShell();
     }
     return tot;
   }
@@ -9499,9 +9505,10 @@ Score: ${overallScore}/10 (higher is better)`;
     updateMobileFocusShellData();
     const active = shouldShowMobileFocusShell();
     document.body.classList.toggle("focus-shell-on", !!active);
-    const showBack = !active && isMobileFocusViewport();
+    const showBack = !active && isMobileFocusViewport() && !!(FLAGS && FLAGS.mobileFocusMode === false);
     if (btnBackToFocus) btnBackToFocus.style.display = showBack ? "" : "none";
-    if (btnBackToFocusTop) btnBackToFocusTop.style.display = showBack ? "" : "none";
+    const topBackBtn = document.getElementById("btnBackToFocusTop");
+    if (topBackBtn) topBackBtn.style.display = showBack ? "inline-block" : "none";
     if (active) setMobileFocusShellPage(focusShellPage, { persist: false });
     else document.body.classList.remove("focus-home-chrome");
   }
@@ -9617,7 +9624,12 @@ Score: ${overallScore}/10 (higher is better)`;
       }
     };
     btnBackToFocus == null ? void 0 : btnBackToFocus.addEventListener("click", goBackToFocus);
-    btnBackToFocusTop == null ? void 0 : btnBackToFocusTop.addEventListener("click", goBackToFocus);
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target && target.id === "btnBackToFocusTop") {
+        goBackToFocus();
+      }
+    });
     focusRunButtons.forEach((node) => {
       node.addEventListener("click", () => {
         var _a5, _b;

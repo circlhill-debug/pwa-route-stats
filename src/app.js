@@ -1470,6 +1470,7 @@ const authReadyPromise = handleAuthCallback(sb);
   const focusNavNodes = Array.from(document.querySelectorAll('#focusShell .focus-nav [data-page]'));
   const focusDeepLinks = Array.from(document.querySelectorAll('#focusShell .focus-deep-link'));
   const focusRunButtons = Array.from(document.querySelectorAll('#focusShell .focus-run-btn'));
+  const focusOpenAndClickButtons = Array.from(document.querySelectorAll('#focusShell .focus-open-and-click'));
   const focusInsightTitle = document.getElementById('focusInsightTitle');
   const focusInsightPrev = document.getElementById('focusInsightPrev');
   const focusInsightNext = document.getElementById('focusInsightNext');
@@ -1489,10 +1490,22 @@ const authReadyPromise = handleAuthCallback(sb);
   const focusTodayNext = document.getElementById('focusTodayNext');
   const focusTodayPageNodes = Array.from(document.querySelectorAll('#focusShell .focus-today-page'));
   const focusTodayNavNodes = Array.from(document.querySelectorAll('#focusShell .focus-today-nav [data-today-page]'));
+  const focusWeekTitle = document.getElementById('focusWeekTitle');
+  const focusWeekPrev = document.getElementById('focusWeekPrev');
+  const focusWeekNext = document.getElementById('focusWeekNext');
+  const focusWeekPageNodes = Array.from(document.querySelectorAll('#focusShell .focus-week-page'));
+  const focusWeekNavNodes = Array.from(document.querySelectorAll('#focusShell .focus-week-nav [data-week-page]'));
+  const focusEntryTitle = document.getElementById('focusEntryTitle');
+  const focusEntryPrev = document.getElementById('focusEntryPrev');
+  const focusEntryNext = document.getElementById('focusEntryNext');
+  const focusEntryPageNodes = Array.from(document.querySelectorAll('#focusShell .focus-entry-page'));
+  const focusEntryNavNodes = Array.from(document.querySelectorAll('#focusShell .focus-entry-nav [data-entry-page]'));
   const MOBILE_FOCUS_MAX_WIDTH = 900;
   const FOCUS_PAGE_ORDER = ['today','week','entry','insights'];
   const FOCUS_INSIGHT_ORDER = ['movers','todayHeaviness','weekHeaviness','diagnostics','dayCompare'];
   const FOCUS_TODAY_ORDER = ['quick','full','detail'];
+  const FOCUS_WEEK_ORDER = ['quick','full','drill'];
+  const FOCUS_ENTRY_ORDER = ['quick','form','validate'];
   const FOCUS_PAGE_LABELS = {
     today: 'Today',
     week: 'Week',
@@ -1511,10 +1524,22 @@ const authReadyPromise = handleAuthCallback(sb);
     full: 'Full Today',
     detail: 'Detail'
   };
+  const FOCUS_WEEK_LABELS = {
+    quick: 'Quick',
+    full: 'Full Week',
+    drill: 'Drilldown'
+  };
+  const FOCUS_ENTRY_LABELS = {
+    quick: 'Quick',
+    form: 'Form Lite',
+    validate: 'Validate'
+  };
   const FOCUS_STATE_KEY = 'routeStats.mobileFocusState.v1';
   const FOCUS_BACKSTACK_LIMIT = 30;
   let focusShellPage = 'today';
   let focusTodayPage = 'quick';
+  let focusWeekPage = 'quick';
+  let focusEntryPage = 'quick';
   let focusInsightPage = 'movers';
   let focusInsightDrillMode = null;
   let focusBackStack = [];
@@ -4430,6 +4455,8 @@ function getHourlyRateFromEval(){
     return {
       shell: FOCUS_PAGE_ORDER.includes(focusShellPage) ? focusShellPage : 'today',
       today: FOCUS_TODAY_ORDER.includes(focusTodayPage) ? focusTodayPage : 'quick',
+      week: FOCUS_WEEK_ORDER.includes(focusWeekPage) ? focusWeekPage : 'quick',
+      entry: FOCUS_ENTRY_ORDER.includes(focusEntryPage) ? focusEntryPage : 'quick',
       insight: FOCUS_INSIGHT_ORDER.includes(focusInsightPage) ? focusInsightPage : 'movers',
       insightDrill: focusInsightDrillMode || null
     };
@@ -4438,6 +4465,8 @@ function getHourlyRateFromEval(){
     if (!a || !b) return false;
     return a.shell === b.shell
       && a.today === b.today
+      && a.week === b.week
+      && a.entry === b.entry
       && a.insight === b.insight
       && (a.insightDrill || null) === (b.insightDrill || null);
   }
@@ -4455,6 +4484,8 @@ function getHourlyRateFromEval(){
       return {
         shell: FOCUS_PAGE_ORDER.includes(parsed.shell) ? parsed.shell : 'today',
         today: FOCUS_TODAY_ORDER.includes(parsed.today) ? parsed.today : 'quick',
+        week: FOCUS_WEEK_ORDER.includes(parsed.week) ? parsed.week : 'quick',
+        entry: FOCUS_ENTRY_ORDER.includes(parsed.entry) ? parsed.entry : 'quick',
         insight: FOCUS_INSIGHT_ORDER.includes(parsed.insight) ? parsed.insight : 'movers',
         insightDrill: (parsed.insightDrill === 'diagnostics' || parsed.insightDrill === 'dayCompare') ? parsed.insightDrill : null
       };
@@ -4474,12 +4505,20 @@ function getHourlyRateFromEval(){
     if (!state) return;
     focusShellPage = FOCUS_PAGE_ORDER.includes(state.shell) ? state.shell : 'today';
     focusTodayPage = FOCUS_TODAY_ORDER.includes(state.today) ? state.today : 'quick';
+    focusWeekPage = FOCUS_WEEK_ORDER.includes(state.week) ? state.week : 'quick';
+    focusEntryPage = FOCUS_ENTRY_ORDER.includes(state.entry) ? state.entry : 'quick';
     focusInsightPage = FOCUS_INSIGHT_ORDER.includes(state.insight) ? state.insight : 'movers';
     focusInsightDrillMode = (state.insightDrill === 'diagnostics' || state.insightDrill === 'dayCompare') ? state.insightDrill : null;
 
     setMobileFocusShellPage(focusShellPage, { persist:false });
     if (focusShellPage === 'today'){
       setMobileFocusTodayPage(focusTodayPage, { persist:false });
+    }
+    if (focusShellPage === 'week'){
+      setMobileFocusWeekPage(focusWeekPage, { persist:false });
+    }
+    if (focusShellPage === 'entry'){
+      setMobileFocusEntryPage(focusEntryPage, { persist:false });
     }
     if (focusShellPage === 'insights'){
       setMobileFocusInsightPage(focusInsightPage, { persist:false });
@@ -4532,6 +4571,50 @@ function getHourlyRateFromEval(){
     const nextIndex = clampIndex(currentIndex + delta, FOCUS_TODAY_ORDER.length - 1);
     if (nextIndex === currentIndex) return;
     setMobileFocusTodayPage(FOCUS_TODAY_ORDER[nextIndex]);
+  }
+  function setMobileFocusWeekPage(nextPage, options = {}){
+    const { persist = true } = options;
+    const page = FOCUS_WEEK_ORDER.includes(nextPage) ? nextPage : 'quick';
+    focusWeekPage = page;
+    focusWeekPageNodes.forEach(node=>{
+      const active = node?.dataset?.weekPage === page;
+      node.classList.toggle('active', !!active);
+    });
+    focusWeekNavNodes.forEach(node=>{
+      const active = node?.dataset?.weekPage === page;
+      node.classList.toggle('active', !!active);
+      node.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (focusWeekTitle) focusWeekTitle.textContent = FOCUS_WEEK_LABELS[page] || 'Week';
+    if (persist) persistMobileFocusState();
+  }
+  function stepMobileFocusWeekPage(delta){
+    const currentIndex = Math.max(0, FOCUS_WEEK_ORDER.indexOf(focusWeekPage));
+    const nextIndex = clampIndex(currentIndex + delta, FOCUS_WEEK_ORDER.length - 1);
+    if (nextIndex === currentIndex) return;
+    setMobileFocusWeekPage(FOCUS_WEEK_ORDER[nextIndex]);
+  }
+  function setMobileFocusEntryPage(nextPage, options = {}){
+    const { persist = true } = options;
+    const page = FOCUS_ENTRY_ORDER.includes(nextPage) ? nextPage : 'quick';
+    focusEntryPage = page;
+    focusEntryPageNodes.forEach(node=>{
+      const active = node?.dataset?.entryPage === page;
+      node.classList.toggle('active', !!active);
+    });
+    focusEntryNavNodes.forEach(node=>{
+      const active = node?.dataset?.entryPage === page;
+      node.classList.toggle('active', !!active);
+      node.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (focusEntryTitle) focusEntryTitle.textContent = FOCUS_ENTRY_LABELS[page] || 'Entry';
+    if (persist) persistMobileFocusState();
+  }
+  function stepMobileFocusEntryPage(delta){
+    const currentIndex = Math.max(0, FOCUS_ENTRY_ORDER.indexOf(focusEntryPage));
+    const nextIndex = clampIndex(currentIndex + delta, FOCUS_ENTRY_ORDER.length - 1);
+    if (nextIndex === currentIndex) return;
+    setMobileFocusEntryPage(FOCUS_ENTRY_ORDER[nextIndex]);
   }
   function buildDiagnosticsLiteHtml(){
     const model = readTextValue('diagModelBadge');
@@ -4641,6 +4724,35 @@ function getHourlyRateFromEval(){
     setFocusText('fsWeekParcelsDelta', readTextValue('wkParcelsDelta'));
     setFocusText('fsWeekLetters', readTextValue('wkLetters'));
     setFocusText('fsWeekLettersDelta', readTextValue('wkLettersDelta'));
+    setFocusText('fsWeekHoursFull', readTextValue('wkHours'));
+    setFocusText('fsWeekParcelsFull', readTextValue('wkParcels'));
+    setFocusText('fsWeekLettersFull', readTextValue('wkLetters'));
+    setFocusText('fsWeekEval', compactText(readTextValue('uspsRouteEffVal'), 24));
+    const trendText = (document.getElementById('trendFactors')?.textContent || '').replace(/\s+/g,' ').trim();
+    setFocusText('fsWeekTrend', compactText(trendText || readTextValue('advHoursTrend'), 30));
+    const extraTrip = `${readTextValue('extraTimeWeekVal')} · ${readTextValue('extraPayoutWeekVal')}`;
+    setFocusText('fsWeekExtraTrip', compactText(extraTrip, 24));
+    const dateVal = (document.getElementById('date')?.value || '').trim();
+    const startVal = (document.getElementById('start')?.value || '').trim();
+    const departVal = (document.getElementById('departTime')?.value || '').trim();
+    const endVal = (document.getElementById('end')?.value || '').trim();
+    const parcelsVal = (document.getElementById('parcels')?.value || '').trim();
+    const lettersVal = (document.getElementById('letters')?.value || '').trim();
+    const flatsVal = (document.getElementById('flatsMinutes')?.value || '').trim();
+    const misdeliveryVal = (document.getElementById('misdeliveryCount')?.value || '').trim();
+    setFocusText('fsEntryDate', dateVal || '—');
+    setFocusText('fsEntryTimes', `${startVal || '—'} · ${departVal || '—'} · ${endVal || '—'}`);
+    setFocusText('fsEntryParcels', parcelsVal || '0');
+    setFocusText('fsEntryLetters', lettersVal || '0');
+    setFocusText('fsEntryFlats', flatsVal || '—');
+    setFocusText('fsEntryMisdelivery', misdeliveryVal || '0');
+    setFocusText('fsEntryOffice', readTextValue('officeH'));
+    setFocusText('fsEntryRoute', readTextValue('routeH'));
+    setFocusText('fsEntryTotal', readTextValue('totalH'));
+    const hasCoreTimes = !!(startVal && departVal && endVal);
+    const totalVal = readTextValue('totalH');
+    const checkLabel = hasCoreTimes && totalVal !== '—' ? 'Ready to Save' : 'Needs Review';
+    setFocusText('fsEntryCheck', checkLabel);
     const moversHtml = document.getElementById('trendFactors')?.innerHTML || '';
     const todayHeavinessHtml = document.getElementById('todayHeaviness')?.innerHTML || '';
     const weekHeavinessHtml = document.getElementById('weekHeaviness')?.innerHTML || '';
@@ -4672,6 +4784,8 @@ function getHourlyRateFromEval(){
     if (page === 'insights') setMobileFocusInsightPage(focusInsightPage, { persist:false });
     else setMobileFocusInsightDrill(null, { persist:false });
     if (page === 'today') setMobileFocusTodayPage(focusTodayPage, { persist:false });
+    if (page === 'week') setMobileFocusWeekPage(focusWeekPage, { persist:false });
+    if (page === 'entry') setMobileFocusEntryPage(focusEntryPage, { persist:false });
     updateFocusHomeChrome();
     if (persist) persistMobileFocusState();
   }
@@ -4729,6 +4843,22 @@ function getHourlyRateFromEval(){
       pushMobileFocusHistory();
       stepMobileFocusTodayPage(1);
     });
+    focusWeekPrev?.addEventListener('click', ()=>{
+      pushMobileFocusHistory();
+      stepMobileFocusWeekPage(-1);
+    });
+    focusWeekNext?.addEventListener('click', ()=>{
+      pushMobileFocusHistory();
+      stepMobileFocusWeekPage(1);
+    });
+    focusEntryPrev?.addEventListener('click', ()=>{
+      pushMobileFocusHistory();
+      stepMobileFocusEntryPage(-1);
+    });
+    focusEntryNext?.addEventListener('click', ()=>{
+      pushMobileFocusHistory();
+      stepMobileFocusEntryPage(1);
+    });
     focusInsightPrev?.addEventListener('click', ()=>{
       pushMobileFocusHistory();
       stepMobileFocusInsightPage(-1);
@@ -4759,6 +4889,22 @@ function getHourlyRateFromEval(){
         if (!page || page === focusTodayPage) return;
         pushMobileFocusHistory();
         setMobileFocusTodayPage(page);
+      });
+    });
+    focusWeekNavNodes.forEach(node=>{
+      node.addEventListener('click', ()=>{
+        const page = node?.dataset?.weekPage;
+        if (!page || page === focusWeekPage) return;
+        pushMobileFocusHistory();
+        setMobileFocusWeekPage(page);
+      });
+    });
+    focusEntryNavNodes.forEach(node=>{
+      node.addEventListener('click', ()=>{
+        const page = node?.dataset?.entryPage;
+        if (!page || page === focusEntryPage) return;
+        pushMobileFocusHistory();
+        setMobileFocusEntryPage(page);
       });
     });
     focusOpenDiagLite?.addEventListener('click', ()=>{
@@ -4802,9 +4948,21 @@ function getHourlyRateFromEval(){
         updateMobileFocusShellData();
       });
     });
+    focusOpenAndClickButtons.forEach(node=>{
+      node.addEventListener('click', ()=>{
+        const targetId = node?.dataset?.target;
+        const clickId = node?.dataset?.click;
+        pushMobileFocusHistory();
+        exitMobileFocusShellTo(targetId);
+        if (clickId){
+          window.setTimeout(()=>{ document.getElementById(clickId)?.click(); }, 220);
+        }
+      });
+    });
     focusDeepLinks.forEach(node=>{
       node.addEventListener('click', ()=>{
         const targetId = node?.dataset?.target;
+        pushMobileFocusHistory();
         exitMobileFocusShellTo(targetId);
       });
     });
@@ -4855,6 +5013,42 @@ function getHourlyRateFromEval(){
       if (Math.abs(delta) < 45) return;
       pushMobileFocusHistory();
       stepMobileFocusTodayPage(delta < 0 ? 1 : -1);
+      event.stopPropagation();
+    }, { passive:true });
+    const focusPageWeek = document.getElementById('focusPageWeek');
+    let focusWeekTouchStartX = null;
+    focusPageWeek?.addEventListener('touchstart', (event)=>{
+      const touch = event.changedTouches && event.changedTouches[0];
+      focusWeekTouchStartX = touch ? touch.clientX : null;
+    }, { passive:true });
+    focusPageWeek?.addEventListener('touchend', (event)=>{
+      if (focusShellPage !== 'week' || focusWeekTouchStartX == null) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      const endX = touch ? touch.clientX : null;
+      if (endX == null){ focusWeekTouchStartX = null; return; }
+      const delta = endX - focusWeekTouchStartX;
+      focusWeekTouchStartX = null;
+      if (Math.abs(delta) < 45) return;
+      pushMobileFocusHistory();
+      stepMobileFocusWeekPage(delta < 0 ? 1 : -1);
+      event.stopPropagation();
+    }, { passive:true });
+    const focusPageEntry = document.getElementById('focusPageEntry');
+    let focusEntryTouchStartX = null;
+    focusPageEntry?.addEventListener('touchstart', (event)=>{
+      const touch = event.changedTouches && event.changedTouches[0];
+      focusEntryTouchStartX = touch ? touch.clientX : null;
+    }, { passive:true });
+    focusPageEntry?.addEventListener('touchend', (event)=>{
+      if (focusShellPage !== 'entry' || focusEntryTouchStartX == null) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      const endX = touch ? touch.clientX : null;
+      if (endX == null){ focusEntryTouchStartX = null; return; }
+      const delta = endX - focusEntryTouchStartX;
+      focusEntryTouchStartX = null;
+      if (Math.abs(delta) < 45) return;
+      pushMobileFocusHistory();
+      stepMobileFocusEntryPage(delta < 0 ? 1 : -1);
       event.stopPropagation();
     }, { passive:true });
     window.addEventListener('resize', applyMobileFocusShell);

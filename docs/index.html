@@ -1145,6 +1145,44 @@
     background:rgba(43,127,255,.12);
   }
   .focus-note{ font-size:12px; color:var(--muted); margin-top:6px; }
+  .focus-week-head,
+  .focus-entry-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-top:8px;
+  }
+  .focus-week-page,
+  .focus-entry-page{
+    display:none;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+    background:rgba(12,18,30,.18);
+    margin-top:8px;
+  }
+  .focus-week-page.active,
+  .focus-entry-page.active{ display:block; }
+  .focus-week-nav,
+  .focus-entry-nav{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:6px;
+    margin-top:8px;
+  }
+  .focus-week-nav button,
+  .focus-entry-nav button{
+    padding:6px 4px;
+    font-size:11px;
+    border-radius:999px;
+  }
+  .focus-week-nav button.active,
+  .focus-entry-nav button.active{
+    border-color:var(--brand);
+    color:var(--brand);
+    background:rgba(43,127,255,.12);
+  }
   #focusTodayFull .focus-grid{
     grid-template-columns:repeat(2, minmax(0,1fr));
   }
@@ -1269,26 +1307,89 @@
     </div>
 
     <div id="focusPageWeek" class="focus-page" data-page="week">
-      <small class="muted">Quick Look · Week</small>
-      <div class="focus-grid">
-        <div class="focus-kpi"><small>Hours</small><b id="fsWeekHours">—</b></div>
-        <div class="focus-kpi"><small>Hours Δ</small><b id="fsWeekHoursDelta">—</b></div>
-        <div class="focus-kpi"><small>Parcels</small><b id="fsWeekParcels">—</b></div>
-        <div class="focus-kpi"><small>Parcels Δ</small><b id="fsWeekParcelsDelta">—</b></div>
-        <div class="focus-kpi"><small>Letters</small><b id="fsWeekLetters">—</b></div>
-        <div class="focus-kpi"><small>Letters Δ</small><b id="fsWeekLettersDelta">—</b></div>
+      <small class="muted">Week</small>
+      <div class="focus-week-head">
+        <button id="focusWeekPrev" class="ghost" type="button" title="Previous week page">◀</button>
+        <div id="focusWeekTitle" class="focus-insights-title">Quick</div>
+        <button id="focusWeekNext" class="ghost" type="button" title="Next week page">▶</button>
+      </div>
+      <div id="focusWeekQuick" class="focus-week-page active" data-week-page="quick">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Hours</small><b id="fsWeekHours">—</b></div>
+          <div class="focus-kpi"><small>Hours Δ</small><b id="fsWeekHoursDelta">—</b></div>
+          <div class="focus-kpi"><small>Parcels</small><b id="fsWeekParcels">—</b></div>
+          <div class="focus-kpi"><small>Parcels Δ</small><b id="fsWeekParcelsDelta">—</b></div>
+          <div class="focus-kpi"><small>Letters</small><b id="fsWeekLetters">—</b></div>
+          <div class="focus-kpi"><small>Letters Δ</small><b id="fsWeekLettersDelta">—</b></div>
+        </div>
+      </div>
+      <div id="focusWeekFull" class="focus-week-page" data-week-page="full">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Hours</small><b id="fsWeekHoursFull">—</b></div>
+          <div class="focus-kpi"><small>Parcels</small><b id="fsWeekParcelsFull">—</b></div>
+          <div class="focus-kpi"><small>Letters</small><b id="fsWeekLettersFull">—</b></div>
+          <div class="focus-kpi"><small>Route Eval</small><b id="fsWeekEval">—</b></div>
+          <div class="focus-kpi"><small>Trend</small><b id="fsWeekTrend">—</b></div>
+          <div class="focus-kpi"><small>Extra Trip</small><b id="fsWeekExtraTrip">—</b></div>
+        </div>
+      </div>
+      <div id="focusWeekDrill" class="focus-week-page" data-week-page="drill">
+        <small class="muted">Open one metric family</small>
+        <div class="focus-actions">
+          <button class="ghost focus-open-and-click" type="button" data-target="snapshotCard" data-click="tileWkHours">Hours Drilldown</button>
+          <button class="ghost focus-open-and-click" type="button" data-target="snapshotCard" data-click="tileWkParcels">Parcels Drilldown</button>
+          <button class="ghost focus-open-and-click" type="button" data-target="snapshotCard" data-click="tileWkLetters">Letters Drilldown</button>
+        </div>
+        <div class="focus-note">Each drilldown opens the existing weekly detail panel so full tool behavior stays intact.</div>
+      </div>
+      <div class="focus-week-nav" role="tablist" aria-label="Week navigation">
+        <button class="ghost active" type="button" data-week-page="quick">Quick</button>
+        <button class="ghost" type="button" data-week-page="full">Full</button>
+        <button class="ghost" type="button" data-week-page="drill">Drill</button>
       </div>
       <div class="focus-actions">
-        <button class="ghost focus-deep-link" type="button" data-target="snapshotCard">Open full Week view</button>
+        <button class="ghost focus-deep-link" type="button" data-target="snapshotCard">Open Weekly Snapshot</button>
       </div>
     </div>
 
     <div id="focusPageEntry" class="focus-page" data-page="entry">
-      <small class="muted">Quick Actions</small>
+      <small class="muted">Entry</small>
+      <div class="focus-entry-head">
+        <button id="focusEntryPrev" class="ghost" type="button" title="Previous entry page">◀</button>
+        <div id="focusEntryTitle" class="focus-insights-title">Quick</div>
+        <button id="focusEntryNext" class="ghost" type="button" title="Next entry page">▶</button>
+      </div>
+      <div id="focusEntryQuick" class="focus-entry-page active" data-entry-page="quick">
+        <div class="focus-actions">
+          <button class="ghost focus-run-btn" type="button" data-click="btnStartNow">Start (now)</button>
+          <button class="ghost focus-run-btn" type="button" data-click="btnStreetNow">Hit Street (now)</button>
+          <button class="ghost focus-run-btn" type="button" data-click="btnClockNow">Clock Out (now)</button>
+        </div>
+      </div>
+      <div id="focusEntryForm" class="focus-entry-page" data-entry-page="form">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Date</small><b id="fsEntryDate">—</b></div>
+          <div class="focus-kpi"><small>Times</small><b id="fsEntryTimes">—</b></div>
+          <div class="focus-kpi"><small>Parcels</small><b id="fsEntryParcels">—</b></div>
+          <div class="focus-kpi"><small>Letters</small><b id="fsEntryLetters">—</b></div>
+          <div class="focus-kpi"><small>Flats (min)</small><b id="fsEntryFlats">—</b></div>
+          <div class="focus-kpi"><small>Misdelivery</small><b id="fsEntryMisdelivery">—</b></div>
+        </div>
+      </div>
+      <div id="focusEntryValidate" class="focus-entry-page" data-entry-page="validate">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Office</small><b id="fsEntryOffice">—</b></div>
+          <div class="focus-kpi"><small>Route</small><b id="fsEntryRoute">—</b></div>
+          <div class="focus-kpi"><small>Total</small><b id="fsEntryTotal">—</b></div>
+          <div class="focus-kpi"><small>Check</small><b id="fsEntryCheck">—</b></div>
+        </div>
+      </div>
+      <div class="focus-entry-nav" role="tablist" aria-label="Entry navigation">
+        <button class="ghost active" type="button" data-entry-page="quick">Quick</button>
+        <button class="ghost" type="button" data-entry-page="form">Form</button>
+        <button class="ghost" type="button" data-entry-page="validate">Validate</button>
+      </div>
       <div class="focus-actions">
-        <button class="ghost focus-run-btn" type="button" data-click="btnStartNow">Start (now)</button>
-        <button class="ghost focus-run-btn" type="button" data-click="btnStreetNow">Hit Street (now)</button>
-        <button class="ghost focus-run-btn" type="button" data-click="btnClockNow">Clock Out (now)</button>
         <button class="ghost focus-deep-link" type="button" data-target="addEntryCard">Open Add Entry form</button>
       </div>
     </div>

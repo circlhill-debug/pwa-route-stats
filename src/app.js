@@ -1431,6 +1431,7 @@ const authReadyPromise = handleAuthCallback(sb);
   const flagDayCompare = document.getElementById('flagDayCompare');
   const flagUspsEval = document.getElementById('flagUspsEval');
   const flagMobileFocusMode = document.getElementById('flagMobileFocusMode');
+  const flagFocusArrows = document.getElementById('flagFocusArrows');
   const settingsEmaRate = document.getElementById('settingsEmaRate');
   if (themeSelect){
     themeSelect.value = CURRENT_THEME;
@@ -1661,6 +1662,7 @@ aiSummary = createAiSummary({
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
     if (flagMobileFocusMode) flagMobileFocusMode.checked = !!FLAGS.mobileFocusMode;
+    if (flagFocusArrows) flagFocusArrows.checked = !!(FLAGS.focusArrows !== false);
     if (themeSelect) themeSelect.value = CURRENT_THEME;
     // populate USPS eval fields
     try{
@@ -1775,6 +1777,8 @@ aiSummary = createAiSummary({
     if (flagDayCompare) FLAGS.dayCompare = !!flagDayCompare.checked;
     if (flagUspsEval) FLAGS.uspsEval = !!flagUspsEval.checked;
     if (flagMobileFocusMode) FLAGS.mobileFocusMode = !!flagMobileFocusMode.checked;
+    if (flagFocusArrows) FLAGS.focusArrows = !!flagFocusArrows.checked;
+    applyFocusArrowVisibility();
     // read USPS eval fields
     try{
       const selectedId = evalProfileSelect?.value || USPS_EVAL?.profileId || null;
@@ -4795,7 +4799,12 @@ function getHourlyRateFromEval(){
     if (nextIndex === currentIndex) return;
     setMobileFocusShellPage(FOCUS_PAGE_ORDER[nextIndex]);
   }
+  function applyFocusArrowVisibility(){
+    const showArrows = !!(FLAGS && FLAGS.focusArrows !== false);
+    document.body.classList.toggle('focus-arrows-hidden', !showArrows);
+  }
   function applyMobileFocusShell(){
+    applyFocusArrowVisibility();
     updateMobileFocusShellData();
     const active = shouldShowMobileFocusShell();
     document.body.classList.toggle('focus-shell-on', !!active);

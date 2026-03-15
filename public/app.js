@@ -112,7 +112,8 @@
     quickEntry: false,
     uspsEval: true,
     dayCompare: true,
-    mobileFocusMode: false
+    mobileFocusMode: false,
+    focusArrows: true
   };
   var DEFAULT_EVAL_PROFILE = {
     profileId: "eval-default",
@@ -5989,6 +5990,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var flagDayCompare = document.getElementById("flagDayCompare");
   var flagUspsEval = document.getElementById("flagUspsEval");
   var flagMobileFocusMode = document.getElementById("flagMobileFocusMode");
+  var flagFocusArrows = document.getElementById("flagFocusArrows");
   var settingsEmaRate = document.getElementById("settingsEmaRate");
   if (themeSelect) {
     themeSelect.value = CURRENT_THEME;
@@ -6216,6 +6218,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
     if (flagMobileFocusMode) flagMobileFocusMode.checked = !!FLAGS.mobileFocusMode;
+    if (flagFocusArrows) flagFocusArrows.checked = !!(FLAGS.focusArrows !== false);
     if (themeSelect) themeSelect.value = CURRENT_THEME;
     try {
       populateEvalProfileSelectUI(USPS_EVAL == null ? void 0 : USPS_EVAL.profileId);
@@ -6330,6 +6333,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (flagDayCompare) FLAGS.dayCompare = !!flagDayCompare.checked;
     if (flagUspsEval) FLAGS.uspsEval = !!flagUspsEval.checked;
     if (flagMobileFocusMode) FLAGS.mobileFocusMode = !!flagMobileFocusMode.checked;
+    if (flagFocusArrows) FLAGS.focusArrows = !!flagFocusArrows.checked;
+    applyFocusArrowVisibility();
     try {
       const selectedId = (evalProfileSelect == null ? void 0 : evalProfileSelect.value) || (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || null;
       const updated = collectEvalFormValues(selectedId);
@@ -9611,7 +9616,12 @@ Score: ${overallScore}/10 (higher is better)`;
     if (nextIndex === currentIndex) return;
     setMobileFocusShellPage(FOCUS_PAGE_ORDER[nextIndex]);
   }
+  function applyFocusArrowVisibility() {
+    const showArrows = !!(FLAGS && FLAGS.focusArrows !== false);
+    document.body.classList.toggle("focus-arrows-hidden", !showArrows);
+  }
   function applyMobileFocusShell() {
+    applyFocusArrowVisibility();
     updateMobileFocusShellData();
     const active = shouldShowMobileFocusShell();
     document.body.classList.toggle("focus-shell-on", !!active);

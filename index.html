@@ -1023,6 +1023,18 @@
     flex-direction:column;
     gap:10px;
   }
+  body.focus-arrows-hidden #focusPrev,
+  body.focus-arrows-hidden #focusNext,
+  body.focus-arrows-hidden #focusTodayPrev,
+  body.focus-arrows-hidden #focusTodayNext,
+  body.focus-arrows-hidden #focusWeekPrev,
+  body.focus-arrows-hidden #focusWeekNext,
+  body.focus-arrows-hidden #focusEntryPrev,
+  body.focus-arrows-hidden #focusEntryNext,
+  body.focus-arrows-hidden #focusInsightPrev,
+  body.focus-arrows-hidden #focusInsightNext{
+    display:none!important;
+  }
   .focus-head{
     display:flex;
     align-items:center;
@@ -2278,6 +2290,7 @@
     <label class="pill"><input id="flagQuickEntry" type="checkbox"> Quick Entry (experimental)</label>
     <label class="pill"><input id="flagUspsEval" type="checkbox"> Show USPS Evaluation summary (fixed tag)</label>
     <label class="pill"><input id="flagMobileFocusMode" type="checkbox"> Mobile Focus Mode shell (phase 1)</label>
+    <label class="pill"><input id="flagFocusArrows" type="checkbox"> Show Focus arrows (desktop testing)</label>
 
     <!-- USPS Evaluation configuration -->
     <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">

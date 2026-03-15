@@ -34,7 +34,8 @@ const DEFAULT_FLAGS = {
   quickEntry:false,
   uspsEval:true,
   dayCompare:true,
-  mobileFocusMode:false
+  mobileFocusMode:false,
+  focusArrows:true
 };
 
 const DEFAULT_EVAL_PROFILE = {

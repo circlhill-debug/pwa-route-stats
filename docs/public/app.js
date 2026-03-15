@@ -2062,11 +2062,11 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           }
         };
         updateAiSummaryAvailability2 == null ? void 0 : updateAiSummaryAvailability2();
-        const dismissBtns = tbody.querySelectorAll(".diag-dismiss");
-        dismissBtns.forEach((btn) => {
-          btn.addEventListener("click", () => {
-            var _a6;
-            const iso = btn.dataset.dismissIso;
+        tbody.onclick = (event) => {
+          var _a6, _b2, _c2, _d2, _e2;
+          const dismissBtn = (_b2 = (_a6 = event.target) == null ? void 0 : _a6.closest) == null ? void 0 : _b2.call(_a6, ".diag-dismiss");
+          if (dismissBtn) {
+            const iso = dismissBtn.dataset.dismissIso;
             if (!iso) return;
             const residual = residuals.find((r) => r.iso === iso);
             const deltaMinutes = residual ? Math.round(residual.residMin) : null;
@@ -2089,7 +2089,7 @@ Reason (e.g., Road closure, Weather, Extra parcels):` : "Reason (e.g., Road clos
 ${tagReference}
 You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-10") and separate multiple reasons with commas (e.g., "parcels+15, flats-20").`, defaultReason);
             if (reasonPrompt === null) return;
-            let reasonText = reasonPrompt.trim();
+            const reasonText = reasonPrompt.trim();
             if (!reasonText) {
               window.alert("No reason provided; dismissal cancelled.");
               return;
@@ -2107,58 +2107,52 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
               notedAt: tagTimestamp
             }));
             const existing = loadDismissedResiduals2().filter((item) => item && item.iso !== iso);
-            if (tags.length) {
-              const entry = {
-                iso,
-                tags: tagEntries,
-                notedAt: nowIso
-              };
+            const entry = {
+              iso,
+              tags: tagEntries,
+              notedAt: nowIso
+            };
+            try {
+              const dismissedIso = iso;
+              let history = [];
               try {
-                const dismissedIso = iso;
-                let history = [];
-                try {
-                  const rawHistory = localStorage.getItem("routeStats.tagHistory");
-                  const parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
-                  if (Array.isArray(parsedHistory)) history = parsedHistory.filter(Boolean);
-                } catch (err) {
-                  console.warn("Could not parse tag history; resetting.", err);
-                  history = [];
-                }
-                if (!Array.isArray(history)) history = [];
-                const existingHistory = history.find((item) => item && item.iso === dismissedIso);
-                if (existingHistory) {
-                  existingHistory.tags.push(...tagEntries);
-                } else {
-                  history.push({ iso: dismissedIso, tags: [...tagEntries] });
-                }
-                localStorage.setItem("routeStats.tagHistory", JSON.stringify(history));
-                console.log("\u{1F4E6} Saved tag history:", history);
-                (_a6 = window.renderTomorrowForecast) == null ? void 0 : _a6.call(window);
+                const rawHistory = localStorage.getItem("routeStats.tagHistory");
+                const parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
+                if (Array.isArray(parsedHistory)) history = parsedHistory.filter(Boolean);
               } catch (err) {
-                console.warn("Failed to update tag history.", err);
+                console.warn("Could not parse tag history; resetting.", err);
+                history = [];
               }
-              existing.push(entry);
-              saveDismissedResiduals2(existing);
-              notifyDismissedChange();
-            } else {
-              saveDismissedResiduals2(existing);
-              notifyDismissedChange();
+              if (!Array.isArray(history)) history = [];
+              const existingHistory = history.find((item) => item && item.iso === dismissedIso);
+              if (existingHistory) {
+                existingHistory.tags.push(...tagEntries);
+              } else {
+                history.push({ iso: dismissedIso, tags: [...tagEntries] });
+              }
+              localStorage.setItem("routeStats.tagHistory", JSON.stringify(history));
+              console.log("\u{1F4E6} Saved tag history:", history);
+              (_c2 = window.renderTomorrowForecast) == null ? void 0 : _c2.call(window);
+            } catch (err) {
+              console.warn("Failed to update tag history.", err);
             }
+            existing.push(entry);
+            saveDismissedResiduals2(existing);
+            notifyDismissedChange();
             buildDiagnostics2(rows);
-          });
-        });
-      }
-      const noteButtons = (tbody == null ? void 0 : tbody.querySelectorAll(".diag-note")) || [];
-      noteButtons.forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const note = btn.dataset.noteFull ? decodeURIComponent(btn.dataset.noteFull) : "";
-          if (!note) {
-            window.alert("No notes recorded for this day.");
-          } else {
-            window.alert(note);
+            return;
           }
-        });
-      });
+          const noteBtn = (_e2 = (_d2 = event.target) == null ? void 0 : _d2.closest) == null ? void 0 : _e2.call(_d2, ".diag-note");
+          if (noteBtn) {
+            const note = noteBtn.dataset.noteFull ? decodeURIComponent(noteBtn.dataset.noteFull) : "";
+            if (!note) {
+              window.alert("No notes recorded for this day.");
+            } else {
+              window.alert(note);
+            }
+          }
+        };
+      }
     }
     function formatNumber2(val, opts) {
       var _a5;

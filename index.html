@@ -1348,9 +1348,9 @@
       <div id="focusWeekDrill" class="focus-week-page" data-week-page="drill">
         <small class="muted">Open one metric family</small>
         <div class="focus-actions">
-          <button class="ghost focus-open-and-click" type="button" data-target="snapshotCard" data-click="tileWkHours">Hours Drilldown</button>
-          <button class="ghost focus-open-and-click" type="button" data-target="snapshotCard" data-click="tileWkParcels">Parcels Drilldown</button>
-          <button class="ghost focus-open-and-click" type="button" data-target="snapshotCard" data-click="tileWkLetters">Letters Drilldown</button>
+          <button class="ghost focus-open-and-click" type="button" data-target="snapshotWeekSection" data-click="tileWkHours">Hours Drilldown</button>
+          <button class="ghost focus-open-and-click" type="button" data-target="snapshotWeekSection" data-click="tileWkParcels">Parcels Drilldown</button>
+          <button class="ghost focus-open-and-click" type="button" data-target="snapshotWeekSection" data-click="tileWkLetters">Letters Drilldown</button>
         </div>
         <div class="focus-note">Each drilldown opens the existing weekly detail panel so full tool behavior stays intact.</div>
       </div>
@@ -1360,7 +1360,7 @@
         <button class="ghost" type="button" data-week-page="drill">Drill</button>
       </div>
       <div class="focus-actions">
-        <button class="ghost focus-deep-link" type="button" data-target="snapshotCard">Open Weekly Snapshot</button>
+        <button class="ghost focus-deep-link" type="button" data-target="snapshotWeekSection">Open Weekly Snapshot</button>
       </div>
     </div>
 
@@ -1431,6 +1431,7 @@
           <div class="focus-kpi"><small>Model</small><b id="fsInsightDiagModel">—</b></div>
           <div class="focus-kpi"><small>Status</small><b id="fsInsightDiagStatus">—</b></div>
         </div>
+        <div id="fsInsightDiagTop" class="focus-insight-content" style="margin-top:8px">—</div>
         <div class="focus-actions">
           <button id="focusOpenDiagLite" class="ghost" type="button">Open Diagnostics Lite</button>
         </div>
@@ -1441,6 +1442,7 @@
           <div class="focus-kpi"><small>Subject</small><b id="fsInsightCompareLabel">—</b></div>
           <div class="focus-kpi"><small>Summary</small><b id="fsInsightCompareSummary">—</b></div>
         </div>
+        <div id="fsInsightCompareTop" class="focus-insight-content" style="margin-top:8px">—</div>
         <div class="focus-actions">
           <button id="focusOpenCompareLite" class="ghost" type="button">Open Day Compare Lite</button>
         </div>
@@ -1536,7 +1538,7 @@
       <div id="forecastBadgeContainer" class="forecast-badge-container"></div>
     </div>
 
-    <div class="snapshot-section">
+    <div class="snapshot-section" id="snapshotWeekSection">
       <h4>Week & USPS</h4>
       <div class="snapshot-grid">
         <div class="stat" id="tileWkHours" style="cursor:pointer" tabindex="0" title="Click for weekly hours breakdown">

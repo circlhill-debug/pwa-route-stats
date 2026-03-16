@@ -4706,6 +4706,18 @@ function getHourlyRateFromEval(){
     if (nextIndex === currentIndex) return;
     setMobileFocusInsightPage(FOCUS_INSIGHT_ORDER[nextIndex]);
   }
+  function parseSignedPercent(text){
+    const raw = String(text || '').trim();
+    const m = raw.match(/([+-]?\d+(?:\.\d+)?)\s*%/);
+    if (!m) return null;
+    const n = Number(m[1]);
+    return Number.isFinite(n) ? n : null;
+  }
+  function buildInsightList(items, emptyText){
+    const safeItems = (items || []).filter(Boolean);
+    if (!safeItems.length) return `<small class="muted">${escapeFocusHtml(emptyText || 'No data yet.')}</small>`;
+    return `<ul class="focus-lite-list">${safeItems.map(item => `<li>${item}</li>`).join('')}</ul>`;
+  }
   function updateMobileFocusShellData(){
     setFocusText('fsTodayEnd', readTextValue('expEnd'));
     setFocusText('fsTodayTotal', readTextValue('totalH'));
@@ -4757,18 +4769,72 @@ function getHourlyRateFromEval(){
     const totalVal = readTextValue('totalH');
     const checkLabel = hasCoreTimes && totalVal !== '—' ? 'Ready to Save' : 'Needs Review';
     setFocusText('fsEntryCheck', checkLabel);
-    const moversHtml = document.getElementById('trendFactors')?.innerHTML || '';
-    const todayHeavinessHtml = document.getElementById('todayHeaviness')?.innerHTML || '';
-    const weekHeavinessHtml = document.getElementById('weekHeaviness')?.innerHTML || '';
-    setFocusHtml('fsInsightMovers', moversHtml || '<span class="muted">No major movers yet.</span>');
-    setFocusHtml('fsInsightTodayHeaviness', todayHeavinessHtml || '<span class="muted">No worked day selected yet.</span>');
-    setFocusHtml('fsInsightWeekHeaviness', weekHeavinessHtml || '<span class="muted">Need this week and last week data.</span>');
+    const hoursDeltaText = readTextValue('wkHoursDelta');
+    const parcelsDeltaText = readTextValue('wkParcelsDelta');
+    const lettersDeltaText = readTextValue('wkLettersDelta');
+    const movers = [
+      { label: 'Hours', delta: parseSignedPercent(hoursDeltaText), text: hoursDeltaText },
+      { label: 'Parcels', delta: parseSignedPercent(parcelsDeltaText), text: parcelsDeltaText },
+      { label: 'Letters', delta: parseSignedPercent(lettersDeltaText), text: lettersDeltaText }
+    ];
+    const biggestMover = [...movers]
+      .filter(m => m && m.delta != null)
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0] || null;
+    const moversItems = movers.map(m => {
+      const txt = m?.text && m.text !== '—' ? m.text : '—';
+      return `<b>${escapeFocusHtml(m.label)}</b>: ${escapeFocusHtml(txt)}`;
+    });
+    if (biggestMover){
+      const direction = biggestMover.delta > 0 ? 'up' : (biggestMover.delta < 0 ? 'down' : 'flat');
+      moversItems.unshift(`<b>Biggest mover:</b> ${escapeFocusHtml(biggestMover.label)} ${direction} ${escapeFocusHtml(biggestMover.text)}`);
+    }
+    setFocusHtml('fsInsightMovers', buildInsightList(moversItems, 'No major movers yet.'));
+
+    const todayHeavinessText = compactText((document.getElementById('todayHeaviness')?.textContent || '').replace(/\s+/g,' ').trim(), 80);
+    const todayItems = [
+      `<b>Heaviness:</b> ${escapeFocusHtml(todayHeavinessText || '—')}`,
+      `<b>Office Δ:</b> ${escapeFocusHtml(readTextValue('todayOfficeDelta'))}`,
+      `<b>Parcels Δ:</b> ${escapeFocusHtml(readTextValue('todayParcelsDelta'))}`,
+      `<b>Letters Δ:</b> ${escapeFocusHtml(readTextValue('todayLettersDelta'))}`,
+      `<b>Expected End:</b> ${escapeFocusHtml(readTextValue('expEnd'))}`
+    ];
+    setFocusHtml('fsInsightTodayHeaviness', buildInsightList(todayItems, 'No worked day selected yet.'));
+
+    const weekHeavinessText = compactText((document.getElementById('weekHeaviness')?.textContent || '').replace(/\s+/g,' ').trim(), 80);
+    const weekItems = [
+      `<b>Heaviness:</b> ${escapeFocusHtml(weekHeavinessText || '—')}`,
+      `<b>Hours:</b> ${escapeFocusHtml(readTextValue('wkHours'))} (${escapeFocusHtml(hoursDeltaText)})`,
+      `<b>Volume pressure:</b> Parcels ${escapeFocusHtml(parcelsDeltaText)} · Letters ${escapeFocusHtml(lettersDeltaText)}`,
+      `<b>Extra trip:</b> ${escapeFocusHtml(readTextValue('extraTimeWeekVal'))} · ${escapeFocusHtml(readTextValue('extraPayoutWeekVal'))}`,
+      `<b>Route eval:</b> ${escapeFocusHtml(readTextValue('uspsRouteEffVal'))}`
+    ];
+    setFocusHtml('fsInsightWeekHeaviness', buildInsightList(weekItems, 'Need this week and last week data.'));
+
     setFocusText('fsInsightDiagModel', compactText(readTextValue('diagModelBadge')));
     setFocusText('fsInsightDiagStatus', compactText(readTextValue('diagSummary'), 44));
+    const diagRows = Array.from(document.querySelectorAll('#diagTableBody tr')).slice(0, 2);
+    const diagItems = diagRows.map(row => {
+      const cells = Array.from(row.querySelectorAll('td'));
+      const dt = (cells[0]?.textContent || '').trim();
+      const delta = (cells[5]?.textContent || '').trim();
+      if (!dt && !delta) return null;
+      return `<b>${escapeFocusHtml(dt || 'Day')}</b>: ${escapeFocusHtml(delta || '—')}`;
+    }).filter(Boolean);
+    setFocusHtml('fsInsightDiagTop', buildInsightList(diagItems, 'No residual outliers yet.'));
+
     const compareLabel = readTextValue('dcSubjectLabel', '').trim();
     const compareSummary = readTextValue('dcReasoning', '').trim();
     setFocusText('fsInsightCompareLabel', compactText(compareLabel || 'Ready'));
     setFocusText('fsInsightCompareSummary', compactText(compareSummary || 'Open Day Compare'));
+    const compareRows = Array.from(document.querySelectorAll('#dcTableBody tr')).slice(0, 3);
+    const compareItems = compareRows.map(row => {
+      const cells = Array.from(row.querySelectorAll('td'));
+      const metric = (cells[0]?.textContent || '').trim();
+      const delta = (cells[3]?.textContent || '').trim();
+      if (!metric && !delta) return null;
+      return `<b>${escapeFocusHtml(metric || 'Metric')}</b>: ${escapeFocusHtml(delta || '—')}`;
+    }).filter(Boolean);
+    setFocusHtml('fsInsightCompareTop', buildInsightList(compareItems, 'No compare deltas yet.'));
     renderFocusInsightDrill();
   }
   function setMobileFocusShellPage(nextPage, options = {}){

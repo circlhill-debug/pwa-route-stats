@@ -9520,8 +9520,20 @@ Score: ${overallScore}/10 (higher is better)`;
     if (nextIndex === currentIndex) return;
     setMobileFocusInsightPage(FOCUS_INSIGHT_ORDER[nextIndex]);
   }
+  function parseSignedPercent(text) {
+    const raw = String(text || "").trim();
+    const m = raw.match(/([+-]?\d+(?:\.\d+)?)\s*%/);
+    if (!m) return null;
+    const n = Number(m[1]);
+    return Number.isFinite(n) ? n : null;
+  }
+  function buildInsightList(items, emptyText) {
+    const safeItems = (items || []).filter(Boolean);
+    if (!safeItems.length) return `<small class="muted">${escapeFocusHtml(emptyText || "No data yet.")}</small>`;
+    return `<ul class="focus-lite-list">${safeItems.map((item) => `<li>${item}</li>`).join("")}</ul>`;
+  }
   function updateMobileFocusShellData() {
-    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
+    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
     setFocusText("fsTodayEnd", readTextValue("expEnd"));
     setFocusText("fsTodayTotal", readTextValue("totalH"));
     setFocusText("fsTodayVolume", readTextValue("badgeVolume"));
@@ -9572,18 +9584,68 @@ Score: ${overallScore}/10 (higher is better)`;
     const totalVal = readTextValue("totalH");
     const checkLabel = hasCoreTimes && totalVal !== "\u2014" ? "Ready to Save" : "Needs Review";
     setFocusText("fsEntryCheck", checkLabel);
-    const moversHtml = ((_k = document.getElementById("trendFactors")) == null ? void 0 : _k.innerHTML) || "";
-    const todayHeavinessHtml = ((_l = document.getElementById("todayHeaviness")) == null ? void 0 : _l.innerHTML) || "";
-    const weekHeavinessHtml = ((_m = document.getElementById("weekHeaviness")) == null ? void 0 : _m.innerHTML) || "";
-    setFocusHtml("fsInsightMovers", moversHtml || '<span class="muted">No major movers yet.</span>');
-    setFocusHtml("fsInsightTodayHeaviness", todayHeavinessHtml || '<span class="muted">No worked day selected yet.</span>');
-    setFocusHtml("fsInsightWeekHeaviness", weekHeavinessHtml || '<span class="muted">Need this week and last week data.</span>');
+    const hoursDeltaText = readTextValue("wkHoursDelta");
+    const parcelsDeltaText = readTextValue("wkParcelsDelta");
+    const lettersDeltaText = readTextValue("wkLettersDelta");
+    const movers = [
+      { label: "Hours", delta: parseSignedPercent(hoursDeltaText), text: hoursDeltaText },
+      { label: "Parcels", delta: parseSignedPercent(parcelsDeltaText), text: parcelsDeltaText },
+      { label: "Letters", delta: parseSignedPercent(lettersDeltaText), text: lettersDeltaText }
+    ];
+    const biggestMover = [...movers].filter((m) => m && m.delta != null).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0] || null;
+    const moversItems = movers.map((m) => {
+      const txt = (m == null ? void 0 : m.text) && m.text !== "\u2014" ? m.text : "\u2014";
+      return `<b>${escapeFocusHtml(m.label)}</b>: ${escapeFocusHtml(txt)}`;
+    });
+    if (biggestMover) {
+      const direction = biggestMover.delta > 0 ? "up" : biggestMover.delta < 0 ? "down" : "flat";
+      moversItems.unshift(`<b>Biggest mover:</b> ${escapeFocusHtml(biggestMover.label)} ${direction} ${escapeFocusHtml(biggestMover.text)}`);
+    }
+    setFocusHtml("fsInsightMovers", buildInsightList(moversItems, "No major movers yet."));
+    const todayHeavinessText = compactText((((_k = document.getElementById("todayHeaviness")) == null ? void 0 : _k.textContent) || "").replace(/\s+/g, " ").trim(), 80);
+    const todayItems = [
+      `<b>Heaviness:</b> ${escapeFocusHtml(todayHeavinessText || "\u2014")}`,
+      `<b>Office \u0394:</b> ${escapeFocusHtml(readTextValue("todayOfficeDelta"))}`,
+      `<b>Parcels \u0394:</b> ${escapeFocusHtml(readTextValue("todayParcelsDelta"))}`,
+      `<b>Letters \u0394:</b> ${escapeFocusHtml(readTextValue("todayLettersDelta"))}`,
+      `<b>Expected End:</b> ${escapeFocusHtml(readTextValue("expEnd"))}`
+    ];
+    setFocusHtml("fsInsightTodayHeaviness", buildInsightList(todayItems, "No worked day selected yet."));
+    const weekHeavinessText = compactText((((_l = document.getElementById("weekHeaviness")) == null ? void 0 : _l.textContent) || "").replace(/\s+/g, " ").trim(), 80);
+    const weekItems = [
+      `<b>Heaviness:</b> ${escapeFocusHtml(weekHeavinessText || "\u2014")}`,
+      `<b>Hours:</b> ${escapeFocusHtml(readTextValue("wkHours"))} (${escapeFocusHtml(hoursDeltaText)})`,
+      `<b>Volume pressure:</b> Parcels ${escapeFocusHtml(parcelsDeltaText)} \xB7 Letters ${escapeFocusHtml(lettersDeltaText)}`,
+      `<b>Extra trip:</b> ${escapeFocusHtml(readTextValue("extraTimeWeekVal"))} \xB7 ${escapeFocusHtml(readTextValue("extraPayoutWeekVal"))}`,
+      `<b>Route eval:</b> ${escapeFocusHtml(readTextValue("uspsRouteEffVal"))}`
+    ];
+    setFocusHtml("fsInsightWeekHeaviness", buildInsightList(weekItems, "Need this week and last week data."));
     setFocusText("fsInsightDiagModel", compactText(readTextValue("diagModelBadge")));
     setFocusText("fsInsightDiagStatus", compactText(readTextValue("diagSummary"), 44));
+    const diagRows = Array.from(document.querySelectorAll("#diagTableBody tr")).slice(0, 2);
+    const diagItems = diagRows.map((row) => {
+      var _a6, _b2;
+      const cells = Array.from(row.querySelectorAll("td"));
+      const dt = (((_a6 = cells[0]) == null ? void 0 : _a6.textContent) || "").trim();
+      const delta = (((_b2 = cells[5]) == null ? void 0 : _b2.textContent) || "").trim();
+      if (!dt && !delta) return null;
+      return `<b>${escapeFocusHtml(dt || "Day")}</b>: ${escapeFocusHtml(delta || "\u2014")}`;
+    }).filter(Boolean);
+    setFocusHtml("fsInsightDiagTop", buildInsightList(diagItems, "No residual outliers yet."));
     const compareLabel = readTextValue("dcSubjectLabel", "").trim();
     const compareSummary = readTextValue("dcReasoning", "").trim();
     setFocusText("fsInsightCompareLabel", compactText(compareLabel || "Ready"));
     setFocusText("fsInsightCompareSummary", compactText(compareSummary || "Open Day Compare"));
+    const compareRows = Array.from(document.querySelectorAll("#dcTableBody tr")).slice(0, 3);
+    const compareItems = compareRows.map((row) => {
+      var _a6, _b2;
+      const cells = Array.from(row.querySelectorAll("td"));
+      const metric = (((_a6 = cells[0]) == null ? void 0 : _a6.textContent) || "").trim();
+      const delta = (((_b2 = cells[3]) == null ? void 0 : _b2.textContent) || "").trim();
+      if (!metric && !delta) return null;
+      return `<b>${escapeFocusHtml(metric || "Metric")}</b>: ${escapeFocusHtml(delta || "\u2014")}`;
+    }).filter(Boolean);
+    setFocusHtml("fsInsightCompareTop", buildInsightList(compareItems, "No compare deltas yet."));
     renderFocusInsightDrill();
   }
   function setMobileFocusShellPage(nextPage, options = {}) {

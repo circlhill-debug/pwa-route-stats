@@ -1,6 +1,5 @@
 // Diagnostics + comparisons: residual model, day compare, and volume leaderboard.
 import { DateTime, ZONE, dowIndex, moonPhaseEmoji } from '../utils/date.js';
-import { DIAGNOSTIC_TAG_CATALOG, normalizeTagEntries, tagLabelForKey } from '../utils/diagnostics.js';
 
 export function createDiagnostics({
   getFlags,
@@ -523,10 +522,7 @@ export function createDiagnostics({
         const lines = list
           .map(item => {
             const tagSummary = (item.tags || [])
-              .map(tag => {
-                const label = tagLabelForKey(tag.key || tag.reason);
-                return tag.minutes != null ? `${label} ${tag.minutes}m` : label;
-              })
+              .map(tag => (tag.minutes != null ? `${tag.reason} ${tag.minutes}m` : tag.reason))
               .join(', ');
             return `${item.iso}${tagSummary ? ` · ${tagSummary}` : ''}`;
           })
@@ -690,7 +686,7 @@ export function createDiagnostics({
 
       // Delegate clicks at tbody level so handlers survive table rerenders
       // and remain reliable on touch devices.
-      tbody.onclick = async (event) => {
+      tbody.onclick = (event) => {
         const dismissBtn = event.target?.closest?.('.diag-dismiss');
         if (dismissBtn) {
           const iso = dismissBtn.dataset.dismissIso;
@@ -700,22 +696,28 @@ export function createDiagnostics({
           const parcels = residual ? Math.round(residual.parcels) : null;
           const letters = residual ? Math.round(residual.letters) : null;
           const defaultReason = (() => {
-            if (!residual) return [];
-            if (parcels != null && parcels > 0 && letters != null && letters === 0) return [{ key: 'parcels', reason: 'parcels', minutes: null }];
-            if (letters != null && letters > parcels) return [{ key: 'letters', reason: 'letters', minutes: null }];
-            return [];
+            if (!residual) return '';
+            if (parcels != null && parcels > 0 && letters != null && letters === 0) return 'parcels';
+            if (letters != null && letters > parcels) return 'letters';
+            return '';
           })();
           const hintParts = [];
           if (deltaMinutes != null) hintParts.push(`Residual: ${deltaMinutes}m`);
           if (parcels != null) hintParts.push(`Parcels: ${parcels}`);
           if (letters != null) hintParts.push(`Letters: ${letters}`);
-          const tagResult = await showTagDismissDialog({
-            title: `Tag residual ${iso}`,
-            hint: hintParts.join(' · '),
-            defaults: defaultReason
-          });
-          if (!tagResult) return;
-          const tags = normalizeTagEntries(tagResult.tags || [], { notedAt: new Date().toISOString() });
+          const basePrompt = hintParts.length
+            ? `${hintParts.join(' · ')}\nReason (e.g., Road closure, Weather, Extra parcels):`
+            : 'Reason (e.g., Road closure, Weather, Extra parcels):';
+          const tagReference = 'Tag keywords: break, flats, parcels, letters, second-trip, detour, load, gas, traffic, road, weather.';
+          const reasonPrompt = window.prompt(`${basePrompt}\n${tagReference}\nYou can append ± minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-10") and separate multiple reasons with commas (e.g., "parcels+15, flats-20").`, defaultReason);
+          if (reasonPrompt === null) return;
+          const reasonText = reasonPrompt.trim();
+          if (!reasonText) {
+            window.alert('No reason provided; dismissal cancelled.');
+            return;
+          }
+
+          const tags = parseDismissReasonInput(reasonText);
           if (!tags.length) {
             window.alert('No reason provided; dismissal cancelled.');
             return;
@@ -723,7 +725,6 @@ export function createDiagnostics({
           const nowIso = new Date().toISOString();
           const tagTimestamp = Date.now();
           const tagEntries = tags.map(t => ({
-            key: t.key || null,
             reason: t.reason,
             minutes: (t.minutes != null && Number.isFinite(Number(t.minutes))) ? Number(t.minutes) : null,
             notedAt: tagTimestamp
@@ -777,104 +778,6 @@ export function createDiagnostics({
         }
       };
     }
-  }
-
-  function showTagDismissDialog({ title, hint, defaults }) {
-    const normalizedDefaults = normalizeTagEntries(defaults || []);
-    const selectedDefaults = new Map(normalizedDefaults.map(t => [t.key || t.reason, t]));
-    const dialog = document.createElement('dialog');
-    dialog.style.maxWidth = '560px';
-    dialog.style.width = 'calc(100vw - 32px)';
-    dialog.innerHTML = `
-      <form method="dialog" style="display:flex;flex-direction:column;gap:10px">
-        <h4 style="margin:0">${escapeHtml(title || 'Tag & dismiss')}</h4>
-        <small class="muted">${escapeHtml(hint || 'Select one or more reasons and optional +/- minutes.')}</small>
-        <div style="display:grid;gap:8px;max-height:52vh;overflow:auto;padding:4px 2px">
-          ${DIAGNOSTIC_TAG_CATALOG.map(tag => {
-            const def = selectedDefaults.get(tag.key) || null;
-            const minutes = def && def.minutes != null ? String(def.minutes) : '';
-            return `
-              <label class="pill" style="display:grid;grid-template-columns:auto 1fr minmax(96px,110px);align-items:center;gap:8px;padding:8px 10px">
-                <input type="checkbox" data-tag-key="${tag.key}" ${def ? 'checked' : ''}>
-                <span>${escapeHtml(tag.label)}</span>
-                <input type="number" step="1" data-minutes-for="${tag.key}" value="${escapeHtml(minutes)}" placeholder="min +/-">
-              </label>
-            `;
-          }).join('')}
-        </div>
-        <label style="display:grid;gap:6px">
-          <small class="muted">Optional note for Misc</small>
-          <input type="text" id="diagDismissMiscNote" placeholder="e.g., scanner issue">
-        </label>
-        <div class="row" style="justify-content:flex-end">
-          <button value="cancel" class="ghost" type="button" id="diagDismissCancel">Cancel</button>
-          <button value="ok" class="btn" type="button" id="diagDismissSave">Save Tag & Dismiss</button>
-        </div>
-      </form>
-    `;
-    document.body.appendChild(dialog);
-    const checkboxNodes = Array.from(dialog.querySelectorAll('input[type="checkbox"][data-tag-key]'));
-    const saveBtn = dialog.querySelector('#diagDismissSave');
-    const cancelBtn = dialog.querySelector('#diagDismissCancel');
-    let result = null;
-    const collect = () => {
-      const tags = checkboxNodes
-        .filter(node => node.checked)
-        .map(node => {
-          const key = node.dataset.tagKey;
-          const minInput = dialog.querySelector(`input[data-minutes-for="${key}"]`);
-          const rawMinutes = (minInput?.value || '').trim();
-          const minutes = rawMinutes !== '' ? Number(rawMinutes) : null;
-          const reason = key === 'misc'
-            ? ((dialog.querySelector('#diagDismissMiscNote')?.value || '').trim() || 'misc')
-            : key;
-          return {
-            key,
-            reason,
-            minutes: Number.isFinite(minutes) ? minutes : null
-          };
-        });
-      return { tags };
-    };
-    const closeDialog = () => {
-      try { dialog.close(); } catch (_) { }
-      dialog.remove();
-    };
-    return new Promise(resolve => {
-      cancelBtn?.addEventListener('click', () => {
-        result = null;
-        closeDialog();
-        resolve(null);
-      });
-      saveBtn?.addEventListener('click', () => {
-        const payload = collect();
-        result = payload.tags.length ? payload : null;
-        if (!result) {
-          window.alert('Select at least one tag to dismiss this residual.');
-          return;
-        }
-        closeDialog();
-        resolve(result);
-      });
-      dialog.addEventListener('cancel', (event) => {
-        event.preventDefault();
-        result = null;
-        closeDialog();
-        resolve(null);
-      });
-      try {
-        dialog.showModal();
-      } catch (_) {
-        const fallback = window.prompt('Enter reason tags like "parcels+15, weather-10, flats":', '');
-        closeDialog();
-        if (fallback == null) {
-          resolve(null);
-          return;
-        }
-        const parsed = parseDismissReasonInput(fallback);
-        resolve(parsed.length ? { tags: parsed } : null);
-      }
-    });
   }
 
   function formatNumber(val, opts) {

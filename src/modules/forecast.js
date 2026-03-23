@@ -1,5 +1,4 @@
 import { todayIso as getTodayIsoFromUtils } from '../utils/date.js';
-import { canonicalizeTagReason, normalizeTagEntries } from '../utils/diagnostics.js';
 
 // force global refresh hook
 let __forceTrend = true;
@@ -29,17 +28,7 @@ function loadTagHistory() {
   try {
     const raw = localStorage.getItem('routeStats.tagHistory');
     const history = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(history)) return [];
-    const normalized = history
-      .filter(Boolean)
-      .map((entry) => {
-        if (!entry || !entry.iso) return null;
-        const tags = normalizeTagEntries(entry.tags || []);
-        return tags.length ? { iso: entry.iso, tags } : null;
-      })
-      .filter(Boolean);
-    try { localStorage.setItem('routeStats.tagHistory', JSON.stringify(normalized)); } catch (_) { }
-    return normalized;
+    return Array.isArray(history) ? history.filter(Boolean) : [];
   } catch (_) {
     return [];
   }
@@ -131,9 +120,9 @@ function normalizeSnapshot(snapshot) {
   const endTime = snapshot.endTime || snapshot.end_time || snapshot.return_time || null;
   let tags = [];
   if (Array.isArray(snapshot.tags)) {
-    tags = normalizeTagEntries(snapshot.tags.filter(Boolean));
+    tags = snapshot.tags.filter(Boolean);
   } else if (Array.isArray(snapshot.tagHistory)) {
-    tags = normalizeTagEntries(snapshot.tagHistory.filter(Boolean));
+    tags = snapshot.tagHistory.filter(Boolean);
   }
   return {
     iso,
@@ -498,19 +487,26 @@ function flattenTagStrings(history, targetDow) {
     });
 
   const latestByType = new Map();
+  const normalizeTag = (tagValue) => {
+    if (typeof tagValue === 'string') return tagValue;
+    if (tagValue && typeof tagValue.tag === 'string') return tagValue.tag;
+    if (tagValue && tagValue.reason) {
+      const minutes = Number(tagValue.minutes);
+      if (Number.isFinite(minutes)) return `${tagValue.reason}+${minutes}`;
+      return String(tagValue.reason);
+    }
+    return null;
+  };
 
   entriesForDay.forEach((entry) => {
     if (!entry || !Array.isArray(entry.tags)) return;
-    entry.tags.forEach((tag) => {
-      if (!tag) return;
-      const key = tag.key || canonicalizeTagReason(tag.reason).key;
-      if (!key) return;
-      const minutesNum = Number(tag.minutes);
-      latestByType.set(key, {
-        key,
-        reason: tag.reason || key,
-        minutes: Number.isFinite(minutesNum) ? minutesNum : 0
-      });
+    entry.tags.forEach((rawTag) => {
+      const tagString = normalizeTag(rawTag);
+      if (!tagString) return;
+      const [rawType] = tagString.split('+');
+      const type = (rawType || '').trim().toLowerCase();
+      if (!type) return;
+      latestByType.set(type, tagString);
     });
   });
 
@@ -536,35 +532,53 @@ function generateForecastFromDailyData(dailyData) {
   return `Expect a longer day due to ${summaries.join(' and ')}.`;
 }
 
+function parseTagString(tagString) {
+  try {
+    const arr = JSON.parse(tagString);
+    if (!Array.isArray(arr)) return [];
+    return arr.map(t => ({
+      reason: t.reason || "unknown",
+      minutes: Number(t.minutes) || 0
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export function generateForecastText(tagHistory, targetDow) {
   const allTags = Array.isArray(tagHistory) ? flattenTagStrings(tagHistory, targetDow) : [];
   let dominantTag = null;
   const summaries = [];
 
-  allTags.forEach((entry) => {
-    const type = String(entry.key || canonicalizeTagReason(entry.reason).key || 'misc').toLowerCase();
-    const minutes = Number(entry.minutes) || 0;
-    if (!dominantTag || Math.abs(minutes) > Math.abs(dominantTag.minutes)) {
-      dominantTag = { type, minutes };
-    }
+  allTags.forEach((tagStr) => {
+    const parsedEntries = parseTagString(tagStr);
+    if (!parsedEntries.length) return;
+
     const labelMap = {
-      break: 'planned break',
-      flats: 'flats volume',
-      parcels: 'parcel load',
-      letters: 'letter count',
-      second_trip: 'second trip',
-      detour: 'route detour',
-      load: 'loading time',
-      weather: 'weather',
-      traffic: 'traffic',
-      road_closure: 'road closure',
-      boxholders: 'boxholders',
-      vehicle_issue: 'vehicle issue',
-      misc: 'misc factors'
+      break: "planned break",
+      flats: "flats volume",
+      parcels: "parcel load",
+      letters: "letter count",
+      "second-trip": "second trip",
+      detour: "route detour",
+      load: "loading time"
     };
-    const label = labelMap[type] || type;
-    if (minutes > 0) summaries.push(`${label} increase (+${minutes} min)`);
-    else if (minutes < 0) summaries.push(`${label} decrease (${Math.abs(minutes)} min)`);
+
+    parsedEntries.forEach((entry) => {
+      const type = String(entry.reason || 'unknown').toLowerCase();
+      const minutes = Number(entry.minutes) || 0;
+
+      if (!dominantTag || Math.abs(minutes) > Math.abs(dominantTag.minutes)) {
+        dominantTag = { type, minutes };
+      }
+
+      const label = labelMap[type] || type;
+      if (minutes > 0) {
+        summaries.push(`${label} increase (+${minutes} min)`);
+      } else if (minutes < 0) {
+        summaries.push(`${label} decrease (${Math.abs(minutes)} min)`);
+      }
+    });
   });
 
   if (dominantTag && Math.abs(dominantTag.minutes) >= 20) {

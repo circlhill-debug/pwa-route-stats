@@ -33,9 +33,7 @@ const DEFAULT_FLAGS = {
   focusMode:false,
   quickEntry:false,
   uspsEval:true,
-  dayCompare:true,
-  mobileFocusMode:false,
-  focusArrows:true
+  dayCompare:true
 };
 
 const DEFAULT_EVAL_PROFILE = {
@@ -600,31 +598,13 @@ export function loadDismissedResiduals(parseDismissReasonInput){
           }
         }
         const tags = sourceTags
-          .flatMap(tag => {
+          .map(tag => {
             if (!tag) return null;
             const reason = String(tag.reason || '').trim();
+            if (!reason) return null;
             const minutes = (tag.minutes!=null && tag.minutes!=='') ? Number(tag.minutes) : null;
             const notedAt = tag.notedAt || item.notedAt || new Date().toISOString();
-            if (!reason) return [];
-            if (typeof parseDismissReasonInput === 'function'){
-              const parsed = parseDismissReasonInput(
-                Number.isFinite(minutes) ? `${reason}${minutes >= 0 ? '+' : ''}${minutes}` : reason
-              ) || [];
-              if (parsed.length){
-                return parsed.map(p => ({
-                  key: p.key || null,
-                  reason: String(p.reason || '').trim(),
-                  minutes: (p.minutes!=null && Number.isFinite(Number(p.minutes))) ? Number(p.minutes) : null,
-                  notedAt
-                })).filter(p => p.reason);
-              }
-            }
-            return [{
-              key: tag.key || null,
-              reason,
-              minutes: Number.isFinite(minutes) ? minutes : null,
-              notedAt
-            }];
+            return { reason, minutes: Number.isFinite(minutes) ? minutes : null, notedAt };
           })
           .filter(Boolean);
         return tags.length ? { iso, tags } : null;

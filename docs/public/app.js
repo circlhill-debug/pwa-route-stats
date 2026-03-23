@@ -2973,6 +2973,15 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     let dowChart;
     let parcelsChart;
     let lettersChart;
+    let latestRowsForCharts = [];
+    const TREND_RANGE_KEY = "routeStats.trendChart.range";
+    const TREND_RANGE_OPTIONS = [
+      { key: "8w", label: "8w", days: 56 },
+      { key: "12w", label: "12w", days: 84 },
+      { key: "24w", label: "24w", days: 168 },
+      { key: "all", label: "All", days: null }
+    ];
+    let trendRangeKey = loadTrendRangeKey();
     function destroyCharts() {
       [dowChart, parcelsChart, lettersChart].forEach((c) => {
         if (c && typeof c.destroy === "function") {
@@ -2983,6 +2992,97 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         }
       });
       dowChart = parcelsChart = lettersChart = null;
+    }
+    function loadTrendRangeKey() {
+      try {
+        const raw = localStorage.getItem(TREND_RANGE_KEY);
+        if (TREND_RANGE_OPTIONS.some((opt) => opt.key === raw)) return raw;
+      } catch (_) {
+      }
+      return "8w";
+    }
+    function saveTrendRangeKey(nextKey) {
+      trendRangeKey = TREND_RANGE_OPTIONS.some((opt) => opt.key === nextKey) ? nextKey : "8w";
+      try {
+        localStorage.setItem(TREND_RANGE_KEY, trendRangeKey);
+      } catch (_) {
+      }
+    }
+    function getTrendRangeDays() {
+      const opt = TREND_RANGE_OPTIONS.find((item) => item.key === trendRangeKey);
+      return opt ? opt.days : 56;
+    }
+    function updateTrendRangeControlState() {
+      const controls = document.querySelectorAll(".trend-range-controls");
+      controls.forEach((control) => {
+        const buttons = control.querySelectorAll("button[data-trend-range]");
+        buttons.forEach((btn) => {
+          const isActive = btn.dataset.trendRange === trendRangeKey;
+          btn.classList.toggle("active", isActive);
+          btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+        });
+      });
+    }
+    function ensureTrendRangeControls() {
+      const parentIds = ["parcelsOverTimeCard", "lettersOverTimeCard"];
+      parentIds.forEach((cardId) => {
+        const card = document.getElementById(cardId);
+        if (!card) return;
+        const heading = card.querySelector("h3");
+        const canvas = card.querySelector("canvas");
+        if (!heading || !canvas) return;
+        let control = card.querySelector(".trend-range-controls");
+        if (!control) {
+          control = document.createElement("div");
+          control.className = "row trend-range-controls";
+          control.style.margin = "0 0 8px 0";
+          control.style.gap = "6px";
+          control.style.alignItems = "center";
+          const label = document.createElement("small");
+          label.className = "muted";
+          label.textContent = "Range";
+          control.appendChild(label);
+          TREND_RANGE_OPTIONS.forEach((opt) => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "ghost";
+            btn.textContent = opt.label;
+            btn.dataset.trendRange = opt.key;
+            btn.style.padding = "4px 8px";
+            btn.style.fontSize = "12px";
+            control.appendChild(btn);
+          });
+          control.addEventListener("click", (event) => {
+            var _a5, _b;
+            const btn = (_b = (_a5 = event.target) == null ? void 0 : _a5.closest) == null ? void 0 : _b.call(_a5, "button[data-trend-range]");
+            if (!btn) return;
+            const next = btn.dataset.trendRange;
+            if (!next || next === trendRangeKey) return;
+            saveTrendRangeKey(next);
+            updateTrendRangeControlState();
+            buildCharts2(latestRowsForCharts);
+          });
+          canvas.insertAdjacentElement("beforebegin", control);
+        }
+      });
+      updateTrendRangeControlState();
+    }
+    function applyTrendRange(sortedWorkedRows) {
+      var _a5;
+      const rows = Array.isArray(sortedWorkedRows) ? sortedWorkedRows : [];
+      if (!rows.length) return rows;
+      const days = getTrendRangeDays();
+      if (!Number.isFinite(days) || days <= 0) return rows;
+      const lastIso = (_a5 = rows[rows.length - 1]) == null ? void 0 : _a5.work_date;
+      if (!lastIso) return rows;
+      const cutoff = DateTime.fromISO(lastIso, { zone: ZONE }).minus({ days: Math.max(0, days - 1) });
+      if (!(cutoff == null ? void 0 : cutoff.isValid)) return rows;
+      return rows.filter((row) => {
+        const iso = row == null ? void 0 : row.work_date;
+        if (!iso) return false;
+        const dt = DateTime.fromISO(iso, { zone: ZONE });
+        return dt.isValid && dt >= cutoff;
+      });
     }
     function enableChartTap(chart, canvas) {
       if (!chart || !canvas) return;
@@ -3009,6 +3109,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       });
     }
     function buildCharts2(rows) {
+      latestRowsForCharts = Array.isArray(rows) ? [...rows] : [];
+      ensureTrendRangeControls();
       rows = filterRowsForView2(rows || []);
       if (!window.Chart) {
         console.warn("Chart.js missing \u2014 skipping charts");
@@ -3034,7 +3136,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         data: { labels: dowLabels, datasets: [{ label: "Avg Total Hours", data: dowData }] },
         options: { responsive: true, plugins: { legend: { display: false } } }
       });
-      const sortedWork = [...workRows].sort((a, b) => a.work_date.localeCompare(b.work_date));
+      const sortedWorkAll = [...workRows].sort((a, b) => a.work_date.localeCompare(b.work_date));
+      const sortedWork = applyTrendRange(sortedWorkAll);
       const labels = sortedWork.map((r) => r.work_date);
       const parcelsCanvas = document.getElementById("parcelsChart");
       parcelsChart = new Chart(parcelsCanvas, {

@@ -14,6 +14,15 @@ export function createCharts({
   let dowChart;
   let parcelsChart;
   let lettersChart;
+  let latestRowsForCharts = [];
+  const TREND_RANGE_KEY = 'routeStats.trendChart.range';
+  const TREND_RANGE_OPTIONS = [
+    { key: '8w', label: '8w', days: 56 },
+    { key: '12w', label: '12w', days: 84 },
+    { key: '24w', label: '24w', days: 168 },
+    { key: 'all', label: 'All', days: null }
+  ];
+  let trendRangeKey = loadTrendRangeKey();
 
   function destroyCharts(){
     [dowChart, parcelsChart, lettersChart].forEach(c => {
@@ -22,6 +31,97 @@ export function createCharts({
       }
     });
     dowChart = parcelsChart = lettersChart = null;
+  }
+
+  function loadTrendRangeKey(){
+    try{
+      const raw = localStorage.getItem(TREND_RANGE_KEY);
+      if (TREND_RANGE_OPTIONS.some(opt => opt.key === raw)) return raw;
+    }catch(_){ /* ignore */ }
+    return '8w';
+  }
+
+  function saveTrendRangeKey(nextKey){
+    trendRangeKey = TREND_RANGE_OPTIONS.some(opt => opt.key === nextKey) ? nextKey : '8w';
+    try{ localStorage.setItem(TREND_RANGE_KEY, trendRangeKey); }catch(_){ /* ignore */ }
+  }
+
+  function getTrendRangeDays(){
+    const opt = TREND_RANGE_OPTIONS.find(item => item.key === trendRangeKey);
+    return opt ? opt.days : 56;
+  }
+
+  function updateTrendRangeControlState(){
+    const controls = document.querySelectorAll('.trend-range-controls');
+    controls.forEach((control) => {
+      const buttons = control.querySelectorAll('button[data-trend-range]');
+      buttons.forEach((btn) => {
+        const isActive = btn.dataset.trendRange === trendRangeKey;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+    });
+  }
+
+  function ensureTrendRangeControls(){
+    const parentIds = ['parcelsOverTimeCard', 'lettersOverTimeCard'];
+    parentIds.forEach((cardId) => {
+      const card = document.getElementById(cardId);
+      if (!card) return;
+      const heading = card.querySelector('h3');
+      const canvas = card.querySelector('canvas');
+      if (!heading || !canvas) return;
+      let control = card.querySelector('.trend-range-controls');
+      if (!control){
+        control = document.createElement('div');
+        control.className = 'row trend-range-controls';
+        control.style.margin = '0 0 8px 0';
+        control.style.gap = '6px';
+        control.style.alignItems = 'center';
+        const label = document.createElement('small');
+        label.className = 'muted';
+        label.textContent = 'Range';
+        control.appendChild(label);
+        TREND_RANGE_OPTIONS.forEach((opt) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'ghost';
+          btn.textContent = opt.label;
+          btn.dataset.trendRange = opt.key;
+          btn.style.padding = '4px 8px';
+          btn.style.fontSize = '12px';
+          control.appendChild(btn);
+        });
+        control.addEventListener('click', (event) => {
+          const btn = event.target?.closest?.('button[data-trend-range]');
+          if (!btn) return;
+          const next = btn.dataset.trendRange;
+          if (!next || next === trendRangeKey) return;
+          saveTrendRangeKey(next);
+          updateTrendRangeControlState();
+          buildCharts(latestRowsForCharts);
+        });
+        canvas.insertAdjacentElement('beforebegin', control);
+      }
+    });
+    updateTrendRangeControlState();
+  }
+
+  function applyTrendRange(sortedWorkedRows){
+    const rows = Array.isArray(sortedWorkedRows) ? sortedWorkedRows : [];
+    if (!rows.length) return rows;
+    const days = getTrendRangeDays();
+    if (!Number.isFinite(days) || days <= 0) return rows;
+    const lastIso = rows[rows.length - 1]?.work_date;
+    if (!lastIso) return rows;
+    const cutoff = DateTime.fromISO(lastIso, { zone: ZONE }).minus({ days: Math.max(0, days - 1) });
+    if (!cutoff?.isValid) return rows;
+    return rows.filter((row) => {
+      const iso = row?.work_date;
+      if (!iso) return false;
+      const dt = DateTime.fromISO(iso, { zone: ZONE });
+      return dt.isValid && dt >= cutoff;
+    });
   }
 
   function enableChartTap(chart, canvas){
@@ -49,6 +149,8 @@ export function createCharts({
   }
 
   function buildCharts(rows){
+    latestRowsForCharts = Array.isArray(rows) ? [...rows] : [];
+    ensureTrendRangeControls();
     rows = filterRowsForView(rows || []);
     if (!window.Chart){
       console.warn('Chart.js missing — skipping charts');
@@ -75,7 +177,8 @@ export function createCharts({
       options:{ responsive:true, plugins:{ legend:{ display:false } } }
     });
 
-    const sortedWork = [...workRows].sort((a,b)=> a.work_date.localeCompare(b.work_date));
+    const sortedWorkAll = [...workRows].sort((a,b)=> a.work_date.localeCompare(b.work_date));
+    const sortedWork = applyTrendRange(sortedWorkAll);
     const labels = sortedWork.map(r=> r.work_date);
     const parcelsCanvas = document.getElementById('parcelsChart');
     parcelsChart = new Chart(parcelsCanvas, {

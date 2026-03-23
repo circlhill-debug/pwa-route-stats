@@ -111,7 +111,9 @@
     focusMode: false,
     quickEntry: false,
     uspsEval: true,
-    dayCompare: true
+    dayCompare: true,
+    mobileFocusMode: false,
+    focusArrows: true
   };
   var DEFAULT_EVAL_PROFILE = {
     profileId: "eval-default",
@@ -615,13 +617,31 @@
             sourceTags = [{ reason: item.reason, minutes: item.minutes, notedAt: item.notedAt }];
           }
         }
-        const tags = sourceTags.map((tag) => {
+        const tags = sourceTags.flatMap((tag) => {
           if (!tag) return null;
           const reason = String(tag.reason || "").trim();
-          if (!reason) return null;
           const minutes = tag.minutes != null && tag.minutes !== "" ? Number(tag.minutes) : null;
           const notedAt = tag.notedAt || item.notedAt || (/* @__PURE__ */ new Date()).toISOString();
-          return { reason, minutes: Number.isFinite(minutes) ? minutes : null, notedAt };
+          if (!reason) return [];
+          if (typeof parseDismissReasonInput2 === "function") {
+            const parsed2 = parseDismissReasonInput2(
+              Number.isFinite(minutes) ? `${reason}${minutes >= 0 ? "+" : ""}${minutes}` : reason
+            ) || [];
+            if (parsed2.length) {
+              return parsed2.map((p) => ({
+                key: p.key || null,
+                reason: String(p.reason || "").trim(),
+                minutes: p.minutes != null && Number.isFinite(Number(p.minutes)) ? Number(p.minutes) : null,
+                notedAt
+              })).filter((p) => p.reason);
+            }
+          }
+          return [{
+            key: tag.key || null,
+            reason,
+            minutes: Number.isFinite(minutes) ? minutes : null,
+            notedAt
+          }];
         }).filter(Boolean);
         return tags.length ? { iso, tags } : null;
       }).filter(Boolean);
@@ -848,6 +868,89 @@
     }
   }
 
+  // src/utils/diagnostics.js
+  var DIAGNOSTIC_TAG_CATALOG = [
+    { key: "parcels", label: "Parcels", aliases: ["parcel", "pkgs", "packages", "volume"] },
+    { key: "letters", label: "Letters", aliases: ["mail", "letters heavy", "letters light"] },
+    { key: "flats", label: "Flats", aliases: ["flat", "flats time"] },
+    { key: "weather", label: "Weather", aliases: ["rain", "snow", "wind", "storm", "heat", "cold"] },
+    { key: "traffic", label: "Traffic", aliases: ["jam", "congestion"] },
+    { key: "detour", label: "Detour", aliases: ["reroute", "detoured"] },
+    { key: "road_closure", label: "Road closure", aliases: ["road", "closure", "construction"] },
+    { key: "boxholders", label: "Boxholders", aliases: ["box holder", "boxholder", "box"] },
+    { key: "second_trip", label: "Second trip", aliases: ["second-trip", "2nd trip", "extra trip"] },
+    { key: "load", label: "Load/Setup", aliases: ["load time", "setup", "vehicle load"] },
+    { key: "break", label: "Break", aliases: ["lunch", "rest"] },
+    { key: "vehicle_issue", label: "Vehicle issue", aliases: ["vehicle", "truck", "maintenance", "gas", "fuel"] },
+    { key: "misc", label: "Misc", aliases: ["other", "miscellaneous", "unknown"] }
+  ];
+  var CATALOG_BY_KEY = new Map(DIAGNOSTIC_TAG_CATALOG.map((item) => [item.key, item]));
+  function tagLabelForKey(key) {
+    const item = CATALOG_BY_KEY.get(String(key || "").trim());
+    return (item == null ? void 0 : item.label) || "Misc";
+  }
+  function canonicalizeTagReason(rawReason) {
+    const reason = String(rawReason || "").replace(/\s+/g, " ").trim();
+    if (!reason) return { key: "misc", reason: "misc" };
+    const normalized = reason.toLowerCase().replace(/[_-]+/g, " ");
+    for (const item of DIAGNOSTIC_TAG_CATALOG) {
+      if (normalized === item.key.replace(/_/g, " ")) return { key: item.key, reason: item.key };
+      const aliases = item.aliases || [];
+      if (aliases.some((alias) => normalized.includes(String(alias).toLowerCase()))) {
+        return { key: item.key, reason: item.key };
+      }
+    }
+    return { key: "misc", reason };
+  }
+  function normalizeTagEntries(entries, options = {}) {
+    const notedAt = options.notedAt || (/* @__PURE__ */ new Date()).toISOString();
+    const aggregated = /* @__PURE__ */ new Map();
+    (entries || []).forEach((entry) => {
+      if (!entry) return;
+      const rawReason = entry.reason || entry.key || "";
+      const canonical = canonicalizeTagReason(rawReason);
+      const key = canonical.key || "misc";
+      const reason = key === "misc" ? String(rawReason || "").trim() || "misc" : key;
+      const minutesVal = entry.minutes != null && entry.minutes !== "" ? Number(entry.minutes) : null;
+      const minutes = Number.isFinite(minutesVal) ? minutesVal : null;
+      const mapKey = `${key}:${reason.toLowerCase()}`;
+      const existing = aggregated.get(mapKey) || { key, reason, minutes: 0, hasMinutes: false, notedAt };
+      if (minutes != null) {
+        existing.minutes += minutes;
+        existing.hasMinutes = true;
+      }
+      aggregated.set(mapKey, existing);
+    });
+    return Array.from(aggregated.values()).map((item) => ({
+      key: item.key,
+      reason: item.reason,
+      minutes: item.hasMinutes ? item.minutes : null,
+      notedAt: item.notedAt
+    }));
+  }
+  function parseDismissReasonInput(raw) {
+    if (!raw) return [];
+    let working = String(raw).replace(/[;\n]+/g, ",").replace(/\s*,\s*/g, ",").trim();
+    if (!working) return [];
+    const parsed = [];
+    working = working.replace(/([^,]+?)\s*([+\-]\s*\d+(?:\.\d+)?)/g, (_, reasonPart, minutesPart) => {
+      const reason = String(reasonPart || "").trim();
+      const minutes = Number(String(minutesPart || "").replace(/\s+/g, ""));
+      if (reason && Number.isFinite(minutes)) parsed.push({ reason, minutes });
+      return " ";
+    });
+    working = working.replace(/([^,]+?)\s*:\s*([^,+\s]+)/g, (_, left, right) => {
+      const reason = `${String(left || "").trim()}:${String(right || "").trim()}`;
+      if (reason && reason !== ":") parsed.push({ reason, minutes: null });
+      return " ";
+    });
+    working.split(",").map((segment) => segment.trim()).filter(Boolean).forEach((segment) => {
+      if (/^[+\-]?\d+(?:\.\d+)?$/.test(segment)) return;
+      parsed.push({ reason: segment, minutes: null });
+    });
+    return normalizeTagEntries(parsed);
+  }
+
   // src/modules/forecast.js
   var STEADY_MESSAGE = "Steady outlook based on recent trends.";
   var FORECAST_BADGE_STORAGE_KEYS = ["forecastBadgeData_v2", "routeStats.forecastBadgeData_v2"];
@@ -871,7 +974,17 @@
     try {
       const raw = localStorage.getItem("routeStats.tagHistory");
       const history = raw ? JSON.parse(raw) : [];
-      return Array.isArray(history) ? history.filter(Boolean) : [];
+      if (!Array.isArray(history)) return [];
+      const normalized = history.filter(Boolean).map((entry) => {
+        if (!entry || !entry.iso) return null;
+        const tags = normalizeTagEntries(entry.tags || []);
+        return tags.length ? { iso: entry.iso, tags } : null;
+      }).filter(Boolean);
+      try {
+        localStorage.setItem("routeStats.tagHistory", JSON.stringify(normalized));
+      } catch (_) {
+      }
+      return normalized;
     } catch (_) {
       return [];
     }
@@ -943,9 +1056,9 @@
     const endTime = snapshot.endTime || snapshot.end_time || snapshot.return_time || null;
     let tags = [];
     if (Array.isArray(snapshot.tags)) {
-      tags = snapshot.tags.filter(Boolean);
+      tags = normalizeTagEntries(snapshot.tags.filter(Boolean));
     } else if (Array.isArray(snapshot.tagHistory)) {
-      tags = snapshot.tagHistory.filter(Boolean);
+      tags = normalizeTagEntries(snapshot.tagHistory.filter(Boolean));
     }
     return {
       iso,
@@ -1266,25 +1379,18 @@
       return aDate - bDate;
     });
     const latestByType = /* @__PURE__ */ new Map();
-    const normalizeTag = (tagValue) => {
-      if (typeof tagValue === "string") return tagValue;
-      if (tagValue && typeof tagValue.tag === "string") return tagValue.tag;
-      if (tagValue && tagValue.reason) {
-        const minutes = Number(tagValue.minutes);
-        if (Number.isFinite(minutes)) return `${tagValue.reason}+${minutes}`;
-        return String(tagValue.reason);
-      }
-      return null;
-    };
     entriesForDay.forEach((entry) => {
       if (!entry || !Array.isArray(entry.tags)) return;
-      entry.tags.forEach((rawTag) => {
-        const tagString = normalizeTag(rawTag);
-        if (!tagString) return;
-        const [rawType] = tagString.split("+");
-        const type = (rawType || "").trim().toLowerCase();
-        if (!type) return;
-        latestByType.set(type, tagString);
+      entry.tags.forEach((tag) => {
+        if (!tag) return;
+        const key = tag.key || canonicalizeTagReason(tag.reason).key;
+        if (!key) return;
+        const minutesNum = Number(tag.minutes);
+        latestByType.set(key, {
+          key,
+          reason: tag.reason || key,
+          minutes: Number.isFinite(minutesNum) ? minutesNum : 0
+        });
       });
     });
     return Array.from(latestByType.values());
@@ -1307,47 +1413,34 @@
     if (!summaries.length) return null;
     return `Expect a longer day due to ${summaries.join(" and ")}.`;
   }
-  function parseTagString(tagString) {
-    try {
-      const arr = JSON.parse(tagString);
-      if (!Array.isArray(arr)) return [];
-      return arr.map((t) => ({
-        reason: t.reason || "unknown",
-        minutes: Number(t.minutes) || 0
-      }));
-    } catch (e) {
-      return [];
-    }
-  }
   function generateForecastText(tagHistory, targetDow) {
     const allTags = Array.isArray(tagHistory) ? flattenTagStrings(tagHistory, targetDow) : [];
     let dominantTag = null;
     const summaries = [];
-    allTags.forEach((tagStr) => {
-      const parsedEntries = parseTagString(tagStr);
-      if (!parsedEntries.length) return;
+    allTags.forEach((entry) => {
+      const type = String(entry.key || canonicalizeTagReason(entry.reason).key || "misc").toLowerCase();
+      const minutes = Number(entry.minutes) || 0;
+      if (!dominantTag || Math.abs(minutes) > Math.abs(dominantTag.minutes)) {
+        dominantTag = { type, minutes };
+      }
       const labelMap = {
         break: "planned break",
         flats: "flats volume",
         parcels: "parcel load",
         letters: "letter count",
-        "second-trip": "second trip",
+        second_trip: "second trip",
         detour: "route detour",
-        load: "loading time"
+        load: "loading time",
+        weather: "weather",
+        traffic: "traffic",
+        road_closure: "road closure",
+        boxholders: "boxholders",
+        vehicle_issue: "vehicle issue",
+        misc: "misc factors"
       };
-      parsedEntries.forEach((entry) => {
-        const type = String(entry.reason || "unknown").toLowerCase();
-        const minutes = Number(entry.minutes) || 0;
-        if (!dominantTag || Math.abs(minutes) > Math.abs(dominantTag.minutes)) {
-          dominantTag = { type, minutes };
-        }
-        const label = labelMap[type] || type;
-        if (minutes > 0) {
-          summaries.push(`${label} increase (+${minutes} min)`);
-        } else if (minutes < 0) {
-          summaries.push(`${label} decrease (${Math.abs(minutes)} min)`);
-        }
-      });
+      const label = labelMap[type] || type;
+      if (minutes > 0) summaries.push(`${label} increase (+${minutes} min)`);
+      else if (minutes < 0) summaries.push(`${label} decrease (${Math.abs(minutes)} min)`);
     });
     if (dominantTag && Math.abs(dominantTag.minutes) >= 20) {
       const polarity = dominantTag.minutes > 0 ? "longer" : "shorter";
@@ -1909,7 +2002,10 @@
             return;
           }
           const lines = list.map((item) => {
-            const tagSummary = (item.tags || []).map((tag) => tag.minutes != null ? `${tag.reason} ${tag.minutes}m` : tag.reason).join(", ");
+            const tagSummary = (item.tags || []).map((tag) => {
+              const label = tagLabelForKey(tag.key || tag.reason);
+              return tag.minutes != null ? `${label} ${tag.minutes}m` : label;
+            }).join(", ");
             return `${item.iso}${tagSummary ? ` \xB7 ${tagSummary}` : ""}`;
           }).join("\n");
           const input = window.prompt(`Dismissed residuals:
@@ -2061,7 +2157,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           }
         };
         updateAiSummaryAvailability2 == null ? void 0 : updateAiSummaryAvailability2();
-        tbody.onclick = (event) => {
+        tbody.onclick = async (event) => {
           var _a6, _b2, _c2, _d2, _e2;
           const dismissBtn = (_b2 = (_a6 = event.target) == null ? void 0 : _a6.closest) == null ? void 0 : _b2.call(_a6, ".diag-dismiss");
           if (dismissBtn) {
@@ -2072,28 +2168,22 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             const parcels2 = residual ? Math.round(residual.parcels) : null;
             const letters2 = residual ? Math.round(residual.letters) : null;
             const defaultReason = (() => {
-              if (!residual) return "";
-              if (parcels2 != null && parcels2 > 0 && letters2 != null && letters2 === 0) return "parcels";
-              if (letters2 != null && letters2 > parcels2) return "letters";
-              return "";
+              if (!residual) return [];
+              if (parcels2 != null && parcels2 > 0 && letters2 != null && letters2 === 0) return [{ key: "parcels", reason: "parcels", minutes: null }];
+              if (letters2 != null && letters2 > parcels2) return [{ key: "letters", reason: "letters", minutes: null }];
+              return [];
             })();
             const hintParts = [];
             if (deltaMinutes != null) hintParts.push(`Residual: ${deltaMinutes}m`);
             if (parcels2 != null) hintParts.push(`Parcels: ${parcels2}`);
             if (letters2 != null) hintParts.push(`Letters: ${letters2}`);
-            const basePrompt = hintParts.length ? `${hintParts.join(" \xB7 ")}
-Reason (e.g., Road closure, Weather, Extra parcels):` : "Reason (e.g., Road closure, Weather, Extra parcels):";
-            const tagReference = "Tag keywords: break, flats, parcels, letters, second-trip, detour, load, gas, traffic, road, weather.";
-            const reasonPrompt = window.prompt(`${basePrompt}
-${tagReference}
-You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-10") and separate multiple reasons with commas (e.g., "parcels+15, flats-20").`, defaultReason);
-            if (reasonPrompt === null) return;
-            const reasonText = reasonPrompt.trim();
-            if (!reasonText) {
-              window.alert("No reason provided; dismissal cancelled.");
-              return;
-            }
-            const tags = parseDismissReasonInput2(reasonText);
+            const tagResult = await showTagDismissDialog({
+              title: `Tag residual ${iso}`,
+              hint: hintParts.join(" \xB7 "),
+              defaults: defaultReason
+            });
+            if (!tagResult) return;
+            const tags = normalizeTagEntries(tagResult.tags || [], { notedAt: (/* @__PURE__ */ new Date()).toISOString() });
             if (!tags.length) {
               window.alert("No reason provided; dismissal cancelled.");
               return;
@@ -2101,6 +2191,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
             const nowIso = (/* @__PURE__ */ new Date()).toISOString();
             const tagTimestamp = Date.now();
             const tagEntries = tags.map((t) => ({
+              key: t.key || null,
               reason: t.reason,
               minutes: t.minutes != null && Number.isFinite(Number(t.minutes)) ? Number(t.minutes) : null,
               notedAt: tagTimestamp
@@ -2152,6 +2243,103 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
           }
         };
       }
+    }
+    function showTagDismissDialog({ title, hint, defaults }) {
+      const normalizedDefaults = normalizeTagEntries(defaults || []);
+      const selectedDefaults = new Map(normalizedDefaults.map((t) => [t.key || t.reason, t]));
+      const dialog = document.createElement("dialog");
+      dialog.style.maxWidth = "560px";
+      dialog.style.width = "calc(100vw - 32px)";
+      dialog.innerHTML = `
+      <form method="dialog" style="display:flex;flex-direction:column;gap:10px">
+        <h4 style="margin:0">${escapeHtml(title || "Tag & dismiss")}</h4>
+        <small class="muted">${escapeHtml(hint || "Select one or more reasons and optional +/- minutes.")}</small>
+        <div style="display:grid;gap:8px;max-height:52vh;overflow:auto;padding:4px 2px">
+          ${DIAGNOSTIC_TAG_CATALOG.map((tag) => {
+        const def = selectedDefaults.get(tag.key) || null;
+        const minutes = def && def.minutes != null ? String(def.minutes) : "";
+        return `
+              <label class="pill" style="display:grid;grid-template-columns:auto 1fr minmax(96px,110px);align-items:center;gap:8px;padding:8px 10px">
+                <input type="checkbox" data-tag-key="${tag.key}" ${def ? "checked" : ""}>
+                <span>${escapeHtml(tag.label)}</span>
+                <input type="number" step="1" data-minutes-for="${tag.key}" value="${escapeHtml(minutes)}" placeholder="min +/-">
+              </label>
+            `;
+      }).join("")}
+        </div>
+        <label style="display:grid;gap:6px">
+          <small class="muted">Optional note for Misc</small>
+          <input type="text" id="diagDismissMiscNote" placeholder="e.g., scanner issue">
+        </label>
+        <div class="row" style="justify-content:flex-end">
+          <button value="cancel" class="ghost" type="button" id="diagDismissCancel">Cancel</button>
+          <button value="ok" class="btn" type="button" id="diagDismissSave">Save Tag & Dismiss</button>
+        </div>
+      </form>
+    `;
+      document.body.appendChild(dialog);
+      const checkboxNodes = Array.from(dialog.querySelectorAll('input[type="checkbox"][data-tag-key]'));
+      const saveBtn = dialog.querySelector("#diagDismissSave");
+      const cancelBtn = dialog.querySelector("#diagDismissCancel");
+      let result = null;
+      const collect = () => {
+        const tags = checkboxNodes.filter((node) => node.checked).map((node) => {
+          var _a5;
+          const key = node.dataset.tagKey;
+          const minInput = dialog.querySelector(`input[data-minutes-for="${key}"]`);
+          const rawMinutes = ((minInput == null ? void 0 : minInput.value) || "").trim();
+          const minutes = rawMinutes !== "" ? Number(rawMinutes) : null;
+          const reason = key === "misc" ? (((_a5 = dialog.querySelector("#diagDismissMiscNote")) == null ? void 0 : _a5.value) || "").trim() || "misc" : key;
+          return {
+            key,
+            reason,
+            minutes: Number.isFinite(minutes) ? minutes : null
+          };
+        });
+        return { tags };
+      };
+      const closeDialog = () => {
+        try {
+          dialog.close();
+        } catch (_) {
+        }
+        dialog.remove();
+      };
+      return new Promise((resolve) => {
+        cancelBtn == null ? void 0 : cancelBtn.addEventListener("click", () => {
+          result = null;
+          closeDialog();
+          resolve(null);
+        });
+        saveBtn == null ? void 0 : saveBtn.addEventListener("click", () => {
+          const payload = collect();
+          result = payload.tags.length ? payload : null;
+          if (!result) {
+            window.alert("Select at least one tag to dismiss this residual.");
+            return;
+          }
+          closeDialog();
+          resolve(result);
+        });
+        dialog.addEventListener("cancel", (event) => {
+          event.preventDefault();
+          result = null;
+          closeDialog();
+          resolve(null);
+        });
+        try {
+          dialog.showModal();
+        } catch (_) {
+          const fallback = window.prompt('Enter reason tags like "parcels+15, weather-10, flats":', "");
+          closeDialog();
+          if (fallback == null) {
+            resolve(null);
+            return;
+          }
+          const parsed = parseDismissReasonInput2(fallback);
+          resolve(parsed.length ? { tags: parsed } : null);
+        }
+      });
     }
     function formatNumber2(val, opts) {
       var _a5;
@@ -4636,49 +4824,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     };
   }
 
-  // src/utils/diagnostics.js
-  function parseDismissReasonInput(raw) {
-    if (!raw) return [];
-    let working = String(raw).replace(/[;\n]+/g, ",").replace(/\s*,\s*/g, ",").trim();
-    if (!working) return [];
-    const aggregated = /* @__PURE__ */ new Map();
-    const upsert = (reasonRaw, minutesVal, hasMinutes = false) => {
-      if (reasonRaw == null) return;
-      const reason = String(reasonRaw).replace(/\s+/g, " ").trim();
-      if (!reason) return;
-      const key = reason.toLowerCase();
-      const entry = aggregated.get(key) || { reason, minutes: 0, hasMinutes: false };
-      if (hasMinutes && Number.isFinite(minutesVal)) {
-        entry.minutes += minutesVal;
-        entry.hasMinutes = true;
-      }
-      aggregated.set(key, entry);
-    };
-    working = working.replace(/([^,+:]+?)\s*\+\s*([-+]?\d+(?:\.\d+)?)/g, (_, reasonPart, minutesPart) => {
-      const reason = reasonPart.trim();
-      const minutes = parseFloat(minutesPart);
-      upsert(reason, Number.isFinite(minutes) ? minutes : 0, Number.isFinite(minutes));
-      return " ";
-    });
-    working = working.replace(/([^,+:]+?)\s*:\s*([^,+\s]+)/g, (_, keyPart, valuePart) => {
-      const key = keyPart.trim();
-      const value = valuePart.trim();
-      const label = value ? `${key}:${value}` : key;
-      upsert(label, 0, false);
-      return " ";
-    });
-    working.split(",").map((segment) => segment.trim()).filter(Boolean).forEach((segment) => {
-      const cleaned = segment.replace(/\s+/g, " ").trim();
-      if (!cleaned) return;
-      if (/^[+\-]?\d+(?:\.\d+)?$/.test(cleaned)) return;
-      upsert(cleaned, 0, false);
-    });
-    return Array.from(aggregated.values()).map((item) => ({
-      reason: item.reason,
-      minutes: item.hasMinutes ? item.minutes : null
-    }));
-  }
-
   // src/app.js
   window.__sb = createSupabaseClient();
   (function() {
@@ -4872,6 +5017,55 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       diagnostics_dismissed: dismissedList
     };
   }
+  function normalizeLocalTagHistory(seedFromDismissed = []) {
+    try {
+      const raw = localStorage.getItem("routeStats.tagHistory");
+      const parsed = raw ? JSON.parse(raw) : [];
+      const history = Array.isArray(parsed) ? parsed : [];
+      const byIso = /* @__PURE__ */ new Map();
+      history.filter(Boolean).forEach((item) => {
+        const iso = (item == null ? void 0 : item.iso) || (item == null ? void 0 : item.date) || null;
+        if (!iso) return;
+        const tags = normalizeTagEntries(item.tags || []);
+        if (!tags.length) return;
+        byIso.set(iso, { iso, tags });
+      });
+      (seedFromDismissed || []).forEach((item) => {
+        const iso = (item == null ? void 0 : item.iso) || null;
+        if (!iso) return;
+        const current = byIso.get(iso);
+        const mergedTags = normalizeTagEntries([...(current == null ? void 0 : current.tags) || [], ...item.tags || []]);
+        if (!mergedTags.length) return;
+        byIso.set(iso, { iso, tags: mergedTags });
+      });
+      const normalized = Array.from(byIso.values()).sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
+      const before = JSON.stringify(history);
+      const after = JSON.stringify(normalized);
+      if (before !== after) {
+        localStorage.setItem("routeStats.tagHistory", after);
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+  function normalizeDiagnosticsTagData() {
+    let changed = false;
+    let dismissed = [];
+    try {
+      dismissed = loadDismissedResiduals(parseDismissReasonInput);
+      const beforeRaw = localStorage.getItem("routeStats.diagnostics.dismissed") || "[]";
+      const afterRaw = JSON.stringify(dismissed || []);
+      if (beforeRaw !== afterRaw) {
+        saveDismissedResiduals(dismissed);
+        changed = true;
+      }
+    } catch (_) {
+    }
+    if (normalizeLocalTagHistory(dismissed)) changed = true;
+    return changed;
+  }
   async function upsertUserSettingsRemote(payload) {
     if (!CURRENT_USER_ID) return;
     try {
@@ -4958,6 +5152,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         suppressSettingsSave = false;
       }
       if (pushTokenUsageAfterSync) scheduleUserSettingsSave();
+      if (normalizeDiagnosticsTagData()) scheduleUserSettingsSave();
       renderVacationRanges();
       renderUspsEvalTag();
       if (secondTripEmaInput) {
@@ -4987,6 +5182,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     userSettingsSynced = true;
     await syncUserSettingsFromRemote();
   }
+  normalizeDiagnosticsTagData();
   function getEvalProfileById(profileId) {
     if (!profileId) return null;
     return (EVAL_PROFILES || []).find((p) => p.profileId === profileId) || null;
@@ -5987,6 +6183,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var flagSmartSummary = document.getElementById("flagSmartSummary");
   var flagDayCompare = document.getElementById("flagDayCompare");
   var flagUspsEval = document.getElementById("flagUspsEval");
+  var flagMobileFocusMode = document.getElementById("flagMobileFocusMode");
+  var flagFocusArrows = document.getElementById("flagFocusArrows");
   var settingsEmaRate = document.getElementById("settingsEmaRate");
   if (themeSelect) {
     themeSelect.value = CURRENT_THEME;
@@ -6014,6 +6212,92 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
   var peakExclude = document.getElementById("peakExclude");
   var peakClear = document.getElementById("peakClear");
   var saveSettings = document.getElementById("saveSettings");
+  var focusShell = document.getElementById("focusShell");
+  var btnBackToFocus = document.getElementById("btnBackToFocus");
+  var focusTitle = document.getElementById("focusTitle");
+  var focusPrev = document.getElementById("focusPrev");
+  var focusNext = document.getElementById("focusNext");
+  var focusPageInsights = document.getElementById("focusPageInsights");
+  var focusPageNodes = Array.from(document.querySelectorAll("#focusShell .focus-page"));
+  var focusNavNodes = Array.from(document.querySelectorAll("#focusShell .focus-nav [data-page]"));
+  var focusDeepLinks = Array.from(document.querySelectorAll("#focusShell .focus-deep-link"));
+  var focusRunButtons = Array.from(document.querySelectorAll("#focusShell .focus-run-btn"));
+  var focusOpenAndClickButtons = Array.from(document.querySelectorAll("#focusShell .focus-open-and-click"));
+  var focusInsightTitle = document.getElementById("focusInsightTitle");
+  var focusInsightPrev = document.getElementById("focusInsightPrev");
+  var focusInsightNext = document.getElementById("focusInsightNext");
+  var focusInsightPageNodes = Array.from(document.querySelectorAll("#focusShell .focus-insight-page"));
+  var focusInsightNavNodes = Array.from(document.querySelectorAll("#focusShell .focus-insight-nav [data-insight-page]"));
+  var focusInsightsHead = document.querySelector("#focusPageInsights .focus-insights-head");
+  var focusInsightsNav = document.querySelector("#focusPageInsights .focus-insight-nav");
+  var focusInsightsActions = Array.from(document.querySelectorAll("#focusPageInsights > .focus-actions"));
+  var focusInsightDrill = document.getElementById("focusInsightDrill");
+  var focusInsightBack = document.getElementById("focusInsightBack");
+  var focusInsightDrillTitle = document.getElementById("focusInsightDrillTitle");
+  var focusInsightDrillBody = document.getElementById("focusInsightDrillBody");
+  var focusOpenDiagLite = document.getElementById("focusOpenDiagLite");
+  var focusOpenCompareLite = document.getElementById("focusOpenCompareLite");
+  var focusTodayTitle = document.getElementById("focusTodayTitle");
+  var focusTodayPrev = document.getElementById("focusTodayPrev");
+  var focusTodayNext = document.getElementById("focusTodayNext");
+  var focusTodayPageNodes = Array.from(document.querySelectorAll("#focusShell .focus-today-page"));
+  var focusTodayNavNodes = Array.from(document.querySelectorAll("#focusShell .focus-today-nav [data-today-page]"));
+  var focusWeekTitle = document.getElementById("focusWeekTitle");
+  var focusWeekPrev = document.getElementById("focusWeekPrev");
+  var focusWeekNext = document.getElementById("focusWeekNext");
+  var focusWeekPageNodes = Array.from(document.querySelectorAll("#focusShell .focus-week-page"));
+  var focusWeekNavNodes = Array.from(document.querySelectorAll("#focusShell .focus-week-nav [data-week-page]"));
+  var focusEntryTitle = document.getElementById("focusEntryTitle");
+  var focusEntryPrev = document.getElementById("focusEntryPrev");
+  var focusEntryNext = document.getElementById("focusEntryNext");
+  var focusEntryPageNodes = Array.from(document.querySelectorAll("#focusShell .focus-entry-page"));
+  var focusEntryNavNodes = Array.from(document.querySelectorAll("#focusShell .focus-entry-nav [data-entry-page]"));
+  var MOBILE_FOCUS_MAX_WIDTH = 900;
+  var FOCUS_PAGE_ORDER = ["today", "week", "entry", "insights"];
+  var FOCUS_INSIGHT_ORDER = ["movers", "todayHeaviness", "weekHeaviness", "diagnostics", "dayCompare"];
+  var FOCUS_TODAY_ORDER = ["quick", "full", "detail"];
+  var FOCUS_WEEK_ORDER = ["quick", "full", "drill"];
+  var FOCUS_ENTRY_ORDER = ["quick", "form", "validate"];
+  var FOCUS_PAGE_LABELS = {
+    today: "Today",
+    week: "Week",
+    entry: "Quick Entry",
+    insights: "Insights"
+  };
+  var FOCUS_INSIGHT_LABELS = {
+    movers: "Weekly Movers",
+    todayHeaviness: "Heaviness Today",
+    weekHeaviness: "Heaviness Week",
+    diagnostics: "Diagnostics",
+    dayCompare: "Day Compare"
+  };
+  var FOCUS_TODAY_LABELS = {
+    quick: "Quick",
+    full: "Full Today",
+    detail: "Detail"
+  };
+  var FOCUS_WEEK_LABELS = {
+    quick: "Quick",
+    full: "Full Week",
+    drill: "Drilldown"
+  };
+  var FOCUS_ENTRY_LABELS = {
+    quick: "Quick",
+    form: "Form Lite",
+    validate: "Validate"
+  };
+  var FOCUS_STATE_KEY = "routeStats.mobileFocusState.v1";
+  var FOCUS_BACKSTACK_LIMIT = 30;
+  var focusShellPage = "today";
+  var focusTodayPage = "quick";
+  var focusWeekPage = "quick";
+  var focusEntryPage = "quick";
+  var focusInsightPage = "movers";
+  var focusInsightDrillMode = null;
+  var focusBackStack = [];
+  var lastFocusStateBeforeExit = null;
+  var focusTouchStartX = null;
+  var focusInsightTouchStartX = null;
   var settingsOpenAiKey = document.getElementById("settingsOpenAiKey");
   var clearOpenAiKeyBtn = document.getElementById("clearOpenAiKey");
   var aiSummaryCard = document.getElementById("aiSummaryCard");
@@ -6127,6 +6411,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
+    if (flagMobileFocusMode) flagMobileFocusMode.checked = !!FLAGS.mobileFocusMode;
+    if (flagFocusArrows) flagFocusArrows.checked = !!(FLAGS.focusArrows !== false);
     if (themeSelect) themeSelect.value = CURRENT_THEME;
     try {
       populateEvalProfileSelectUI(USPS_EVAL == null ? void 0 : USPS_EVAL.profileId);
@@ -6240,6 +6526,9 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (flagSmartSummary) FLAGS.smartSummary = !!flagSmartSummary.checked;
     if (flagDayCompare) FLAGS.dayCompare = !!flagDayCompare.checked;
     if (flagUspsEval) FLAGS.uspsEval = !!flagUspsEval.checked;
+    if (flagMobileFocusMode) FLAGS.mobileFocusMode = !!flagMobileFocusMode.checked;
+    if (flagFocusArrows) FLAGS.focusArrows = !!flagFocusArrows.checked;
+    applyFocusArrowVisibility();
     try {
       const selectedId = (evalProfileSelect == null ? void 0 : evalProfileSelect.value) || (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || null;
       const updated = collectEvalFormValues(selectedId);
@@ -6322,6 +6611,8 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     applyTrendPillsVisibility();
     applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
+    applyFocusMode();
+    applyMobileFocusShell();
     aiSummary.updateAvailability();
     aiSummary.renderLastSummary();
   });
@@ -6622,8 +6913,15 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     if (diag) {
       const extraTxt = extraHours ? ` \xB7 <b>Extra:</b> ${trip.actualMinutes.toFixed(0)}m (${extraPaidMinutes.toFixed(0)}m paid)` : "";
       const breakTxt = breakHours ? ` \xB7 <b>Break:</b> ${breakMinutesVal.toFixed(0)}m` : "";
-      diag.innerHTML = `ROUTE STATS \xB7 Supabase: <b id="dConn">${dConn.textContent}</b> \xB7 Auth: <b id="dAuth">${dAuth.textContent}</b> \xB7 Write: <b id="dWrite">${dWrite.textContent}</b> \xB7 <b>Off:</b> ${off != null ? off : "\u2014"}h \xB7 <b>Route:</b> ${rte != null ? rte : "\u2014"}h \xB7 <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
+      const compactFocus = shouldShowMobileFocusShell();
+      if (compactFocus) {
+        diag.innerHTML = `ROUTE STATS \xB7 <b>Off:</b> ${off != null ? off : "\u2014"}h \xB7 <b>Route:</b> ${rte != null ? rte : "\u2014"}h \xB7 <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
+      } else {
+        diag.innerHTML = `ROUTE STATS \xB7 Supabase: <b id="dConn">${dConn.textContent}</b> \xB7 Auth: <b id="dAuth">${dAuth.textContent}</b> \xB7 Write: <b id="dWrite">${dWrite.textContent}</b> \xB7 <b>Off:</b> ${off != null ? off : "\u2014"}h \xB7 <b>Route:</b> ${rte != null ? rte : "\u2014"}h \xB7 <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
+      }
       if (breakTxt) diag.innerHTML += breakTxt;
+      diag.innerHTML += ' <button id="btnBackToFocusTop" class="btn" type="button" style="display:none;margin-left:8px;padding:3px 10px;font-size:11px;line-height:1.2">Back to Focus</button>';
+      applyMobileFocusShell();
     }
     return tot;
   }
@@ -7259,6 +7557,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     buildYearlySummary(rawRows);
     buildParserChart(rawRows);
     buildSleepDrinkChart(rawRows);
+    updateMobileFocusShellData();
   }
   async function loadByDate() {
     editingKey = null;
@@ -9114,6 +9413,767 @@ Score: ${overallScore}/10 (higher is better)`;
     } catch (_) {
     }
   }
+  function isMobileFocusViewport() {
+    try {
+      return !!window.matchMedia && window.matchMedia(`(max-width:${MOBILE_FOCUS_MAX_WIDTH}px)`).matches;
+    } catch (_) {
+      return window.innerWidth <= MOBILE_FOCUS_MAX_WIDTH;
+    }
+  }
+  function shouldShowMobileFocusShell() {
+    return !!(FLAGS && FLAGS.mobileFocusMode) && isMobileFocusViewport();
+  }
+  function readTextValue(id, fallback = "\u2014") {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    const text = (el.textContent || "").trim();
+    return text || fallback;
+  }
+  function setFocusText(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const next = (value == null ? "" : String(value)).trim();
+    el.textContent = next || "\u2014";
+  }
+  function setFocusHtml(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const next = (value == null ? "" : String(value)).trim();
+    el.innerHTML = next || "\u2014";
+  }
+  function compactText(text, limit = 36) {
+    const raw = (text == null ? "" : String(text)).trim();
+    if (!raw) return "\u2014";
+    return raw.length > limit ? `${raw.slice(0, limit - 1)}\u2026` : raw;
+  }
+  function escapeFocusHtml(text) {
+    return String(text == null ? "" : text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function clampIndex(index, max) {
+    return Math.max(0, Math.min(max, index));
+  }
+  function captureMobileFocusState() {
+    return {
+      shell: FOCUS_PAGE_ORDER.includes(focusShellPage) ? focusShellPage : "today",
+      today: FOCUS_TODAY_ORDER.includes(focusTodayPage) ? focusTodayPage : "quick",
+      week: FOCUS_WEEK_ORDER.includes(focusWeekPage) ? focusWeekPage : "quick",
+      entry: FOCUS_ENTRY_ORDER.includes(focusEntryPage) ? focusEntryPage : "quick",
+      insight: FOCUS_INSIGHT_ORDER.includes(focusInsightPage) ? focusInsightPage : "movers",
+      insightDrill: focusInsightDrillMode || null
+    };
+  }
+  function sameFocusState(a, b) {
+    if (!a || !b) return false;
+    return a.shell === b.shell && a.today === b.today && a.week === b.week && a.entry === b.entry && a.insight === b.insight && (a.insightDrill || null) === (b.insightDrill || null);
+  }
+  function persistMobileFocusState() {
+    try {
+      localStorage.setItem(FOCUS_STATE_KEY, JSON.stringify(captureMobileFocusState()));
+    } catch (_) {
+    }
+  }
+  function loadMobileFocusState() {
+    try {
+      const raw = localStorage.getItem(FOCUS_STATE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      return {
+        shell: FOCUS_PAGE_ORDER.includes(parsed.shell) ? parsed.shell : "today",
+        today: FOCUS_TODAY_ORDER.includes(parsed.today) ? parsed.today : "quick",
+        week: FOCUS_WEEK_ORDER.includes(parsed.week) ? parsed.week : "quick",
+        entry: FOCUS_ENTRY_ORDER.includes(parsed.entry) ? parsed.entry : "quick",
+        insight: FOCUS_INSIGHT_ORDER.includes(parsed.insight) ? parsed.insight : "movers",
+        insightDrill: parsed.insightDrill === "diagnostics" || parsed.insightDrill === "dayCompare" ? parsed.insightDrill : null
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+  function pushMobileFocusHistory() {
+    const next = captureMobileFocusState();
+    const last = focusBackStack.length ? focusBackStack[focusBackStack.length - 1] : null;
+    if (sameFocusState(next, last)) return;
+    focusBackStack.push(next);
+    if (focusBackStack.length > FOCUS_BACKSTACK_LIMIT) {
+      focusBackStack = focusBackStack.slice(focusBackStack.length - FOCUS_BACKSTACK_LIMIT);
+    }
+  }
+  function restoreMobileFocusState(state, options = {}) {
+    const { persist = true } = options;
+    if (!state) return;
+    focusShellPage = FOCUS_PAGE_ORDER.includes(state.shell) ? state.shell : "today";
+    focusTodayPage = FOCUS_TODAY_ORDER.includes(state.today) ? state.today : "quick";
+    focusWeekPage = FOCUS_WEEK_ORDER.includes(state.week) ? state.week : "quick";
+    focusEntryPage = FOCUS_ENTRY_ORDER.includes(state.entry) ? state.entry : "quick";
+    focusInsightPage = FOCUS_INSIGHT_ORDER.includes(state.insight) ? state.insight : "movers";
+    focusInsightDrillMode = state.insightDrill === "diagnostics" || state.insightDrill === "dayCompare" ? state.insightDrill : null;
+    setMobileFocusShellPage(focusShellPage, { persist: false });
+    if (focusShellPage === "today") {
+      setMobileFocusTodayPage(focusTodayPage, { persist: false });
+    }
+    if (focusShellPage === "week") {
+      setMobileFocusWeekPage(focusWeekPage, { persist: false });
+    }
+    if (focusShellPage === "entry") {
+      setMobileFocusEntryPage(focusEntryPage, { persist: false });
+    }
+    if (focusShellPage === "insights") {
+      setMobileFocusInsightPage(focusInsightPage, { persist: false });
+      setMobileFocusInsightDrill(focusInsightDrillMode, { persist: false });
+    }
+    if (persist) persistMobileFocusState();
+  }
+  function popMobileFocusHistory() {
+    if (!focusBackStack.length) return false;
+    const prev = focusBackStack.pop();
+    restoreMobileFocusState(prev, { persist: true });
+    return true;
+  }
+  function setMobileFocusInsightDrill(mode, options = {}) {
+    const { persist = true } = options;
+    focusInsightDrillMode = mode || null;
+    const active = !!focusInsightDrillMode;
+    if (focusInsightDrill) {
+      focusInsightDrill.classList.toggle("active", active);
+    }
+    if (focusInsightsHead) focusInsightsHead.style.display = active ? "none" : "";
+    if (focusInsightsNav) focusInsightsNav.style.display = active ? "none" : "";
+    focusInsightPageNodes.forEach((node) => {
+      node.style.display = active ? "none" : "";
+    });
+    focusInsightsActions.forEach((node) => {
+      node.style.display = active ? "none" : "grid";
+    });
+    if (persist) persistMobileFocusState();
+  }
+  function updateFocusHomeChrome() {
+    const home = shouldShowMobileFocusShell() && focusShellPage === "today" && focusTodayPage === "quick";
+    document.body.classList.toggle("focus-home-chrome", !!home);
+  }
+  function setMobileFocusTodayPage(nextPage, options = {}) {
+    const { persist = true } = options;
+    const page = FOCUS_TODAY_ORDER.includes(nextPage) ? nextPage : "quick";
+    focusTodayPage = page;
+    focusTodayPageNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.todayPage) === page;
+      node.classList.toggle("active", !!active);
+    });
+    focusTodayNavNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.todayPage) === page;
+      node.classList.toggle("active", !!active);
+      node.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    if (focusTodayTitle) focusTodayTitle.textContent = FOCUS_TODAY_LABELS[page] || "Today";
+    updateFocusHomeChrome();
+    if (persist) persistMobileFocusState();
+  }
+  function stepMobileFocusTodayPage(delta) {
+    const currentIndex = Math.max(0, FOCUS_TODAY_ORDER.indexOf(focusTodayPage));
+    const nextIndex = clampIndex(currentIndex + delta, FOCUS_TODAY_ORDER.length - 1);
+    if (nextIndex === currentIndex) return;
+    setMobileFocusTodayPage(FOCUS_TODAY_ORDER[nextIndex]);
+  }
+  function setMobileFocusWeekPage(nextPage, options = {}) {
+    const { persist = true } = options;
+    const page = FOCUS_WEEK_ORDER.includes(nextPage) ? nextPage : "quick";
+    focusWeekPage = page;
+    focusWeekPageNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.weekPage) === page;
+      node.classList.toggle("active", !!active);
+    });
+    focusWeekNavNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.weekPage) === page;
+      node.classList.toggle("active", !!active);
+      node.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    if (focusWeekTitle) focusWeekTitle.textContent = FOCUS_WEEK_LABELS[page] || "Week";
+    if (persist) persistMobileFocusState();
+  }
+  function stepMobileFocusWeekPage(delta) {
+    const currentIndex = Math.max(0, FOCUS_WEEK_ORDER.indexOf(focusWeekPage));
+    const nextIndex = clampIndex(currentIndex + delta, FOCUS_WEEK_ORDER.length - 1);
+    if (nextIndex === currentIndex) return;
+    setMobileFocusWeekPage(FOCUS_WEEK_ORDER[nextIndex]);
+  }
+  function setMobileFocusEntryPage(nextPage, options = {}) {
+    const { persist = true } = options;
+    const page = FOCUS_ENTRY_ORDER.includes(nextPage) ? nextPage : "quick";
+    focusEntryPage = page;
+    focusEntryPageNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.entryPage) === page;
+      node.classList.toggle("active", !!active);
+    });
+    focusEntryNavNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.entryPage) === page;
+      node.classList.toggle("active", !!active);
+      node.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    if (focusEntryTitle) focusEntryTitle.textContent = FOCUS_ENTRY_LABELS[page] || "Entry";
+    if (persist) persistMobileFocusState();
+  }
+  function stepMobileFocusEntryPage(delta) {
+    const currentIndex = Math.max(0, FOCUS_ENTRY_ORDER.indexOf(focusEntryPage));
+    const nextIndex = clampIndex(currentIndex + delta, FOCUS_ENTRY_ORDER.length - 1);
+    if (nextIndex === currentIndex) return;
+    setMobileFocusEntryPage(FOCUS_ENTRY_ORDER[nextIndex]);
+  }
+  function buildDiagnosticsLiteHtml() {
+    const model = readTextValue("diagModelBadge");
+    const summary = readTextValue("diagSummary");
+    const rows = Array.from(document.querySelectorAll("#diagTableBody tr")).slice(0, 3);
+    const items = rows.map((row) => {
+      var _a5, _b, _c;
+      const cells = Array.from(row.querySelectorAll("td"));
+      const date2 = (((_a5 = cells[0]) == null ? void 0 : _a5.textContent) || "").trim();
+      const delta = (((_b = cells[5]) == null ? void 0 : _b.textContent) || "").trim();
+      const note = (((_c = cells[8]) == null ? void 0 : _c.textContent) || "").trim();
+      if (!date2 && !delta) return null;
+      const detail = [delta, note].filter(Boolean).join(" \u2022 ");
+      return `<li><b>${escapeFocusHtml(date2 || "Day")}</b>${detail ? `: ${escapeFocusHtml(detail)}` : ""}</li>`;
+    }).filter(Boolean);
+    const list = items.length ? `<ul class="focus-lite-list">${items.join("")}</ul>` : '<small class="muted">No residual outliers yet.</small>';
+    return `
+      <div class="focus-grid" style="margin-top:0">
+        <div class="focus-kpi"><small>Model</small><b>${escapeFocusHtml(compactText(model, 44))}</b></div>
+        <div class="focus-kpi"><small>Status</small><b>${escapeFocusHtml(compactText(summary, 44))}</b></div>
+      </div>
+      <small class="muted" style="display:block;margin-top:8px">Top residual days</small>
+      ${list}
+    `;
+  }
+  function buildDayCompareLiteHtml() {
+    const subject = readTextValue("dcSubjectLabel");
+    const summary = readTextValue("dcReasoning");
+    const highlights = Array.from(document.querySelectorAll("#dcHighlights .pill")).slice(0, 3).map((el) => {
+      const txt = (el.textContent || "").replace(/\s+/g, " ").trim();
+      return txt ? `<li>${escapeFocusHtml(txt)}</li>` : null;
+    }).filter(Boolean);
+    const rows = Array.from(document.querySelectorAll("#dcTableBody tr")).slice(0, 4).map((row) => {
+      var _a5, _b;
+      const cells = Array.from(row.querySelectorAll("td"));
+      const metric = (((_a5 = cells[0]) == null ? void 0 : _a5.textContent) || "").trim();
+      const delta = (((_b = cells[3]) == null ? void 0 : _b.textContent) || "").trim();
+      if (!metric && !delta) return null;
+      return `<li><b>${escapeFocusHtml(metric || "Metric")}</b>: ${escapeFocusHtml(delta || "\u2014")}</li>`;
+    }).filter(Boolean);
+    const topList = highlights.length ? highlights : rows;
+    const list = topList.length ? `<ul class="focus-lite-list">${topList.join("")}</ul>` : '<small class="muted">No compare data yet.</small>';
+    return `
+      <div class="focus-grid" style="margin-top:0">
+        <div class="focus-kpi"><small>Subject</small><b>${escapeFocusHtml(compactText(subject || "Ready", 44))}</b></div>
+        <div class="focus-kpi"><small>Summary</small><b>${escapeFocusHtml(compactText(summary || "Open full compare", 44))}</b></div>
+      </div>
+      <small class="muted" style="display:block;margin-top:8px">Top deltas</small>
+      ${list}
+    `;
+  }
+  function renderFocusInsightDrill() {
+    if (!focusInsightDrillBody || !focusInsightDrillTitle) return;
+    if (focusInsightDrillMode === "diagnostics") {
+      focusInsightDrillTitle.textContent = "Diagnostics Lite";
+      focusInsightDrillBody.innerHTML = buildDiagnosticsLiteHtml();
+      return;
+    }
+    if (focusInsightDrillMode === "dayCompare") {
+      focusInsightDrillTitle.textContent = "Day Compare Lite";
+      focusInsightDrillBody.innerHTML = buildDayCompareLiteHtml();
+      return;
+    }
+    focusInsightDrillTitle.textContent = "Lite View";
+    focusInsightDrillBody.innerHTML = "\u2014";
+  }
+  function setMobileFocusInsightPage(nextPage, options = {}) {
+    const { persist = true } = options;
+    const page = FOCUS_INSIGHT_ORDER.includes(nextPage) ? nextPage : "movers";
+    focusInsightPage = page;
+    focusInsightPageNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.insightPage) === page;
+      node.classList.toggle("active", !!active);
+    });
+    focusInsightNavNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.insightPage) === page;
+      node.classList.toggle("active", !!active);
+      node.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    if (focusInsightTitle) focusInsightTitle.textContent = FOCUS_INSIGHT_LABELS[page] || "Insights";
+    setMobileFocusInsightDrill(null, { persist: false });
+    if (persist) persistMobileFocusState();
+  }
+  function stepMobileFocusInsightPage(delta) {
+    const currentIndex = Math.max(0, FOCUS_INSIGHT_ORDER.indexOf(focusInsightPage));
+    const nextIndex = clampIndex(currentIndex + delta, FOCUS_INSIGHT_ORDER.length - 1);
+    if (nextIndex === currentIndex) return;
+    setMobileFocusInsightPage(FOCUS_INSIGHT_ORDER[nextIndex]);
+  }
+  function parseSignedPercent(text) {
+    const raw = String(text || "").trim();
+    const m = raw.match(/([+-]?\d+(?:\.\d+)?)\s*%/);
+    if (!m) return null;
+    const n = Number(m[1]);
+    return Number.isFinite(n) ? n : null;
+  }
+  function buildInsightList(items, emptyText) {
+    const safeItems = (items || []).filter(Boolean);
+    if (!safeItems.length) return `<small class="muted">${escapeFocusHtml(emptyText || "No data yet.")}</small>`;
+    return `<ul class="focus-lite-list">${safeItems.map((item) => `<li>${item}</li>`).join("")}</ul>`;
+  }
+  function updateMobileFocusShellData() {
+    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+    setFocusText("fsTodayEnd", readTextValue("expEnd"));
+    setFocusText("fsTodayTotal", readTextValue("totalH"));
+    setFocusText("fsTodayVolume", readTextValue("badgeVolume"));
+    setFocusText("fsTodayRouteEff", readTextValue("badgeRouteEff"));
+    setFocusText("fsTodayEndFull", readTextValue("expEnd"));
+    setFocusText("fsTodayTotalFull", readTextValue("totalH"));
+    setFocusText("fsTodayVolumeFull", readTextValue("badgeVolume"));
+    setFocusText("fsTodayRouteEffFull", readTextValue("badgeRouteEff"));
+    setFocusText("fsTodayOverall", readTextValue("badgeOverall"));
+    setFocusText("fsTodayOfficeDelta", readTextValue("todayOfficeDelta"));
+    setFocusText("fsTodayParcelsDelta", readTextValue("todayParcelsDelta"));
+    setFocusText("fsTodayLettersDelta", readTextValue("todayLettersDelta"));
+    setFocusText("fsTodayForecast", compactText(readTextValue("expMeta"), 30));
+    const heavinessText = compactText((((_a5 = document.getElementById("todayHeaviness")) == null ? void 0 : _a5.textContent) || "").replace(/\s+/g, " ").trim(), 40);
+    setFocusText("fsTodayHeaviness", heavinessText || "\u2014");
+    setFocusText("fsWeekHours", readTextValue("wkHours"));
+    setFocusText("fsWeekHoursDelta", readTextValue("wkHoursDelta"));
+    setFocusText("fsWeekParcels", readTextValue("wkParcels"));
+    setFocusText("fsWeekParcelsDelta", readTextValue("wkParcelsDelta"));
+    setFocusText("fsWeekLetters", readTextValue("wkLetters"));
+    setFocusText("fsWeekLettersDelta", readTextValue("wkLettersDelta"));
+    setFocusText("fsWeekHoursFull", readTextValue("wkHours"));
+    setFocusText("fsWeekParcelsFull", readTextValue("wkParcels"));
+    setFocusText("fsWeekLettersFull", readTextValue("wkLetters"));
+    setFocusText("fsWeekEval", compactText(readTextValue("uspsRouteEffVal"), 24));
+    const trendText = (((_b = document.getElementById("trendFactors")) == null ? void 0 : _b.textContent) || "").replace(/\s+/g, " ").trim();
+    setFocusText("fsWeekTrend", compactText(trendText || readTextValue("advHoursTrend"), 30));
+    const extraTrip = `${readTextValue("extraTimeWeekVal")} \xB7 ${readTextValue("extraPayoutWeekVal")}`;
+    setFocusText("fsWeekExtraTrip", compactText(extraTrip, 24));
+    const dateVal = (((_c = document.getElementById("date")) == null ? void 0 : _c.value) || "").trim();
+    const startVal = (((_d = document.getElementById("start")) == null ? void 0 : _d.value) || "").trim();
+    const departVal = (((_e = document.getElementById("departTime")) == null ? void 0 : _e.value) || "").trim();
+    const endVal = (((_f = document.getElementById("end")) == null ? void 0 : _f.value) || "").trim();
+    const parcelsVal = (((_g = document.getElementById("parcels")) == null ? void 0 : _g.value) || "").trim();
+    const lettersVal = (((_h = document.getElementById("letters")) == null ? void 0 : _h.value) || "").trim();
+    const flatsVal = (((_i = document.getElementById("flatsMinutes")) == null ? void 0 : _i.value) || "").trim();
+    const misdeliveryVal = (((_j = document.getElementById("misdeliveryCount")) == null ? void 0 : _j.value) || "").trim();
+    setFocusText("fsEntryDate", dateVal || "\u2014");
+    setFocusText("fsEntryTimes", `${startVal || "\u2014"} \xB7 ${departVal || "\u2014"} \xB7 ${endVal || "\u2014"}`);
+    setFocusText("fsEntryParcels", parcelsVal || "0");
+    setFocusText("fsEntryLetters", lettersVal || "0");
+    setFocusText("fsEntryFlats", flatsVal || "\u2014");
+    setFocusText("fsEntryMisdelivery", misdeliveryVal || "0");
+    setFocusText("fsEntryOffice", readTextValue("officeH"));
+    setFocusText("fsEntryRoute", readTextValue("routeH"));
+    setFocusText("fsEntryTotal", readTextValue("totalH"));
+    const hasCoreTimes = !!(startVal && departVal && endVal);
+    const totalVal = readTextValue("totalH");
+    const checkLabel = hasCoreTimes && totalVal !== "\u2014" ? "Ready to Save" : "Needs Review";
+    setFocusText("fsEntryCheck", checkLabel);
+    const hoursDeltaText = readTextValue("wkHoursDelta");
+    const parcelsDeltaText = readTextValue("wkParcelsDelta");
+    const lettersDeltaText = readTextValue("wkLettersDelta");
+    const movers = [
+      { label: "Hours", delta: parseSignedPercent(hoursDeltaText), text: hoursDeltaText },
+      { label: "Parcels", delta: parseSignedPercent(parcelsDeltaText), text: parcelsDeltaText },
+      { label: "Letters", delta: parseSignedPercent(lettersDeltaText), text: lettersDeltaText }
+    ];
+    const biggestMover = [...movers].filter((m) => m && m.delta != null).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0] || null;
+    const moversItems = movers.map((m) => {
+      const txt = (m == null ? void 0 : m.text) && m.text !== "\u2014" ? m.text : "\u2014";
+      return `<b>${escapeFocusHtml(m.label)}</b>: ${escapeFocusHtml(txt)}`;
+    });
+    if (biggestMover) {
+      const direction = biggestMover.delta > 0 ? "up" : biggestMover.delta < 0 ? "down" : "flat";
+      moversItems.unshift(`<b>Biggest mover:</b> ${escapeFocusHtml(biggestMover.label)} ${direction} ${escapeFocusHtml(biggestMover.text)}`);
+    }
+    setFocusHtml("fsInsightMovers", buildInsightList(moversItems, "No major movers yet."));
+    const todayHeavinessText = compactText((((_k = document.getElementById("todayHeaviness")) == null ? void 0 : _k.textContent) || "").replace(/\s+/g, " ").trim(), 80);
+    const todayItems = [
+      `<b>Heaviness:</b> ${escapeFocusHtml(todayHeavinessText || "\u2014")}`,
+      `<b>Office \u0394:</b> ${escapeFocusHtml(readTextValue("todayOfficeDelta"))}`,
+      `<b>Parcels \u0394:</b> ${escapeFocusHtml(readTextValue("todayParcelsDelta"))}`,
+      `<b>Letters \u0394:</b> ${escapeFocusHtml(readTextValue("todayLettersDelta"))}`,
+      `<b>Expected End:</b> ${escapeFocusHtml(readTextValue("expEnd"))}`
+    ];
+    setFocusHtml("fsInsightTodayHeaviness", buildInsightList(todayItems, "No worked day selected yet."));
+    const weekHeavinessText = compactText((((_l = document.getElementById("weekHeaviness")) == null ? void 0 : _l.textContent) || "").replace(/\s+/g, " ").trim(), 80);
+    const weekItems = [
+      `<b>Heaviness:</b> ${escapeFocusHtml(weekHeavinessText || "\u2014")}`,
+      `<b>Hours:</b> ${escapeFocusHtml(readTextValue("wkHours"))} (${escapeFocusHtml(hoursDeltaText)})`,
+      `<b>Volume pressure:</b> Parcels ${escapeFocusHtml(parcelsDeltaText)} \xB7 Letters ${escapeFocusHtml(lettersDeltaText)}`,
+      `<b>Extra trip:</b> ${escapeFocusHtml(readTextValue("extraTimeWeekVal"))} \xB7 ${escapeFocusHtml(readTextValue("extraPayoutWeekVal"))}`,
+      `<b>Route eval:</b> ${escapeFocusHtml(readTextValue("uspsRouteEffVal"))}`
+    ];
+    setFocusHtml("fsInsightWeekHeaviness", buildInsightList(weekItems, "Need this week and last week data."));
+    setFocusText("fsInsightDiagModel", compactText(readTextValue("diagModelBadge")));
+    setFocusText("fsInsightDiagStatus", compactText(readTextValue("diagSummary"), 44));
+    const diagRows = Array.from(document.querySelectorAll("#diagTableBody tr")).slice(0, 2);
+    const diagItems = diagRows.map((row) => {
+      var _a6, _b2;
+      const cells = Array.from(row.querySelectorAll("td"));
+      const dt = (((_a6 = cells[0]) == null ? void 0 : _a6.textContent) || "").trim();
+      const delta = (((_b2 = cells[5]) == null ? void 0 : _b2.textContent) || "").trim();
+      if (!dt && !delta) return null;
+      return `<b>${escapeFocusHtml(dt || "Day")}</b>: ${escapeFocusHtml(delta || "\u2014")}`;
+    }).filter(Boolean);
+    setFocusHtml("fsInsightDiagTop", buildInsightList(diagItems, "No residual outliers yet."));
+    const compareLabel = readTextValue("dcSubjectLabel", "").trim();
+    const compareSummary = readTextValue("dcReasoning", "").trim();
+    setFocusText("fsInsightCompareLabel", compactText(compareLabel || "Ready"));
+    setFocusText("fsInsightCompareSummary", compactText(compareSummary || "Open Day Compare"));
+    const compareRows = Array.from(document.querySelectorAll("#dcTableBody tr")).slice(0, 3);
+    const compareItems = compareRows.map((row) => {
+      var _a6, _b2;
+      const cells = Array.from(row.querySelectorAll("td"));
+      const metric = (((_a6 = cells[0]) == null ? void 0 : _a6.textContent) || "").trim();
+      const delta = (((_b2 = cells[3]) == null ? void 0 : _b2.textContent) || "").trim();
+      if (!metric && !delta) return null;
+      return `<b>${escapeFocusHtml(metric || "Metric")}</b>: ${escapeFocusHtml(delta || "\u2014")}`;
+    }).filter(Boolean);
+    setFocusHtml("fsInsightCompareTop", buildInsightList(compareItems, "No compare deltas yet."));
+    renderFocusInsightDrill();
+  }
+  function setMobileFocusShellPage(nextPage, options = {}) {
+    const { persist = true } = options;
+    const page = FOCUS_PAGE_ORDER.includes(nextPage) ? nextPage : "today";
+    focusShellPage = page;
+    focusPageNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.page) === page;
+      node.classList.toggle("active", !!active);
+    });
+    focusNavNodes.forEach((node) => {
+      var _a5;
+      const active = ((_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.page) === page;
+      node.classList.toggle("active", !!active);
+      node.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    if (focusTitle) focusTitle.textContent = FOCUS_PAGE_LABELS[page] || "Focus";
+    if (page === "insights") setMobileFocusInsightPage(focusInsightPage, { persist: false });
+    else setMobileFocusInsightDrill(null, { persist: false });
+    if (page === "today") setMobileFocusTodayPage(focusTodayPage, { persist: false });
+    if (page === "week") setMobileFocusWeekPage(focusWeekPage, { persist: false });
+    if (page === "entry") setMobileFocusEntryPage(focusEntryPage, { persist: false });
+    updateFocusHomeChrome();
+    if (persist) persistMobileFocusState();
+  }
+  function stepMobileFocusShellPage(delta) {
+    const currentIndex = Math.max(0, FOCUS_PAGE_ORDER.indexOf(focusShellPage));
+    const nextIndex = clampIndex(currentIndex + delta, FOCUS_PAGE_ORDER.length - 1);
+    if (nextIndex === currentIndex) return;
+    setMobileFocusShellPage(FOCUS_PAGE_ORDER[nextIndex]);
+  }
+  function applyFocusArrowVisibility() {
+    const showArrows = !!(FLAGS && FLAGS.focusArrows !== false);
+    document.body.classList.toggle("focus-arrows-hidden", !showArrows);
+  }
+  function applyMobileFocusShell() {
+    applyFocusArrowVisibility();
+    updateMobileFocusShellData();
+    const active = shouldShowMobileFocusShell();
+    document.body.classList.toggle("focus-shell-on", !!active);
+    const showBack = !active && isMobileFocusViewport() && !!(FLAGS && FLAGS.mobileFocusMode === false);
+    if (btnBackToFocus) btnBackToFocus.style.display = showBack ? "" : "none";
+    const topBackBtn = document.getElementById("btnBackToFocusTop");
+    if (topBackBtn) topBackBtn.style.display = showBack ? "inline-block" : "none";
+    if (active) setMobileFocusShellPage(focusShellPage, { persist: false });
+    else document.body.classList.remove("focus-home-chrome");
+  }
+  function exitMobileFocusShellTo(targetId) {
+    lastFocusStateBeforeExit = captureMobileFocusState();
+    persistMobileFocusState();
+    FLAGS.mobileFocusMode = false;
+    saveFlags(FLAGS);
+    if (flagMobileFocusMode) flagMobileFocusMode.checked = false;
+    applyMobileFocusShell();
+    window.requestAnimationFrame(() => {
+      const target = targetId ? document.getElementById(targetId) : null;
+      if (!target) return;
+      try {
+        (window.__collapse_set || (() => {
+        }))(targetId, false);
+      } catch (_) {
+      }
+      try {
+        target.style.display = "";
+      } catch (_) {
+      }
+      try {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (_) {
+      }
+    });
+  }
+  function bindMobileFocusShell() {
+    if (!focusShell) return;
+    const restored = loadMobileFocusState();
+    if (restored) {
+      restoreMobileFocusState(restored, { persist: false });
+    }
+    focusPrev == null ? void 0 : focusPrev.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      stepMobileFocusShellPage(-1);
+    });
+    focusNext == null ? void 0 : focusNext.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      stepMobileFocusShellPage(1);
+    });
+    focusTodayPrev == null ? void 0 : focusTodayPrev.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      stepMobileFocusTodayPage(-1);
+    });
+    focusTodayNext == null ? void 0 : focusTodayNext.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      stepMobileFocusTodayPage(1);
+    });
+    focusWeekPrev == null ? void 0 : focusWeekPrev.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      stepMobileFocusWeekPage(-1);
+    });
+    focusWeekNext == null ? void 0 : focusWeekNext.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      stepMobileFocusWeekPage(1);
+    });
+    focusEntryPrev == null ? void 0 : focusEntryPrev.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      stepMobileFocusEntryPage(-1);
+    });
+    focusEntryNext == null ? void 0 : focusEntryNext.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      stepMobileFocusEntryPage(1);
+    });
+    focusInsightPrev == null ? void 0 : focusInsightPrev.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      stepMobileFocusInsightPage(-1);
+    });
+    focusInsightNext == null ? void 0 : focusInsightNext.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      stepMobileFocusInsightPage(1);
+    });
+    focusNavNodes.forEach((node) => {
+      node.addEventListener("click", () => {
+        var _a5;
+        const page = (_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.page;
+        if (!page || page === focusShellPage) return;
+        pushMobileFocusHistory();
+        setMobileFocusShellPage(page);
+      });
+    });
+    focusInsightNavNodes.forEach((node) => {
+      node.addEventListener("click", () => {
+        var _a5;
+        const page = (_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.insightPage;
+        if (!page || page === focusInsightPage) return;
+        pushMobileFocusHistory();
+        setMobileFocusInsightPage(page);
+      });
+    });
+    focusTodayNavNodes.forEach((node) => {
+      node.addEventListener("click", () => {
+        var _a5;
+        const page = (_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.todayPage;
+        if (!page || page === focusTodayPage) return;
+        pushMobileFocusHistory();
+        setMobileFocusTodayPage(page);
+      });
+    });
+    focusWeekNavNodes.forEach((node) => {
+      node.addEventListener("click", () => {
+        var _a5;
+        const page = (_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.weekPage;
+        if (!page || page === focusWeekPage) return;
+        pushMobileFocusHistory();
+        setMobileFocusWeekPage(page);
+      });
+    });
+    focusEntryNavNodes.forEach((node) => {
+      node.addEventListener("click", () => {
+        var _a5;
+        const page = (_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.entryPage;
+        if (!page || page === focusEntryPage) return;
+        pushMobileFocusHistory();
+        setMobileFocusEntryPage(page);
+      });
+    });
+    focusOpenDiagLite == null ? void 0 : focusOpenDiagLite.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      setMobileFocusInsightDrill("diagnostics");
+      renderFocusInsightDrill();
+    });
+    focusOpenCompareLite == null ? void 0 : focusOpenCompareLite.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      setMobileFocusInsightDrill("dayCompare");
+      renderFocusInsightDrill();
+    });
+    focusInsightBack == null ? void 0 : focusInsightBack.addEventListener("click", () => {
+      if (!popMobileFocusHistory()) {
+        setMobileFocusInsightDrill(null);
+      }
+    });
+    const goBackToFocus = () => {
+      const returnState = lastFocusStateBeforeExit || loadMobileFocusState();
+      if (returnState) {
+        restoreMobileFocusState(returnState, { persist: true });
+      }
+      FLAGS.mobileFocusMode = true;
+      saveFlags(FLAGS);
+      if (flagMobileFocusMode) flagMobileFocusMode.checked = true;
+      applyMobileFocusShell();
+      try {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch (_) {
+      }
+    };
+    btnBackToFocus == null ? void 0 : btnBackToFocus.addEventListener("click", goBackToFocus);
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target && target.id === "btnBackToFocusTop") {
+        goBackToFocus();
+      }
+    });
+    focusRunButtons.forEach((node) => {
+      node.addEventListener("click", () => {
+        var _a5, _b;
+        const targetId = (_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.click;
+        if (!targetId) return;
+        (_b = document.getElementById(targetId)) == null ? void 0 : _b.click();
+        updateMobileFocusShellData();
+      });
+    });
+    focusOpenAndClickButtons.forEach((node) => {
+      node.addEventListener("click", () => {
+        var _a5, _b;
+        const targetId = (_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.target;
+        const clickId = (_b = node == null ? void 0 : node.dataset) == null ? void 0 : _b.click;
+        pushMobileFocusHistory();
+        exitMobileFocusShellTo(targetId);
+        if (clickId) {
+          window.setTimeout(() => {
+            var _a6;
+            (_a6 = document.getElementById(clickId)) == null ? void 0 : _a6.click();
+          }, 220);
+        }
+      });
+    });
+    focusDeepLinks.forEach((node) => {
+      node.addEventListener("click", () => {
+        var _a5;
+        const targetId = (_a5 = node == null ? void 0 : node.dataset) == null ? void 0 : _a5.target;
+        pushMobileFocusHistory();
+        exitMobileFocusShellTo(targetId);
+      });
+    });
+    focusShell.addEventListener("touchstart", (event) => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      focusTouchStartX = touch ? touch.clientX : null;
+    }, { passive: true });
+    focusShell.addEventListener("touchend", (event) => {
+      if (focusTouchStartX == null) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      const endX = touch ? touch.clientX : null;
+      if (endX == null) {
+        focusTouchStartX = null;
+        return;
+      }
+      const delta = endX - focusTouchStartX;
+      focusTouchStartX = null;
+      if (Math.abs(delta) < 45) return;
+      pushMobileFocusHistory();
+      stepMobileFocusShellPage(delta < 0 ? 1 : -1);
+    }, { passive: true });
+    focusPageInsights == null ? void 0 : focusPageInsights.addEventListener("touchstart", (event) => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      focusInsightTouchStartX = touch ? touch.clientX : null;
+    }, { passive: true });
+    focusPageInsights == null ? void 0 : focusPageInsights.addEventListener("touchend", (event) => {
+      if (focusShellPage !== "insights" || focusInsightTouchStartX == null) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      const endX = touch ? touch.clientX : null;
+      if (endX == null) {
+        focusInsightTouchStartX = null;
+        return;
+      }
+      const delta = endX - focusInsightTouchStartX;
+      focusInsightTouchStartX = null;
+      if (Math.abs(delta) < 45) return;
+      pushMobileFocusHistory();
+      stepMobileFocusInsightPage(delta < 0 ? 1 : -1);
+      event.stopPropagation();
+    }, { passive: true });
+    const focusPageToday = document.getElementById("focusPageToday");
+    let focusTodayTouchStartX = null;
+    focusPageToday == null ? void 0 : focusPageToday.addEventListener("touchstart", (event) => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      focusTodayTouchStartX = touch ? touch.clientX : null;
+    }, { passive: true });
+    focusPageToday == null ? void 0 : focusPageToday.addEventListener("touchend", (event) => {
+      if (focusShellPage !== "today" || focusTodayTouchStartX == null) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      const endX = touch ? touch.clientX : null;
+      if (endX == null) {
+        focusTodayTouchStartX = null;
+        return;
+      }
+      const delta = endX - focusTodayTouchStartX;
+      focusTodayTouchStartX = null;
+      if (Math.abs(delta) < 45) return;
+      pushMobileFocusHistory();
+      stepMobileFocusTodayPage(delta < 0 ? 1 : -1);
+      event.stopPropagation();
+    }, { passive: true });
+    const focusPageWeek = document.getElementById("focusPageWeek");
+    let focusWeekTouchStartX = null;
+    focusPageWeek == null ? void 0 : focusPageWeek.addEventListener("touchstart", (event) => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      focusWeekTouchStartX = touch ? touch.clientX : null;
+    }, { passive: true });
+    focusPageWeek == null ? void 0 : focusPageWeek.addEventListener("touchend", (event) => {
+      if (focusShellPage !== "week" || focusWeekTouchStartX == null) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      const endX = touch ? touch.clientX : null;
+      if (endX == null) {
+        focusWeekTouchStartX = null;
+        return;
+      }
+      const delta = endX - focusWeekTouchStartX;
+      focusWeekTouchStartX = null;
+      if (Math.abs(delta) < 45) return;
+      pushMobileFocusHistory();
+      stepMobileFocusWeekPage(delta < 0 ? 1 : -1);
+      event.stopPropagation();
+    }, { passive: true });
+    const focusPageEntry = document.getElementById("focusPageEntry");
+    let focusEntryTouchStartX = null;
+    focusPageEntry == null ? void 0 : focusPageEntry.addEventListener("touchstart", (event) => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      focusEntryTouchStartX = touch ? touch.clientX : null;
+    }, { passive: true });
+    focusPageEntry == null ? void 0 : focusPageEntry.addEventListener("touchend", (event) => {
+      if (focusShellPage !== "entry" || focusEntryTouchStartX == null) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      const endX = touch ? touch.clientX : null;
+      if (endX == null) {
+        focusEntryTouchStartX = null;
+        return;
+      }
+      const delta = endX - focusEntryTouchStartX;
+      focusEntryTouchStartX = null;
+      if (Math.abs(delta) < 45) return;
+      pushMobileFocusHistory();
+      stepMobileFocusEntryPage(delta < 0 ? 1 : -1);
+      event.stopPropagation();
+    }, { passive: true });
+    window.addEventListener("resize", applyMobileFocusShell);
+  }
   function ensureQuickEntryControls(headerEl) {
     if (!FLAGS.quickEntry) return;
     let bar = document.getElementById("quickEntryBar");
@@ -9227,6 +10287,7 @@ Score: ${overallScore}/10 (higher is better)`;
     enable("tileAdvParcels", "advParcelsDetails", "closeAdvParcelsDetails");
     enable("tileAdvLetters", "advLettersDetails", "closeAdvLettersDetails");
   })();
+  bindMobileFocusShell();
   (async () => {
     $("date").value = todayStr();
     await loadByDate();
@@ -9249,6 +10310,7 @@ Score: ${overallScore}/10 (higher is better)`;
     applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
     applyFocusMode();
+    applyMobileFocusShell();
   })();
   console.log("Route Stats loaded \u2014", VERSION_TAG);
   window.__sb.auth.getUser().then(async ({ data, error }) => {

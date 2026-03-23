@@ -806,6 +806,21 @@
     backdrop-filter:blur(8px);
   }
   #diag b{ color:#fff }
+  @media (max-width:900px){
+    #diag{
+      font-size:11px;
+      line-height:1.25;
+      padding:6px 8px;
+      white-space:normal;
+      word-break:break-word;
+    }
+    #diag #btnBackToFocusTop{
+      margin-top:4px;
+      margin-left:0!important;
+    }
+    #uspsEvalTag{ display:none!important; }
+    #verTag{ top:4px!important; right:8px!important; }
+  }
   tr.light td{ background:linear-gradient(90deg, rgba(124,227,139,.07), transparent) }
   tr.heavy td{ background:linear-gradient(90deg, rgba(255,143,161,.10), transparent) }
   tr.typical td{ background:linear-gradient(90deg, rgba(255,210,122,.08), transparent) }
@@ -984,11 +999,227 @@
   #tbl tbody tr.rowLink:hover td{ background:rgba(43,127,255,.06) }
   /* Compact header buttons (e.g., Quick Entry) */
   button.btn-compact{ padding:4px 8px; font-size:12px; border-radius:999px }
+
+  /* Mobile Focus Mode shell (Phase 1) */
+  #focusShell{ display:none; }
+  body.focus-shell-on main.wrap > section:not(#focusShell){ display:none!important; }
+  body.focus-shell-on #focusShell{ display:block!important; }
+  body.focus-shell-on:not(.focus-home-chrome) header{ display:none!important; }
+  .focus-shell{
+    min-height:calc(100vh - 156px);
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  body.focus-arrows-hidden #focusPrev,
+  body.focus-arrows-hidden #focusNext,
+  body.focus-arrows-hidden #focusTodayPrev,
+  body.focus-arrows-hidden #focusTodayNext,
+  body.focus-arrows-hidden #focusWeekPrev,
+  body.focus-arrows-hidden #focusWeekNext,
+  body.focus-arrows-hidden #focusEntryPrev,
+  body.focus-arrows-hidden #focusEntryNext,
+  body.focus-arrows-hidden #focusInsightPrev,
+  body.focus-arrows-hidden #focusInsightNext{
+    display:none!important;
+  }
+  .focus-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+  }
+  .focus-title{ font-size:1rem; font-weight:650; letter-spacing:.01em; }
+  .focus-page{
+    flex:1;
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:12px;
+    background:linear-gradient(180deg, rgba(98,136,186,.11), rgba(21,35,59,.12));
+    display:none;
+  }
+  .focus-page.active{ display:block; }
+  .focus-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
+  .focus-kpi{
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+    background:rgba(12,18,30,.25);
+  }
+  .focus-kpi small{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+  .focus-kpi b{ display:block; margin-top:4px; font-size:1.05rem; }
+  .focus-actions{ display:grid; gap:8px; margin-top:10px; }
+  .focus-nav{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:8px;
+    margin-top:auto;
+    padding-top:8px;
+    border-top:1px solid var(--border);
+  }
+  .focus-nav button{ padding:8px 6px; font-size:12px; }
+  .focus-nav button.active{
+    border-color:var(--brand);
+    color:var(--brand);
+    background:rgba(43,127,255,.12);
+  }
+  .focus-insights-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-top:8px;
+  }
+  .focus-insights-title{ font-size:.95rem; font-weight:650; letter-spacing:.01em; }
+  .focus-insight-page{
+    display:none;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+    background:rgba(12,18,30,.18);
+    margin-top:8px;
+  }
+  .focus-insight-page.active{ display:block; }
+  .focus-insight-content{
+    margin-top:6px;
+    font-size:13px;
+    color:var(--text);
+  }
+  .focus-insight-nav{
+    display:grid;
+    grid-template-columns:repeat(5,1fr);
+    gap:6px;
+    margin-top:8px;
+  }
+  .focus-insight-nav button{
+    padding:6px 4px;
+    font-size:11px;
+    border-radius:999px;
+  }
+  .focus-insight-nav button.active{
+    border-color:var(--brand);
+    color:var(--brand);
+    background:rgba(43,127,255,.12);
+  }
+  .focus-insight-drill{
+    display:none;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+    background:rgba(12,18,30,.2);
+    margin-top:8px;
+  }
+  .focus-insight-drill.active{ display:block; }
+  .focus-insight-drill-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-bottom:8px;
+  }
+  .focus-lite-list{
+    margin:0;
+    padding-left:18px;
+    font-size:13px;
+    color:var(--text);
+  }
+  .focus-lite-list li{ margin:4px 0; }
+  .focus-today-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-top:8px;
+  }
+  .focus-today-page{
+    display:none;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+    background:rgba(12,18,30,.18);
+    margin-top:8px;
+  }
+  .focus-today-page.active{ display:block; }
+  .focus-today-nav{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:6px;
+    margin-top:8px;
+  }
+  .focus-today-nav button{
+    padding:6px 4px;
+    font-size:11px;
+    border-radius:999px;
+  }
+  .focus-today-nav button.active{
+    border-color:var(--brand);
+    color:var(--brand);
+    background:rgba(43,127,255,.12);
+  }
+  .focus-note{ font-size:12px; color:var(--muted); margin-top:6px; }
+  .focus-week-head,
+  .focus-entry-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-top:8px;
+  }
+  .focus-week-page,
+  .focus-entry-page{
+    display:none;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+    background:rgba(12,18,30,.18);
+    margin-top:8px;
+  }
+  .focus-week-page.active,
+  .focus-entry-page.active{ display:block; }
+  .focus-week-nav,
+  .focus-entry-nav{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:6px;
+    margin-top:8px;
+  }
+  .focus-week-nav button,
+  .focus-entry-nav button{
+    padding:6px 4px;
+    font-size:11px;
+    border-radius:999px;
+  }
+  .focus-week-nav button.active,
+  .focus-entry-nav button.active{
+    border-color:var(--brand);
+    color:var(--brand);
+    background:rgba(43,127,255,.12);
+  }
+  #focusTodayFull .focus-grid{
+    grid-template-columns:repeat(2, minmax(0,1fr));
+  }
+  #focusTodayFull .focus-kpi,
+  #focusTodayQuick .focus-kpi{
+    min-width:0;
+  }
+  #btnBackToFocus{
+    position:fixed;
+    right:12px;
+    bottom:16px;
+    z-index:10001;
+    display:none;
+    box-shadow:0 8px 20px rgba(0,0,0,.28);
+  }
+  @media (min-width:901px){
+    body.focus-shell-on #focusShell{ display:none!important; }
+    body.focus-shell-on main.wrap > section{ display:initial!important; }
+  }
 </style>
 </head>
 <body>
 <div id="diag">
   ROUTE STATS · Supabase: <b id="dConn">…</b> · Auth: <b id="dAuth">…</b> · Write: <b id="dWrite">—</b>
+  <button id="btnBackToFocusTop" class="btn" type="button" style="display:none;margin-left:8px;padding:3px 10px;font-size:11px;line-height:1.2">Back to Focus</button>
 </div>
 
 <!-- Version tag -->
@@ -1033,8 +1264,219 @@
     </div>
   </div>
 </header>
+<button id="btnBackToFocus" class="btn" type="button">Back to Focus</button>
 
 <main class="wrap grid grid-2">
+  <section id="focusShell" class="card fullWidth focus-shell" aria-live="polite">
+    <div class="focus-head">
+      <button id="focusPrev" class="ghost" type="button" title="Previous">◀</button>
+      <div class="focus-title" id="focusTitle">Today</div>
+      <button id="focusNext" class="ghost" type="button" title="Next">▶</button>
+    </div>
+
+    <div id="focusPageToday" class="focus-page active" data-page="today">
+      <small class="muted">Today</small>
+      <div class="focus-today-head">
+        <button id="focusTodayPrev" class="ghost" type="button" title="Previous today page">◀</button>
+        <div id="focusTodayTitle" class="focus-insights-title">Quick</div>
+        <button id="focusTodayNext" class="ghost" type="button" title="Next today page">▶</button>
+      </div>
+      <div id="focusTodayQuick" class="focus-today-page active" data-today-page="quick">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Expected End</small><b id="fsTodayEnd">—</b></div>
+          <div class="focus-kpi"><small>Total Hours</small><b id="fsTodayTotal">—</b></div>
+          <div class="focus-kpi"><small>Volume</small><b id="fsTodayVolume">—</b></div>
+          <div class="focus-kpi"><small>Route Eff.</small><b id="fsTodayRouteEff">—</b></div>
+        </div>
+      </div>
+      <div id="focusTodayFull" class="focus-today-page" data-today-page="full">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Expected End</small><b id="fsTodayEndFull">—</b></div>
+          <div class="focus-kpi"><small>Total Hours</small><b id="fsTodayTotalFull">—</b></div>
+          <div class="focus-kpi"><small>Volume</small><b id="fsTodayVolumeFull">—</b></div>
+          <div class="focus-kpi"><small>Route Eff.</small><b id="fsTodayRouteEffFull">—</b></div>
+          <div class="focus-kpi"><small>Overall</small><b id="fsTodayOverall">—</b></div>
+          <div class="focus-kpi"><small>Office Δ</small><b id="fsTodayOfficeDelta">—</b></div>
+          <div class="focus-kpi"><small>Parcels Δ</small><b id="fsTodayParcelsDelta">—</b></div>
+          <div class="focus-kpi"><small>Letters Δ</small><b id="fsTodayLettersDelta">—</b></div>
+        </div>
+      </div>
+      <div id="focusTodayDetail" class="focus-today-page" data-today-page="detail">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Today Forecast</small><b id="fsTodayForecast">—</b></div>
+          <div class="focus-kpi"><small>Heaviness</small><b id="fsTodayHeaviness">—</b></div>
+        </div>
+        <div class="focus-note">Tip: Swipe left/right to move Today pages. Use snapshot tiles for deeper daily tools.</div>
+      </div>
+      <div class="focus-today-nav" role="tablist" aria-label="Today navigation">
+        <button class="ghost active" type="button" data-today-page="quick">Quick</button>
+        <button class="ghost" type="button" data-today-page="full">Full</button>
+        <button class="ghost" type="button" data-today-page="detail">Detail</button>
+      </div>
+      <div class="focus-actions">
+        <button class="ghost focus-deep-link" type="button" data-target="snapshotCard">Open full Today snapshot</button>
+      </div>
+    </div>
+
+    <div id="focusPageWeek" class="focus-page" data-page="week">
+      <small class="muted">Week</small>
+      <div class="focus-week-head">
+        <button id="focusWeekPrev" class="ghost" type="button" title="Previous week page">◀</button>
+        <div id="focusWeekTitle" class="focus-insights-title">Quick</div>
+        <button id="focusWeekNext" class="ghost" type="button" title="Next week page">▶</button>
+      </div>
+      <div id="focusWeekQuick" class="focus-week-page active" data-week-page="quick">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Hours</small><b id="fsWeekHours">—</b></div>
+          <div class="focus-kpi"><small>Hours Δ</small><b id="fsWeekHoursDelta">—</b></div>
+          <div class="focus-kpi"><small>Parcels</small><b id="fsWeekParcels">—</b></div>
+          <div class="focus-kpi"><small>Parcels Δ</small><b id="fsWeekParcelsDelta">—</b></div>
+          <div class="focus-kpi"><small>Letters</small><b id="fsWeekLetters">—</b></div>
+          <div class="focus-kpi"><small>Letters Δ</small><b id="fsWeekLettersDelta">—</b></div>
+        </div>
+      </div>
+      <div id="focusWeekFull" class="focus-week-page" data-week-page="full">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Hours</small><b id="fsWeekHoursFull">—</b></div>
+          <div class="focus-kpi"><small>Parcels</small><b id="fsWeekParcelsFull">—</b></div>
+          <div class="focus-kpi"><small>Letters</small><b id="fsWeekLettersFull">—</b></div>
+          <div class="focus-kpi"><small>Route Eval</small><b id="fsWeekEval">—</b></div>
+          <div class="focus-kpi"><small>Trend</small><b id="fsWeekTrend">—</b></div>
+          <div class="focus-kpi"><small>Extra Trip</small><b id="fsWeekExtraTrip">—</b></div>
+        </div>
+      </div>
+      <div id="focusWeekDrill" class="focus-week-page" data-week-page="drill">
+        <small class="muted">Open one metric family</small>
+        <div class="focus-actions">
+          <button class="ghost focus-open-and-click" type="button" data-target="snapshotWeekSection" data-click="tileWkHours">Hours Drilldown</button>
+          <button class="ghost focus-open-and-click" type="button" data-target="snapshotWeekSection" data-click="tileWkParcels">Parcels Drilldown</button>
+          <button class="ghost focus-open-and-click" type="button" data-target="snapshotWeekSection" data-click="tileWkLetters">Letters Drilldown</button>
+        </div>
+        <div class="focus-note">Each drilldown opens the existing weekly detail panel so full tool behavior stays intact.</div>
+      </div>
+      <div class="focus-week-nav" role="tablist" aria-label="Week navigation">
+        <button class="ghost active" type="button" data-week-page="quick">Quick</button>
+        <button class="ghost" type="button" data-week-page="full">Full</button>
+        <button class="ghost" type="button" data-week-page="drill">Drill</button>
+      </div>
+      <div class="focus-actions">
+        <button class="ghost focus-deep-link" type="button" data-target="snapshotWeekSection">Open Weekly Snapshot</button>
+      </div>
+    </div>
+
+    <div id="focusPageEntry" class="focus-page" data-page="entry">
+      <small class="muted">Entry</small>
+      <div class="focus-entry-head">
+        <button id="focusEntryPrev" class="ghost" type="button" title="Previous entry page">◀</button>
+        <div id="focusEntryTitle" class="focus-insights-title">Quick</div>
+        <button id="focusEntryNext" class="ghost" type="button" title="Next entry page">▶</button>
+      </div>
+      <div id="focusEntryQuick" class="focus-entry-page active" data-entry-page="quick">
+        <div class="focus-actions">
+          <button class="ghost focus-run-btn" type="button" data-click="btnStartNow">Start (now)</button>
+          <button class="ghost focus-run-btn" type="button" data-click="btnStreetNow">Hit Street (now)</button>
+          <button class="ghost focus-run-btn" type="button" data-click="btnClockNow">Clock Out (now)</button>
+        </div>
+      </div>
+      <div id="focusEntryForm" class="focus-entry-page" data-entry-page="form">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Date</small><b id="fsEntryDate">—</b></div>
+          <div class="focus-kpi"><small>Times</small><b id="fsEntryTimes">—</b></div>
+          <div class="focus-kpi"><small>Parcels</small><b id="fsEntryParcels">—</b></div>
+          <div class="focus-kpi"><small>Letters</small><b id="fsEntryLetters">—</b></div>
+          <div class="focus-kpi"><small>Flats (min)</small><b id="fsEntryFlats">—</b></div>
+          <div class="focus-kpi"><small>Misdelivery</small><b id="fsEntryMisdelivery">—</b></div>
+        </div>
+      </div>
+      <div id="focusEntryValidate" class="focus-entry-page" data-entry-page="validate">
+        <div class="focus-grid">
+          <div class="focus-kpi"><small>Office</small><b id="fsEntryOffice">—</b></div>
+          <div class="focus-kpi"><small>Route</small><b id="fsEntryRoute">—</b></div>
+          <div class="focus-kpi"><small>Total</small><b id="fsEntryTotal">—</b></div>
+          <div class="focus-kpi"><small>Check</small><b id="fsEntryCheck">—</b></div>
+        </div>
+      </div>
+      <div class="focus-entry-nav" role="tablist" aria-label="Entry navigation">
+        <button class="ghost active" type="button" data-entry-page="quick">Quick</button>
+        <button class="ghost" type="button" data-entry-page="form">Form</button>
+        <button class="ghost" type="button" data-entry-page="validate">Validate</button>
+      </div>
+      <div class="focus-actions">
+        <button class="ghost focus-deep-link" type="button" data-target="addEntryCard">Open Add Entry form</button>
+      </div>
+    </div>
+
+    <div id="focusPageInsights" class="focus-page" data-page="insights">
+      <small class="muted">Insights</small>
+      <div class="focus-insights-head">
+        <button id="focusInsightPrev" class="ghost" type="button" title="Previous insight">◀</button>
+        <div id="focusInsightTitle" class="focus-insights-title">Weekly Movers</div>
+        <button id="focusInsightNext" class="ghost" type="button" title="Next insight">▶</button>
+      </div>
+      <div id="focusInsightMovers" class="focus-insight-page active" data-insight-page="movers">
+        <small class="muted">Weekly Movers</small>
+        <div id="fsInsightMovers" class="focus-insight-content">—</div>
+      </div>
+      <div id="focusInsightTodayHeaviness" class="focus-insight-page" data-insight-page="todayHeaviness">
+        <small class="muted">Heaviness Today</small>
+        <div id="fsInsightTodayHeaviness" class="focus-insight-content">—</div>
+      </div>
+      <div id="focusInsightWeekHeaviness" class="focus-insight-page" data-insight-page="weekHeaviness">
+        <small class="muted">Heaviness Week</small>
+        <div id="fsInsightWeekHeaviness" class="focus-insight-content">—</div>
+      </div>
+      <div id="focusInsightDiagnostics" class="focus-insight-page" data-insight-page="diagnostics">
+        <small class="muted">Diagnostics</small>
+        <div class="focus-grid" style="margin-top:6px">
+          <div class="focus-kpi"><small>Model</small><b id="fsInsightDiagModel">—</b></div>
+          <div class="focus-kpi"><small>Status</small><b id="fsInsightDiagStatus">—</b></div>
+        </div>
+        <div id="fsInsightDiagTop" class="focus-insight-content" style="margin-top:8px">—</div>
+        <div class="focus-actions">
+          <button id="focusOpenDiagLite" class="ghost" type="button">Open Diagnostics Lite</button>
+        </div>
+      </div>
+      <div id="focusInsightDayCompare" class="focus-insight-page" data-insight-page="dayCompare">
+        <small class="muted">Day Compare</small>
+        <div class="focus-grid" style="margin-top:6px">
+          <div class="focus-kpi"><small>Subject</small><b id="fsInsightCompareLabel">—</b></div>
+          <div class="focus-kpi"><small>Summary</small><b id="fsInsightCompareSummary">—</b></div>
+        </div>
+        <div id="fsInsightCompareTop" class="focus-insight-content" style="margin-top:8px">—</div>
+        <div class="focus-actions">
+          <button id="focusOpenCompareLite" class="ghost" type="button">Open Day Compare Lite</button>
+        </div>
+      </div>
+      <div id="focusInsightDrill" class="focus-insight-drill">
+        <div class="focus-insight-drill-head">
+          <button id="focusInsightBack" class="ghost" type="button">Back to Insights</button>
+          <div id="focusInsightDrillTitle" class="focus-insights-title">Lite View</div>
+        </div>
+        <div id="focusInsightDrillBody" class="focus-insight-content">—</div>
+      </div>
+      <div class="focus-insight-nav" role="tablist" aria-label="Insights navigation">
+        <button class="ghost active" type="button" data-insight-page="movers">Movers</button>
+        <button class="ghost" type="button" data-insight-page="todayHeaviness">Today</button>
+        <button class="ghost" type="button" data-insight-page="weekHeaviness">Week</button>
+        <button class="ghost" type="button" data-insight-page="diagnostics">Diag</button>
+        <button class="ghost" type="button" data-insight-page="dayCompare">Compare</button>
+      </div>
+      <div class="focus-actions">
+        <button class="ghost focus-deep-link" type="button" data-target="snapshotCard">Open full Today/Week snapshot</button>
+        <button class="ghost focus-deep-link" type="button" data-target="quickFilterCard">Open Quick Filter</button>
+        <button class="ghost focus-deep-link" type="button" data-target="diagnosticsCard">Open Diagnostics</button>
+        <button class="ghost focus-deep-link" type="button" data-target="dayCompareCard">Open Day Compare</button>
+      </div>
+    </div>
+
+    <div class="focus-nav" role="tablist" aria-label="Focus navigation">
+      <button id="focusNavToday" class="ghost active" type="button" data-page="today">Today</button>
+      <button id="focusNavWeek" class="ghost" type="button" data-page="week">Week</button>
+      <button id="focusNavEntry" class="ghost" type="button" data-page="entry">Entry</button>
+      <button id="focusNavInsights" class="ghost" type="button" data-page="insights">Insights</button>
+    </div>
+  </section>
+
   <!-- SNAPSHOT -->
   <section class="card fullWidth" id="snapshotCard">
     <div class="snapshot-sections">
@@ -1096,7 +1538,7 @@
       <div id="forecastBadgeContainer" class="forecast-badge-container"></div>
     </div>
 
-    <div class="snapshot-section">
+    <div class="snapshot-section" id="snapshotWeekSection">
       <h4>Week & USPS</h4>
       <div class="snapshot-grid">
         <div class="stat" id="tileWkHours" style="cursor:pointer" tabindex="0" title="Click for weekly hours breakdown">
@@ -1837,6 +2279,8 @@
     <label class="pill"><input id="flagCollapsedUi" type="checkbox"> Collapsed dashboard (experimental)</label>
     <label class="pill"><input id="flagQuickEntry" type="checkbox"> Quick Entry (experimental)</label>
     <label class="pill"><input id="flagUspsEval" type="checkbox"> Show USPS Evaluation summary (fixed tag)</label>
+    <label class="pill"><input id="flagMobileFocusMode" type="checkbox"> Mobile Focus Mode shell (phase 1)</label>
+    <label class="pill"><input id="flagFocusArrows" type="checkbox"> Show Focus arrows (desktop testing)</label>
 
     <!-- USPS Evaluation configuration -->
     <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">

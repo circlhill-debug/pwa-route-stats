@@ -265,6 +265,26 @@ window.__sb = createSupabaseClient();
       const raw = localStorage.getItem('routeStats.tagHistory');
       const parsed = raw ? JSON.parse(raw) : [];
       const history = Array.isArray(parsed) ? parsed : [];
+      const mergeTagListsStable = (primary = [], incoming = []) => {
+        const byReason = new Map();
+        const upsert = (tag, preferIncoming = false) => {
+          if (!tag) return;
+          const key = String(tag.key || '').trim() || 'misc';
+          const reason = String(tag.reason || key).trim() || key;
+          const mapKey = `${key}:${reason.toLowerCase()}`;
+          if (!byReason.has(mapKey) || preferIncoming){
+            byReason.set(mapKey, {
+              key,
+              reason,
+              minutes: (tag.minutes != null && Number.isFinite(Number(tag.minutes))) ? Number(tag.minutes) : null,
+              notedAt: tag.notedAt || new Date().toISOString()
+            });
+          }
+        };
+        (primary || []).forEach(tag => upsert(tag, false));
+        (incoming || []).forEach(tag => upsert(tag, true));
+        return Array.from(byReason.values());
+      };
       const byIso = new Map();
       history
         .filter(Boolean)
@@ -279,7 +299,8 @@ window.__sb = createSupabaseClient();
         const iso = item?.iso || null;
         if (!iso) return;
         const current = byIso.get(iso);
-        const mergedTags = normalizeTagEntries([...(current?.tags || []), ...(item.tags || [])]);
+        // Merge by tag identity, not additive math, to prevent repeated startup inflation.
+        const mergedTags = mergeTagListsStable(current?.tags || [], normalizeTagEntries(item.tags || []));
         if (!mergedTags.length) return;
         byIso.set(iso, { iso, tags: mergedTags });
       });

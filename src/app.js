@@ -60,7 +60,7 @@ import { createDiagnostics } from './features/diagnostics.js';
 import { createAiSummary } from './features/aiSummary.js';
 import { createCharts } from './features/charts.js';
 import { createSummariesFeature } from './features/summaries.js';
-import { parseDismissReasonInput } from './utils/diagnostics.js';
+import { parseDismissReasonInput, normalizeTagEntries } from './utils/diagnostics.js';
 import './modules/forecast.js';
 
 // Expose Supabase client globally for debugging
@@ -260,6 +260,58 @@ window.__sb = createSupabaseClient();
     };
   }
 
+  function normalizeLocalTagHistory(seedFromDismissed = []){
+    try{
+      const raw = localStorage.getItem('routeStats.tagHistory');
+      const parsed = raw ? JSON.parse(raw) : [];
+      const history = Array.isArray(parsed) ? parsed : [];
+      const byIso = new Map();
+      history
+        .filter(Boolean)
+        .forEach(item => {
+          const iso = item?.iso || item?.date || null;
+          if (!iso) return;
+          const tags = normalizeTagEntries(item.tags || []);
+          if (!tags.length) return;
+          byIso.set(iso, { iso, tags });
+        });
+      (seedFromDismissed || []).forEach(item => {
+        const iso = item?.iso || null;
+        if (!iso) return;
+        const current = byIso.get(iso);
+        const mergedTags = normalizeTagEntries([...(current?.tags || []), ...(item.tags || [])]);
+        if (!mergedTags.length) return;
+        byIso.set(iso, { iso, tags: mergedTags });
+      });
+      const normalized = Array.from(byIso.values()).sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
+      const before = JSON.stringify(history);
+      const after = JSON.stringify(normalized);
+      if (before !== after){
+        localStorage.setItem('routeStats.tagHistory', after);
+        return true;
+      }
+      return false;
+    }catch(_){
+      return false;
+    }
+  }
+
+  function normalizeDiagnosticsTagData(){
+    let changed = false;
+    let dismissed = [];
+    try{
+      dismissed = loadDismissedResiduals(parseDismissReasonInput);
+      const beforeRaw = localStorage.getItem('routeStats.diagnostics.dismissed') || '[]';
+      const afterRaw = JSON.stringify(dismissed || []);
+      if (beforeRaw !== afterRaw){
+        saveDismissedResiduals(dismissed);
+        changed = true;
+      }
+    }catch(_){ }
+    if (normalizeLocalTagHistory(dismissed)) changed = true;
+    return changed;
+  }
+
   async function upsertUserSettingsRemote(payload){
     if (!CURRENT_USER_ID) return;
     try{
@@ -351,6 +403,7 @@ window.__sb = createSupabaseClient();
         suppressSettingsSave = false;
       }
       if (pushTokenUsageAfterSync) scheduleUserSettingsSave();
+      if (normalizeDiagnosticsTagData()) scheduleUserSettingsSave();
       renderVacationRanges();
       renderUspsEvalTag();
       if (secondTripEmaInput){
@@ -379,6 +432,7 @@ window.__sb = createSupabaseClient();
     userSettingsSynced = true;
     await syncUserSettingsFromRemote();
   }
+  normalizeDiagnosticsTagData();
 
   function getEvalProfileById(profileId){
     if (!profileId) return null;

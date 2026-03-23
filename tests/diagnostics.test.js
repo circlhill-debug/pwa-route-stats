@@ -15,8 +15,8 @@ describe('parseDismissReasonInput', () => {
     const input = 'Weather +10, weather +5, Late mail, +3';
     const result = parseDismissReasonInput(input);
     expect(result).toEqual([
-      { reason: 'Weather', minutes: 15 },
-      { reason: 'Late mail', minutes: null }
+      { key: 'weather', reason: 'weather', minutes: 15, notedAt: expect.any(String) },
+      { key: 'letters', reason: 'letters', minutes: null, notedAt: expect.any(String) }
     ]);
   });
 
@@ -26,8 +26,8 @@ describe('parseDismissReasonInput', () => {
     expect(result).toHaveLength(2);
     expect(result).toEqual(
       expect.arrayContaining([
-        { reason: 'Delay:Flat', minutes: null },
-        { reason: 'Missed box', minutes: 2 }
+        { key: 'flats', reason: 'flats', minutes: null, notedAt: expect.any(String) },
+        { key: 'boxholders', reason: 'boxholders', minutes: 2, notedAt: expect.any(String) }
       ])
     );
   });
@@ -49,8 +49,8 @@ describe('loadDismissedResiduals', () => {
       {
         iso: '2024-04-10',
         tags: [
-          { reason: 'Weather', minutes: 10, notedAt: '2024-04-10T12:00:00Z' },
-          { reason: 'Flats', minutes: 5, notedAt: '2024-04-10T12:00:00Z' }
+          { key: 'weather', reason: 'weather', minutes: 10, notedAt: '2024-04-10T12:00:00Z' },
+          { key: 'flats', reason: 'flats', minutes: 5, notedAt: '2024-04-10T12:00:00Z' }
         ]
       }
     ]);
@@ -60,7 +60,7 @@ describe('loadDismissedResiduals', () => {
     const list = [
       {
         iso: '2024-04-11',
-        tags: [{ reason: 'Construction', minutes: 12, notedAt: '2024-04-11T09:00:00Z' }]
+        tags: [{ key: 'road_closure', reason: 'road_closure', minutes: 12, notedAt: '2024-04-11T09:00:00Z' }]
       }
     ];
 

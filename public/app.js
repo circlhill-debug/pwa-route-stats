@@ -617,13 +617,31 @@
             sourceTags = [{ reason: item.reason, minutes: item.minutes, notedAt: item.notedAt }];
           }
         }
-        const tags = sourceTags.map((tag) => {
+        const tags = sourceTags.flatMap((tag) => {
           if (!tag) return null;
           const reason = String(tag.reason || "").trim();
-          if (!reason) return null;
           const minutes = tag.minutes != null && tag.minutes !== "" ? Number(tag.minutes) : null;
           const notedAt = tag.notedAt || item.notedAt || (/* @__PURE__ */ new Date()).toISOString();
-          return { reason, minutes: Number.isFinite(minutes) ? minutes : null, notedAt };
+          if (!reason) return [];
+          if (typeof parseDismissReasonInput2 === "function") {
+            const parsed2 = parseDismissReasonInput2(
+              Number.isFinite(minutes) ? `${reason}${minutes >= 0 ? "+" : ""}${minutes}` : reason
+            ) || [];
+            if (parsed2.length) {
+              return parsed2.map((p) => ({
+                key: p.key || null,
+                reason: String(p.reason || "").trim(),
+                minutes: p.minutes != null && Number.isFinite(Number(p.minutes)) ? Number(p.minutes) : null,
+                notedAt
+              })).filter((p) => p.reason);
+            }
+          }
+          return [{
+            key: tag.key || null,
+            reason,
+            minutes: Number.isFinite(minutes) ? minutes : null,
+            notedAt
+          }];
         }).filter(Boolean);
         return tags.length ? { iso, tags } : null;
       }).filter(Boolean);
@@ -850,6 +868,89 @@
     }
   }
 
+  // src/utils/diagnostics.js
+  var DIAGNOSTIC_TAG_CATALOG = [
+    { key: "parcels", label: "Parcels", aliases: ["parcel", "pkgs", "packages", "volume"] },
+    { key: "letters", label: "Letters", aliases: ["mail", "letters heavy", "letters light"] },
+    { key: "flats", label: "Flats", aliases: ["flat", "flats time"] },
+    { key: "weather", label: "Weather", aliases: ["rain", "snow", "wind", "storm", "heat", "cold"] },
+    { key: "traffic", label: "Traffic", aliases: ["jam", "congestion"] },
+    { key: "detour", label: "Detour", aliases: ["reroute", "detoured"] },
+    { key: "road_closure", label: "Road closure", aliases: ["road", "closure", "construction"] },
+    { key: "boxholders", label: "Boxholders", aliases: ["box holder", "boxholder", "box"] },
+    { key: "second_trip", label: "Second trip", aliases: ["second-trip", "2nd trip", "extra trip"] },
+    { key: "load", label: "Load/Setup", aliases: ["load time", "setup", "vehicle load"] },
+    { key: "break", label: "Break", aliases: ["lunch", "rest"] },
+    { key: "vehicle_issue", label: "Vehicle issue", aliases: ["vehicle", "truck", "maintenance", "gas", "fuel"] },
+    { key: "misc", label: "Misc", aliases: ["other", "miscellaneous", "unknown"] }
+  ];
+  var CATALOG_BY_KEY = new Map(DIAGNOSTIC_TAG_CATALOG.map((item) => [item.key, item]));
+  function tagLabelForKey(key) {
+    const item = CATALOG_BY_KEY.get(String(key || "").trim());
+    return (item == null ? void 0 : item.label) || "Misc";
+  }
+  function canonicalizeTagReason(rawReason) {
+    const reason = String(rawReason || "").replace(/\s+/g, " ").trim();
+    if (!reason) return { key: "misc", reason: "misc" };
+    const normalized = reason.toLowerCase().replace(/[_-]+/g, " ");
+    for (const item of DIAGNOSTIC_TAG_CATALOG) {
+      if (normalized === item.key.replace(/_/g, " ")) return { key: item.key, reason: item.key };
+      const aliases = item.aliases || [];
+      if (aliases.some((alias) => normalized.includes(String(alias).toLowerCase()))) {
+        return { key: item.key, reason: item.key };
+      }
+    }
+    return { key: "misc", reason };
+  }
+  function normalizeTagEntries(entries, options = {}) {
+    const notedAt = options.notedAt || (/* @__PURE__ */ new Date()).toISOString();
+    const aggregated = /* @__PURE__ */ new Map();
+    (entries || []).forEach((entry) => {
+      if (!entry) return;
+      const rawReason = entry.reason || entry.key || "";
+      const canonical = canonicalizeTagReason(rawReason);
+      const key = canonical.key || "misc";
+      const reason = key === "misc" ? String(rawReason || "").trim() || "misc" : key;
+      const minutesVal = entry.minutes != null && entry.minutes !== "" ? Number(entry.minutes) : null;
+      const minutes = Number.isFinite(minutesVal) ? minutesVal : null;
+      const mapKey = `${key}:${reason.toLowerCase()}`;
+      const existing = aggregated.get(mapKey) || { key, reason, minutes: 0, hasMinutes: false, notedAt };
+      if (minutes != null) {
+        existing.minutes += minutes;
+        existing.hasMinutes = true;
+      }
+      aggregated.set(mapKey, existing);
+    });
+    return Array.from(aggregated.values()).map((item) => ({
+      key: item.key,
+      reason: item.reason,
+      minutes: item.hasMinutes ? item.minutes : null,
+      notedAt: item.notedAt
+    }));
+  }
+  function parseDismissReasonInput(raw) {
+    if (!raw) return [];
+    let working = String(raw).replace(/[;\n]+/g, ",").replace(/\s*,\s*/g, ",").trim();
+    if (!working) return [];
+    const parsed = [];
+    working = working.replace(/([^,]+?)\s*([+\-]\s*\d+(?:\.\d+)?)/g, (_, reasonPart, minutesPart) => {
+      const reason = String(reasonPart || "").trim();
+      const minutes = Number(String(minutesPart || "").replace(/\s+/g, ""));
+      if (reason && Number.isFinite(minutes)) parsed.push({ reason, minutes });
+      return " ";
+    });
+    working = working.replace(/([^,]+?)\s*:\s*([^,+\s]+)/g, (_, left, right) => {
+      const reason = `${String(left || "").trim()}:${String(right || "").trim()}`;
+      if (reason && reason !== ":") parsed.push({ reason, minutes: null });
+      return " ";
+    });
+    working.split(",").map((segment) => segment.trim()).filter(Boolean).forEach((segment) => {
+      if (/^[+\-]?\d+(?:\.\d+)?$/.test(segment)) return;
+      parsed.push({ reason: segment, minutes: null });
+    });
+    return normalizeTagEntries(parsed);
+  }
+
   // src/modules/forecast.js
   var STEADY_MESSAGE = "Steady outlook based on recent trends.";
   var FORECAST_BADGE_STORAGE_KEYS = ["forecastBadgeData_v2", "routeStats.forecastBadgeData_v2"];
@@ -873,7 +974,17 @@
     try {
       const raw = localStorage.getItem("routeStats.tagHistory");
       const history = raw ? JSON.parse(raw) : [];
-      return Array.isArray(history) ? history.filter(Boolean) : [];
+      if (!Array.isArray(history)) return [];
+      const normalized = history.filter(Boolean).map((entry) => {
+        if (!entry || !entry.iso) return null;
+        const tags = normalizeTagEntries(entry.tags || []);
+        return tags.length ? { iso: entry.iso, tags } : null;
+      }).filter(Boolean);
+      try {
+        localStorage.setItem("routeStats.tagHistory", JSON.stringify(normalized));
+      } catch (_) {
+      }
+      return normalized;
     } catch (_) {
       return [];
     }
@@ -945,9 +1056,9 @@
     const endTime = snapshot.endTime || snapshot.end_time || snapshot.return_time || null;
     let tags = [];
     if (Array.isArray(snapshot.tags)) {
-      tags = snapshot.tags.filter(Boolean);
+      tags = normalizeTagEntries(snapshot.tags.filter(Boolean));
     } else if (Array.isArray(snapshot.tagHistory)) {
-      tags = snapshot.tagHistory.filter(Boolean);
+      tags = normalizeTagEntries(snapshot.tagHistory.filter(Boolean));
     }
     return {
       iso,
@@ -1268,25 +1379,18 @@
       return aDate - bDate;
     });
     const latestByType = /* @__PURE__ */ new Map();
-    const normalizeTag = (tagValue) => {
-      if (typeof tagValue === "string") return tagValue;
-      if (tagValue && typeof tagValue.tag === "string") return tagValue.tag;
-      if (tagValue && tagValue.reason) {
-        const minutes = Number(tagValue.minutes);
-        if (Number.isFinite(minutes)) return `${tagValue.reason}+${minutes}`;
-        return String(tagValue.reason);
-      }
-      return null;
-    };
     entriesForDay.forEach((entry) => {
       if (!entry || !Array.isArray(entry.tags)) return;
-      entry.tags.forEach((rawTag) => {
-        const tagString = normalizeTag(rawTag);
-        if (!tagString) return;
-        const [rawType] = tagString.split("+");
-        const type = (rawType || "").trim().toLowerCase();
-        if (!type) return;
-        latestByType.set(type, tagString);
+      entry.tags.forEach((tag) => {
+        if (!tag) return;
+        const key = tag.key || canonicalizeTagReason(tag.reason).key;
+        if (!key) return;
+        const minutesNum = Number(tag.minutes);
+        latestByType.set(key, {
+          key,
+          reason: tag.reason || key,
+          minutes: Number.isFinite(minutesNum) ? minutesNum : 0
+        });
       });
     });
     return Array.from(latestByType.values());
@@ -1309,47 +1413,34 @@
     if (!summaries.length) return null;
     return `Expect a longer day due to ${summaries.join(" and ")}.`;
   }
-  function parseTagString(tagString) {
-    try {
-      const arr = JSON.parse(tagString);
-      if (!Array.isArray(arr)) return [];
-      return arr.map((t) => ({
-        reason: t.reason || "unknown",
-        minutes: Number(t.minutes) || 0
-      }));
-    } catch (e) {
-      return [];
-    }
-  }
   function generateForecastText(tagHistory, targetDow) {
     const allTags = Array.isArray(tagHistory) ? flattenTagStrings(tagHistory, targetDow) : [];
     let dominantTag = null;
     const summaries = [];
-    allTags.forEach((tagStr) => {
-      const parsedEntries = parseTagString(tagStr);
-      if (!parsedEntries.length) return;
+    allTags.forEach((entry) => {
+      const type = String(entry.key || canonicalizeTagReason(entry.reason).key || "misc").toLowerCase();
+      const minutes = Number(entry.minutes) || 0;
+      if (!dominantTag || Math.abs(minutes) > Math.abs(dominantTag.minutes)) {
+        dominantTag = { type, minutes };
+      }
       const labelMap = {
         break: "planned break",
         flats: "flats volume",
         parcels: "parcel load",
         letters: "letter count",
-        "second-trip": "second trip",
+        second_trip: "second trip",
         detour: "route detour",
-        load: "loading time"
+        load: "loading time",
+        weather: "weather",
+        traffic: "traffic",
+        road_closure: "road closure",
+        boxholders: "boxholders",
+        vehicle_issue: "vehicle issue",
+        misc: "misc factors"
       };
-      parsedEntries.forEach((entry) => {
-        const type = String(entry.reason || "unknown").toLowerCase();
-        const minutes = Number(entry.minutes) || 0;
-        if (!dominantTag || Math.abs(minutes) > Math.abs(dominantTag.minutes)) {
-          dominantTag = { type, minutes };
-        }
-        const label = labelMap[type] || type;
-        if (minutes > 0) {
-          summaries.push(`${label} increase (+${minutes} min)`);
-        } else if (minutes < 0) {
-          summaries.push(`${label} decrease (${Math.abs(minutes)} min)`);
-        }
-      });
+      const label = labelMap[type] || type;
+      if (minutes > 0) summaries.push(`${label} increase (+${minutes} min)`);
+      else if (minutes < 0) summaries.push(`${label} decrease (${Math.abs(minutes)} min)`);
     });
     if (dominantTag && Math.abs(dominantTag.minutes) >= 20) {
       const polarity = dominantTag.minutes > 0 ? "longer" : "shorter";
@@ -1911,7 +2002,10 @@
             return;
           }
           const lines = list.map((item) => {
-            const tagSummary = (item.tags || []).map((tag) => tag.minutes != null ? `${tag.reason} ${tag.minutes}m` : tag.reason).join(", ");
+            const tagSummary = (item.tags || []).map((tag) => {
+              const label = tagLabelForKey(tag.key || tag.reason);
+              return tag.minutes != null ? `${label} ${tag.minutes}m` : label;
+            }).join(", ");
             return `${item.iso}${tagSummary ? ` \xB7 ${tagSummary}` : ""}`;
           }).join("\n");
           const input = window.prompt(`Dismissed residuals:
@@ -2063,7 +2157,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           }
         };
         updateAiSummaryAvailability2 == null ? void 0 : updateAiSummaryAvailability2();
-        tbody.onclick = (event) => {
+        tbody.onclick = async (event) => {
           var _a6, _b2, _c2, _d2, _e2;
           const dismissBtn = (_b2 = (_a6 = event.target) == null ? void 0 : _a6.closest) == null ? void 0 : _b2.call(_a6, ".diag-dismiss");
           if (dismissBtn) {
@@ -2074,28 +2168,22 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             const parcels2 = residual ? Math.round(residual.parcels) : null;
             const letters2 = residual ? Math.round(residual.letters) : null;
             const defaultReason = (() => {
-              if (!residual) return "";
-              if (parcels2 != null && parcels2 > 0 && letters2 != null && letters2 === 0) return "parcels";
-              if (letters2 != null && letters2 > parcels2) return "letters";
-              return "";
+              if (!residual) return [];
+              if (parcels2 != null && parcels2 > 0 && letters2 != null && letters2 === 0) return [{ key: "parcels", reason: "parcels", minutes: null }];
+              if (letters2 != null && letters2 > parcels2) return [{ key: "letters", reason: "letters", minutes: null }];
+              return [];
             })();
             const hintParts = [];
             if (deltaMinutes != null) hintParts.push(`Residual: ${deltaMinutes}m`);
             if (parcels2 != null) hintParts.push(`Parcels: ${parcels2}`);
             if (letters2 != null) hintParts.push(`Letters: ${letters2}`);
-            const basePrompt = hintParts.length ? `${hintParts.join(" \xB7 ")}
-Reason (e.g., Road closure, Weather, Extra parcels):` : "Reason (e.g., Road closure, Weather, Extra parcels):";
-            const tagReference = "Tag keywords: break, flats, parcels, letters, second-trip, detour, load, gas, traffic, road, weather.";
-            const reasonPrompt = window.prompt(`${basePrompt}
-${tagReference}
-You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-10") and separate multiple reasons with commas (e.g., "parcels+15, flats-20").`, defaultReason);
-            if (reasonPrompt === null) return;
-            const reasonText = reasonPrompt.trim();
-            if (!reasonText) {
-              window.alert("No reason provided; dismissal cancelled.");
-              return;
-            }
-            const tags = parseDismissReasonInput2(reasonText);
+            const tagResult = await showTagDismissDialog({
+              title: `Tag residual ${iso}`,
+              hint: hintParts.join(" \xB7 "),
+              defaults: defaultReason
+            });
+            if (!tagResult) return;
+            const tags = normalizeTagEntries(tagResult.tags || [], { notedAt: (/* @__PURE__ */ new Date()).toISOString() });
             if (!tags.length) {
               window.alert("No reason provided; dismissal cancelled.");
               return;
@@ -2103,6 +2191,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
             const nowIso = (/* @__PURE__ */ new Date()).toISOString();
             const tagTimestamp = Date.now();
             const tagEntries = tags.map((t) => ({
+              key: t.key || null,
               reason: t.reason,
               minutes: t.minutes != null && Number.isFinite(Number(t.minutes)) ? Number(t.minutes) : null,
               notedAt: tagTimestamp
@@ -2154,6 +2243,103 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
           }
         };
       }
+    }
+    function showTagDismissDialog({ title, hint, defaults }) {
+      const normalizedDefaults = normalizeTagEntries(defaults || []);
+      const selectedDefaults = new Map(normalizedDefaults.map((t) => [t.key || t.reason, t]));
+      const dialog = document.createElement("dialog");
+      dialog.style.maxWidth = "560px";
+      dialog.style.width = "calc(100vw - 32px)";
+      dialog.innerHTML = `
+      <form method="dialog" style="display:flex;flex-direction:column;gap:10px">
+        <h4 style="margin:0">${escapeHtml(title || "Tag & dismiss")}</h4>
+        <small class="muted">${escapeHtml(hint || "Select one or more reasons and optional +/- minutes.")}</small>
+        <div style="display:grid;gap:8px;max-height:52vh;overflow:auto;padding:4px 2px">
+          ${DIAGNOSTIC_TAG_CATALOG.map((tag) => {
+        const def = selectedDefaults.get(tag.key) || null;
+        const minutes = def && def.minutes != null ? String(def.minutes) : "";
+        return `
+              <label class="pill" style="display:grid;grid-template-columns:auto 1fr minmax(96px,110px);align-items:center;gap:8px;padding:8px 10px">
+                <input type="checkbox" data-tag-key="${tag.key}" ${def ? "checked" : ""}>
+                <span>${escapeHtml(tag.label)}</span>
+                <input type="number" step="1" data-minutes-for="${tag.key}" value="${escapeHtml(minutes)}" placeholder="min +/-">
+              </label>
+            `;
+      }).join("")}
+        </div>
+        <label style="display:grid;gap:6px">
+          <small class="muted">Optional note for Misc</small>
+          <input type="text" id="diagDismissMiscNote" placeholder="e.g., scanner issue">
+        </label>
+        <div class="row" style="justify-content:flex-end">
+          <button value="cancel" class="ghost" type="button" id="diagDismissCancel">Cancel</button>
+          <button value="ok" class="btn" type="button" id="diagDismissSave">Save Tag & Dismiss</button>
+        </div>
+      </form>
+    `;
+      document.body.appendChild(dialog);
+      const checkboxNodes = Array.from(dialog.querySelectorAll('input[type="checkbox"][data-tag-key]'));
+      const saveBtn = dialog.querySelector("#diagDismissSave");
+      const cancelBtn = dialog.querySelector("#diagDismissCancel");
+      let result = null;
+      const collect = () => {
+        const tags = checkboxNodes.filter((node) => node.checked).map((node) => {
+          var _a5;
+          const key = node.dataset.tagKey;
+          const minInput = dialog.querySelector(`input[data-minutes-for="${key}"]`);
+          const rawMinutes = ((minInput == null ? void 0 : minInput.value) || "").trim();
+          const minutes = rawMinutes !== "" ? Number(rawMinutes) : null;
+          const reason = key === "misc" ? (((_a5 = dialog.querySelector("#diagDismissMiscNote")) == null ? void 0 : _a5.value) || "").trim() || "misc" : key;
+          return {
+            key,
+            reason,
+            minutes: Number.isFinite(minutes) ? minutes : null
+          };
+        });
+        return { tags };
+      };
+      const closeDialog = () => {
+        try {
+          dialog.close();
+        } catch (_) {
+        }
+        dialog.remove();
+      };
+      return new Promise((resolve) => {
+        cancelBtn == null ? void 0 : cancelBtn.addEventListener("click", () => {
+          result = null;
+          closeDialog();
+          resolve(null);
+        });
+        saveBtn == null ? void 0 : saveBtn.addEventListener("click", () => {
+          const payload = collect();
+          result = payload.tags.length ? payload : null;
+          if (!result) {
+            window.alert("Select at least one tag to dismiss this residual.");
+            return;
+          }
+          closeDialog();
+          resolve(result);
+        });
+        dialog.addEventListener("cancel", (event) => {
+          event.preventDefault();
+          result = null;
+          closeDialog();
+          resolve(null);
+        });
+        try {
+          dialog.showModal();
+        } catch (_) {
+          const fallback = window.prompt('Enter reason tags like "parcels+15, weather-10, flats":', "");
+          closeDialog();
+          if (fallback == null) {
+            resolve(null);
+            return;
+          }
+          const parsed = parseDismissReasonInput2(fallback);
+          resolve(parsed.length ? { tags: parsed } : null);
+        }
+      });
     }
     function formatNumber2(val, opts) {
       var _a5;
@@ -4638,49 +4824,6 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     };
   }
 
-  // src/utils/diagnostics.js
-  function parseDismissReasonInput(raw) {
-    if (!raw) return [];
-    let working = String(raw).replace(/[;\n]+/g, ",").replace(/\s*,\s*/g, ",").trim();
-    if (!working) return [];
-    const aggregated = /* @__PURE__ */ new Map();
-    const upsert = (reasonRaw, minutesVal, hasMinutes = false) => {
-      if (reasonRaw == null) return;
-      const reason = String(reasonRaw).replace(/\s+/g, " ").trim();
-      if (!reason) return;
-      const key = reason.toLowerCase();
-      const entry = aggregated.get(key) || { reason, minutes: 0, hasMinutes: false };
-      if (hasMinutes && Number.isFinite(minutesVal)) {
-        entry.minutes += minutesVal;
-        entry.hasMinutes = true;
-      }
-      aggregated.set(key, entry);
-    };
-    working = working.replace(/([^,+:]+?)\s*\+\s*([-+]?\d+(?:\.\d+)?)/g, (_, reasonPart, minutesPart) => {
-      const reason = reasonPart.trim();
-      const minutes = parseFloat(minutesPart);
-      upsert(reason, Number.isFinite(minutes) ? minutes : 0, Number.isFinite(minutes));
-      return " ";
-    });
-    working = working.replace(/([^,+:]+?)\s*:\s*([^,+\s]+)/g, (_, keyPart, valuePart) => {
-      const key = keyPart.trim();
-      const value = valuePart.trim();
-      const label = value ? `${key}:${value}` : key;
-      upsert(label, 0, false);
-      return " ";
-    });
-    working.split(",").map((segment) => segment.trim()).filter(Boolean).forEach((segment) => {
-      const cleaned = segment.replace(/\s+/g, " ").trim();
-      if (!cleaned) return;
-      if (/^[+\-]?\d+(?:\.\d+)?$/.test(cleaned)) return;
-      upsert(cleaned, 0, false);
-    });
-    return Array.from(aggregated.values()).map((item) => ({
-      reason: item.reason,
-      minutes: item.hasMinutes ? item.minutes : null
-    }));
-  }
-
   // src/app.js
   window.__sb = createSupabaseClient();
   (function() {
@@ -4874,6 +5017,55 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
       diagnostics_dismissed: dismissedList
     };
   }
+  function normalizeLocalTagHistory(seedFromDismissed = []) {
+    try {
+      const raw = localStorage.getItem("routeStats.tagHistory");
+      const parsed = raw ? JSON.parse(raw) : [];
+      const history = Array.isArray(parsed) ? parsed : [];
+      const byIso = /* @__PURE__ */ new Map();
+      history.filter(Boolean).forEach((item) => {
+        const iso = (item == null ? void 0 : item.iso) || (item == null ? void 0 : item.date) || null;
+        if (!iso) return;
+        const tags = normalizeTagEntries(item.tags || []);
+        if (!tags.length) return;
+        byIso.set(iso, { iso, tags });
+      });
+      (seedFromDismissed || []).forEach((item) => {
+        const iso = (item == null ? void 0 : item.iso) || null;
+        if (!iso) return;
+        const current = byIso.get(iso);
+        const mergedTags = normalizeTagEntries([...(current == null ? void 0 : current.tags) || [], ...item.tags || []]);
+        if (!mergedTags.length) return;
+        byIso.set(iso, { iso, tags: mergedTags });
+      });
+      const normalized = Array.from(byIso.values()).sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
+      const before = JSON.stringify(history);
+      const after = JSON.stringify(normalized);
+      if (before !== after) {
+        localStorage.setItem("routeStats.tagHistory", after);
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+  function normalizeDiagnosticsTagData() {
+    let changed = false;
+    let dismissed = [];
+    try {
+      dismissed = loadDismissedResiduals(parseDismissReasonInput);
+      const beforeRaw = localStorage.getItem("routeStats.diagnostics.dismissed") || "[]";
+      const afterRaw = JSON.stringify(dismissed || []);
+      if (beforeRaw !== afterRaw) {
+        saveDismissedResiduals(dismissed);
+        changed = true;
+      }
+    } catch (_) {
+    }
+    if (normalizeLocalTagHistory(dismissed)) changed = true;
+    return changed;
+  }
   async function upsertUserSettingsRemote(payload) {
     if (!CURRENT_USER_ID) return;
     try {
@@ -4960,6 +5152,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
         suppressSettingsSave = false;
       }
       if (pushTokenUsageAfterSync) scheduleUserSettingsSave();
+      if (normalizeDiagnosticsTagData()) scheduleUserSettingsSave();
       renderVacationRanges();
       renderUspsEvalTag();
       if (secondTripEmaInput) {
@@ -4989,6 +5182,7 @@ You can append \xB1 minutes like "+15" or "-10" (e.g., "parcels+15" or "letters-
     userSettingsSynced = true;
     await syncUserSettingsFromRemote();
   }
+  normalizeDiagnosticsTagData();
   function getEvalProfileById(profileId) {
     if (!profileId) return null;
     return (EVAL_PROFILES || []).find((p) => p.profileId === profileId) || null;

@@ -1412,12 +1412,14 @@
     return `Expect a longer day due to ${summaries.join(" and ")}.`;
   }
   function generateForecastText(tagHistory, targetDow) {
+    const MAX_TAG_EFFECT_MINUTES = 180;
     const allTags = Array.isArray(tagHistory) ? flattenTagStrings(tagHistory, targetDow) : [];
     let dominantTag = null;
     const summaries = [];
     allTags.forEach((entry) => {
       const type = String(entry.key || canonicalizeTagReason(entry.reason).key || "misc").toLowerCase();
-      const minutes = Number(entry.minutes) || 0;
+      const rawMinutes = Number(entry.minutes) || 0;
+      const minutes = Math.max(-MAX_TAG_EFFECT_MINUTES, Math.min(MAX_TAG_EFFECT_MINUTES, rawMinutes));
       if (!dominantTag || Math.abs(minutes) > Math.abs(dominantTag.minutes)) {
         dominantTag = { type, minutes };
       }
@@ -5020,6 +5022,26 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const raw = localStorage.getItem("routeStats.tagHistory");
       const parsed = raw ? JSON.parse(raw) : [];
       const history = Array.isArray(parsed) ? parsed : [];
+      const mergeTagListsStable = (primary = [], incoming = []) => {
+        const byReason = /* @__PURE__ */ new Map();
+        const upsert = (tag, preferIncoming = false) => {
+          if (!tag) return;
+          const key = String(tag.key || "").trim() || "misc";
+          const reason = String(tag.reason || key).trim() || key;
+          const mapKey = `${key}:${reason.toLowerCase()}`;
+          if (!byReason.has(mapKey) || preferIncoming) {
+            byReason.set(mapKey, {
+              key,
+              reason,
+              minutes: tag.minutes != null && Number.isFinite(Number(tag.minutes)) ? Number(tag.minutes) : null,
+              notedAt: tag.notedAt || (/* @__PURE__ */ new Date()).toISOString()
+            });
+          }
+        };
+        (primary || []).forEach((tag) => upsert(tag, false));
+        (incoming || []).forEach((tag) => upsert(tag, true));
+        return Array.from(byReason.values());
+      };
       const byIso = /* @__PURE__ */ new Map();
       history.filter(Boolean).forEach((item) => {
         const iso = (item == null ? void 0 : item.iso) || (item == null ? void 0 : item.date) || null;
@@ -5032,7 +5054,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const iso = (item == null ? void 0 : item.iso) || null;
         if (!iso) return;
         const current = byIso.get(iso);
-        const mergedTags = normalizeTagEntries([...(current == null ? void 0 : current.tags) || [], ...item.tags || []]);
+        const mergedTags = mergeTagListsStable((current == null ? void 0 : current.tags) || [], normalizeTagEntries(item.tags || []));
         if (!mergedTags.length) return;
         byIso.set(iso, { iso, tags: mergedTags });
       });

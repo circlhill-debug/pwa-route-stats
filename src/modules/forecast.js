@@ -537,13 +537,15 @@ function generateForecastFromDailyData(dailyData) {
 }
 
 export function generateForecastText(tagHistory, targetDow) {
+  const MAX_TAG_EFFECT_MINUTES = 180;
   const allTags = Array.isArray(tagHistory) ? flattenTagStrings(tagHistory, targetDow) : [];
   let dominantTag = null;
   const summaries = [];
 
   allTags.forEach((entry) => {
     const type = String(entry.key || canonicalizeTagReason(entry.reason).key || 'misc').toLowerCase();
-    const minutes = Number(entry.minutes) || 0;
+    const rawMinutes = Number(entry.minutes) || 0;
+    const minutes = Math.max(-MAX_TAG_EFFECT_MINUTES, Math.min(MAX_TAG_EFFECT_MINUTES, rawMinutes));
     if (!dominantTag || Math.abs(minutes) > Math.abs(dominantTag.minutes)) {
       dominantTag = { type, minutes };
     }

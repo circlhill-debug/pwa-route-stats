@@ -3748,7 +3748,7 @@ function getHourlyRateFromEval(){
       if (!evalCompareCard) return;
       syncEvalGlobals();
       const profiles = EVAL_PROFILES || [];
-      const enabled = FLAGS.uspsEval && profiles.length >= 1;
+      const enabled = profiles.length >= 1;
       evalCompareCard.style.display = enabled ? '' : 'none';
       if (!enabled){
         if (evalCompareSummary) evalCompareSummary.textContent = 'Add evaluation profiles in Settings.';

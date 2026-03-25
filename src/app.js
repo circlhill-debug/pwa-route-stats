@@ -1505,6 +1505,7 @@ const authReadyPromise = handleAuthCallback(sb);
   const flagSmartSummary = document.getElementById('flagSmartSummary');
   const flagDayCompare = document.getElementById('flagDayCompare');
   const flagUspsEval = document.getElementById('flagUspsEval');
+  const flagSleepDrink = document.getElementById('flagSleepDrink');
   const settingsEmaRate = document.getElementById('settingsEmaRate');
   if (themeSelect){
     themeSelect.value = CURRENT_THEME;
@@ -1648,6 +1649,7 @@ aiSummary = createAiSummary({
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
+    if (flagSleepDrink) flagSleepDrink.checked = !!FLAGS.sleepDrink;
     if (themeSelect) themeSelect.value = CURRENT_THEME;
     // populate USPS eval fields
     try{
@@ -1761,6 +1763,7 @@ aiSummary = createAiSummary({
     if (flagSmartSummary) FLAGS.smartSummary = !!flagSmartSummary.checked;
     if (flagDayCompare) FLAGS.dayCompare = !!flagDayCompare.checked;
     if (flagUspsEval) FLAGS.uspsEval = !!flagUspsEval.checked;
+    if (flagSleepDrink) FLAGS.sleepDrink = !!flagSleepDrink.checked;
     // read USPS eval fields
     try{
       const selectedId = evalProfileSelect?.value || USPS_EVAL?.profileId || null;
@@ -4185,6 +4188,11 @@ function getHourlyRateFromEval(){
 
   function buildSleepDrinkChart(rows){
     if (!sleepDrinkCard || !drinkWeekBadge) return;
+    if (!FLAGS.sleepDrink){
+      sleepDrinkCard.style.display = 'none';
+      return;
+    }
+    sleepDrinkCard.style.display = '';
     const list = (rows || []).map(r=>{
       const drink = parseDrinkFromWeatherString(r.weather_json || '');
       return { work_date: r.work_date, drink };

@@ -111,7 +111,8 @@
     focusMode: false,
     quickEntry: false,
     uspsEval: true,
-    dayCompare: true
+    dayCompare: true,
+    sleepDrink: false
   };
   var DEFAULT_EVAL_PROFILE = {
     profileId: "eval-default",
@@ -6306,6 +6307,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var flagSmartSummary = document.getElementById("flagSmartSummary");
   var flagDayCompare = document.getElementById("flagDayCompare");
   var flagUspsEval = document.getElementById("flagUspsEval");
+  var flagSleepDrink = document.getElementById("flagSleepDrink");
   var settingsEmaRate = document.getElementById("settingsEmaRate");
   if (themeSelect) {
     themeSelect.value = CURRENT_THEME;
@@ -6446,6 +6448,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
     if (flagUspsEval) flagUspsEval.checked = !!FLAGS.uspsEval;
+    if (flagSleepDrink) flagSleepDrink.checked = !!FLAGS.sleepDrink;
     if (themeSelect) themeSelect.value = CURRENT_THEME;
     try {
       populateEvalProfileSelectUI(USPS_EVAL == null ? void 0 : USPS_EVAL.profileId);
@@ -6559,6 +6562,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (flagSmartSummary) FLAGS.smartSummary = !!flagSmartSummary.checked;
     if (flagDayCompare) FLAGS.dayCompare = !!flagDayCompare.checked;
     if (flagUspsEval) FLAGS.uspsEval = !!flagUspsEval.checked;
+    if (flagSleepDrink) FLAGS.sleepDrink = !!flagSleepDrink.checked;
     try {
       const selectedId = (evalProfileSelect == null ? void 0 : evalProfileSelect.value) || (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || null;
       const updated = collectEvalFormValues(selectedId);
@@ -9210,6 +9214,11 @@ Score: ${overallScore}/10 (higher is better)`;
   }
   function buildSleepDrinkChart(rows) {
     if (!sleepDrinkCard || !drinkWeekBadge) return;
+    if (!FLAGS.sleepDrink) {
+      sleepDrinkCard.style.display = "none";
+      return;
+    }
+    sleepDrinkCard.style.display = "";
     const list = (rows || []).map((r) => {
       const drink = parseDrinkFromWeatherString(r.weather_json || "");
       return { work_date: r.work_date, drink };

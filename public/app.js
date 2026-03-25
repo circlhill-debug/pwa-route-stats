@@ -5758,6 +5758,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var parserChart = null;
   var sleepTrendChart = null;
   var sleepWeekdayChart = null;
+  var drinkWeekdayChart = null;
   var $ = (id) => document.getElementById(id);
   var dConn = $("dConn");
   var dAuth = $("dAuth");
@@ -6403,6 +6404,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var sleepRecentMeta = document.getElementById("sleepRecentMeta");
   var sleepTrendCanvas = document.getElementById("sleepTrendChart");
   var sleepWeekdayCanvas = document.getElementById("sleepWeekdayChart");
+  var drinkWeekdayCanvas = document.getElementById("drinkWeekdayChart");
   var CURRENT_USER_ID = null;
   (async () => {
     var _a5;
@@ -9248,8 +9250,15 @@ Score: ${overallScore}/10 (higher is better)`;
         } catch (_) {
         }
       }
+      if (drinkWeekdayChart && typeof drinkWeekdayChart.destroy === "function") {
+        try {
+          drinkWeekdayChart.destroy();
+        } catch (_) {
+        }
+      }
       sleepTrendChart = null;
       sleepWeekdayChart = null;
+      drinkWeekdayChart = null;
       return;
     }
     sleepDrinkCard.style.display = "";
@@ -9326,6 +9335,13 @@ Score: ${overallScore}/10 (higher is better)`;
       }
       sleepWeekdayChart = null;
     }
+    if (drinkWeekdayChart && typeof drinkWeekdayChart.destroy === "function") {
+      try {
+        drinkWeekdayChart.destroy();
+      } catch (_) {
+      }
+      drinkWeekdayChart = null;
+    }
     const cutoff = now.minus({ days: 56 }).startOf("day");
     const trendRows = sleepLogged.map((r) => {
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
@@ -9399,6 +9415,18 @@ Score: ${overallScore}/10 (higher is better)`;
     });
     const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const weekdayData = weekdaySlots.map((slot) => slot.count ? +(slot.sum / slot.count).toFixed(2) : null);
+    const drinkWeekdaySlots = Array.from({ length: 7 }, () => ({ drinks: 0, total: 0 }));
+    list.forEach((r) => {
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      if (!d.isValid || d < weekdayCutoff) return;
+      const idx = (d.weekday + 6) % 7;
+      drinkWeekdaySlots[idx].total += 1;
+      if (r.drink === "D") drinkWeekdaySlots[idx].drinks += 1;
+    });
+    const drinkWeekdayRate = drinkWeekdaySlots.map((slot) => {
+      if (!slot.total) return null;
+      return +(slot.drinks / slot.total * 100).toFixed(1);
+    });
     if (sleepWeekdayCanvas) {
       sleepWeekdayChart = new Chart(sleepWeekdayCanvas, {
         type: "bar",
@@ -9431,6 +9459,44 @@ Score: ${overallScore}/10 (higher is better)`;
               beginAtZero: true,
               suggestedMax: 10,
               ticks: { callback: (v) => `${v}h` }
+            }
+          }
+        }
+      });
+    }
+    if (drinkWeekdayCanvas) {
+      drinkWeekdayChart = new Chart(drinkWeekdayCanvas, {
+        type: "bar",
+        data: {
+          labels: weekdayLabels,
+          datasets: [{
+            label: "Drink day rate (%)",
+            data: drinkWeekdayRate,
+            backgroundColor: "rgba(245,199,89,0.45)",
+            borderColor: "rgba(245,199,89,0.9)",
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const val = Number(ctx.raw);
+                  if (!Number.isFinite(val)) return "No data";
+                  return `${val.toFixed(1)}% drink days`;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              min: 0,
+              max: 100,
+              ticks: { callback: (v) => `${v}%` }
             }
           }
         }

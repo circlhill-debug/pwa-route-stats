@@ -1648,8 +1648,16 @@
     <div class="sparkline-labels" id="sleepDrinkNote">—</div>
     <div class="sparkline-labels" style="margin-top:8px">Sleep trend (last 8 weeks)</div>
     <canvas id="sleepTrendChart" height="140"></canvas>
-    <div class="sparkline-labels" style="margin-top:10px">Sleep by weekday (last 120d)</div>
-    <canvas id="sleepWeekdayChart" height="120"></canvas>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:10px">
+      <div>
+        <div class="sparkline-labels">Sleep by weekday (last 120d)</div>
+        <canvas id="sleepWeekdayChart" height="96"></canvas>
+      </div>
+      <div>
+        <div class="sparkline-labels">Drink days by weekday (last 120d)</div>
+        <canvas id="drinkWeekdayChart" height="96"></canvas>
+      </div>
+    </div>
   </section>
  
   

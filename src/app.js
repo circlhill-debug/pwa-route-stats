@@ -946,6 +946,7 @@ window.__sb = createSupabaseClient();
   let parserChart = null;
   let sleepTrendChart = null;
   let sleepWeekdayChart = null;
+  let drinkWeekdayChart = null;
 
   // === Helpers ===
   const $ = id => document.getElementById(id);
@@ -1604,6 +1605,7 @@ const sleepRecentBadge = document.getElementById('sleepRecentBadge');
 const sleepRecentMeta = document.getElementById('sleepRecentMeta');
 const sleepTrendCanvas = document.getElementById('sleepTrendChart');
 const sleepWeekdayCanvas = document.getElementById('sleepWeekdayChart');
+const drinkWeekdayCanvas = document.getElementById('drinkWeekdayChart');
 let CURRENT_USER_ID = null;
 (async () => {
   try{
@@ -4204,8 +4206,12 @@ function getHourlyRateFromEval(){
       if (sleepWeekdayChart && typeof sleepWeekdayChart.destroy === 'function'){
         try{ sleepWeekdayChart.destroy(); }catch(_){ }
       }
+      if (drinkWeekdayChart && typeof drinkWeekdayChart.destroy === 'function'){
+        try{ drinkWeekdayChart.destroy(); }catch(_){ }
+      }
       sleepTrendChart = null;
       sleepWeekdayChart = null;
+      drinkWeekdayChart = null;
       return;
     }
     sleepDrinkCard.style.display = '';
@@ -4290,6 +4296,10 @@ function getHourlyRateFromEval(){
       try{ sleepWeekdayChart.destroy(); }catch(_){ }
       sleepWeekdayChart = null;
     }
+    if (drinkWeekdayChart && typeof drinkWeekdayChart.destroy === 'function'){
+      try{ drinkWeekdayChart.destroy(); }catch(_){ }
+      drinkWeekdayChart = null;
+    }
 
     const cutoff = now.minus({ days:56 }).startOf('day');
     const trendRows = sleepLogged
@@ -4369,6 +4379,18 @@ function getHourlyRateFromEval(){
     });
     const weekdayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const weekdayData = weekdaySlots.map(slot => slot.count ? +(slot.sum / slot.count).toFixed(2) : null);
+    const drinkWeekdaySlots = Array.from({ length:7 }, ()=> ({ drinks:0, total:0 }));
+    list.forEach(r=>{
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      if (!d.isValid || d < weekdayCutoff) return;
+      const idx = (d.weekday + 6) % 7;
+      drinkWeekdaySlots[idx].total += 1;
+      if (r.drink === 'D') drinkWeekdaySlots[idx].drinks += 1;
+    });
+    const drinkWeekdayRate = drinkWeekdaySlots.map(slot=>{
+      if (!slot.total) return null;
+      return +((slot.drinks / slot.total) * 100).toFixed(1);
+    });
 
     if (sleepWeekdayCanvas){
       sleepWeekdayChart = new Chart(sleepWeekdayCanvas, {
@@ -4402,6 +4424,45 @@ function getHourlyRateFromEval(){
               beginAtZero:true,
               suggestedMax:10,
               ticks:{ callback:(v)=> `${v}h` }
+            }
+          }
+        }
+      });
+    }
+
+    if (drinkWeekdayCanvas){
+      drinkWeekdayChart = new Chart(drinkWeekdayCanvas, {
+        type:'bar',
+        data:{
+          labels: weekdayLabels,
+          datasets:[{
+            label:'Drink day rate (%)',
+            data: drinkWeekdayRate,
+            backgroundColor:'rgba(245,199,89,0.45)',
+            borderColor:'rgba(245,199,89,0.9)',
+            borderWidth:1
+          }]
+        },
+        options:{
+          responsive:true,
+          plugins:{
+            legend:{ display:false },
+            tooltip:{
+              callbacks:{
+                label:(ctx)=>{
+                  const val = Number(ctx.raw);
+                  if (!Number.isFinite(val)) return 'No data';
+                  return `${val.toFixed(1)}% drink days`;
+                }
+              }
+            }
+          },
+          scales:{
+            y:{
+              beginAtZero:true,
+              min:0,
+              max:100,
+              ticks:{ callback:(v)=> `${v}%` }
             }
           }
         }

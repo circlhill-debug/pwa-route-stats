@@ -944,6 +944,8 @@ window.__sb = createSupabaseClient();
 
   // === Feature Flags (localStorage) ===
   let parserChart = null;
+  let sleepTrendChart = null;
+  let sleepWeekdayChart = null;
 
   // === Helpers ===
   const $ = id => document.getElementById(id);
@@ -1596,6 +1598,12 @@ const sleepDrinkCard = document.getElementById('sleepDrinkCard');
 const sleepDrinkNote = document.getElementById('sleepDrinkNote');
 const drinkWeekBadge = document.getElementById('drinkWeekBadge');
 const drinkWeekMeta = document.getElementById('drinkWeekMeta');
+const sleepWeekBadge = document.getElementById('sleepWeekBadge');
+const sleepWeekMeta = document.getElementById('sleepWeekMeta');
+const sleepRecentBadge = document.getElementById('sleepRecentBadge');
+const sleepRecentMeta = document.getElementById('sleepRecentMeta');
+const sleepTrendCanvas = document.getElementById('sleepTrendChart');
+const sleepWeekdayCanvas = document.getElementById('sleepWeekdayChart');
 let CURRENT_USER_ID = null;
 (async () => {
   try{
@@ -4190,12 +4198,21 @@ function getHourlyRateFromEval(){
     if (!sleepDrinkCard || !drinkWeekBadge) return;
     if (!FLAGS.sleepDrink){
       sleepDrinkCard.style.display = 'none';
+      if (sleepTrendChart && typeof sleepTrendChart.destroy === 'function'){
+        try{ sleepTrendChart.destroy(); }catch(_){ }
+      }
+      if (sleepWeekdayChart && typeof sleepWeekdayChart.destroy === 'function'){
+        try{ sleepWeekdayChart.destroy(); }catch(_){ }
+      }
+      sleepTrendChart = null;
+      sleepWeekdayChart = null;
       return;
     }
     sleepDrinkCard.style.display = '';
     const list = (rows || []).map(r=>{
+      const sleep = parseSleepFromWeatherString(r.weather_json || '');
       const drink = parseDrinkFromWeatherString(r.weather_json || '');
-      return { work_date: r.work_date, drink };
+      return { work_date: r.work_date, sleep, drink };
     }).filter(r=> r.work_date);
 
     const now = DateTime.now().setZone(ZONE);
@@ -4209,6 +4226,24 @@ function getHourlyRateFromEval(){
       if (d >= start && d <= end) weekDrinkDays.add(r.work_date);
     });
     const weekCount = weekDrinkDays.size;
+    const weekSleepValues = list
+      .filter(r=>{
+        if (r.sleep == null || !Number.isFinite(r.sleep)) return false;
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        return d.isValid && d >= start && d <= end;
+      })
+      .map(r=> Number(r.sleep));
+    const weekSleepAvg = weekSleepValues.length
+      ? (weekSleepValues.reduce((sum, v)=> sum + v, 0) / weekSleepValues.length)
+      : null;
+
+    const sleepLogged = list
+      .filter(r=> r.sleep != null && Number.isFinite(r.sleep))
+      .sort((a,b)=> String(a.work_date).localeCompare(String(b.work_date)));
+    const recentSleep = sleepLogged.slice(-14).map(r=> Number(r.sleep));
+    const recentSleepAvg = recentSleep.length
+      ? (recentSleep.reduce((sum, v)=> sum + v, 0) / recentSleep.length)
+      : null;
 
     const weeksWithData = new Set();
     const drinkDaysAll = new Set();
@@ -4223,10 +4258,155 @@ function getHourlyRateFromEval(){
 
     drinkWeekBadge.textContent = `${weekCount}/7`;
     if (drinkWeekMeta) drinkWeekMeta.textContent = 'Drink days (this week)';
+    if (sleepWeekBadge){
+      sleepWeekBadge.textContent = weekSleepAvg != null ? `${weekSleepAvg.toFixed(1)}h` : '—';
+      sleepWeekBadge.title = weekSleepAvg != null ? `Average sleep this week: ${weekSleepAvg.toFixed(1)} hours` : 'No sleep values logged this week';
+    }
+    if (sleepWeekMeta) sleepWeekMeta.textContent = 'Avg sleep (this week)';
+    if (sleepRecentBadge){
+      sleepRecentBadge.textContent = recentSleepAvg != null ? `${recentSleepAvg.toFixed(1)}h` : '—';
+      sleepRecentBadge.title = recentSleepAvg != null ? `Average across last ${recentSleep.length} logged sleep entries` : 'No sleep values logged yet';
+    }
+    if (sleepRecentMeta) sleepRecentMeta.textContent = 'Avg sleep (last 14 logged)';
     if (sleepDrinkNote){
-      sleepDrinkNote.textContent = avg != null ? `Avg = ${avg.toFixed(1)} days per week.` : 'Avg = —';
+      const drinkText = avg != null ? `Drink avg: ${avg.toFixed(1)} days/week` : 'Drink avg: —';
+      const sleepText = recentSleep.length ? `Sleep logs: ${recentSleep.length} recent values` : 'Sleep logs: none yet';
+      sleepDrinkNote.textContent = `${drinkText} · ${sleepText}`;
     }
     drinkWeekBadge.title = avg != null ? `Avg = ${avg.toFixed(1)} days per week` : '';
+
+    if (typeof Chart === 'undefined'){
+      if (sleepDrinkNote){
+        sleepDrinkNote.textContent += ' · Chart.js missing';
+      }
+      return;
+    }
+
+    if (sleepTrendChart && typeof sleepTrendChart.destroy === 'function'){
+      try{ sleepTrendChart.destroy(); }catch(_){ }
+      sleepTrendChart = null;
+    }
+    if (sleepWeekdayChart && typeof sleepWeekdayChart.destroy === 'function'){
+      try{ sleepWeekdayChart.destroy(); }catch(_){ }
+      sleepWeekdayChart = null;
+    }
+
+    const cutoff = now.minus({ days:56 }).startOf('day');
+    const trendRows = sleepLogged
+      .map(r=>{
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        return { date: d, sleep: Number(r.sleep) };
+      })
+      .filter(r=> r.date.isValid && r.date >= cutoff)
+      .sort((a,b)=> a.date.toMillis() - b.date.toMillis());
+    const trendLabels = trendRows.map(r=> r.date.toFormat('LLL d'));
+    const trendValues = trendRows.map(r=> r.sleep);
+    const targetValues = trendRows.map(()=> 7.0);
+
+    if (sleepTrendCanvas){
+      sleepTrendChart = new Chart(sleepTrendCanvas, {
+        type:'line',
+        data:{
+          labels: trendLabels,
+          datasets:[
+            {
+              label:'Sleep (h)',
+              data: trendValues,
+              borderColor: '#4ea8de',
+              backgroundColor: 'rgba(78,168,222,0.2)',
+              tension:0.28,
+              fill:false,
+              pointRadius:2,
+              pointHoverRadius:3
+            },
+            {
+              label:'Target 7h',
+              data: targetValues,
+              borderColor:'rgba(245,199,89,0.9)',
+              borderDash:[4,4],
+              pointRadius:0,
+              tension:0,
+              fill:false
+            }
+          ]
+        },
+        options:{
+          responsive:true,
+          plugins:{
+            legend:{ display:true },
+            tooltip:{
+              callbacks:{
+                label:(ctx)=>{
+                  const val = Number(ctx.raw);
+                  if (!Number.isFinite(val)) return `${ctx.dataset.label}: —`;
+                  return `${ctx.dataset.label}: ${val.toFixed(1)}h`;
+                }
+              }
+            }
+          },
+          scales:{
+            y:{
+              beginAtZero:false,
+              min:2,
+              max:10,
+              ticks:{
+                callback:(v)=> `${v}h`
+              }
+            }
+          }
+        }
+      });
+    }
+
+    const weekdaySlots = Array.from({ length:7 }, ()=> ({ sum:0, count:0 }));
+    const weekdayCutoff = now.minus({ days:120 }).startOf('day');
+    sleepLogged.forEach(r=>{
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      if (!d.isValid || d < weekdayCutoff) return;
+      const idx = (d.weekday + 6) % 7;
+      weekdaySlots[idx].sum += Number(r.sleep);
+      weekdaySlots[idx].count += 1;
+    });
+    const weekdayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const weekdayData = weekdaySlots.map(slot => slot.count ? +(slot.sum / slot.count).toFixed(2) : null);
+
+    if (sleepWeekdayCanvas){
+      sleepWeekdayChart = new Chart(sleepWeekdayCanvas, {
+        type:'bar',
+        data:{
+          labels: weekdayLabels,
+          datasets:[{
+            label:'Avg sleep (h)',
+            data: weekdayData,
+            backgroundColor:'rgba(111,207,151,0.55)',
+            borderColor:'rgba(111,207,151,0.9)',
+            borderWidth:1
+          }]
+        },
+        options:{
+          responsive:true,
+          plugins:{
+            legend:{ display:false },
+            tooltip:{
+              callbacks:{
+                label:(ctx)=>{
+                  const val = Number(ctx.raw);
+                  if (!Number.isFinite(val)) return 'No data';
+                  return `Avg: ${val.toFixed(2)}h`;
+                }
+              }
+            }
+          },
+          scales:{
+            y:{
+              beginAtZero:true,
+              suggestedMax:10,
+              ticks:{ callback:(v)=> `${v}h` }
+            }
+          }
+        }
+      });
+    }
   }
 
   try{

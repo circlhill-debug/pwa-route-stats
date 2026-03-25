@@ -1640,8 +1640,16 @@
     <div class="row" style="gap:12px;align-items:center;flex-wrap:wrap">
       <span class="pill" id="drinkWeekBadge">—</span>
       <small class="muted" id="drinkWeekMeta">Drink days (this week)</small>
+      <span class="pill" id="sleepWeekBadge">—</span>
+      <small class="muted" id="sleepWeekMeta">Avg sleep (this week)</small>
+      <span class="pill" id="sleepRecentBadge">—</span>
+      <small class="muted" id="sleepRecentMeta">Avg sleep (last 14 logged)</small>
     </div>
-    <div class="sparkline-labels" id="sleepDrinkNote">Sleep tracking chart coming soon.</div>
+    <div class="sparkline-labels" id="sleepDrinkNote">—</div>
+    <div class="sparkline-labels" style="margin-top:8px">Sleep trend (last 8 weeks)</div>
+    <canvas id="sleepTrendChart" height="140"></canvas>
+    <div class="sparkline-labels" style="margin-top:10px">Sleep by weekday (last 120d)</div>
+    <canvas id="sleepWeekdayChart" height="120"></canvas>
   </section>
  
   

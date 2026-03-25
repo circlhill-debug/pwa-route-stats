@@ -103,6 +103,18 @@ function minutesFromValue(value) {
   return Math.round(num);
 }
 
+function normalizeDurationMinutes(value, options = {}) {
+  const minutes = minutesFromValue(value);
+  if (!Number.isFinite(minutes)) return null;
+  const hourLikeThreshold = Number.isFinite(Number(options.hourLikeThreshold))
+    ? Number(options.hourLikeThreshold)
+    : 24;
+  // Backward compatibility: some legacy snapshots stored hours in *_time fields.
+  // If value looks like plausible hours, normalize to minutes.
+  if (minutes > 0 && minutes <= hourLikeThreshold) return Math.round(minutes * 60);
+  return minutes;
+}
+
 function normalizeSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== 'object') return null;
   const isoSource = snapshot.iso || snapshot.date || snapshot.work_date || snapshot.workDate;
@@ -112,21 +124,21 @@ function normalizeSnapshot(snapshot) {
   const weekdayCandidate = Number(snapshot.weekday);
   const weekday = Number.isFinite(weekdayCandidate) ? weekdayCandidate : (Number.isNaN(dt.getTime()) ? null : dt.getDay());
   const totalTime =
-    minutesFromValue(
+    normalizeDurationMinutes(
       snapshot.totalTime ??
         snapshot.total_time ??
         snapshot.total_minutes ??
         snapshot.totalMinutes ??
         snapshot.total
-    ) ??
+    , { hourLikeThreshold: 16 }) ??
     (Number.isFinite(snapshot.hours) ? Math.round(Number(snapshot.hours) * 60) : null);
   const officeTime =
-    minutesFromValue(
+    normalizeDurationMinutes(
       snapshot.officeTime ??
         snapshot.office_time ??
         snapshot.office_minutes ??
         snapshot.officeMinutes
-    ) ??
+    , { hourLikeThreshold: 12 }) ??
     (Number.isFinite(snapshot.office_hours) ? Math.round(Number(snapshot.office_hours) * 60) : null);
   const endTime = snapshot.endTime || snapshot.end_time || snapshot.return_time || null;
   let tags = [];

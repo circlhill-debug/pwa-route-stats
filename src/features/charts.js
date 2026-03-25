@@ -1339,7 +1339,7 @@ export function createCharts({
       pill('Avg hours', avgH, v=> v==null?'—':(Math.round(v*100)/100).toFixed(2)),
       pill('Avg parcels', avgP, v=> v==null?'—':Math.round(v)),
       pill('Avg letters', avgL, v=> v==null?'—':Math.round(v)),
-      pill('Avg route min', avgR, v=> v==null?'—':Math.round(v))
+      pill('Avg route h', avgR, v=> v==null?'—':Number(v).toFixed(2))
     ].join('');
     const available = filtered.length;
     const lastCount = (selN && +selN.value) || +(localStorage.getItem('routeStats.qf.lastN')||12) || 12;

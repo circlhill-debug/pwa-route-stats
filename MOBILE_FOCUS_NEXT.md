@@ -43,10 +43,20 @@ After **every commit** that changes Focus Mode behavior, immediately update this
 
 If a commit is made and this file is not updated, treat it as process debt and fix it in the next commit.
 
+## Branch Sync Rule (Main Hotfixes)
+
+When a production hotfix is made on `main`, sync it into mobile dev branch immediately:
+- Step 1: Commit + push hotfix on `main`.
+- Step 2: Switch to `dev/mobile-focus-integrated`.
+- Step 3: Bring hotfix in via one of:
+  - `git merge origin/main` (when taking all recent main updates), or
+  - `git cherry-pick <hotfix_commit>` (when only one/few fixes are needed).
+
+This keeps production stable and prevents mobile branch drift.
+
 ## Recent Updates
 
 - 2026-03-24: Created tracker and locked current three priorities:
   1) Insights curation,
   2) Week Full vs Drill curation,
   3) Gesture-first mode with arrows optional.
-

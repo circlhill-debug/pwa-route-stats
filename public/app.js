@@ -5667,6 +5667,28 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var dConn = $("dConn");
   var dAuth = $("dAuth");
   var dWrite = $("dWrite");
+  function syncTopOverlayOffsets() {
+    try {
+      const diagEl = document.getElementById("diag");
+      if (!diagEl) return;
+      const evalTag = document.getElementById("uspsEvalTag");
+      const verTag = document.getElementById("verTag");
+      const diagHeight = Math.max(24, Math.ceil(diagEl.getBoundingClientRect().height || 24));
+      if (evalTag) evalTag.style.top = `${diagHeight + 6}px`;
+      if (verTag) verTag.style.top = `${Math.max(4, Math.round((diagHeight - 14) / 2))}px`;
+    } catch (_) {
+    }
+  }
+  var queueSyncTopOverlayOffsets = /* @__PURE__ */ (() => {
+    let rafId = 0;
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        syncTopOverlayOffsets();
+      });
+    };
+  })();
   function updateModelScopeBadge() {
     const el = document.getElementById("modelScopeBadge");
     if (!el) return;
@@ -5715,6 +5737,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       if (!tag) return;
       if (!FLAGS.uspsEval) {
         tag.style.display = "none";
+        queueSyncTopOverlayOffsets();
         return;
       }
       const cfg = USPS_EVAL || loadEval();
@@ -5730,6 +5753,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         var _a5;
         return (_a5 = document.getElementById("btnSettings")) == null ? void 0 : _a5.click();
       };
+      queueSyncTopOverlayOffsets();
     } catch (_) {
     }
   }
@@ -6944,15 +6968,16 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (diag) {
       const extraTxt = extraHours ? ` \xB7 <b>Extra:</b> ${trip.actualMinutes.toFixed(0)}m (${extraPaidMinutes.toFixed(0)}m paid)` : "";
       const breakTxt = breakHours ? ` \xB7 <b>Break:</b> ${breakMinutesVal.toFixed(0)}m` : "";
-      const compactFocus = shouldShowMobileFocusShell();
-      if (compactFocus) {
-        diag.innerHTML = `ROUTE STATS \xB7 <b>Off:</b> ${off != null ? off : "\u2014"}h \xB7 <b>Route:</b> ${rte != null ? rte : "\u2014"}h \xB7 <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
+      const compactMobile = typeof isMobileFocusViewport === "function" ? isMobileFocusViewport() : window.innerWidth <= 900;
+      if (compactMobile) {
+        diag.innerHTML = `ROUTE STATS \xB7 <b>Route:</b> ${rte != null ? rte : "\u2014"}h \xB7 <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
       } else {
         diag.innerHTML = `ROUTE STATS \xB7 Supabase: <b id="dConn">${dConn.textContent}</b> \xB7 Auth: <b id="dAuth">${dAuth.textContent}</b> \xB7 Write: <b id="dWrite">${dWrite.textContent}</b> \xB7 <b>Off:</b> ${off != null ? off : "\u2014"}h \xB7 <b>Route:</b> ${rte != null ? rte : "\u2014"}h \xB7 <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
       }
       if (breakTxt) diag.innerHTML += breakTxt;
       diag.innerHTML += ' <button id="btnBackToFocusTop" class="btn" type="button" style="display:none;margin-left:8px;padding:3px 10px;font-size:11px;line-height:1.2">Back to Focus</button>';
       applyMobileFocusShell();
+      queueSyncTopOverlayOffsets();
     }
     return tot;
   }
@@ -10319,6 +10344,9 @@ Score: ${overallScore}/10 (higher is better)`;
     enable("tileAdvLetters", "advLettersDetails", "closeAdvLettersDetails");
   })();
   bindMobileFocusShell();
+  window.addEventListener("resize", queueSyncTopOverlayOffsets);
+  window.addEventListener("orientationchange", queueSyncTopOverlayOffsets);
+  window.addEventListener("load", queueSyncTopOverlayOffsets);
   (async () => {
     $("date").value = todayStr();
     await loadByDate();
@@ -10342,6 +10370,7 @@ Score: ${overallScore}/10 (higher is better)`;
     applyRecentEntriesAutoCollapse();
     applyFocusMode();
     applyMobileFocusShell();
+    queueSyncTopOverlayOffsets();
   })();
   console.log("Route Stats loaded \u2014", VERSION_TAG);
   window.__sb.auth.getUser().then(async ({ data, error }) => {

@@ -1,5 +1,10 @@
 # NEXT
 
+Tracking note:
+- `NEXT.md` is the source-of-truth tracker for `main` app work.
+- `MOBILE_FOCUS_NEXT.md` is the source-of-truth tracker for Focus Mode mobile branch work.
+- Process rule: after any commit that changes behavior in either track, update the corresponding tracker in the same commit (or immediate follow-up).
+
 Milestone tag: v2.0.4-phase3-qf
 
 Snapshot note (Oct 25, 2025): modular baseline captured after diagnostics + AI summary extraction (`refactor/modularize-ui` branch — "v2025-10-25_modular-baseline").

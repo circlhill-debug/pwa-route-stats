@@ -1038,6 +1038,13 @@
     if (!Number.isFinite(num)) return null;
     return Math.round(num);
   }
+  function normalizeDurationMinutes(value, options = {}) {
+    const minutes = minutesFromValue(value);
+    if (!Number.isFinite(minutes)) return null;
+    const hourLikeThreshold = Number.isFinite(Number(options.hourLikeThreshold)) ? Number(options.hourLikeThreshold) : 24;
+    if (minutes > 0 && minutes <= hourLikeThreshold) return Math.round(minutes * 60);
+    return minutes;
+  }
   function normalizeSnapshot(snapshot) {
     var _a5, _b, _c, _d, _e, _f, _g, _h, _i;
     if (!snapshot || typeof snapshot !== "object") return null;
@@ -1047,11 +1054,13 @@
     const dt = new Date(iso);
     const weekdayCandidate = Number(snapshot.weekday);
     const weekday = Number.isFinite(weekdayCandidate) ? weekdayCandidate : Number.isNaN(dt.getTime()) ? null : dt.getDay();
-    const totalTime = (_e = minutesFromValue(
-      (_d = (_c = (_b = (_a5 = snapshot.totalTime) != null ? _a5 : snapshot.total_time) != null ? _b : snapshot.total_minutes) != null ? _c : snapshot.totalMinutes) != null ? _d : snapshot.total
+    const totalTime = (_e = normalizeDurationMinutes(
+      (_d = (_c = (_b = (_a5 = snapshot.totalTime) != null ? _a5 : snapshot.total_time) != null ? _b : snapshot.total_minutes) != null ? _c : snapshot.totalMinutes) != null ? _d : snapshot.total,
+      { hourLikeThreshold: 16 }
     )) != null ? _e : Number.isFinite(snapshot.hours) ? Math.round(Number(snapshot.hours) * 60) : null;
-    const officeTime = (_i = minutesFromValue(
-      (_h = (_g = (_f = snapshot.officeTime) != null ? _f : snapshot.office_time) != null ? _g : snapshot.office_minutes) != null ? _h : snapshot.officeMinutes
+    const officeTime = (_i = normalizeDurationMinutes(
+      (_h = (_g = (_f = snapshot.officeTime) != null ? _f : snapshot.office_time) != null ? _g : snapshot.office_minutes) != null ? _h : snapshot.officeMinutes,
+      { hourLikeThreshold: 12 }
     )) != null ? _i : Number.isFinite(snapshot.office_hours) ? Math.round(Number(snapshot.office_hours) * 60) : null;
     const endTime = snapshot.endTime || snapshot.end_time || snapshot.return_time || null;
     let tags = [];
@@ -4291,7 +4300,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         pill("Avg hours", avgH, (v) => v == null ? "\u2014" : (Math.round(v * 100) / 100).toFixed(2)),
         pill("Avg parcels", avgP, (v) => v == null ? "\u2014" : Math.round(v)),
         pill("Avg letters", avgL, (v) => v == null ? "\u2014" : Math.round(v)),
-        pill("Avg route min", avgR, (v) => v == null ? "\u2014" : Math.round(v))
+        pill("Avg route h", avgR, (v) => v == null ? "\u2014" : Number(v).toFixed(2))
       ].join("");
       const available = filtered.length;
       const lastCount = selN && +selN.value || +(localStorage.getItem("routeStats.qf.lastN") || 12) || 12;

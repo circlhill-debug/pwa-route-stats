@@ -1,6 +1,6 @@
 # MOBILE_FOCUS_NEXT
 
-Branch target: `feature/focus-mode-mobile-shell`
+Branch target: `dev/mobile-focus-integrated`
 
 Purpose: keep the Focus Mode mobile track explicit, testable, and synced with `main` direction.
 
@@ -56,6 +56,22 @@ This keeps production stable and prevents mobile branch drift.
 
 ## Recent Updates
 
+- 2026-04-14: Shelving mobile work temporarily.
+  1) Branch to resume from: `dev/mobile-focus-integrated`.
+  2) Last active focus: page-first polish for `Exceptions & Signals` plus improved insight density/title cleanup.
+  3) Next pickup: validate `Exceptions & Signals` on iPhone, then propagate approved tile-based visual pattern to `Week Pulse`, `Daily Movers`, `Efficiency Lens`, and `Milestones`.
+- 2026-03-28: Exceptions & Signals page-first polish pass:
+  1) Insights header is now single-line context (`Insights: <Page>`), removing duplicate stacked title feel.
+  2) Exceptions top metrics are mini-tile buttons with quick drill actions; added top-reason badges with count + percent.
+  3) Delta coloring now targets only arrow/percent indicators (not whole row text); renamed Efficiency label to `Office Time`.
+- 2026-03-26: Phase 2A visual density pass for iPhone Focus shell:
+  1) Hide model strip outside Focus home (`today/quick`) to reclaim viewport space in detail pages.
+  2) Remove duplicate large Insights top title; keep only in-page insights title.
+  3) Increase insights text scale and compress bottom action buttons; add trend color cues for up/down rows.
+- 2026-03-25: Implemented Phase 2A Insights shell rewrite in Focus Mode:
+  1) New 5-page flow: Daily Movers, Week Pulse, Efficiency Lens, Milestones, Exceptions & Signals.
+  2) Added new per-page metric wiring and retained diagnostics/day-compare Lite drill entry points.
+  3) Updated insight nav labels and deep links to Today/Week/Milestone/Day Compare destinations.
 - 2026-03-24: Created tracker and locked current three priorities:
   1) Insights curation,
   2) Week Full vs Drill curation,

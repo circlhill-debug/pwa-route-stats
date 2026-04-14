@@ -6292,6 +6292,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var focusInsightDrillBody = document.getElementById("focusInsightDrillBody");
   var focusOpenDiagLite = document.getElementById("focusOpenDiagLite");
   var focusOpenCompareLite = document.getElementById("focusOpenCompareLite");
+  var focusExceptionTopOutlierTile = document.getElementById("focusExceptionTopOutlierTile");
+  var focusExceptionTopTagTile = document.getElementById("focusExceptionTopTagTile");
   var focusTodayTitle = document.getElementById("focusTodayTitle");
   var focusTodayPrev = document.getElementById("focusTodayPrev");
   var focusTodayNext = document.getElementById("focusTodayNext");
@@ -6309,7 +6311,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var focusEntryNavNodes = Array.from(document.querySelectorAll("#focusShell .focus-entry-nav [data-entry-page]"));
   var MOBILE_FOCUS_MAX_WIDTH = 900;
   var FOCUS_PAGE_ORDER = ["today", "week", "entry", "insights"];
-  var FOCUS_INSIGHT_ORDER = ["movers", "todayHeaviness", "weekHeaviness", "diagnostics", "dayCompare"];
+  var FOCUS_INSIGHT_ORDER = ["dailyMovers", "weekPulse", "efficiency", "milestones", "exceptions"];
   var FOCUS_TODAY_ORDER = ["quick", "full", "detail"];
   var FOCUS_WEEK_ORDER = ["quick", "full", "drill"];
   var FOCUS_ENTRY_ORDER = ["quick", "form", "validate"];
@@ -6320,11 +6322,11 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     insights: "Insights"
   };
   var FOCUS_INSIGHT_LABELS = {
-    movers: "Weekly Movers",
-    todayHeaviness: "Heaviness Today",
-    weekHeaviness: "Heaviness Week",
-    diagnostics: "Diagnostics",
-    dayCompare: "Day Compare"
+    dailyMovers: "Daily Movers",
+    weekPulse: "Week Pulse",
+    efficiency: "Efficiency Lens",
+    milestones: "Milestones",
+    exceptions: "Exceptions & Signals"
   };
   var FOCUS_TODAY_LABELS = {
     quick: "Quick",
@@ -6347,7 +6349,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var focusTodayPage = "quick";
   var focusWeekPage = "quick";
   var focusEntryPage = "quick";
-  var focusInsightPage = "movers";
+  var focusInsightPage = "dailyMovers";
   var focusInsightDrillMode = null;
   var focusBackStack = [];
   var lastFocusStateBeforeExit = null;
@@ -9514,7 +9516,7 @@ Score: ${overallScore}/10 (higher is better)`;
       today: FOCUS_TODAY_ORDER.includes(focusTodayPage) ? focusTodayPage : "quick",
       week: FOCUS_WEEK_ORDER.includes(focusWeekPage) ? focusWeekPage : "quick",
       entry: FOCUS_ENTRY_ORDER.includes(focusEntryPage) ? focusEntryPage : "quick",
-      insight: FOCUS_INSIGHT_ORDER.includes(focusInsightPage) ? focusInsightPage : "movers",
+      insight: FOCUS_INSIGHT_ORDER.includes(focusInsightPage) ? focusInsightPage : "dailyMovers",
       insightDrill: focusInsightDrillMode || null
     };
   }
@@ -9539,7 +9541,7 @@ Score: ${overallScore}/10 (higher is better)`;
         today: FOCUS_TODAY_ORDER.includes(parsed.today) ? parsed.today : "quick",
         week: FOCUS_WEEK_ORDER.includes(parsed.week) ? parsed.week : "quick",
         entry: FOCUS_ENTRY_ORDER.includes(parsed.entry) ? parsed.entry : "quick",
-        insight: FOCUS_INSIGHT_ORDER.includes(parsed.insight) ? parsed.insight : "movers",
+        insight: FOCUS_INSIGHT_ORDER.includes(parsed.insight) ? parsed.insight : "dailyMovers",
         insightDrill: parsed.insightDrill === "diagnostics" || parsed.insightDrill === "dayCompare" ? parsed.insightDrill : null
       };
     } catch (_) {
@@ -9562,7 +9564,7 @@ Score: ${overallScore}/10 (higher is better)`;
     focusTodayPage = FOCUS_TODAY_ORDER.includes(state.today) ? state.today : "quick";
     focusWeekPage = FOCUS_WEEK_ORDER.includes(state.week) ? state.week : "quick";
     focusEntryPage = FOCUS_ENTRY_ORDER.includes(state.entry) ? state.entry : "quick";
-    focusInsightPage = FOCUS_INSIGHT_ORDER.includes(state.insight) ? state.insight : "movers";
+    focusInsightPage = FOCUS_INSIGHT_ORDER.includes(state.insight) ? state.insight : "dailyMovers";
     focusInsightDrillMode = state.insightDrill === "diagnostics" || state.insightDrill === "dayCompare" ? state.insightDrill : null;
     setMobileFocusShellPage(focusShellPage, { persist: false });
     if (focusShellPage === "today") {
@@ -9747,7 +9749,7 @@ Score: ${overallScore}/10 (higher is better)`;
   }
   function setMobileFocusInsightPage(nextPage, options = {}) {
     const { persist = true } = options;
-    const page = FOCUS_INSIGHT_ORDER.includes(nextPage) ? nextPage : "movers";
+    const page = FOCUS_INSIGHT_ORDER.includes(nextPage) ? nextPage : "dailyMovers";
     focusInsightPage = page;
     focusInsightPageNodes.forEach((node) => {
       var _a5;
@@ -9760,7 +9762,7 @@ Score: ${overallScore}/10 (higher is better)`;
       node.classList.toggle("active", !!active);
       node.setAttribute("aria-pressed", active ? "true" : "false");
     });
-    if (focusInsightTitle) focusInsightTitle.textContent = FOCUS_INSIGHT_LABELS[page] || "Insights";
+    if (focusInsightTitle) focusInsightTitle.textContent = `Insights: ${FOCUS_INSIGHT_LABELS[page] || "Insights"}`;
     setMobileFocusInsightDrill(null, { persist: false });
     if (persist) persistMobileFocusState();
   }
@@ -9780,7 +9782,12 @@ Score: ${overallScore}/10 (higher is better)`;
   function buildInsightList(items, emptyText) {
     const safeItems = (items || []).filter(Boolean);
     if (!safeItems.length) return `<small class="muted">${escapeFocusHtml(emptyText || "No data yet.")}</small>`;
-    return `<ul class="focus-lite-list">${safeItems.map((item) => `<li>${item}</li>`).join("")}</ul>`;
+    const html = safeItems.map((item) => {
+      const raw = String(item || "");
+      const withArrowColor = raw.replace(/(↑\s*\d+(?:\.\d+)?%?)/g, '<span class="focus-delta-up">$1</span>').replace(/(↓\s*\d+(?:\.\d+)?%?)/g, '<span class="focus-delta-down">$1</span>');
+      return `<li>${withArrowColor}</li>`;
+    }).join("");
+    return `<ul class="focus-lite-list">${html}</ul>`;
   }
   function updateMobileFocusShellData() {
     var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
@@ -9837,65 +9844,166 @@ Score: ${overallScore}/10 (higher is better)`;
     const hoursDeltaText = readTextValue("wkHoursDelta");
     const parcelsDeltaText = readTextValue("wkParcelsDelta");
     const lettersDeltaText = readTextValue("wkLettersDelta");
-    const movers = [
+    const sourceRows = (window.__rawRows || allRows || []).filter((r) => r && r.work_date && r.status !== "off").sort((a, b) => String(a.work_date).localeCompare(String(b.work_date)));
+    const latest = sourceRows.length ? sourceRows[sourceRows.length - 1] : null;
+    const previous = sourceRows.length > 1 ? sourceRows[sourceRows.length - 2] : null;
+    const fmtChange = (current, prior, digits = 0, suffix = "") => {
+      if (!Number.isFinite(current) || !Number.isFinite(prior)) return "\u2014";
+      const delta = current - prior;
+      const pct = prior !== 0 ? delta / prior * 100 : null;
+      const abs = Math.abs(delta).toFixed(digits);
+      const sign = delta >= 0 ? "\u2191" : "\u2193";
+      const pctTxt = Number.isFinite(pct) ? ` (${sign} ${Math.abs(Math.round(pct))}%)` : "";
+      return `${current.toFixed(digits)}${suffix} vs ${prior.toFixed(digits)}${suffix} (${sign} ${abs}${suffix}${pctTxt})`;
+    };
+    const currentRoute = latest ? routeAdjustedHours(latest) : null;
+    const priorRoute = previous ? routeAdjustedHours(previous) : null;
+    const currentOffice = latest ? Number(latest.office_minutes || 0) : null;
+    const priorOffice = previous ? Number(previous.office_minutes || 0) : null;
+    const currentTotal = latest ? Number(latest.hours || 0) : null;
+    const priorTotal = previous ? Number(previous.hours || 0) : null;
+    const currentParcels = latest ? Number(latest.parcels || 0) : null;
+    const priorParcels = previous ? Number(previous.parcels || 0) : null;
+    const currentLetters = latest ? Number(latest.letters || 0) : null;
+    const priorLetters = previous ? Number(previous.letters || 0) : null;
+    const dailyItems = [
+      `<b>Total h:</b> ${escapeFocusHtml(fmtChange(currentTotal, priorTotal, 2, "h"))}`,
+      `<b>Route h:</b> ${escapeFocusHtml(fmtChange(currentRoute, priorRoute, 2, "h"))}`,
+      `<b>Office h:</b> ${escapeFocusHtml(fmtChange(currentOffice, priorOffice, 2, "h"))}`,
+      `<b>Parcels:</b> ${escapeFocusHtml(fmtChange(currentParcels, priorParcels, 0, ""))}`,
+      `<b>Letters:</b> ${escapeFocusHtml(fmtChange(currentLetters, priorLetters, 0, ""))}`
+    ];
+    setFocusHtml("fsInsightDailyMovers", buildInsightList(dailyItems, "Need at least 2 worked days."));
+    const now = DateTime.now().setZone(ZONE);
+    const wkStart = startOfWeekMonday(now);
+    const daySpan = now.weekday;
+    const prevWkStart = wkStart.minus({ days: 7 });
+    const prevWkEndSame = prevWkStart.plus({ days: daySpan - 1 }).endOf("day");
+    const inRange = (d, from, to) => d >= from.startOf("day") && d <= to.endOf("day");
+    const thisWeekRows = sourceRows.filter((r) => {
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      return d.isValid && inRange(d, wkStart, now);
+    });
+    const lastWeekRows = sourceRows.filter((r) => {
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      return d.isValid && inRange(d, prevWkStart, prevWkEndSame);
+    });
+    const sumBy = (arr, fn) => arr.reduce((t, row) => t + (Number(fn(row)) || 0), 0);
+    const thisOffice = sumBy(thisWeekRows, (r) => r.office_minutes);
+    const lastOffice = sumBy(lastWeekRows, (r) => r.office_minutes);
+    const officePulse = fmtChange(thisOffice, lastOffice, 2, "h");
+    const biggestMover = [
       { label: "Hours", delta: parseSignedPercent(hoursDeltaText), text: hoursDeltaText },
       { label: "Parcels", delta: parseSignedPercent(parcelsDeltaText), text: parcelsDeltaText },
       { label: "Letters", delta: parseSignedPercent(lettersDeltaText), text: lettersDeltaText }
-    ];
-    const biggestMover = [...movers].filter((m) => m && m.delta != null).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0] || null;
-    const moversItems = movers.map((m) => {
-      const txt = (m == null ? void 0 : m.text) && m.text !== "\u2014" ? m.text : "\u2014";
-      return `<b>${escapeFocusHtml(m.label)}</b>: ${escapeFocusHtml(txt)}`;
-    });
-    if (biggestMover) {
-      const direction = biggestMover.delta > 0 ? "up" : biggestMover.delta < 0 ? "down" : "flat";
-      moversItems.unshift(`<b>Biggest mover:</b> ${escapeFocusHtml(biggestMover.label)} ${direction} ${escapeFocusHtml(biggestMover.text)}`);
-    }
-    setFocusHtml("fsInsightMovers", buildInsightList(moversItems, "No major movers yet."));
-    const todayHeavinessText = compactText((((_k = document.getElementById("todayHeaviness")) == null ? void 0 : _k.textContent) || "").replace(/\s+/g, " ").trim(), 80);
-    const todayItems = [
-      `<b>Heaviness:</b> ${escapeFocusHtml(todayHeavinessText || "\u2014")}`,
-      `<b>Office \u0394:</b> ${escapeFocusHtml(readTextValue("todayOfficeDelta"))}`,
-      `<b>Parcels \u0394:</b> ${escapeFocusHtml(readTextValue("todayParcelsDelta"))}`,
-      `<b>Letters \u0394:</b> ${escapeFocusHtml(readTextValue("todayLettersDelta"))}`,
-      `<b>Expected End:</b> ${escapeFocusHtml(readTextValue("expEnd"))}`
-    ];
-    setFocusHtml("fsInsightTodayHeaviness", buildInsightList(todayItems, "No worked day selected yet."));
-    const weekHeavinessText = compactText((((_l = document.getElementById("weekHeaviness")) == null ? void 0 : _l.textContent) || "").replace(/\s+/g, " ").trim(), 80);
-    const weekItems = [
-      `<b>Heaviness:</b> ${escapeFocusHtml(weekHeavinessText || "\u2014")}`,
+    ].filter((item) => item.delta != null).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
+    const weekPulseItems = [
       `<b>Hours:</b> ${escapeFocusHtml(readTextValue("wkHours"))} (${escapeFocusHtml(hoursDeltaText)})`,
-      `<b>Volume pressure:</b> Parcels ${escapeFocusHtml(parcelsDeltaText)} \xB7 Letters ${escapeFocusHtml(lettersDeltaText)}`,
-      `<b>Extra trip:</b> ${escapeFocusHtml(readTextValue("extraTimeWeekVal"))} \xB7 ${escapeFocusHtml(readTextValue("extraPayoutWeekVal"))}`,
-      `<b>Route eval:</b> ${escapeFocusHtml(readTextValue("uspsRouteEffVal"))}`
+      `<b>Parcels:</b> ${escapeFocusHtml(readTextValue("wkParcels"))} (${escapeFocusHtml(parcelsDeltaText)})`,
+      `<b>Letters:</b> ${escapeFocusHtml(readTextValue("wkLetters"))} (${escapeFocusHtml(lettersDeltaText)})`,
+      `<b>Office h:</b> ${escapeFocusHtml(officePulse)}`,
+      `<b>Route eval:</b> ${escapeFocusHtml(compactText(readTextValue("evalPrimaryDelta") || readTextValue("uspsRouteEffVal"), 46))}`,
+      biggestMover ? `<b>Trend:</b> ${escapeFocusHtml(biggestMover.label)} driving this week (${biggestMover.text})` : "<b>Trend:</b> steady"
     ];
-    setFocusHtml("fsInsightWeekHeaviness", buildInsightList(weekItems, "Need this week and last week data."));
-    setFocusText("fsInsightDiagModel", compactText(readTextValue("diagModelBadge")));
-    setFocusText("fsInsightDiagStatus", compactText(readTextValue("diagSummary"), 44));
-    const diagRows = Array.from(document.querySelectorAll("#diagTableBody tr")).slice(0, 2);
+    setFocusHtml("fsInsightWeekPulse", buildInsightList(weekPulseItems, "Need this week and prior-week data."));
+    const bpText = compactText(readTextValue("lm-bp") || readTextValue("badgeRouteEff"), 20);
+    const blText = compactText(readTextValue("lm-bl") || "\u2014", 20);
+    const officeIndicator = compactText(readTextValue("todayOfficeDelta") || "\u2014", 28);
+    setFocusText("fsInsightEfficiencyRoute", bpText || "\u2014");
+    setFocusText("fsInsightEfficiencyOffice", officeIndicator || "\u2014");
+    const weight = typeof getLetterWeightModel === "function" ? getLetterWeightModel(sourceRows) : 0.01;
+    const recentComparable = sourceRows.slice(-35).map((r) => {
+      const routeH2 = routeAdjustedHours(r);
+      const vol = combinedVolume(Number(r.parcels || 0), Number(r.letters || 0), weight);
+      const minPerVol = routeH2 > 0 && vol > 0 ? routeH2 * 60 / vol : null;
+      return { iso: r.work_date, minPerVol };
+    }).filter((r) => Number.isFinite(r.minPerVol)).sort((a, b) => a.minPerVol - b.minPerVol)[0] || null;
+    const effItems = [
+      `<b>min/parcel:</b> ${escapeFocusHtml(bpText || "\u2014")}`,
+      `<b>min/letter:</b> ${escapeFocusHtml(blText || "\u2014")}`,
+      `<b>Route efficiency score:</b> ${escapeFocusHtml(readTextValue("badgeRouteEff"))}`,
+      `<b>Office time:</b> ${escapeFocusHtml(officeIndicator || "\u2014")}`,
+      `<b>Best recent comparable day:</b> ${escapeFocusHtml(recentComparable ? `${recentComparable.iso} (${recentComparable.minPerVol.toFixed(2)} min/vol)` : "\u2014")}`
+    ];
+    setFocusHtml("fsInsightEfficiency", buildInsightList(effItems, "Not enough comparable rows yet."));
+    const yearNow = now.year;
+    const ytdRows = sourceRows.filter((r) => {
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      return d.isValid && d.year === yearNow && d <= now.endOf("day");
+    });
+    const ytdHours = sumBy(ytdRows, (r) => r.hours);
+    const ytdParcels = sumBy(ytdRows, (r) => r.parcels);
+    const ytdLetters = sumBy(ytdRows, (r) => r.letters);
+    const ytdMis = sumBy(ytdRows, (r) => r.misdelivery_count);
+    const misRate = ytdParcels > 0 ? ytdMis / ytdParcels * 100 : null;
+    const totals = getStored("routeStats.yearlyTotals", {}) || {};
+    const targetPack = (totals == null ? void 0 : totals[yearNow]) || {};
+    const paceKey = ["hours", "parcels", "letters"].map((k) => {
+      const target = Number(targetPack[k]);
+      const current = Number({ hours: ytdHours, parcels: ytdParcels, letters: ytdLetters }[k]);
+      if (!Number.isFinite(target) || target <= 0 || !Number.isFinite(current)) return null;
+      const ratio = current / target;
+      if (ratio > 1.02) return `${k}: ahead`;
+      if (ratio < 0.98) return `${k}: off pace`;
+      return `${k}: on pace`;
+    }).filter(Boolean).join(" \xB7 ");
+    setFocusText("fsInsightMilestoneHours", `${ytdHours.toFixed(1)}h`);
+    setFocusText("fsInsightMilestoneParcels", `${Math.round(ytdParcels)}`);
+    const milestoneItems = [
+      `<b>YTD hours:</b> ${escapeFocusHtml(ytdHours.toFixed(2))}h`,
+      `<b>YTD parcels:</b> ${escapeFocusHtml(Math.round(ytdParcels).toString())}`,
+      `<b>YTD letters:</b> ${escapeFocusHtml(Math.round(ytdLetters).toString())}`,
+      `<b>Misdelivery rate:</b> ${escapeFocusHtml(misRate != null ? `${misRate.toFixed(2)}%` : "\u2014")}`,
+      `<b>Pace vs target:</b> ${escapeFocusHtml(paceKey || "Set yearly targets to enable pace status")}`
+    ];
+    setFocusHtml("fsInsightMilestones", buildInsightList(milestoneItems, "No YTD totals yet."));
+    const diagRows = Array.from(document.querySelectorAll("#diagTableBody tr")).slice(0, 3);
     const diagItems = diagRows.map((row) => {
-      var _a6, _b2;
+      var _a6, _b2, _c2;
       const cells = Array.from(row.querySelectorAll("td"));
       const dt = (((_a6 = cells[0]) == null ? void 0 : _a6.textContent) || "").trim();
       const delta = (((_b2 = cells[5]) == null ? void 0 : _b2.textContent) || "").trim();
+      const note = (((_c2 = cells[8]) == null ? void 0 : _c2.textContent) || "").trim();
       if (!dt && !delta) return null;
-      return `<b>${escapeFocusHtml(dt || "Day")}</b>: ${escapeFocusHtml(delta || "\u2014")}`;
+      return `<b>${escapeFocusHtml(dt || "Day")}</b>: ${escapeFocusHtml([delta, note].filter(Boolean).join(" \u2022 ") || "\u2014")}`;
     }).filter(Boolean);
-    setFocusHtml("fsInsightDiagTop", buildInsightList(diagItems, "No residual outliers yet."));
-    const compareLabel = readTextValue("dcSubjectLabel", "").trim();
-    const compareSummary = readTextValue("dcReasoning", "").trim();
-    setFocusText("fsInsightCompareLabel", compactText(compareLabel || "Ready"));
-    setFocusText("fsInsightCompareSummary", compactText(compareSummary || "Open Day Compare"));
-    const compareRows = Array.from(document.querySelectorAll("#dcTableBody tr")).slice(0, 3);
-    const compareItems = compareRows.map((row) => {
-      var _a6, _b2;
-      const cells = Array.from(row.querySelectorAll("td"));
-      const metric = (((_a6 = cells[0]) == null ? void 0 : _a6.textContent) || "").trim();
-      const delta = (((_b2 = cells[3]) == null ? void 0 : _b2.textContent) || "").trim();
-      if (!metric && !delta) return null;
-      return `<b>${escapeFocusHtml(metric || "Metric")}</b>: ${escapeFocusHtml(delta || "\u2014")}`;
-    }).filter(Boolean);
-    setFocusHtml("fsInsightCompareTop", buildInsightList(compareItems, "No compare deltas yet."));
+    const badgeHost = document.getElementById("fsInsightExceptionBadges");
+    const tagHistory = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("routeStats.tagHistory") || "[]");
+      } catch (_) {
+        return [];
+      }
+    })();
+    const tagCounts = /* @__PURE__ */ new Map();
+    (Array.isArray(tagHistory) ? tagHistory : []).forEach((entry) => {
+      ((entry == null ? void 0 : entry.tags) || []).forEach((tag) => {
+        const key = ((tag == null ? void 0 : tag.key) || (tag == null ? void 0 : tag.reason) || "misc").toString().toLowerCase();
+        tagCounts.set(key, (tagCounts.get(key) || 0) + 1);
+      });
+    });
+    const sortedTags = Array.from(tagCounts.entries()).sort((a, b) => b[1] - a[1]);
+    const topTag = sortedTags[0] || null;
+    const totalTagHits = sortedTags.reduce((t, [, count]) => t + count, 0);
+    if (badgeHost) {
+      if (!sortedTags.length) {
+        badgeHost.innerHTML = "";
+      } else {
+        badgeHost.innerHTML = sortedTags.slice(0, 4).map(([reason, count]) => {
+          const pct = totalTagHits > 0 ? Math.round(count / totalTagHits * 100) : 0;
+          return `<span class="focus-signal-badge">${escapeFocusHtml(reason)} <b>${count} \xB7 ${pct}%</b></span>`;
+        }).join("");
+      }
+    }
+    const holidayFlag = !!(FLAGS && FLAGS.holidayAdjustments);
+    setFocusText("fsInsightExceptionTop", compactText(((_l = (_k = diagRows[0]) == null ? void 0 : _k.querySelector("td")) == null ? void 0 : _l.textContent) || "\u2014", 24));
+    setFocusText("fsInsightExceptionTag", topTag ? `${topTag[0]} (${topTag[1]})` : "\u2014");
+    const exceptionItems = [
+      ...diagItems,
+      `<b>Common tag reason:</b> ${escapeFocusHtml(topTag ? `${topTag[0]} (${topTag[1]})` : "\u2014")}`,
+      `<b>Holiday/catch-up adjust:</b> ${holidayFlag ? "enabled" : "off"}`
+    ];
+    setFocusHtml("fsInsightExceptions", buildInsightList(exceptionItems, "No outlier stack yet."));
     renderFocusInsightDrill();
   }
   function setMobileFocusShellPage(nextPage, options = {}) {
@@ -9913,7 +10021,10 @@ Score: ${overallScore}/10 (higher is better)`;
       node.classList.toggle("active", !!active);
       node.setAttribute("aria-pressed", active ? "true" : "false");
     });
-    if (focusTitle) focusTitle.textContent = FOCUS_PAGE_LABELS[page] || "Focus";
+    if (focusTitle) {
+      focusTitle.textContent = FOCUS_PAGE_LABELS[page] || "Focus";
+      focusTitle.style.display = page === "insights" ? "none" : "";
+    }
     if (page === "insights") setMobileFocusInsightPage(focusInsightPage, { persist: false });
     else setMobileFocusInsightDrill(null, { persist: false });
     if (page === "today") setMobileFocusTodayPage(focusTodayPage, { persist: false });
@@ -10066,6 +10177,16 @@ Score: ${overallScore}/10 (higher is better)`;
       renderFocusInsightDrill();
     });
     focusOpenCompareLite == null ? void 0 : focusOpenCompareLite.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      setMobileFocusInsightDrill("dayCompare");
+      renderFocusInsightDrill();
+    });
+    focusExceptionTopOutlierTile == null ? void 0 : focusExceptionTopOutlierTile.addEventListener("click", () => {
+      pushMobileFocusHistory();
+      setMobileFocusInsightDrill("diagnostics");
+      renderFocusInsightDrill();
+    });
+    focusExceptionTopTagTile == null ? void 0 : focusExceptionTopTagTile.addEventListener("click", () => {
       pushMobileFocusHistory();
       setMobileFocusInsightDrill("dayCompare");
       renderFocusInsightDrill();

@@ -1005,6 +1005,7 @@
   body.focus-shell-on main.wrap > section:not(#focusShell){ display:none!important; }
   body.focus-shell-on #focusShell{ display:block!important; }
   body.focus-shell-on:not(.focus-home-chrome) header{ display:none!important; }
+  body.focus-shell-on:not(.focus-home-chrome) #liveModelStrip{ display:none!important; }
   .focus-shell{
     min-height:calc(100vh - 156px);
     display:flex;
@@ -1082,7 +1083,8 @@
   .focus-insight-page.active{ display:block; }
   .focus-insight-content{
     margin-top:6px;
-    font-size:13px;
+    font-size:14px;
+    line-height:1.45;
     color:var(--text);
   }
   .focus-insight-nav{
@@ -1120,10 +1122,55 @@
   .focus-lite-list{
     margin:0;
     padding-left:18px;
-    font-size:13px;
+    font-size:14px;
     color:var(--text);
   }
-  .focus-lite-list li{ margin:4px 0; }
+  .focus-lite-list li{ margin:5px 0; }
+  .focus-delta-up{ color:var(--good); font-weight:700; }
+  .focus-delta-down{ color:var(--bad); font-weight:700; }
+  .focus-exception-tiles .focus-kpi b{
+    font-size:1.2rem;
+    line-height:1.15;
+  }
+  .focus-kpi-button{
+    width:100%;
+    text-align:left;
+    cursor:pointer;
+    transition:transform .12s ease, border-color .12s ease, background .12s ease;
+  }
+  .focus-kpi-button:active{
+    transform:translateY(1px);
+    border-color:color-mix(in srgb, var(--brand) 65%, var(--border) 35%);
+    background:rgba(43,127,255,.12);
+  }
+  .focus-badge-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+  .focus-signal-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    border:1px solid var(--border);
+    border-radius:999px;
+    padding:4px 9px;
+    font-size:11px;
+    background:rgba(12,18,30,.2);
+  }
+  .focus-signal-badge b{
+    color:var(--brand-soft);
+    font-size:11px;
+  }
+  #focusPageInsights > .focus-actions{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:6px;
+  }
+  #focusPageInsights > .focus-actions .ghost{
+    padding:6px 8px;
+    font-size:11px;
+    border-radius:10px;
+  }
   .focus-today-head{
     display:flex;
     align-items:center;
@@ -1407,43 +1454,48 @@
     </div>
 
     <div id="focusPageInsights" class="focus-page" data-page="insights">
-      <small class="muted">Insights</small>
       <div class="focus-insights-head">
         <button id="focusInsightPrev" class="ghost" type="button" title="Previous insight">◀</button>
-        <div id="focusInsightTitle" class="focus-insights-title">Weekly Movers</div>
+        <div id="focusInsightTitle" class="focus-insights-title">Insights: Daily Movers</div>
         <button id="focusInsightNext" class="ghost" type="button" title="Next insight">▶</button>
       </div>
-      <div id="focusInsightMovers" class="focus-insight-page active" data-insight-page="movers">
-        <small class="muted">Weekly Movers</small>
-        <div id="fsInsightMovers" class="focus-insight-content">—</div>
+      <div id="focusInsightDailyMovers" class="focus-insight-page active" data-insight-page="dailyMovers">
+        <small class="muted">Daily Movers</small>
+        <div id="fsInsightDailyMovers" class="focus-insight-content">—</div>
       </div>
-      <div id="focusInsightTodayHeaviness" class="focus-insight-page" data-insight-page="todayHeaviness">
-        <small class="muted">Heaviness Today</small>
-        <div id="fsInsightTodayHeaviness" class="focus-insight-content">—</div>
+      <div id="focusInsightWeekPulse" class="focus-insight-page" data-insight-page="weekPulse">
+        <small class="muted">Week Pulse</small>
+        <div id="fsInsightWeekPulse" class="focus-insight-content">—</div>
       </div>
-      <div id="focusInsightWeekHeaviness" class="focus-insight-page" data-insight-page="weekHeaviness">
-        <small class="muted">Heaviness Week</small>
-        <div id="fsInsightWeekHeaviness" class="focus-insight-content">—</div>
-      </div>
-      <div id="focusInsightDiagnostics" class="focus-insight-page" data-insight-page="diagnostics">
-        <small class="muted">Diagnostics</small>
+      <div id="focusInsightEfficiency" class="focus-insight-page" data-insight-page="efficiency">
+        <small class="muted">Efficiency Lens</small>
         <div class="focus-grid" style="margin-top:6px">
-          <div class="focus-kpi"><small>Model</small><b id="fsInsightDiagModel">—</b></div>
-          <div class="focus-kpi"><small>Status</small><b id="fsInsightDiagStatus">—</b></div>
+          <div class="focus-kpi"><small>Route</small><b id="fsInsightEfficiencyRoute">—</b></div>
+          <div class="focus-kpi"><small>Office Time</small><b id="fsInsightEfficiencyOffice">—</b></div>
         </div>
-        <div id="fsInsightDiagTop" class="focus-insight-content" style="margin-top:8px">—</div>
+        <div id="fsInsightEfficiency" class="focus-insight-content" style="margin-top:8px">—</div>
+      </div>
+      <div id="focusInsightMilestones" class="focus-insight-page" data-insight-page="milestones">
+        <small class="muted">Milestones</small>
+        <div class="focus-grid" style="margin-top:6px">
+          <div class="focus-kpi"><small>YTD Hours</small><b id="fsInsightMilestoneHours">—</b></div>
+          <div class="focus-kpi"><small>YTD Parcels</small><b id="fsInsightMilestoneParcels">—</b></div>
+        </div>
+        <div id="fsInsightMilestones" class="focus-insight-content" style="margin-top:8px">—</div>
+      </div>
+      <div id="focusInsightExceptions" class="focus-insight-page" data-insight-page="exceptions">
+        <div class="focus-grid focus-exception-tiles" style="margin-top:6px">
+          <button id="focusExceptionTopOutlierTile" class="focus-kpi focus-kpi-button" type="button">
+            <small>Top Outlier</small><b id="fsInsightExceptionTop">—</b>
+          </button>
+          <button id="focusExceptionTopTagTile" class="focus-kpi focus-kpi-button" type="button">
+            <small>Common Tag</small><b id="fsInsightExceptionTag">—</b>
+          </button>
+        </div>
+        <div id="fsInsightExceptionBadges" class="focus-badge-row" style="margin-top:8px"></div>
+        <div id="fsInsightExceptions" class="focus-insight-content" style="margin-top:8px">—</div>
         <div class="focus-actions">
           <button id="focusOpenDiagLite" class="ghost" type="button">Open Diagnostics Lite</button>
-        </div>
-      </div>
-      <div id="focusInsightDayCompare" class="focus-insight-page" data-insight-page="dayCompare">
-        <small class="muted">Day Compare</small>
-        <div class="focus-grid" style="margin-top:6px">
-          <div class="focus-kpi"><small>Subject</small><b id="fsInsightCompareLabel">—</b></div>
-          <div class="focus-kpi"><small>Summary</small><b id="fsInsightCompareSummary">—</b></div>
-        </div>
-        <div id="fsInsightCompareTop" class="focus-insight-content" style="margin-top:8px">—</div>
-        <div class="focus-actions">
           <button id="focusOpenCompareLite" class="ghost" type="button">Open Day Compare Lite</button>
         </div>
       </div>
@@ -1455,16 +1507,16 @@
         <div id="focusInsightDrillBody" class="focus-insight-content">—</div>
       </div>
       <div class="focus-insight-nav" role="tablist" aria-label="Insights navigation">
-        <button class="ghost active" type="button" data-insight-page="movers">Movers</button>
-        <button class="ghost" type="button" data-insight-page="todayHeaviness">Today</button>
-        <button class="ghost" type="button" data-insight-page="weekHeaviness">Week</button>
-        <button class="ghost" type="button" data-insight-page="diagnostics">Diag</button>
-        <button class="ghost" type="button" data-insight-page="dayCompare">Compare</button>
+        <button class="ghost active" type="button" data-insight-page="dailyMovers">Daily</button>
+        <button class="ghost" type="button" data-insight-page="weekPulse">Week</button>
+        <button class="ghost" type="button" data-insight-page="efficiency">Eff</button>
+        <button class="ghost" type="button" data-insight-page="milestones">Mile</button>
+        <button class="ghost" type="button" data-insight-page="exceptions">Signals</button>
       </div>
       <div class="focus-actions">
-        <button class="ghost focus-deep-link" type="button" data-target="snapshotCard">Open full Today/Week snapshot</button>
-        <button class="ghost focus-deep-link" type="button" data-target="quickFilterCard">Open Quick Filter</button>
-        <button class="ghost focus-deep-link" type="button" data-target="diagnosticsCard">Open Diagnostics</button>
+        <button class="ghost focus-deep-link" type="button" data-target="snapshotCard">Open Today Snapshot</button>
+        <button class="ghost focus-deep-link" type="button" data-target="snapshotWeekSection">Open Week &amp; USPS</button>
+        <button class="ghost focus-deep-link" type="button" data-target="milestoneCard">Open Milestone Engine</button>
         <button class="ghost focus-deep-link" type="button" data-target="dayCompareCard">Open Day Compare</button>
       </div>
     </div>

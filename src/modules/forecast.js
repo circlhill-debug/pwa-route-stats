@@ -10,7 +10,6 @@ const FORECAST_PRIMARY_STORAGE = FORECAST_BADGE_STORAGE_KEYS[FORECAST_BADGE_STOR
 const FORECAST_SNAPSHOT_TABLE = 'forecast_snapshots';
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const WEEKDAY_PLURALS = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
-const FORECAST_PREAMBLES = ['Heads up:', 'Forecast Insight:', '📬 Tomorrow’s trend:'];
 const METRIC_CONFIGS = [
   { key: 'totalTime', label: 'route time', aliases: ['total_time', 'totalMinutes', 'total_minutes', 'total'] },
   { key: 'officeTime', label: 'office time', aliases: ['office_time', 'officeMinutes', 'office_minutes', 'office'] },
@@ -96,26 +95,26 @@ function setForecastBadgeData(list) {
   }
 }
 
-function minutesFromValue(value) {
+export function minutesFromValue(value) {
   if (value == null) return null;
   const num = Number(value);
   if (!Number.isFinite(num)) return null;
   return Math.round(num);
 }
 
-function normalizeDurationMinutes(value, options = {}) {
-  const minutes = minutesFromValue(value);
-  if (!Number.isFinite(minutes)) return null;
+export function normalizeDurationMinutes(value, options = {}) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return null;
   const hourLikeThreshold = Number.isFinite(Number(options.hourLikeThreshold))
     ? Number(options.hourLikeThreshold)
     : 24;
   // Backward compatibility: some legacy snapshots stored hours in *_time fields.
   // If value looks like plausible hours, normalize to minutes.
-  if (minutes > 0 && minutes <= hourLikeThreshold) return Math.round(minutes * 60);
-  return minutes;
+  if (numericValue > 0 && numericValue <= hourLikeThreshold) return Math.round(numericValue * 60);
+  return Math.round(numericValue);
 }
 
-function normalizeSnapshot(snapshot) {
+export function normalizeSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== 'object') return null;
   const isoSource = snapshot.iso || snapshot.date || snapshot.work_date || snapshot.workDate;
   const iso = typeof isoSource === 'string' && isoSource ? isoSource : null;
@@ -223,7 +222,7 @@ export async function syncForecastSnapshotsFromSupabase(supabaseClient, userId, 
   }
 }
 
-function normalizeDow(value) {
+export function normalizeDow(value) {
   if (!Number.isFinite(value)) return null;
   const mod = value % 7;
   return mod < 0 ? mod + 7 : mod;
@@ -235,7 +234,7 @@ if (typeof globalThis !== 'undefined') {
   globalThis.normalizeDow = normalizeDow;
 }
 
-function extractDow(entry) {
+export function extractDow(entry) {
   if (!entry) return null;
   const candidates = [
     entry.weekday,
@@ -252,6 +251,10 @@ function extractDow(entry) {
   }
   const iso = entry.iso || entry.date || entry.work_date || entry.workDate || entry.observed_at || entry.observedAt;
   if (iso) {
+    if (typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+      const [year, month, day] = iso.split('-').map(Number);
+      return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    }
     const parsed = Date.parse(iso);
     if (!Number.isNaN(parsed)) {
       return new Date(parsed).getDay();
@@ -266,7 +269,7 @@ if (typeof globalThis !== 'undefined') {
   globalThis.extractDow = extractDow;
 }
 
-function entryTimestamp(entry, index = 0) {
+export function entryTimestamp(entry, index = 0) {
   if (!entry || typeof entry !== 'object') return index;
   const iso =
     entry.iso ||
@@ -300,7 +303,7 @@ if (typeof globalThis !== 'undefined') {
   globalThis.entryTimestamp = entryTimestamp;
 }
 
-function getMetricValue(entry, config) {
+export function getMetricValue(entry, config) {
   const keys = [config.key, ...(config.aliases || [])];
   for (const key of keys) {
     if (key == null) continue;
@@ -317,7 +320,7 @@ function getMetricValue(entry, config) {
   return null;
 }
 
-function averageMetric(entries, config) {
+export function averageMetric(entries, config) {
   if (!entries || !entries.length) return null;
   let sum = 0;
   let count = 0;
@@ -338,7 +341,7 @@ if (typeof globalThis !== 'undefined') {
   globalThis.averageMetric = averageMetric;
 }
 
-function classifyDelta(delta) {
+export function classifyDelta(delta) {
   if (!Number.isFinite(delta)) return 'steady';
   if (delta > 15) return 'uptick';
   if (delta < -15) return 'dip';
@@ -350,12 +353,6 @@ if (typeof window !== 'undefined') {
 }
 if (typeof globalThis !== 'undefined') {
   globalThis.classifyDelta = classifyDelta;
-}
-
-function pickPreamble() {
-  if (!FORECAST_PREAMBLES.length) return '';
-  const idx = Math.floor(Math.random() * FORECAST_PREAMBLES.length);
-  return FORECAST_PREAMBLES[idx];
 }
 
 function capitalize(label) {
@@ -374,18 +371,37 @@ function buildTrendForecast(dowRaw) {
       ? window.loadForecastBadgeData
       : loadForecastBadgeData;
   const badgeData = loader();
-  return buildTrendForecast_core(dowRaw, badgeData);
+  return buildTrendForecastCore(dowRaw, badgeData);
 }
 
-function buildTrendForecast_core(targetDow, badgeData) {
-  if (window.logToScreen) {
-    window.logToScreen(`Forecast Engine: Received ${badgeData?.length || 0} total snapshots.`);
+function collectTrendValues(entries, config) {
+  if (!Array.isArray(entries) || !entries.length) return [];
+  const values = [];
+  entries.forEach((entry) => {
+    const val = getMetricValue(entry, config);
+    if (!Number.isFinite(val)) return;
+    if (val <= 0) return;
+    values.push(val);
+  });
+  return values;
+}
+
+function averageValues(values) {
+  if (!Array.isArray(values) || !values.length) return null;
+  const total = values.reduce((sum, val) => sum + val, 0);
+  return total / values.length;
+}
+
+export function buildTrendForecastCore(targetDow, badgeData) {
+  const logger = typeof window !== 'undefined' && typeof window.logToScreen === 'function'
+    ? window.logToScreen
+    : null;
+  if (logger) {
+    logger(`Forecast Engine: Received ${badgeData?.length || 0} total snapshots.`);
   }
   const dataList = Array.isArray(badgeData) ? badgeData : [];
   if (!dataList.length) {
-    if (window.logToScreen) {
-      window.logToScreen('Forecast Engine: Aborting. dataList is empty.');
-    }
+    if (logger) logger('Forecast Engine: Aborting. dataList is empty.');
     return null;
   }
   const normalizedTarget =
@@ -400,34 +416,13 @@ function buildTrendForecast_core(targetDow, badgeData) {
     .filter((item) => item.dow === normalizedTarget)
     .sort((a, b) => a.ts - b.ts)
     .map((item) => item.entry);
-  if (window.logToScreen) {
-    window.logToScreen(`Forecast Engine: Found ${matching.length} matching snapshots for target DOW.`);
-  }
+  if (logger) logger(`Forecast Engine: Found ${matching.length} matching snapshots for target DOW.`);
   if (matching.length < 6) {
-    if (window.logToScreen) {
-      window.logToScreen(`Forecast Engine: Aborting trend forecast, need at least 6 matching snapshots.`);
-    }
+    if (logger) logger('Forecast Engine: Aborting trend forecast, need at least 6 matching snapshots.');
     return null;
   }
   const recent = matching.slice(-3);
   const prior = matching.slice(-6, -3);
-  const collectTrendValues = (entries, config) => {
-    if (!Array.isArray(entries) || !entries.length) return [];
-    const values = [];
-    entries.forEach((entry) => {
-      const val = getMetricValue(entry, config);
-      if (!Number.isFinite(val)) return;
-      // Route/office times of 0 are usually off-days or incomplete rows and can distort percent deltas.
-      if (val <= 0) return;
-      values.push(val);
-    });
-    return values;
-  };
-  const averageValues = (values) => {
-    if (!Array.isArray(values) || !values.length) return null;
-    const total = values.reduce((sum, val) => sum + val, 0);
-    return total / values.length;
-  };
   const deltas = METRIC_CONFIGS.map((config) => {
     const recentValues = collectTrendValues(recent, config);
     const priorValues = collectTrendValues(prior, config);
@@ -438,18 +433,18 @@ function buildTrendForecast_core(targetDow, badgeData) {
     return { config, delta: ((recentAvg - priorAvg) / priorAvg) * 100 };
   }).filter(Boolean);
   if (!deltas.length) return null;
+  const routeDelta = deltas.find((entry) => entry.config.key === 'totalTime');
   deltas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
-  const focus = deltas[0];
+  const focus = routeDelta && classifyDelta(routeDelta.delta) !== 'steady' ? routeDelta : deltas[0];
   const classification = classifyDelta(focus.delta);
   if (classification === 'steady') {
     return 'Steady pace, no major shifts detected.';
   }
   const direction = focus.delta >= 0 ? 'increase' : 'decrease';
   const percentShift = `${Math.abs(Math.round(focus.delta))}%`;
-  const preamble = pickPreamble();
   const weekdayPlural = formatWeekdayPlural(normalizedTarget);
   const metricLabel = capitalize(focus.config.label || 'route time');
-  return `${preamble} Expect a modest ${direction} in route time. ${metricLabel} has shifted ${percentShift} compared to recent ${weekdayPlural}.`;
+  return `Forecast Insight: Expect a modest ${direction} in route time. ${metricLabel} has shifted ${percentShift} compared to recent ${weekdayPlural}.`;
 }
 if (typeof window !== 'undefined') {
   window.buildTrendForecast = buildTrendForecast;
@@ -492,16 +487,12 @@ if (typeof globalThis !== 'undefined') {
   globalThis.normalizeDow = normalizeDow;
 }
 
-function flattenTagStrings(history, targetDow) {
+export function flattenTagStrings(history, targetDow) {
   if (!Array.isArray(history)) return [];
   const entriesForDay = history
     .filter((entry) => {
       if (!entry) return false;
-      const iso = entry.iso || entry.date;
-      if (!iso) return false;
-      const entryDate = new Date(iso);
-      if (Number.isNaN(entryDate.getTime())) return false;
-      return entryDate.getDay() === targetDow;
+      return extractDow(entry) === targetDow;
     })
     .sort((a, b) => {
       const aDate = new Date(a.iso || a.date || 0).getTime();
@@ -509,7 +500,7 @@ function flattenTagStrings(history, targetDow) {
       return aDate - bDate;
     });
 
-  const latestByType = new Map();
+  const aggregateByType = new Map();
 
   entriesForDay.forEach((entry) => {
     if (!entry || !Array.isArray(entry.tags)) return;
@@ -518,15 +509,25 @@ function flattenTagStrings(history, targetDow) {
       const key = tag.key || canonicalizeTagReason(tag.reason).key;
       if (!key) return;
       const minutesNum = Number(tag.minutes);
-      latestByType.set(key, {
+      const existing = aggregateByType.get(key) || {
         key,
         reason: tag.reason || key,
-        minutes: Number.isFinite(minutesNum) ? minutesNum : 0
-      });
+        totalMinutes: 0,
+        count: 0
+      };
+      if (Number.isFinite(minutesNum)) {
+        existing.totalMinutes += minutesNum;
+        existing.count += 1;
+      }
+      aggregateByType.set(key, existing);
     });
   });
 
-  return Array.from(latestByType.values());
+  return Array.from(aggregateByType.values()).map((entry) => ({
+    key: entry.key,
+    reason: entry.reason,
+    minutes: entry.count ? Math.round(entry.totalMinutes / entry.count) : 0
+  }));
 }
 if (typeof window !== 'undefined') {
   window.flattenTagStrings = flattenTagStrings;
@@ -654,7 +655,7 @@ if (typeof window !== 'undefined') {
   window.buildTrendForecast = (dow) => {
     const loader = window.loadForecastBadgeData || loadForecastBadgeData;
     const data = loader();
-    return buildTrendForecast_core(dow, data);
+    return buildTrendForecastCore(dow, data);
   };
   window.generateForecastText_modern = generateForecastText;
   window.computeForecastText = (options = {}) => computeForecastText(options);

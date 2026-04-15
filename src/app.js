@@ -4477,6 +4477,70 @@ function getHourlyRateFromEval(){
     tbody.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ if(e.target.closest('tr.rowLink')){ e.preventDefault(); activate(e); } } });
   })();
 
+  function applySectionCollapse(){
+    const targets = [
+      { id:'addEntryCard' },
+      { id:'dowCard' },
+      { id:'parcelsOverTimeCard' },
+      { id:'lettersOverTimeCard' },
+      { id:'monthlyGlanceCard' },
+      { id:'yearlySummaryCard' },
+      { id:'parserCard' },
+      { id:'sleepDrinkCard' },
+      { id:'evalCompareCard' },
+      { id:'quickFilterCard' },
+      { id:'milestoneCard' },
+      { id:'dayCompareCard' },
+      { id:'recentEntriesCard' },
+    ];
+    const storeKey = (id)=> `routeStats.collapse.${id}`;
+    const bodyFor = (id)=> document.querySelector(`#${id} > .__collapseBody`);
+
+    function setSectionCollapsed(id, collapsed){
+      const body = bodyFor(id);
+      if (body) body.style.display = collapsed ? 'none' : '';
+      try{ localStorage.setItem(storeKey(id), collapsed ? '1' : '0'); }catch(_){ }
+      if (id === 'addEntryCard') updateQuickEntryVisibility(collapsed);
+    }
+
+    for (const t of targets){
+      const sec = document.getElementById(t.id);
+      if (!sec) continue;
+      const headerEl = sec.firstElementChild;
+      if (!headerEl) continue;
+      let body = sec.querySelector(':scope > .__collapseBody');
+      if (!body){
+        body = document.createElement('div');
+        body.className = '__collapseBody';
+        const toMove = [];
+        for (let i = 1; i < sec.children.length; i++) toMove.push(sec.children[i]);
+        toMove.forEach((node) => body.appendChild(node));
+        sec.appendChild(body);
+      }
+      if (!headerEl.dataset.collapseBound){
+        const headerToggle = (ev)=>{
+          const trg = ev.target;
+          if (trg.closest && (trg.closest('#quickEntryBar') || trg.closest('button') || trg.closest('input') || trg.closest('a'))) return;
+          const currentBody = bodyFor(t.id);
+          const expanded = currentBody && currentBody.style.display !== 'none';
+          setSectionCollapsed(t.id, expanded);
+        };
+        headerEl.style.cursor = 'pointer';
+        headerEl.title = 'Click to expand/collapse';
+        headerEl.addEventListener('click', headerToggle);
+        headerEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); headerToggle(e); } });
+        headerEl.dataset.collapseBound = '1';
+      }
+      if (t.id === 'addEntryCard') ensureQuickEntryControls(headerEl);
+      const saved = localStorage.getItem(storeKey(t.id));
+      if (saved == null){
+        setSectionCollapsed(t.id, t.id === 'recentEntriesCard');
+      } else {
+        setSectionCollapsed(t.id, saved === '1');
+      }
+    }
+  }
+
   // Quick Entry (experimental): show Hit Street / Return buttons when Add Entry is collapsed
   function ensureQuickEntryControls(headerEl){
     if (!FLAGS.quickEntry) return;
@@ -4564,6 +4628,7 @@ function getHourlyRateFromEval(){
     rebuildAll();
     computeBreakdown();
     applyTrendPillsVisibility();
+    applySectionCollapse();
     applyRecentEntriesAutoCollapse();
   })();
 

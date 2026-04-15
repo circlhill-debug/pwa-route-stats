@@ -107,8 +107,6 @@
     smartSummary: true,
     mixViz: true,
     baselineCompare: true,
-    collapsedUi: false,
-    focusMode: false,
     quickEntry: false,
     uspsEval: true,
     dayCompare: true,
@@ -4568,21 +4566,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       }));
       cbRuler == null ? void 0 : cbRuler.removeEventListener("change", buildQuickFilter2._handlerRuler || (() => {
       }));
-      buildQuickFilter2._handlerSel = (e) => {
-        try {
-          const flagsLocal = getFlags();
-          if (flagsLocal && flagsLocal.collapsedUi) {
-            const body = document.querySelector("#quickFilterCard > .__collapseBody");
-            if (body && body.style.display === "none") {
-              try {
-                (window.__collapse_set || (() => {
-                }))("quickFilterCard", false);
-              } catch (_) {
-              }
-            }
-          }
-        } catch (_) {
-        }
+      buildQuickFilter2._handlerSel = () => {
         handler();
       };
       buildQuickFilter2._handlerP = handler;
@@ -6307,7 +6291,6 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var flagHeadlineDigest = document.getElementById("flagHeadlineDigest");
   var flagMixViz = document.getElementById("flagMixViz");
   var flagBaselineCompare = document.getElementById("flagBaselineCompare");
-  var flagCollapsedUi = document.getElementById("flagCollapsedUi");
   var flagQuickEntry = document.getElementById("flagQuickEntry");
   var flagSmartSummary = document.getElementById("flagSmartSummary");
   var flagDayCompare = document.getElementById("flagDayCompare");
@@ -6455,7 +6438,6 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (flagHeadlineDigest) flagHeadlineDigest.checked = !!FLAGS.headlineDigest;
     if (flagMixViz) flagMixViz.checked = !!FLAGS.mixViz;
     if (flagBaselineCompare) flagBaselineCompare.checked = !!FLAGS.baselineCompare;
-    if (flagCollapsedUi) flagCollapsedUi.checked = !!FLAGS.collapsedUi;
     if (flagQuickEntry) flagQuickEntry.checked = !!FLAGS.quickEntry;
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
@@ -6569,7 +6551,6 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (flagHeadlineDigest) FLAGS.headlineDigest = !!flagHeadlineDigest.checked;
     if (flagMixViz) FLAGS.mixViz = !!flagMixViz.checked;
     if (flagBaselineCompare) FLAGS.baselineCompare = !!flagBaselineCompare.checked;
-    if (flagCollapsedUi) FLAGS.collapsedUi = !!flagCollapsedUi.checked;
     if (flagQuickEntry) FLAGS.quickEntry = !!flagQuickEntry.checked;
     if (flagSmartSummary) FLAGS.smartSummary = !!flagSmartSummary.checked;
     if (flagDayCompare) FLAGS.dayCompare = !!flagDayCompare.checked;
@@ -6655,7 +6636,6 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     renderUspsEvalTag();
     scheduleUserSettingsSave();
     applyTrendPillsVisibility();
-    applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
     aiSummary.updateAvailability();
     aiSummary.renderLastSummary();
@@ -6785,21 +6765,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       if (!headerEl) return;
       const KEY = "routeStats.collapse.recentEntriesCard";
       const collapseBody = sec.querySelector(":scope > .__collapseBody");
-      const collapsedUiOn = !!(FLAGS && FLAGS.collapsedUi);
-      if (collapseBody || collapsedUiOn) {
-        if (localStorage.getItem(KEY) == null) {
-          try {
-            localStorage.setItem(KEY, "1");
-          } catch (_) {
-          }
-        }
-        try {
-          (window.__collapse_set || (() => {
-          }))("recentEntriesCard", true);
-        } catch (_) {
-        }
-        return;
-      }
+      if (collapseBody) return;
       let body = sec.querySelector(":scope > .__rcBody");
       if (!body) {
         body = document.createElement("div");
@@ -9541,210 +9507,6 @@ Score: ${overallScore}/10 (higher is better)`;
       }
     });
   })();
-  function applyCollapsedUi() {
-    const enabled = !!(FLAGS && FLAGS.collapsedUi);
-    const targets = [
-      { id: "addEntryCard" },
-      { id: "dowCard" },
-      { id: "parcelsOverTimeCard" },
-      { id: "lettersOverTimeCard" },
-      { id: "monthlyGlanceCard" },
-      { id: "yearlySummaryCard" },
-      { id: "parserCard" },
-      { id: "sleepDrinkCard" },
-      { id: "evalCompareCard" },
-      { id: "quickFilterCard" },
-      { id: "milestoneCard" },
-      { id: "dayCompareCard" },
-      { id: "recentEntriesCard" }
-    ];
-    const storeKey = (id) => `routeStats.collapse.${id}`;
-    const $body = (id) => document.querySelector("#" + id + " > .__collapseBody");
-    const $btn = (id) => document.querySelector("#" + id + " .__collapseToggle");
-    function setSectionCollapsed(id, collapsed) {
-      const body = $body(id);
-      const btn = $btn(id);
-      if (body) body.style.display = collapsed ? "none" : "";
-      if (btn) {
-        btn.textContent = collapsed ? "Expand" : "Collapse";
-        btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
-        const ctrl = btn.getAttribute("aria-controls");
-        if (!ctrl && body && body.id) btn.setAttribute("aria-controls", body.id);
-      }
-      try {
-        localStorage.setItem(storeKey(id), collapsed ? "1" : "0");
-      } catch (_) {
-      }
-      if (id === "addEntryCard") updateQuickEntryVisibility(collapsed);
-    }
-    for (const t of targets) {
-      const sec = document.getElementById(t.id);
-      if (!sec) continue;
-      try {
-        if (enabled) sec.setAttribute("data-collapsible-active", "true");
-        else sec.removeAttribute("data-collapsible-active");
-      } catch (_) {
-      }
-      const headerEl = sec.firstElementChild;
-      if (!headerEl) continue;
-      let body = sec.querySelector(":scope > .__collapseBody");
-      if (!body) {
-        body = document.createElement("div");
-        body.className = "__collapseBody";
-        const toMove = [];
-        for (let i = 1; i < sec.children.length; i++) toMove.push(sec.children[i]);
-        toMove.forEach((node) => body.appendChild(node));
-        try {
-          if (!body.id) body.id = `__cb_${t.id}`;
-        } catch (_) {
-        }
-        sec.appendChild(body);
-      }
-      try {
-        const toggles = sec.querySelectorAll(".__collapseToggle");
-        if (toggles && toggles.length > 1) {
-          toggles.forEach((b, idx) => {
-            if (!headerEl.contains(b) || idx > 0) b.remove();
-          });
-        }
-      } catch (_) {
-      }
-      let btn = headerEl.querySelector(".__collapseToggle");
-      if (!btn) {
-        btn = document.createElement("button");
-        btn.className = "ghost __collapseToggle";
-        btn.type = "button";
-        btn.style.marginLeft = "auto";
-        btn.style.float = "right";
-        btn.style.fontSize = "12px";
-        btn.textContent = "Collapse";
-        btn.setAttribute("aria-expanded", "true");
-        if (body && body.id) btn.setAttribute("aria-controls", body.id);
-        try {
-          headerEl.appendChild(btn);
-        } catch (_) {
-          sec.insertBefore(btn, sec.firstChild);
-        }
-      }
-      const setCollapsed = (collapsed) => setSectionCollapsed(t.id, collapsed);
-      const saved = localStorage.getItem(storeKey(t.id)) === "1";
-      btn.style.display = enabled ? "none" : "none";
-      if (!enabled) {
-        setCollapsed(false);
-        continue;
-      }
-      if ((t.id === "addEntryCard" || t.id === "recentEntriesCard") && localStorage.getItem(storeKey(t.id)) == null) {
-        try {
-          localStorage.setItem(storeKey(t.id), "1");
-        } catch (_) {
-        }
-      }
-      const initialCollapsed = localStorage.getItem(storeKey(t.id)) === "1";
-      setCollapsed(initialCollapsed);
-      const headerToggle = (ev) => {
-        const trg = ev.target;
-        if (trg.closest && (trg.closest("#quickEntryBar") || trg.closest("button") || trg.closest("input") || trg.closest("a"))) return;
-        const bodyNow = $body(t.id);
-        const nowCollapsed = bodyNow && bodyNow.style.display !== "none" ? true : false;
-        setCollapsed(nowCollapsed);
-      };
-      headerEl.style.cursor = "pointer";
-      headerEl.title = "Click to expand/collapse";
-      headerEl.addEventListener("click", headerToggle);
-      headerEl.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          headerToggle(e);
-        }
-      });
-      if (t.id === "addEntryCard") ensureQuickEntryControls(headerEl);
-    }
-    window.__collapse_targets = targets.map((t) => t.id);
-    window.__collapse_set = setSectionCollapsed;
-  }
-  function applyFocusMode() {
-    try {
-      const btn = document.getElementById("btnFocusMode");
-      const enabled = !!(FLAGS && FLAGS.collapsedUi);
-      if (!btn) return;
-      if (!enabled) {
-        btn.style.display = "none";
-        return;
-      }
-      btn.style.display = "";
-      const on = !!(FLAGS && FLAGS.focusMode);
-      btn.textContent = `Focus Mode: ${on ? "On" : "Off"}`;
-      btn.setAttribute("aria-pressed", on ? "true" : "false");
-      btn.onclick = () => {
-        FLAGS.focusMode = !FLAGS.focusMode;
-        saveFlags(FLAGS);
-        applyFocusMode();
-      };
-      const targets = window.__collapse_targets || [];
-      if (!targets.length) return;
-      if (on) {
-        targets.forEach((id) => {
-          if (id === "snapshotCard") return;
-          try {
-            (window.__collapse_set || (() => {
-            }))(id, true);
-          } catch (_) {
-          }
-        });
-      } else {
-      }
-    } catch (_) {
-    }
-  }
-  function ensureQuickEntryControls(headerEl) {
-    if (!FLAGS.quickEntry) return;
-    let bar = document.getElementById("quickEntryBar");
-    if (!bar) {
-      bar = document.createElement("span");
-      bar.id = "quickEntryBar";
-      bar.style.cssText = "float:right; display:none; gap:8px; align-items:center; font-size:12px";
-      bar.className = "row";
-      const hitBtn = document.createElement("button");
-      hitBtn.id = "quickHitBtn";
-      hitBtn.className = "ghost btn-compact";
-      hitBtn.type = "button";
-      hitBtn.textContent = "Hit Street (now)";
-      const retBtn = document.createElement("button");
-      retBtn.id = "quickReturnBtn";
-      retBtn.className = "ghost btn-compact";
-      retBtn.type = "button";
-      retBtn.textContent = "Return (now)";
-      bar.appendChild(hitBtn);
-      bar.appendChild(retBtn);
-      try {
-        headerEl.appendChild(bar);
-      } catch (_) {
-      }
-      hitBtn.onclick = () => {
-        try {
-          $("departTime").value = hhmmNow();
-          computeBreakdown();
-        } catch (_) {
-        }
-      };
-      retBtn.onclick = () => {
-        try {
-          $("returnTime").value = hhmmNow();
-          computeBreakdown();
-        } catch (_) {
-        }
-      };
-    }
-    updateQuickEntryVisibility(localStorage.getItem("routeStats.collapse.addEntryCard") === "1");
-  }
-  function updateQuickEntryVisibility(isCollapsed2) {
-    const bar = document.getElementById("quickEntryBar");
-    if (!bar) {
-      return;
-    }
-    const show = !!FLAGS.quickEntry && !!isCollapsed2;
-    bar.style.display = show ? "inline-flex" : "none";
-  }
   (function bindVolumeLeaderboard() {
     const openBtn = document.getElementById("openVolumeLeaderboard");
     const closeBtn = document.getElementById("closeVolumeLeaderboard");
@@ -9828,9 +9590,7 @@ Score: ${overallScore}/10 (higher is better)`;
     rebuildAll();
     computeBreakdown();
     applyTrendPillsVisibility();
-    applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
-    applyFocusMode();
   })();
   console.log("Route Stats loaded \u2014", VERSION_TAG);
   window.__sb.auth.getUser().then(async ({ data, error }) => {

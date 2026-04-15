@@ -29,8 +29,6 @@ const DEFAULT_FLAGS = {
   smartSummary:true,
   mixViz:true,
   baselineCompare:true,
-  collapsedUi:false,
-  focusMode:false,
   quickEntry:false,
   uspsEval:true,
   dayCompare:true,

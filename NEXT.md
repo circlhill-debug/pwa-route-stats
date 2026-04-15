@@ -4,12 +4,18 @@ Tracking note:
 - `NEXT.md` is the source-of-truth tracker for `main` app work.
 - `MOBILE_FOCUS_NEXT.md` is the source-of-truth tracker for Focus Mode mobile branch work.
 - Process rule: after any commit that changes behavior in either track, update the corresponding tracker in the same commit (or immediate follow-up).
+- Branch rule: `main` stays production-only. Mobile Focus work must stay off `main` until explicitly finished and merged.
+- Sync rule: production fixes land on `main` first, then get merged or cherry-picked into `dev/mobile-focus-integrated` when that branch resumes.
 
 Milestone tag: v2.0.4-phase3-qf
 
 Snapshot note (Oct 25, 2025): modular baseline captured after diagnostics + AI summary extraction (`refactor/modularize-ui` branch — "v2025-10-25_modular-baseline").
 
 Scope: Phase 3 — Quick Filter and weekly compares are in place; Mix Compare removed by design. Focus on correctness, clarity, and small UX polish.
+
+Current production guardrail
+- Keep legacy and unfinished Focus Mode UI out of `main`.
+- Mobile branch work belongs on `dev/mobile-focus-integrated` until intentionally shipped.
 
 Immediate Tasks
 - Percentages correctness

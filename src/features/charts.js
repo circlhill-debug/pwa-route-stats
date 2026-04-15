@@ -1477,18 +1477,7 @@ export function createCharts({
     selN?.removeEventListener('change', buildQuickFilter._handlerN || (()=>{}));
     cbAll?.removeEventListener('change', buildQuickFilter._handlerAll || (()=>{}));
     cbRuler?.removeEventListener('change', buildQuickFilter._handlerRuler || (()=>{}));
-    buildQuickFilter._handlerSel = (e)=>{
-      try{
-        const flagsLocal = getFlags();
-        if (flagsLocal && flagsLocal.collapsedUi){
-          const body = document.querySelector('#quickFilterCard > .__collapseBody');
-          if (body && body.style.display === 'none'){
-            try{ (window.__collapse_set||(()=>{}))('quickFilterCard', false); }catch(_){ }
-          }
-        }
-      }catch(_){ }
-      handler();
-    };
+    buildQuickFilter._handlerSel = ()=>{ handler(); };
     buildQuickFilter._handlerP = handler;
     buildQuickFilter._handlerL = handler;
     buildQuickFilter._handlerH = handler;

@@ -1503,7 +1503,6 @@ const authReadyPromise = handleAuthCallback(sb);
   const flagHeadlineDigest = document.getElementById('flagHeadlineDigest');
   const flagMixViz = document.getElementById('flagMixViz');
   const flagBaselineCompare = document.getElementById('flagBaselineCompare');
-  const flagCollapsedUi = document.getElementById('flagCollapsedUi');
   const flagQuickEntry = document.getElementById('flagQuickEntry');
   const flagSmartSummary = document.getElementById('flagSmartSummary');
   const flagDayCompare = document.getElementById('flagDayCompare');
@@ -1654,7 +1653,6 @@ aiSummary = createAiSummary({
     if (flagHeadlineDigest) flagHeadlineDigest.checked = !!FLAGS.headlineDigest;
     if (flagMixViz) flagMixViz.checked = !!FLAGS.mixViz;
     if (flagBaselineCompare) flagBaselineCompare.checked = !!FLAGS.baselineCompare;
-    if (flagCollapsedUi) flagCollapsedUi.checked = !!FLAGS.collapsedUi;
     if (flagQuickEntry) flagQuickEntry.checked = !!FLAGS.quickEntry;
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
     if (flagDayCompare) flagDayCompare.checked = !!FLAGS.dayCompare;
@@ -1768,7 +1766,6 @@ aiSummary = createAiSummary({
     if (flagHeadlineDigest) FLAGS.headlineDigest = !!flagHeadlineDigest.checked;
     if (flagMixViz) FLAGS.mixViz = !!flagMixViz.checked;
     if (flagBaselineCompare) FLAGS.baselineCompare = !!flagBaselineCompare.checked;
-    if (flagCollapsedUi) FLAGS.collapsedUi = !!flagCollapsedUi.checked;
     if (flagQuickEntry) FLAGS.quickEntry = !!flagQuickEntry.checked;
     if (flagSmartSummary) FLAGS.smartSummary = !!flagSmartSummary.checked;
     if (flagDayCompare) FLAGS.dayCompare = !!flagDayCompare.checked;
@@ -1843,7 +1840,6 @@ aiSummary = createAiSummary({
     scheduleUserSettingsSave();
 
     applyTrendPillsVisibility();
-    applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
     aiSummary.updateAvailability();
     aiSummary.renderLastSummary();
@@ -1960,13 +1956,7 @@ aiSummary = createAiSummary({
       const headerEl = sec.firstElementChild; if (!headerEl) return;
       const KEY = 'routeStats.collapse.recentEntriesCard';
       const collapseBody = sec.querySelector(':scope > .__collapseBody');
-      const collapsedUiOn = !!(FLAGS && FLAGS.collapsedUi);
-      if (collapseBody || collapsedUiOn){
-        // Defer to Collapsed UI system: ensure default collapsed and let its handler manage toggling
-        if (localStorage.getItem(KEY) == null){ try{ localStorage.setItem(KEY, '1'); }catch(_){ } }
-        try{ (window.__collapse_set||(()=>{}))('recentEntriesCard', true); }catch(_){ }
-        return;
-      }
+      if (collapseBody) return;
       // Lightweight independent collapse for Recent Entries
       let body = sec.querySelector(':scope > .__rcBody');
       if (!body){
@@ -4487,151 +4477,6 @@ function getHourlyRateFromEval(){
     tbody.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ if(e.target.closest('tr.rowLink')){ e.preventDefault(); activate(e); } } });
   })();
 
-  // Collapsed UI scaffolding (experimental): add toggle buttons to collapse sections
-  function applyCollapsedUi(){
-    const enabled = !!(FLAGS && FLAGS.collapsedUi);
-    const targets = [
-      { id:'addEntryCard' },
-      { id:'dowCard' },
-      { id:'parcelsOverTimeCard' },
-      { id:'lettersOverTimeCard' },
-      { id:'monthlyGlanceCard' },
-      { id:'yearlySummaryCard' },
-      { id:'parserCard' },
-      { id:'sleepDrinkCard' },
-      { id:'evalCompareCard' },
-      { id:'quickFilterCard' },
-      { id:'milestoneCard' },
-      { id:'dayCompareCard' },
-      { id:'recentEntriesCard' },
-    ];
-    const storeKey = (id)=> `routeStats.collapse.${id}`;
-    const $body = (id)=> document.querySelector('#'+id+' > .__collapseBody');
-    const $btn  = (id)=> document.querySelector('#'+id+' .__collapseToggle');
-
-    function setSectionCollapsed(id, collapsed){
-      const body = $body(id);
-      const btn = $btn(id);
-      if (body) body.style.display = collapsed ? 'none' : '';
-      if (btn){
-        btn.textContent = collapsed ? 'Expand' : 'Collapse';
-        btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-        const ctrl = btn.getAttribute('aria-controls');
-        if (!ctrl && body && body.id) btn.setAttribute('aria-controls', body.id);
-      }
-      try{ localStorage.setItem(storeKey(id), collapsed ? '1' : '0'); }catch(_){ }
-      if (id==='addEntryCard') updateQuickEntryVisibility(collapsed);
-    }
-
-    for (const t of targets){
-      const sec = document.getElementById(t.id);
-      if (!sec) continue;
-      try{
-        if (enabled) sec.setAttribute('data-collapsible-active', 'true');
-        else sec.removeAttribute('data-collapsible-active');
-      }catch(_){ }
-      // Ensure a header element to host the toggle
-      const headerEl = sec.firstElementChild; // usually h3 or header row
-      if (!headerEl) continue;
-      // Ensure a body wrapper containing all non-header children for reliable show/hide
-      let body = sec.querySelector(':scope > .__collapseBody');
-      if (!body){
-        body = document.createElement('div');
-        body.className = '__collapseBody';
-        // Move all non-header children into body
-        const toMove = [];
-        for (let i = 1; i < sec.children.length; i++) toMove.push(sec.children[i]);
-        toMove.forEach(node => body.appendChild(node));
-        // Assign a unique id for aria-controls linkage
-        try{ if (!body.id) body.id = `__cb_${t.id}`; }catch(_){ }
-        sec.appendChild(body);
-      }
-      // Cleanup any stray toggles created previously in the wrong place
-      try{
-        const toggles = sec.querySelectorAll('.__collapseToggle');
-        if (toggles && toggles.length > 1){
-          toggles.forEach((b, idx)=>{ if (!headerEl.contains(b) || idx>0) b.remove(); });
-        }
-      }catch(_){ /* ignore */ }
-      // Find or create toggle button (inside header only)
-      let btn = headerEl.querySelector('.__collapseToggle');
-      if (!btn){
-        btn = document.createElement('button');
-        btn.className = 'ghost __collapseToggle';
-        btn.type = 'button';
-        btn.style.marginLeft = 'auto';
-        btn.style.float = 'right';
-        btn.style.fontSize = '12px';
-        btn.textContent = 'Collapse';
-        btn.setAttribute('aria-expanded', 'true');
-        if (body && body.id) btn.setAttribute('aria-controls', body.id);
-        // Append to header (h3 or row)
-        try{ headerEl.appendChild(btn); }catch(_){ sec.insertBefore(btn, sec.firstChild); }
-      }
-      // Handler
-      const setCollapsed = (collapsed)=> setSectionCollapsed(t.id, collapsed);
-      const saved = (localStorage.getItem(storeKey(t.id)) === '1');
-      // Enable/disable per flag
-      btn.style.display = enabled ? 'none' : 'none'; // hide explicit button; use header click instead
-      if (!enabled){
-        // Ensure everything is visible in normal mode
-        setCollapsed(false);
-        continue;
-      }
-      // Default: collapse Add Entry and Recent Entries the first time when feature enabled
-      if ((t.id==='addEntryCard' || t.id==='recentEntriesCard') && localStorage.getItem(storeKey(t.id)) == null){
-        try{ localStorage.setItem(storeKey(t.id), '1'); }catch(_){ }
-      }
-      const initialCollapsed = (localStorage.getItem(storeKey(t.id)) === '1');
-      setCollapsed(initialCollapsed);
-      // Header click toggles collapse (ignore clicks on interactive controls inside header)
-      const headerToggle = (ev)=>{
-        const trg = ev.target;
-        if (trg.closest && (trg.closest('#quickEntryBar') || trg.closest('button') || trg.closest('input') || trg.closest('a'))) return;
-        const bodyNow = $body(t.id);
-        const nowCollapsed = bodyNow && bodyNow.style.display !== 'none' ? true : false;
-        setCollapsed(nowCollapsed);
-      };
-      headerEl.style.cursor = 'pointer';
-      headerEl.title = 'Click to expand/collapse';
-      headerEl.addEventListener('click', headerToggle);
-      headerEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); headerToggle(e); } });
-      if (t.id==='addEntryCard') ensureQuickEntryControls(headerEl);
-    }
-    // removed global Collapse All in favor of Focus Mode
-    // expose helpers for Focus Mode
-  window.__collapse_targets = targets.map(t=> t.id);
-  window.__collapse_set = setSectionCollapsed;
-}
-
-  // Focus Mode: collapse everything except snapshot tiles
-  function applyFocusMode(){
-    try{
-      const btn = document.getElementById('btnFocusMode');
-      const enabled = !!(FLAGS && FLAGS.collapsedUi);
-      if (!btn) return;
-      if (!enabled){ btn.style.display='none'; return; }
-      btn.style.display='';
-      const on = !!(FLAGS && FLAGS.focusMode);
-      btn.textContent = `Focus Mode: ${on?'On':'Off'}`;
-      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-      btn.onclick = ()=>{
-        FLAGS.focusMode = !FLAGS.focusMode; saveFlags(FLAGS);
-        applyFocusMode();
-      };
-      const targets = window.__collapse_targets || [];
-      if (!targets.length) return;
-      if (on){
-        targets.forEach(id=>{
-          if (id==='snapshotCard') return;
-          try{ (window.__collapse_set||(()=>{}))(id, true); }catch(_){ }
-        });
-      } else {
-        // Leave sections as-is when Focus Mode is off to preserve user + default collapsed states
-      }
-    }catch(_){ /* no-op */ }
-  }
-
   // Quick Entry (experimental): show Hit Street / Return buttons when Add Entry is collapsed
   function ensureQuickEntryControls(headerEl){
     if (!FLAGS.quickEntry) return;
@@ -4719,9 +4564,7 @@ function getHourlyRateFromEval(){
     rebuildAll();
     computeBreakdown();
     applyTrendPillsVisibility();
-    applyCollapsedUi();
     applyRecentEntriesAutoCollapse();
-    applyFocusMode();
   })();
 
   console.log('Route Stats loaded —', VERSION_TAG);

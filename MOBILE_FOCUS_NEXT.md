@@ -1,8 +1,13 @@
 # MOBILE_FOCUS_NEXT
 
-Branch target: `feature/focus-mode-mobile-shell`
+Branch target: `dev/mobile-focus-integrated`
 
 Purpose: keep the Focus Mode mobile track explicit, testable, and synced with `main` direction.
+
+Branch discipline
+- `main` is production only and must not carry unfinished Focus Mode UI.
+- When `main` gets a production fix that mobile also needs, merge `origin/main` into `dev/mobile-focus-integrated` or cherry-pick the specific commit.
+- Only merge Focus Mode back to `main` when the mobile work is intentionally finished and approved.
 
 ## Current Phase
 
@@ -49,4 +54,5 @@ If a commit is made and this file is not updated, treat it as process debt and f
   1) Insights curation,
   2) Week Full vs Drill curation,
   3) Gesture-first mode with arrows optional.
-
+- 2026-04-14: Locked branch discipline explicitly:
+  `main` stays production-only; mobile work lives on `dev/mobile-focus-integrated` until intentionally merged.

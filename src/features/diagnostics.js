@@ -22,7 +22,8 @@ export function createDiagnostics({
   combinedVolume,
   routeAdjustedMinutes,
   colorForDelta,
-  onDismissedChange
+  onDismissedChange,
+  saveDismissedResidualWithTags
 }) {
   if (typeof getFlags !== 'function') throw new Error('createDiagnostics: getFlags is required');
   if (typeof filterRowsForView !== 'function') throw new Error('createDiagnostics: filterRowsForView is required');
@@ -44,6 +45,9 @@ export function createDiagnostics({
   const notifyDismissedChange = typeof onDismissedChange === 'function'
     ? onDismissedChange
     : () => {};
+  const persistDismissedResidualWithTags = typeof saveDismissedResidualWithTags === 'function'
+    ? saveDismissedResidualWithTags
+    : () => null;
 
   let residModelCache = null;
   let latestDiagnosticsContext = null;
@@ -720,47 +724,8 @@ export function createDiagnostics({
             window.alert('No reason provided; dismissal cancelled.');
             return;
           }
-          const nowIso = new Date().toISOString();
-          const tagTimestamp = Date.now();
-          const tagEntries = tags.map(t => ({
-            key: t.key || null,
-            reason: t.reason,
-            minutes: (t.minutes != null && Number.isFinite(Number(t.minutes))) ? Number(t.minutes) : null,
-            notedAt: tagTimestamp
-          }));
-
-          const existing = loadDismissedResiduals().filter(item => item && item.iso !== iso);
-          const entry = {
-            iso,
-            tags: tagEntries,
-            notedAt: nowIso
-          };
-          try {
-            const dismissedIso = iso;
-            let history = [];
-            try {
-              const rawHistory = localStorage.getItem('routeStats.tagHistory');
-              const parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
-              if (Array.isArray(parsedHistory)) history = parsedHistory.filter(Boolean);
-            } catch (err) {
-              console.warn('Could not parse tag history; resetting.', err);
-              history = [];
-            }
-            if (!Array.isArray(history)) history = [];
-            const existingHistory = history.find(item => item && item.iso === dismissedIso);
-            if (existingHistory) {
-              existingHistory.tags.push(...tagEntries);
-            } else {
-              history.push({ iso: dismissedIso, tags: [...tagEntries] });
-            }
-            localStorage.setItem('routeStats.tagHistory', JSON.stringify(history));
-            console.log('📦 Saved tag history:', history);
-            window.renderTomorrowForecast?.();
-          } catch (err) {
-            console.warn('Failed to update tag history.', err);
-          }
-          existing.push(entry);
-          saveDismissedResiduals(existing);
+          persistDismissedResidualWithTags({ iso, tags });
+          window.renderTomorrowForecast?.();
           notifyDismissedChange();
           buildDiagnostics(rows);
           return;

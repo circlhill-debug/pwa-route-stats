@@ -1556,7 +1556,8 @@
     combinedVolume: combinedVolume2,
     routeAdjustedMinutes: routeAdjustedMinutes2,
     colorForDelta: colorForDelta2,
-    onDismissedChange
+    onDismissedChange,
+    saveDismissedResidualWithTags: saveDismissedResidualWithTags2
   }) {
     if (typeof getFlags !== "function") throw new Error("createDiagnostics: getFlags is required");
     if (typeof filterRowsForView2 !== "function") throw new Error("createDiagnostics: filterRowsForView is required");
@@ -1576,6 +1577,7 @@
     if (typeof colorForDelta2 !== "function") throw new Error("createDiagnostics: colorForDelta is required");
     const notifyDismissedChange = typeof onDismissedChange === "function" ? onDismissedChange : () => {
     };
+    const persistDismissedResidualWithTags = typeof saveDismissedResidualWithTags2 === "function" ? saveDismissedResidualWithTags2 : () => null;
     let residModelCache = null;
     let latestDiagnosticsContext = null;
     const __testApi = {};
@@ -2189,46 +2191,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
               window.alert("No reason provided; dismissal cancelled.");
               return;
             }
-            const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-            const tagTimestamp = Date.now();
-            const tagEntries = tags.map((t) => ({
-              key: t.key || null,
-              reason: t.reason,
-              minutes: t.minutes != null && Number.isFinite(Number(t.minutes)) ? Number(t.minutes) : null,
-              notedAt: tagTimestamp
-            }));
-            const existing = loadDismissedResiduals2().filter((item) => item && item.iso !== iso);
-            const entry = {
-              iso,
-              tags: tagEntries,
-              notedAt: nowIso
-            };
-            try {
-              const dismissedIso = iso;
-              let history = [];
-              try {
-                const rawHistory = localStorage.getItem("routeStats.tagHistory");
-                const parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
-                if (Array.isArray(parsedHistory)) history = parsedHistory.filter(Boolean);
-              } catch (err) {
-                console.warn("Could not parse tag history; resetting.", err);
-                history = [];
-              }
-              if (!Array.isArray(history)) history = [];
-              const existingHistory = history.find((item) => item && item.iso === dismissedIso);
-              if (existingHistory) {
-                existingHistory.tags.push(...tagEntries);
-              } else {
-                history.push({ iso: dismissedIso, tags: [...tagEntries] });
-              }
-              localStorage.setItem("routeStats.tagHistory", JSON.stringify(history));
-              console.log("\u{1F4E6} Saved tag history:", history);
-              (_c2 = window.renderTomorrowForecast) == null ? void 0 : _c2.call(window);
-            } catch (err) {
-              console.warn("Failed to update tag history.", err);
-            }
-            existing.push(entry);
-            saveDismissedResiduals2(existing);
+            persistDismissedResidualWithTags({ iso, tags });
+            (_c2 = window.renderTomorrowForecast) == null ? void 0 : _c2.call(window);
             notifyDismissedChange();
             buildDiagnostics2(rows);
             return;
@@ -4914,6 +4878,107 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     };
   }
 
+  // src/utils/diagnosticsStorage.js
+  var TAG_HISTORY_KEY = "routeStats.tagHistory";
+  function loadTagHistory2() {
+    try {
+      const raw = localStorage.getItem(TAG_HISTORY_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  function saveTagHistory(history) {
+    try {
+      localStorage.setItem(TAG_HISTORY_KEY, JSON.stringify(history || []));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+  function mergeTagListsStable(primary = [], incoming = []) {
+    const byReason = /* @__PURE__ */ new Map();
+    const upsert = (tag, preferIncoming = false) => {
+      if (!tag) return;
+      const key = String(tag.key || "").trim() || "misc";
+      const reason = String(tag.reason || key).trim() || key;
+      const mapKey = `${key}:${reason.toLowerCase()}`;
+      if (!byReason.has(mapKey) || preferIncoming) {
+        byReason.set(mapKey, {
+          key,
+          reason,
+          minutes: tag.minutes != null && Number.isFinite(Number(tag.minutes)) ? Number(tag.minutes) : null,
+          notedAt: tag.notedAt || (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+    };
+    (primary || []).forEach((tag) => upsert(tag, false));
+    (incoming || []).forEach((tag) => upsert(tag, true));
+    return Array.from(byReason.values());
+  }
+  function upsertTagHistoryEntry(iso, tags) {
+    if (!iso) return [];
+    const normalizedTags = normalizeTagEntries(tags || []);
+    if (!normalizedTags.length) return loadTagHistory2();
+    const history = loadTagHistory2();
+    const existing = history.find((item) => item && item.iso === iso);
+    if (existing) {
+      existing.tags = mergeTagListsStable(existing.tags || [], normalizedTags);
+    } else {
+      history.push({ iso, tags: [...normalizedTags] });
+    }
+    history.sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
+    saveTagHistory(history);
+    return history;
+  }
+  function normalizeTagHistory(seedFromDismissed = []) {
+    try {
+      const history = loadTagHistory2();
+      const byIso = /* @__PURE__ */ new Map();
+      history.forEach((item) => {
+        const iso = (item == null ? void 0 : item.iso) || (item == null ? void 0 : item.date) || null;
+        if (!iso) return;
+        const tags = normalizeTagEntries(item.tags || []);
+        if (!tags.length) return;
+        byIso.set(iso, { iso, tags });
+      });
+      (seedFromDismissed || []).forEach((item) => {
+        const iso = (item == null ? void 0 : item.iso) || null;
+        if (!iso) return;
+        const current = byIso.get(iso);
+        const mergedTags = mergeTagListsStable((current == null ? void 0 : current.tags) || [], normalizeTagEntries(item.tags || []));
+        if (!mergedTags.length) return;
+        byIso.set(iso, { iso, tags: mergedTags });
+      });
+      const normalized = Array.from(byIso.values()).sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
+      const before = JSON.stringify(history);
+      const after = JSON.stringify(normalized);
+      if (before !== after) {
+        saveTagHistory(normalized);
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+  function saveDismissedResidualWithTags({ iso, tags, loadDismissedResiduals: loadDismissedResiduals2, saveDismissedResiduals: saveDismissedResiduals2 }) {
+    if (!iso || typeof loadDismissedResiduals2 !== "function" || typeof saveDismissedResiduals2 !== "function") return null;
+    const normalizedTags = normalizeTagEntries(tags || []);
+    if (!normalizedTags.length) return null;
+    const dismissed = loadDismissedResiduals2().filter((item) => item && item.iso !== iso);
+    const entry = {
+      iso,
+      tags: normalizedTags,
+      notedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    upsertTagHistoryEntry(iso, normalizedTags);
+    dismissed.push(entry);
+    saveDismissedResiduals2(dismissed);
+    return entry;
+  }
+
   // src/app.js
   window.__sb = createSupabaseClient();
   (function() {
@@ -5107,59 +5172,6 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       diagnostics_dismissed: dismissedList
     };
   }
-  function normalizeLocalTagHistory(seedFromDismissed = []) {
-    try {
-      const raw = localStorage.getItem("routeStats.tagHistory");
-      const parsed = raw ? JSON.parse(raw) : [];
-      const history = Array.isArray(parsed) ? parsed : [];
-      const mergeTagListsStable = (primary = [], incoming = []) => {
-        const byReason = /* @__PURE__ */ new Map();
-        const upsert = (tag, preferIncoming = false) => {
-          if (!tag) return;
-          const key = String(tag.key || "").trim() || "misc";
-          const reason = String(tag.reason || key).trim() || key;
-          const mapKey = `${key}:${reason.toLowerCase()}`;
-          if (!byReason.has(mapKey) || preferIncoming) {
-            byReason.set(mapKey, {
-              key,
-              reason,
-              minutes: tag.minutes != null && Number.isFinite(Number(tag.minutes)) ? Number(tag.minutes) : null,
-              notedAt: tag.notedAt || (/* @__PURE__ */ new Date()).toISOString()
-            });
-          }
-        };
-        (primary || []).forEach((tag) => upsert(tag, false));
-        (incoming || []).forEach((tag) => upsert(tag, true));
-        return Array.from(byReason.values());
-      };
-      const byIso = /* @__PURE__ */ new Map();
-      history.filter(Boolean).forEach((item) => {
-        const iso = (item == null ? void 0 : item.iso) || (item == null ? void 0 : item.date) || null;
-        if (!iso) return;
-        const tags = normalizeTagEntries(item.tags || []);
-        if (!tags.length) return;
-        byIso.set(iso, { iso, tags });
-      });
-      (seedFromDismissed || []).forEach((item) => {
-        const iso = (item == null ? void 0 : item.iso) || null;
-        if (!iso) return;
-        const current = byIso.get(iso);
-        const mergedTags = mergeTagListsStable((current == null ? void 0 : current.tags) || [], normalizeTagEntries(item.tags || []));
-        if (!mergedTags.length) return;
-        byIso.set(iso, { iso, tags: mergedTags });
-      });
-      const normalized = Array.from(byIso.values()).sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
-      const before = JSON.stringify(history);
-      const after = JSON.stringify(normalized);
-      if (before !== after) {
-        localStorage.setItem("routeStats.tagHistory", after);
-        return true;
-      }
-      return false;
-    } catch (_) {
-      return false;
-    }
-  }
   function normalizeDiagnosticsTagData() {
     let changed = false;
     let dismissed = [];
@@ -5173,7 +5185,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       }
     } catch (_) {
     }
-    if (normalizeLocalTagHistory(dismissed)) changed = true;
+    if (normalizeTagHistory(dismissed)) changed = true;
     return changed;
   }
   async function upsertUserSettingsRemote(payload) {
@@ -6108,7 +6120,13 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     combinedVolume,
     routeAdjustedMinutes,
     colorForDelta,
-    onDismissedChange: scheduleUserSettingsSave
+    onDismissedChange: scheduleUserSettingsSave,
+    saveDismissedResidualWithTags: ({ iso, tags }) => saveDismissedResidualWithTags({
+      iso,
+      tags,
+      loadDismissedResiduals: () => loadDismissedResiduals(parseDismissReasonInput),
+      saveDismissedResiduals
+    })
   });
   var {
     buildDiagnostics,
@@ -9507,6 +9525,124 @@ Score: ${overallScore}/10 (higher is better)`;
       }
     });
   })();
+  function applySectionCollapse() {
+    const targets = [
+      { id: "addEntryCard" },
+      { id: "dowCard" },
+      { id: "parcelsOverTimeCard" },
+      { id: "lettersOverTimeCard" },
+      { id: "monthlyGlanceCard" },
+      { id: "yearlySummaryCard" },
+      { id: "parserCard" },
+      { id: "sleepDrinkCard" },
+      { id: "evalCompareCard" },
+      { id: "quickFilterCard" },
+      { id: "milestoneCard" },
+      { id: "dayCompareCard" },
+      { id: "recentEntriesCard" }
+    ];
+    const storeKey = (id) => `routeStats.collapse.${id}`;
+    const bodyFor = (id) => document.querySelector(`#${id} > .__collapseBody`);
+    function setSectionCollapsed(id, collapsed) {
+      const body = bodyFor(id);
+      if (body) body.style.display = collapsed ? "none" : "";
+      try {
+        localStorage.setItem(storeKey(id), collapsed ? "1" : "0");
+      } catch (_) {
+      }
+      if (id === "addEntryCard") updateQuickEntryVisibility(collapsed);
+    }
+    for (const t of targets) {
+      const sec = document.getElementById(t.id);
+      if (!sec) continue;
+      const headerEl = sec.firstElementChild;
+      if (!headerEl) continue;
+      let body = sec.querySelector(":scope > .__collapseBody");
+      if (!body) {
+        body = document.createElement("div");
+        body.className = "__collapseBody";
+        const toMove = [];
+        for (let i = 1; i < sec.children.length; i++) toMove.push(sec.children[i]);
+        toMove.forEach((node) => body.appendChild(node));
+        sec.appendChild(body);
+      }
+      if (!headerEl.dataset.collapseBound) {
+        const headerToggle = (ev) => {
+          const trg = ev.target;
+          if (trg.closest && (trg.closest("#quickEntryBar") || trg.closest("button") || trg.closest("input") || trg.closest("a"))) return;
+          const currentBody = bodyFor(t.id);
+          const expanded = currentBody && currentBody.style.display !== "none";
+          setSectionCollapsed(t.id, expanded);
+        };
+        headerEl.style.cursor = "pointer";
+        headerEl.title = "Click to expand/collapse";
+        headerEl.addEventListener("click", headerToggle);
+        headerEl.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            headerToggle(e);
+          }
+        });
+        headerEl.dataset.collapseBound = "1";
+      }
+      if (t.id === "addEntryCard") ensureQuickEntryControls(headerEl);
+      const saved = localStorage.getItem(storeKey(t.id));
+      if (saved == null) {
+        setSectionCollapsed(t.id, t.id === "recentEntriesCard");
+      } else {
+        setSectionCollapsed(t.id, saved === "1");
+      }
+    }
+  }
+  function ensureQuickEntryControls(headerEl) {
+    if (!FLAGS.quickEntry) return;
+    let bar = document.getElementById("quickEntryBar");
+    if (!bar) {
+      bar = document.createElement("span");
+      bar.id = "quickEntryBar";
+      bar.style.cssText = "float:right; display:none; gap:8px; align-items:center; font-size:12px";
+      bar.className = "row";
+      const hitBtn = document.createElement("button");
+      hitBtn.id = "quickHitBtn";
+      hitBtn.className = "ghost btn-compact";
+      hitBtn.type = "button";
+      hitBtn.textContent = "Hit Street (now)";
+      const retBtn = document.createElement("button");
+      retBtn.id = "quickReturnBtn";
+      retBtn.className = "ghost btn-compact";
+      retBtn.type = "button";
+      retBtn.textContent = "Return (now)";
+      bar.appendChild(hitBtn);
+      bar.appendChild(retBtn);
+      try {
+        headerEl.appendChild(bar);
+      } catch (_) {
+      }
+      hitBtn.onclick = () => {
+        try {
+          $("departTime").value = hhmmNow();
+          computeBreakdown();
+        } catch (_) {
+        }
+      };
+      retBtn.onclick = () => {
+        try {
+          $("returnTime").value = hhmmNow();
+          computeBreakdown();
+        } catch (_) {
+        }
+      };
+    }
+    updateQuickEntryVisibility(localStorage.getItem("routeStats.collapse.addEntryCard") === "1");
+  }
+  function updateQuickEntryVisibility(isCollapsed2) {
+    const bar = document.getElementById("quickEntryBar");
+    if (!bar) {
+      return;
+    }
+    const show = !!FLAGS.quickEntry && !!isCollapsed2;
+    bar.style.display = show ? "inline-flex" : "none";
+  }
   (function bindVolumeLeaderboard() {
     const openBtn = document.getElementById("openVolumeLeaderboard");
     const closeBtn = document.getElementById("closeVolumeLeaderboard");
@@ -9590,6 +9726,7 @@ Score: ${overallScore}/10 (higher is better)`;
     rebuildAll();
     computeBreakdown();
     applyTrendPillsVisibility();
+    applySectionCollapse();
     applyRecentEntriesAutoCollapse();
   })();
   console.log("Route Stats loaded \u2014", VERSION_TAG);

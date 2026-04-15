@@ -60,7 +60,8 @@ import { createDiagnostics } from './features/diagnostics.js';
 import { createAiSummary } from './features/aiSummary.js';
 import { createCharts } from './features/charts.js';
 import { createSummariesFeature } from './features/summaries.js';
-import { parseDismissReasonInput, normalizeTagEntries } from './utils/diagnostics.js';
+import { parseDismissReasonInput } from './utils/diagnostics.js';
+import { normalizeTagHistory, saveDismissedResidualWithTags } from './utils/diagnosticsStorage.js';
 import './modules/forecast.js';
 
 // Expose Supabase client globally for debugging
@@ -260,63 +261,6 @@ window.__sb = createSupabaseClient();
     };
   }
 
-  function normalizeLocalTagHistory(seedFromDismissed = []){
-    try{
-      const raw = localStorage.getItem('routeStats.tagHistory');
-      const parsed = raw ? JSON.parse(raw) : [];
-      const history = Array.isArray(parsed) ? parsed : [];
-      const mergeTagListsStable = (primary = [], incoming = []) => {
-        const byReason = new Map();
-        const upsert = (tag, preferIncoming = false) => {
-          if (!tag) return;
-          const key = String(tag.key || '').trim() || 'misc';
-          const reason = String(tag.reason || key).trim() || key;
-          const mapKey = `${key}:${reason.toLowerCase()}`;
-          if (!byReason.has(mapKey) || preferIncoming){
-            byReason.set(mapKey, {
-              key,
-              reason,
-              minutes: (tag.minutes != null && Number.isFinite(Number(tag.minutes))) ? Number(tag.minutes) : null,
-              notedAt: tag.notedAt || new Date().toISOString()
-            });
-          }
-        };
-        (primary || []).forEach(tag => upsert(tag, false));
-        (incoming || []).forEach(tag => upsert(tag, true));
-        return Array.from(byReason.values());
-      };
-      const byIso = new Map();
-      history
-        .filter(Boolean)
-        .forEach(item => {
-          const iso = item?.iso || item?.date || null;
-          if (!iso) return;
-          const tags = normalizeTagEntries(item.tags || []);
-          if (!tags.length) return;
-          byIso.set(iso, { iso, tags });
-        });
-      (seedFromDismissed || []).forEach(item => {
-        const iso = item?.iso || null;
-        if (!iso) return;
-        const current = byIso.get(iso);
-        // Merge by tag identity, not additive math, to prevent repeated startup inflation.
-        const mergedTags = mergeTagListsStable(current?.tags || [], normalizeTagEntries(item.tags || []));
-        if (!mergedTags.length) return;
-        byIso.set(iso, { iso, tags: mergedTags });
-      });
-      const normalized = Array.from(byIso.values()).sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
-      const before = JSON.stringify(history);
-      const after = JSON.stringify(normalized);
-      if (before !== after){
-        localStorage.setItem('routeStats.tagHistory', after);
-        return true;
-      }
-      return false;
-    }catch(_){
-      return false;
-    }
-  }
-
   function normalizeDiagnosticsTagData(){
     let changed = false;
     let dismissed = [];
@@ -329,7 +273,7 @@ window.__sb = createSupabaseClient();
         changed = true;
       }
     }catch(_){ }
-    if (normalizeLocalTagHistory(dismissed)) changed = true;
+    if (normalizeTagHistory(dismissed)) changed = true;
     return changed;
   }
 
@@ -1321,7 +1265,13 @@ window.__sb = createSupabaseClient();
     combinedVolume,
     routeAdjustedMinutes,
     colorForDelta,
-    onDismissedChange: scheduleUserSettingsSave
+    onDismissedChange: scheduleUserSettingsSave,
+    saveDismissedResidualWithTags: ({ iso, tags }) => saveDismissedResidualWithTags({
+      iso,
+      tags,
+      loadDismissedResiduals: () => loadDismissedResiduals(parseDismissReasonInput),
+      saveDismissedResiduals
+    })
   });
 
   const {

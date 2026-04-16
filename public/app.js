@@ -2172,7 +2172,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           }
           saveDismissedResiduals2(updated);
           notifyDismissedChange();
-          buildDiagnostics2(rows);
+          rebuildAll2();
         });
         manageDismissBtn.dataset.bound = "1";
       }

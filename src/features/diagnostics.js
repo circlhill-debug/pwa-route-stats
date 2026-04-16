@@ -472,7 +472,7 @@ export function createDiagnostics({
         }
         saveDismissedResiduals(updated);
         notifyDismissedChange();
-        buildDiagnostics(rows);
+        rebuildAll();
       });
       manageDismissBtn.dataset.bound = '1';
     }

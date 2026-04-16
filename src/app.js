@@ -55,6 +55,7 @@ import {
   handleAuthCallback
 } from './services/supabaseClient.js';
 import { computeForecastText, storeForecastSnapshot, saveForecastSnapshot, syncForecastSnapshotsFromSupabase, loadLatestForecastMessage } from './modules/forecast.js';
+import { buildForecastRenderPlan, buildForecastSnapshotFromPayload } from './modules/forecastSurface.js';
 import { USER_SETTINGS_SELECT, USER_SETTINGS_TABLE, applyRemoteUserSettingsData, buildUserSettingsPayload } from './modules/userSettingsSync.js';
 
 import { createDiagnostics } from './features/diagnostics.js';
@@ -62,7 +63,7 @@ import { createAiSummary } from './features/aiSummary.js';
 import { createCharts } from './features/charts.js';
 import { createSummariesFeature } from './features/summaries.js';
 import { parseDismissReasonInput } from './utils/diagnostics.js';
-import { normalizeTagHistory, saveDismissedResidualWithTags } from './utils/diagnosticsStorage.js';
+import { normalizeTagHistory, readTagHistoryForIso, saveDismissedResidualWithTags } from './utils/diagnosticsStorage.js';
 import './modules/forecast.js';
 
 // Expose Supabase client globally for debugging
@@ -953,75 +954,39 @@ window.__sb = createSupabaseClient();
       };
 
       const now = DateTime.now().setZone(ZONE);
-      const hour = now.hour;
-
-      if (hour >= 20) {
-        if (CURRENT_USER_ID){
-          try {
-            await syncForecastSnapshotsFromSupabase(sb, CURRENT_USER_ID, { silent: true });
-          } catch (err) {
-            console.warn('renderTomorrowForecast: snapshot sync failed, using local cache', err);
-          }
-        }
-        const targetDate = now.plus({ days: 1 });
-        const targetDow = targetDate.weekday === 7 ? 0 : targetDate.weekday;
-
-        if (targetDow === 0) {
-          showMessage({ msg: "Enjoy your day off ❤️" });
-          return;
-        }
-
-        const forecastText = computeForecastText({ targetDow }) || 'Forecast unavailable';
-        const iso = targetDate.toISODate();
-        storeForecastSnapshot(iso, forecastText);
-        if (CURRENT_USER_ID){
-          try{
-            await saveForecastSnapshot({
-              iso,
-              weekday: targetDow,
-              totalTime: null,
-              officeTime: null,
-              endTime: null,
-              tags: readTagHistoryForIso(iso),
-              user_id: CURRENT_USER_ID
-            }, { supabaseClient: sb, silent: true });
-          }catch(err){ console.warn('saveForecastSnapshot (remote) failed', err); }
-        }
-        showMessage({ msg: forecastText });
-        return;
-      }
-
-      if (hour < 8) {
-        const todayIso = now.toISODate();
-        const latest = loadLatestForecastMessage();
-        if (latest?.iso === todayIso && latest?.text){
-          showMessage({ msg: latest.text });
-          return;
-        }
-        const todayDow = now.weekday === 7 ? 0 : now.weekday;
-        const forecastText = computeForecastText({ targetDow: todayDow }) || 'Forecast unavailable';
-        storeForecastSnapshot(todayIso, forecastText);
-        if (CURRENT_USER_ID){
-          try{
-            await saveForecastSnapshot({
-              iso: todayIso,
-              weekday: todayDow,
-              totalTime: null,
-              officeTime: null,
-              endTime: null,
-              tags: readTagHistoryForIso(todayIso),
-              user_id: CURRENT_USER_ID
-            }, { supabaseClient: sb, silent: true });
-          }catch(err){ console.warn('saveForecastSnapshot (remote) failed', err); }
-        }
-        showMessage({ msg: forecastText });
-        return;
-      }
-
-      showMessage({
-        title: '❤',
-        msg: 'Stay safe out there my Stallion.'
+      const plan = buildForecastRenderPlan({
+        now,
+        latestForecastMessage: loadLatestForecastMessage(),
+        computeForecastText
       });
+
+      if (plan.shouldSyncBeforeRender && CURRENT_USER_ID){
+        try {
+          await syncForecastSnapshotsFromSupabase(sb, CURRENT_USER_ID, { silent: true });
+        } catch (err) {
+          console.warn('renderTomorrowForecast: snapshot sync failed, using local cache', err);
+        }
+      }
+
+      if (plan.iso && plan.message !== 'Forecast unavailable') {
+        storeForecastSnapshot(plan.iso, plan.message);
+      }
+
+      if (plan.shouldPersistRemote && CURRENT_USER_ID && plan.iso && plan.targetDow != null){
+        try{
+          await saveForecastSnapshot({
+            iso: plan.iso,
+            weekday: plan.targetDow,
+            totalTime: null,
+            officeTime: null,
+            endTime: null,
+            tags: readTagHistoryForIso(plan.iso),
+            user_id: CURRENT_USER_ID
+          }, { supabaseClient: sb, silent: true });
+        }catch(err){ console.warn('saveForecastSnapshot (remote) failed', err); }
+      }
+
+      showMessage({ title: plan.title, msg: plan.message });
     }catch(err){
       console.warn('renderTomorrowForecast failed', err);
     }
@@ -2530,44 +2495,12 @@ function parseDrinkFromWeatherString(weatherStr){
   }
 }
 
-function readTagHistoryForIso(iso){
-  if (!iso) return [];
-  try{
-    const raw = localStorage.getItem('routeStats.tagHistory');
-    const parsed = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed)) return [];
-    const entry = parsed.find(item => item && (item.iso === iso || item.date === iso));
-    if (!entry) return [];
-    if (Array.isArray(entry.tags)) return entry.tags.filter(Boolean);
-    return [];
-  }catch(_){
-    return [];
-  }
-}
-
-function buildForecastSnapshotFromPayload(payload, userId){
-  if (!payload || !payload.work_date) return null;
-  if (payload.status === 'off') return null;
-  const iso = payload.work_date;
-  const dt = DateTime.fromISO(iso, { zone: ZONE });
-  const weekday = dt.isValid ? (dt.weekday % 7) : (new Date(iso)).getDay();
-  const hours = Number(payload.hours);
-  const officeHours = Number(payload.office_minutes);
-  const snapshot = {
-    iso,
-    weekday,
-    totalTime: Number.isFinite(hours) ? Math.round(hours * 60) : null,
-    officeTime: Number.isFinite(officeHours) ? Math.round(officeHours * 60) : null,
-    endTime: payload.end_time || payload.return_time || null,
-    tags: readTagHistoryForIso(iso),
-    user_id: userId || null
-  };
-  return snapshot;
-}
-
 async function persistForecastSnapshot(payload, userId){
   try{
-    const snapshot = buildForecastSnapshotFromPayload(payload, userId);
+    const snapshot = buildForecastSnapshotFromPayload(payload, {
+      userId,
+      tags: readTagHistoryForIso(payload?.work_date)
+    });
     if (!snapshot) return;
     await saveForecastSnapshot(snapshot, { supabaseClient: sb, silent: true });
   }catch(err){

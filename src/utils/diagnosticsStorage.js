@@ -12,6 +12,13 @@ export function loadTagHistory() {
   }
 }
 
+export function readTagHistoryForIso(iso) {
+  if (!iso) return [];
+  const history = loadTagHistory();
+  const entry = history.find((item) => item && (item.iso === iso || item.date === iso));
+  return Array.isArray(entry?.tags) ? entry.tags.filter(Boolean) : [];
+}
+
 export function saveTagHistory(history) {
   try {
     localStorage.setItem(TAG_HISTORY_KEY, JSON.stringify(history || []));

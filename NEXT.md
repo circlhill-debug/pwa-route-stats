@@ -17,6 +17,53 @@ Current production guardrail
 - Keep legacy and unfinished Focus Mode UI out of `main`.
 - Mobile branch work belongs on `dev/mobile-focus-integrated` until intentionally shipped.
 
+---
+
+Audit Track
+
+Done
+- Forecast hardening
+  - `9651008` `Harden forecast normalization and add coverage`
+  - Deterministic forecast wording
+  - Hour/minute normalization fix
+  - Weekday parsing hardening
+  - Route-time trend priority fix
+  - Tag aggregation improvement
+  - Forecast coverage added
+
+- Production cleanup for branch discipline
+  - `7a4c5c8` `Remove legacy focus shell from production main`
+  - `074b00a` `Restore section header collapse behavior`
+  - Removed legacy focus shell from `main`
+  - Restored normal section header collapse
+  - Locked production/mobile branch rules
+
+- Diagnostics storage isolation
+  - `0f3bd42` `Isolate diagnostics tag storage helpers`
+  - Removed direct diagnostics tag-history writes from UI code
+  - Added dedicated diagnostics storage helper
+  - Added diagnostics storage coverage
+
+Next
+- App-state risk reduction around diagnostics/forecast boundaries
+  - Reduce cross-module state coupling
+  - Clarify ownership of diagnostics, forecast, and sync logic
+  - Reduce orchestration burden in `src/app.js`
+  - In progress:
+    - diagnostics tag persistence moved out of diagnostics UI into `src/utils/diagnosticsStorage.js`
+    - user-settings payload/apply logic moved out of `src/app.js` into `src/modules/userSettingsSync.js`
+
+- Test coverage expansion for settings/state persistence
+  - Settings persistence tests
+  - User-settings sync tests
+  - Diagnostics/forecast integration-path tests
+
+Later
+- Split `src/features/charts.js` into smaller chart families
+- Split `src/utils/storage.js` by domain
+- Reduce direct DOM/UI complexity in diagnostics/day compare
+- Consider broader app-state structure cleanup only after the higher-risk fixes above
+
 Immediate Tasks
 - Percentages correctness
   - Standardize W1 (Mon..today) vs W2 (last same range) across: Snapshot details, any summary lines that mention W1/W2, and labels. DONE (Mix section labels use W1=current, W2=last; percent math consistent)

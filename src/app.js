@@ -55,6 +55,7 @@ import {
   handleAuthCallback
 } from './services/supabaseClient.js';
 import { computeForecastText, storeForecastSnapshot, saveForecastSnapshot, syncForecastSnapshotsFromSupabase, loadLatestForecastMessage } from './modules/forecast.js';
+import { USER_SETTINGS_SELECT, USER_SETTINGS_TABLE, applyRemoteUserSettingsData, buildUserSettingsPayload } from './modules/userSettingsSync.js';
 
 import { createDiagnostics } from './features/diagnostics.js';
 import { createAiSummary } from './features/aiSummary.js';
@@ -224,13 +225,12 @@ window.__sb = createSupabaseClient();
     USPS_EVAL = loadEval();
   }
 
-  const USER_SETTINGS_TABLE = 'user_settings';
   let userSettingsSynced = false;
   let suppressSettingsSave = false;
   let pendingSettingsPayload = null;
   let settingsSaveTimer = null;
 
-  function buildUserSettingsPayload(){
+  function collectUserSettingsPayload(){
     const evalProfiles = (EVAL_PROFILES || []).map(profile => ({
       profileId: profile.profileId,
       label: profile.label,
@@ -245,20 +245,14 @@ window.__sb = createSupabaseClient();
       effectiveFrom: profile.effectiveFrom ?? null,
       effectiveTo: profile.effectiveTo ?? null
     }));
-    const vacationRanges = listVacationRanges().map(r => ({ from: r.from, to: r.to }));
-    const ema = readStoredEma();
-    const extraTrip = Number.isFinite(ema) ? { ema } : null;
-    const activeEvalId = USPS_EVAL?.profileId || getActiveEvalId();
-    const tokenUsage = loadTokenUsage();
-    const dismissedList = loadDismissedResiduals(parseDismissReasonInput);
-    return {
-      eval_profiles: evalProfiles,
-      active_eval_id: activeEvalId || null,
-      vacation_ranges: vacationRanges,
-      extra_trip: extraTrip,
-      ai_token_usage: tokenUsage,
-      diagnostics_dismissed: dismissedList
-    };
+    return buildUserSettingsPayload({
+      evalProfiles,
+      activeEvalId: USPS_EVAL?.profileId || getActiveEvalId(),
+      vacationRanges: listVacationRanges().map(r => ({ from: r.from, to: r.to })),
+      extraTripEma: readStoredEma(),
+      tokenUsage: loadTokenUsage(),
+      dismissedList: loadDismissedResiduals(parseDismissReasonInput)
+    });
   }
 
   function normalizeDiagnosticsTagData(){
@@ -299,7 +293,7 @@ window.__sb = createSupabaseClient();
   function scheduleUserSettingsSave(){
     if (suppressSettingsSave) return;
     if (!CURRENT_USER_ID) return;
-    pendingSettingsPayload = buildUserSettingsPayload();
+    pendingSettingsPayload = collectUserSettingsPayload();
     if (settingsSaveTimer) clearTimeout(settingsSaveTimer);
     settingsSaveTimer = setTimeout(()=>{
       const payload = pendingSettingsPayload;
@@ -315,7 +309,7 @@ window.__sb = createSupabaseClient();
     try{
       const { data, error } = await sb
         .from(USER_SETTINGS_TABLE)
-        .select('eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed')
+        .select(USER_SETTINGS_SELECT)
         .eq('user_id', CURRENT_USER_ID)
         .maybeSingle();
       if (error && error.code !== 'PGRST116'){
@@ -325,44 +319,25 @@ window.__sb = createSupabaseClient();
       suppressSettingsSave = true;
       try{
         if (data){
-          if (Array.isArray(data.eval_profiles)){
-            saveEvalProfiles(data.eval_profiles);
-            if (data.active_eval_id){
-              setActiveEvalId(data.active_eval_id);
-            }
-            syncEvalGlobals();
-          }
-          if (Array.isArray(data.vacation_ranges)){
-            const sanitized = data.vacation_ranges
-              .filter(r => r?.from && r?.to)
-              .map(r => ({ from: r.from, to: r.to }));
-            const normalized = normalizeRanges(sanitized);
-            VACATION = { ranges: normalized };
-            saveVacation(VACATION);
-          }
-          if (data.extra_trip && typeof data.extra_trip === 'object'){
-            const emaVal = parseFloat(data.extra_trip.ema);
-            if (Number.isFinite(emaVal)){
+          ({ pushTokenUsageAfterSync } = applyRemoteUserSettingsData(data, {
+            saveEvalProfiles,
+            setActiveEvalId,
+            syncEvalGlobals,
+            normalizeRanges,
+            applyVacationRanges: (ranges) => {
+              VACATION = { ranges };
+              saveVacation(VACATION);
+            },
+            setExtraTripEma: (emaVal) => {
               try{ localStorage.setItem(SECOND_TRIP_EMA_KEY, String(emaVal)); }catch(_){}
-            }
-          }
-          if (data.ai_token_usage && typeof data.ai_token_usage === 'object'){
-            const localUsage = loadTokenUsage();
-            const { merged, source } = mergeTokenUsage(localUsage, data.ai_token_usage);
-            if (source === 'incoming'){
-              saveTokenUsage(merged, { preserveTimestamp: true });
-            } else {
-              saveTokenUsage(merged);
-              pushTokenUsageAfterSync = true;
-            }
-          } else {
-            pushTokenUsageAfterSync = true;
-          }
-          if (Array.isArray(data.diagnostics_dismissed)){
-            saveDismissedResiduals(data.diagnostics_dismissed);
-          }
+            },
+            loadTokenUsage,
+            mergeTokenUsage,
+            saveTokenUsage,
+            saveDismissedResiduals
+          }));
         } else {
-          await upsertUserSettingsRemote(buildUserSettingsPayload());
+          await upsertUserSettingsRemote(collectUserSettingsPayload());
         }
       } finally {
         suppressSettingsSave = false;

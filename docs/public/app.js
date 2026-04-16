@@ -1535,6 +1535,64 @@
     window.loadForecastBadgeData = loadForecastBadgeData;
   }
 
+  // src/modules/userSettingsSync.js
+  var USER_SETTINGS_TABLE = "user_settings";
+  var USER_SETTINGS_SELECT = "eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed";
+  function buildUserSettingsPayload({
+    evalProfiles = [],
+    activeEvalId = null,
+    vacationRanges = [],
+    extraTripEma = null,
+    tokenUsage = null,
+    dismissedList = []
+  } = {}) {
+    return {
+      eval_profiles: evalProfiles,
+      active_eval_id: activeEvalId || null,
+      vacation_ranges: vacationRanges,
+      extra_trip: Number.isFinite(extraTripEma) ? { ema: extraTripEma } : null,
+      ai_token_usage: tokenUsage || null,
+      diagnostics_dismissed: dismissedList || []
+    };
+  }
+  function applyRemoteUserSettingsData(data, deps = {}) {
+    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+    let pushTokenUsageAfterSync = false;
+    if (!data || typeof data !== "object") {
+      return { pushTokenUsageAfterSync: true };
+    }
+    if (Array.isArray(data.eval_profiles)) {
+      (_a5 = deps.saveEvalProfiles) == null ? void 0 : _a5.call(deps, data.eval_profiles);
+      if (data.active_eval_id) (_b = deps.setActiveEvalId) == null ? void 0 : _b.call(deps, data.active_eval_id);
+      (_c = deps.syncEvalGlobals) == null ? void 0 : _c.call(deps);
+    }
+    if (Array.isArray(data.vacation_ranges)) {
+      const sanitized = data.vacation_ranges.filter((r) => (r == null ? void 0 : r.from) && (r == null ? void 0 : r.to)).map((r) => ({ from: r.from, to: r.to }));
+      const normalized = deps.normalizeRanges ? deps.normalizeRanges(sanitized) : sanitized;
+      (_d = deps.applyVacationRanges) == null ? void 0 : _d.call(deps, normalized);
+    }
+    if (data.extra_trip && typeof data.extra_trip === "object") {
+      const emaVal = parseFloat(data.extra_trip.ema);
+      if (Number.isFinite(emaVal)) (_e = deps.setExtraTripEma) == null ? void 0 : _e.call(deps, emaVal);
+    }
+    if (data.ai_token_usage && typeof data.ai_token_usage === "object") {
+      const localUsage = (_f = deps.loadTokenUsage) == null ? void 0 : _f.call(deps);
+      const merged = ((_g = deps.mergeTokenUsage) == null ? void 0 : _g.call(deps, localUsage, data.ai_token_usage)) || { merged: data.ai_token_usage, source: "incoming" };
+      if (merged.source === "incoming") {
+        (_h = deps.saveTokenUsage) == null ? void 0 : _h.call(deps, merged.merged, { preserveTimestamp: true });
+      } else {
+        (_i = deps.saveTokenUsage) == null ? void 0 : _i.call(deps, merged.merged);
+        pushTokenUsageAfterSync = true;
+      }
+    } else {
+      pushTokenUsageAfterSync = true;
+    }
+    if (Array.isArray(data.diagnostics_dismissed)) {
+      (_j = deps.saveDismissedResiduals) == null ? void 0 : _j.call(deps, data.diagnostics_dismissed);
+    }
+    return { pushTokenUsageAfterSync };
+  }
+
   // src/features/diagnostics.js
   function createDiagnostics({
     getFlags,
@@ -5134,12 +5192,11 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     EVAL_PROFILES = loadEvalProfiles();
     USPS_EVAL = loadEval();
   }
-  var USER_SETTINGS_TABLE = "user_settings";
   var userSettingsSynced = false;
   var suppressSettingsSave = false;
   var pendingSettingsPayload = null;
   var settingsSaveTimer = null;
-  function buildUserSettingsPayload() {
+  function collectUserSettingsPayload() {
     const evalProfiles = (EVAL_PROFILES || []).map((profile) => {
       var _a5, _b, _c, _d, _e, _f, _g, _h;
       return {
@@ -5157,20 +5214,14 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         effectiveTo: (_h = profile.effectiveTo) != null ? _h : null
       };
     });
-    const vacationRanges = listVacationRanges().map((r) => ({ from: r.from, to: r.to }));
-    const ema = readStoredEma();
-    const extraTrip = Number.isFinite(ema) ? { ema } : null;
-    const activeEvalId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || getActiveEvalId();
-    const tokenUsage = loadTokenUsage();
-    const dismissedList = loadDismissedResiduals(parseDismissReasonInput);
-    return {
-      eval_profiles: evalProfiles,
-      active_eval_id: activeEvalId || null,
-      vacation_ranges: vacationRanges,
-      extra_trip: extraTrip,
-      ai_token_usage: tokenUsage,
-      diagnostics_dismissed: dismissedList
-    };
+    return buildUserSettingsPayload({
+      evalProfiles,
+      activeEvalId: (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || getActiveEvalId(),
+      vacationRanges: listVacationRanges().map((r) => ({ from: r.from, to: r.to })),
+      extraTripEma: readStoredEma(),
+      tokenUsage: loadTokenUsage(),
+      dismissedList: loadDismissedResiduals(parseDismissReasonInput)
+    });
   }
   function normalizeDiagnosticsTagData() {
     let changed = false;
@@ -5209,7 +5260,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   function scheduleUserSettingsSave() {
     if (suppressSettingsSave) return;
     if (!CURRENT_USER_ID) return;
-    pendingSettingsPayload = buildUserSettingsPayload();
+    pendingSettingsPayload = collectUserSettingsPayload();
     if (settingsSaveTimer) clearTimeout(settingsSaveTimer);
     settingsSaveTimer = setTimeout(() => {
       const payload = pendingSettingsPayload;
@@ -5222,7 +5273,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (!CURRENT_USER_ID) return;
     let pushTokenUsageAfterSync = false;
     try {
-      const { data, error } = await sb.from(USER_SETTINGS_TABLE).select("eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed").eq("user_id", CURRENT_USER_ID).maybeSingle();
+      const { data, error } = await sb.from(USER_SETTINGS_TABLE).select(USER_SETTINGS_SELECT).eq("user_id", CURRENT_USER_ID).maybeSingle();
       if (error && error.code !== "PGRST116") {
         console.warn("[Settings] load failed", error);
         return;
@@ -5230,45 +5281,28 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       suppressSettingsSave = true;
       try {
         if (data) {
-          if (Array.isArray(data.eval_profiles)) {
-            saveEvalProfiles(data.eval_profiles);
-            if (data.active_eval_id) {
-              setActiveEvalId(data.active_eval_id);
-            }
-            syncEvalGlobals();
-          }
-          if (Array.isArray(data.vacation_ranges)) {
-            const sanitized = data.vacation_ranges.filter((r) => (r == null ? void 0 : r.from) && (r == null ? void 0 : r.to)).map((r) => ({ from: r.from, to: r.to }));
-            const normalized = normalizeRanges(sanitized);
-            VACATION = { ranges: normalized };
-            saveVacation(VACATION);
-          }
-          if (data.extra_trip && typeof data.extra_trip === "object") {
-            const emaVal = parseFloat(data.extra_trip.ema);
-            if (Number.isFinite(emaVal)) {
+          ({ pushTokenUsageAfterSync } = applyRemoteUserSettingsData(data, {
+            saveEvalProfiles,
+            setActiveEvalId,
+            syncEvalGlobals,
+            normalizeRanges,
+            applyVacationRanges: (ranges) => {
+              VACATION = { ranges };
+              saveVacation(VACATION);
+            },
+            setExtraTripEma: (emaVal) => {
               try {
                 localStorage.setItem(SECOND_TRIP_EMA_KEY, String(emaVal));
               } catch (_) {
               }
-            }
-          }
-          if (data.ai_token_usage && typeof data.ai_token_usage === "object") {
-            const localUsage = loadTokenUsage();
-            const { merged, source } = mergeTokenUsage(localUsage, data.ai_token_usage);
-            if (source === "incoming") {
-              saveTokenUsage(merged, { preserveTimestamp: true });
-            } else {
-              saveTokenUsage(merged);
-              pushTokenUsageAfterSync = true;
-            }
-          } else {
-            pushTokenUsageAfterSync = true;
-          }
-          if (Array.isArray(data.diagnostics_dismissed)) {
-            saveDismissedResiduals(data.diagnostics_dismissed);
-          }
+            },
+            loadTokenUsage,
+            mergeTokenUsage,
+            saveTokenUsage,
+            saveDismissedResiduals
+          }));
         } else {
-          await upsertUserSettingsRemote(buildUserSettingsPayload());
+          await upsertUserSettingsRemote(collectUserSettingsPayload());
         }
       } finally {
         suppressSettingsSave = false;

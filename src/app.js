@@ -57,6 +57,7 @@ import {
 import { computeForecastText, storeForecastSnapshot, saveForecastSnapshot, syncForecastSnapshotsFromSupabase, loadLatestForecastMessage } from './modules/forecast.js';
 import { buildForecastRenderPlan, buildForecastSnapshotFromPayload } from './modules/forecastSurface.js';
 import { USER_SETTINGS_SELECT, USER_SETTINGS_TABLE, applyRemoteUserSettingsData, buildUserSettingsPayload } from './modules/userSettingsSync.js';
+import { fitVolumeTimeModel as fitSharedVolumeTimeModel, learnedLetterWeightFromModel } from './modules/volumeModel.js';
 
 import { createDiagnostics } from './features/diagnostics.js';
 import { createAiSummary } from './features/aiSummary.js';
@@ -2066,23 +2067,10 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
     return Math.max(0, (+row.route_minutes||0));
   }
   function computeLetterWeight(sampleRows){
-    const rows = (sampleRows||[]).filter(r=> r && r.status !== 'off');
-    const n = rows.length; if (!n) return null;
-    const mp = __sum(rows, r=> +r.parcels||0) / n;
-    const ml = __sum(rows, r=> +r.letters||0) / n;
-    const my = __sum(rows, r=> routeAdjustedMinutes(r)) / n;
-    let Cpp=0, Cll=0, Cpl=0, Cpy=0, Cly=0;
-    for (const r of rows){
-      const p=(+r.parcels||0)-mp, l=(+r.letters||0)-ml, y=routeAdjustedMinutes(r)-my;
-      Cpp+=p*p; Cll+=l*l; Cpl+=p*l; Cpy+=p*y; Cly+=l*y;
-    }
-    const det = (Cpp*Cll - Cpl*Cpl);
-    if (!isFinite(det) || Math.abs(det) < 1e-6) return null;
-    const bp = ( Cpy*Cll - Cpl*Cly ) / det; // minutes per parcel
-    const bl = ( Cpp*Cly - Cpl*Cpy ) / det; // minutes per letter
-    if (!isFinite(bp) || Math.abs(bp) < 1e-6) return null;
-    let w = bl / bp; if (!isFinite(w) || w < 0) w = 0; if (w > 1.5) w = 1.5; // guardrails
-    return w;
+    const model = fitSharedVolumeTimeModel(sampleRows, {
+      minutesForRow: routeAdjustedMinutes
+    });
+    return learnedLetterWeightFromModel(model);
   }
   function updateCurrentLetterWeight(allRows){
     try{

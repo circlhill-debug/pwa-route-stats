@@ -1670,6 +1670,87 @@
     return { pushTokenUsageAfterSync };
   }
 
+  // src/modules/volumeModel.js
+  function fitVolumeTimeModel(rows, options = {}) {
+    const weightFn = typeof options.weightFn === "function" ? options.weightFn : null;
+    const minutesForRow = typeof options.minutesForRow === "function" ? options.minutesForRow : (row) => Number(row == null ? void 0 : row.route_minutes) || 0;
+    const prepared = (rows || []).filter((row) => row && row.status !== "off").map((row) => {
+      const parcels2 = +row.parcels || 0;
+      const letters2 = +row.letters || 0;
+      const minutes = minutesForRow(row);
+      const rawWeight = weightFn ? Number(weightFn(row)) : 1;
+      const weight = Number.isFinite(rawWeight) && rawWeight > 0 ? rawWeight : 0;
+      return { row, parcels: parcels2, letters: letters2, minutes, weight };
+    }).filter((entry) => entry.weight > 0);
+    if (!prepared.length) return null;
+    const sumW = prepared.reduce((t, e) => t + e.weight, 0);
+    if (!(sumW > 0)) return null;
+    const mp = prepared.reduce((t, e) => t + e.weight * e.parcels, 0) / sumW;
+    const ml = prepared.reduce((t, e) => t + e.weight * e.letters, 0) / sumW;
+    const my = prepared.reduce((t, e) => t + e.weight * e.minutes, 0) / sumW;
+    let Cpp = 0;
+    let Cll = 0;
+    let Cpl = 0;
+    let Cpy = 0;
+    let Cly = 0;
+    let SST = 0;
+    let SSR = 0;
+    for (const e of prepared) {
+      const p = e.parcels - mp;
+      const l = e.letters - ml;
+      const y = e.minutes - my;
+      const w = e.weight;
+      Cpp += w * p * p;
+      Cll += w * l * l;
+      Cpl += w * p * l;
+      Cpy += w * p * y;
+      Cly += w * l * y;
+      SST += w * y * y;
+    }
+    const det = Cpp * Cll - Cpl * Cpl;
+    if (!isFinite(det) || Math.abs(det) < 1e-6) return null;
+    const bp = (Cpy * Cll - Cpl * Cly) / det;
+    const bl = (Cpp * Cly - Cpl * Cpy) / det;
+    const a = my - bp * mp - bl * ml;
+    const residuals = [];
+    for (const e of prepared) {
+      const yhat = a + bp * e.parcels + bl * e.letters;
+      const resid = e.minutes - yhat;
+      residuals.push({
+        iso: e.row.work_date,
+        parcels: e.parcels,
+        letters: e.letters,
+        routeMin: e.minutes,
+        predMin: yhat,
+        residMin: resid,
+        weight: e.weight,
+        row: e.row
+      });
+      SSR += e.weight * resid * resid;
+    }
+    const r2 = SST > 0 ? 1 - SSR / SST : 0;
+    const downweighted = prepared.filter((e) => e.weight < 0.999).length;
+    return {
+      a,
+      bp,
+      bl,
+      r2,
+      n: prepared.length,
+      residuals,
+      weighting: {
+        enabled: !!weightFn,
+        sumWeights: sumW,
+        averageWeight: sumW / prepared.length,
+        downweighted
+      }
+    };
+  }
+  function learnedLetterWeightFromModel(model) {
+    if (!model || !isFinite(model.bp) || Math.abs(model.bp) < 1e-6) return null;
+    const w = model.bl / model.bp;
+    return isFinite(w) && w >= 0 && w <= 1.5 ? w : null;
+  }
+
   // src/features/diagnostics.js
   function createDiagnostics({
     getFlags,
@@ -1986,83 +2067,14 @@
         notesPlain: notePlainFull
       };
     }
-    function fitVolumeTimeModel2(rows, opts) {
-      const weightFn = typeof (opts == null ? void 0 : opts.weightFn) === "function" ? opts.weightFn : null;
-      const prepared = (rows || []).filter((r) => r && r.status !== "off").map((row) => {
-        const parcels2 = +row.parcels || 0;
-        const letters2 = +row.letters || 0;
-        const minutes = routeAdjustedMinutes2(row);
-        const rawWeight = weightFn ? Number(weightFn(row)) : 1;
-        const weight = Number.isFinite(rawWeight) && rawWeight > 0 ? rawWeight : 0;
-        return { row, parcels: parcels2, letters: letters2, minutes, weight };
-      }).filter((entry) => entry.weight > 0);
-      if (!prepared.length) return null;
-      const sumW = prepared.reduce((t, e) => t + e.weight, 0);
-      if (!(sumW > 0)) return null;
-      const mp = prepared.reduce((t, e) => t + e.weight * e.parcels, 0) / sumW;
-      const ml = prepared.reduce((t, e) => t + e.weight * e.letters, 0) / sumW;
-      const my = prepared.reduce((t, e) => t + e.weight * e.minutes, 0) / sumW;
-      let Cpp = 0;
-      let Cll = 0;
-      let Cpl = 0;
-      let Cpy = 0;
-      let Cly = 0;
-      let SST = 0;
-      let SSR = 0;
-      for (const e of prepared) {
-        const p = e.parcels - mp;
-        const l = e.letters - ml;
-        const y = e.minutes - my;
-        const w = e.weight;
-        Cpp += w * p * p;
-        Cll += w * l * l;
-        Cpl += w * p * l;
-        Cpy += w * p * y;
-        Cly += w * l * y;
-        SST += w * y * y;
-      }
-      const det = Cpp * Cll - Cpl * Cpl;
-      if (!isFinite(det) || Math.abs(det) < 1e-6) return null;
-      const bp = (Cpy * Cll - Cpl * Cly) / det;
-      const bl = (Cpp * Cly - Cpl * Cpy) / det;
-      const a = my - bp * mp - bl * ml;
-      const residuals = [];
-      for (const e of prepared) {
-        const yhat = a + bp * e.parcels + bl * e.letters;
-        const resid = e.minutes - yhat;
-        residuals.push({
-          iso: e.row.work_date,
-          parcels: e.parcels,
-          letters: e.letters,
-          routeMin: e.minutes,
-          predMin: yhat,
-          residMin: resid,
-          weight: e.weight,
-          row: e.row
-        });
-        SSR += e.weight * resid * resid;
-      }
-      const r2 = SST > 0 ? 1 - SSR / SST : 0;
-      const downweighted = prepared.filter((e) => e.weight < 0.999).length;
-      return {
-        a,
-        bp,
-        bl,
-        r2,
-        n: prepared.length,
-        residuals,
-        weighting: {
-          enabled: !!weightFn,
-          sumWeights: sumW,
-          averageWeight: sumW / prepared.length,
-          downweighted
-        }
-      };
+    function fitVolumeTimeModel3(rows, opts) {
+      return fitVolumeTimeModel(rows, {
+        weightFn: opts == null ? void 0 : opts.weightFn,
+        minutesForRow: routeAdjustedMinutes2
+      });
     }
     function learnedLetterWeight(model) {
-      if (!model || !isFinite(model.bp) || Math.abs(model.bp) < 1e-6) return null;
-      const w = model.bl / model.bp;
-      return isFinite(w) && w >= 0 && w <= 1.5 ? w : null;
+      return learnedLetterWeightFromModel(model);
     }
     function computeResidualForRow(row, model) {
       if (!model) return null;
@@ -2077,7 +2089,7 @@
       const worked = (rows || []).filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0).sort((a, b) => a.work_date < b.work_date ? -1 : 1);
       const scoped = rowsForModelScope2(worked);
       const weightCfg = getResidualWeighting2();
-      residModelCache = fitVolumeTimeModel2(scoped, weightCfg.fn ? { weightFn: weightCfg.fn } : void 0);
+      residModelCache = fitVolumeTimeModel3(scoped, weightCfg.fn ? { weightFn: weightCfg.fn } : void 0);
       return residModelCache;
     }
     function renderModelStrip(model) {
@@ -2108,7 +2120,7 @@
       const worked = filteredRows.filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0).sort((a, b) => a.work_date < b.work_date ? -1 : 1);
       const scoped = rowsForModelScope2(worked);
       const weightCfg = getResidualWeighting2();
-      const model = fitVolumeTimeModel2(scoped, weightCfg.fn ? { weightFn: weightCfg.fn } : void 0);
+      const model = fitVolumeTimeModel3(scoped, weightCfg.fn ? { weightFn: weightCfg.fn } : void 0);
       renderModelStrip(model);
       const badge = document.getElementById("diagModelBadge");
       const summaryEl = document.getElementById("diagSummary");
@@ -2713,7 +2725,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       buildDiagnostics: buildDiagnostics2,
       buildDayCompare: buildDayCompare2,
       buildVolumeLeaderboard: buildVolumeLeaderboard2,
-      fitVolumeTimeModel: fitVolumeTimeModel2,
+      fitVolumeTimeModel: fitVolumeTimeModel3,
       getResidualModel: getResidualModel2,
       getLatestDiagnosticsContext: () => latestDiagnosticsContext,
       resetDiagnosticsCache: () => {
@@ -6212,7 +6224,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     buildDiagnostics,
     buildDayCompare,
     buildVolumeLeaderboard,
-    fitVolumeTimeModel,
+    fitVolumeTimeModel: fitVolumeTimeModel2,
     getResidualModel,
     getLatestDiagnosticsContext,
     resetDiagnosticsCache
@@ -7093,11 +7105,6 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     return Number.isFinite(n) ? n : 0;
   }
   var CURRENT_LETTER_WEIGHT = 0.33;
-  function __sum(arr, fn) {
-    let s = 0;
-    for (const x of arr) s += +fn(x) || 0;
-    return s;
-  }
   function routeAdjustedMinutes(row) {
     try {
       if (typeof routeAdjustedHours === "function") {
@@ -7109,30 +7116,10 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     return Math.max(0, +row.route_minutes || 0);
   }
   function computeLetterWeight(sampleRows) {
-    const rows = (sampleRows || []).filter((r) => r && r.status !== "off");
-    const n = rows.length;
-    if (!n) return null;
-    const mp = __sum(rows, (r) => +r.parcels || 0) / n;
-    const ml = __sum(rows, (r) => +r.letters || 0) / n;
-    const my = __sum(rows, (r) => routeAdjustedMinutes(r)) / n;
-    let Cpp = 0, Cll = 0, Cpl = 0, Cpy = 0, Cly = 0;
-    for (const r of rows) {
-      const p = (+r.parcels || 0) - mp, l = (+r.letters || 0) - ml, y = routeAdjustedMinutes(r) - my;
-      Cpp += p * p;
-      Cll += l * l;
-      Cpl += p * l;
-      Cpy += p * y;
-      Cly += l * y;
-    }
-    const det = Cpp * Cll - Cpl * Cpl;
-    if (!isFinite(det) || Math.abs(det) < 1e-6) return null;
-    const bp = (Cpy * Cll - Cpl * Cly) / det;
-    const bl = (Cpp * Cly - Cpl * Cpy) / det;
-    if (!isFinite(bp) || Math.abs(bp) < 1e-6) return null;
-    let w = bl / bp;
-    if (!isFinite(w) || w < 0) w = 0;
-    if (w > 1.5) w = 1.5;
-    return w;
+    const model = fitVolumeTimeModel(sampleRows, {
+      minutesForRow: routeAdjustedMinutes
+    });
+    return learnedLetterWeightFromModel(model);
   }
   function updateCurrentLetterWeight(allRows2) {
     try {
@@ -9790,12 +9777,12 @@ Score: ${overallScore}/10 (higher is better)`;
   });
   window.showDiagnostics = function() {
     try {
-      if (typeof fitVolumeTimeModel !== "function") {
+      if (typeof fitVolumeTimeModel2 !== "function") {
         console.log("Model not loaded");
         return;
       }
       const rows = rowsForModelScope((window.allRows || []).filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0).sort((a, b) => a.work_date < b.work_date ? -1 : 1));
-      const m = fitVolumeTimeModel(rows);
+      const m = fitVolumeTimeModel2(rows);
       if (!m) {
         console.log("Not enough data for diagnostics");
         return;

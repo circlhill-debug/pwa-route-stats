@@ -58,4 +58,25 @@ describe('applyRemoteUserSettingsData', () => {
   it('requests a local token push when remote token usage is absent', () => {
     expect(applyRemoteUserSettingsData({}, {})).toEqual({ pushTokenUsageAfterSync: true });
   });
+
+  it('keeps local token usage when local usage is newer and requests push-back', () => {
+    const deps = {
+      loadTokenUsage: vi.fn(() => ({ today: 9, updatedAt: '2026-04-17T10:00:00.000Z' })),
+      mergeTokenUsage: vi.fn(() => ({
+        merged: { today: 9, updatedAt: '2026-04-17T10:00:00.000Z' },
+        source: 'local'
+      })),
+      saveTokenUsage: vi.fn()
+    };
+
+    const result = applyRemoteUserSettingsData({
+      ai_token_usage: { today: 3, updatedAt: '2026-04-17T09:00:00.000Z' }
+    }, deps);
+
+    expect(result).toEqual({ pushTokenUsageAfterSync: true });
+    expect(deps.saveTokenUsage).toHaveBeenCalledWith({
+      today: 9,
+      updatedAt: '2026-04-17T10:00:00.000Z'
+    });
+  });
 });

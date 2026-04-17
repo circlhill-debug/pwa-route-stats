@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { parseDismissReasonInput } from '../src/utils/diagnostics.js';
 import { loadDismissedResiduals, saveDismissedResiduals } from '../src/utils/storage.js';
-import { loadTagHistory, normalizeTagHistory, saveDismissedResidualWithTags } from '../src/utils/diagnosticsStorage.js';
+import { loadTagHistory, normalizeTagHistory, readTagHistoryForIso, saveDismissedResidualWithTags } from '../src/utils/diagnosticsStorage.js';
 
 beforeEach(() => {
   localStorage.clear();
@@ -45,6 +45,32 @@ describe('diagnosticsStorage helpers', () => {
         iso: '2026-04-14',
         tags: [{ key: 'weather', reason: 'weather', minutes: 15, notedAt: expect.any(String) }]
       }
+    ]);
+  });
+
+  it('replaces an existing dismissed residual entry for the same date', () => {
+    saveDismissedResiduals([
+      {
+        iso: '2026-04-14',
+        tags: [{ key: 'weather', reason: 'weather', minutes: 10, notedAt: '2026-04-14T09:00:00Z' }]
+      }
+    ]);
+
+    saveDismissedResidualWithTags({
+      iso: '2026-04-14',
+      tags: [{ key: 'detour', reason: 'detour', minutes: 20 }],
+      loadDismissedResiduals: () => loadDismissedResiduals(parseDismissReasonInput),
+      saveDismissedResiduals
+    });
+
+    expect(loadDismissedResiduals(parseDismissReasonInput)).toEqual([
+      {
+        iso: '2026-04-14',
+        tags: [{ key: 'detour', reason: 'detour', minutes: 20, notedAt: expect.any(String) }]
+      }
+    ]);
+    expect(readTagHistoryForIso('2026-04-14')).toEqual([
+      { key: 'detour', reason: 'detour', minutes: 20, notedAt: expect.any(String) }
     ]);
   });
 });

@@ -1932,6 +1932,7 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
   const offDay=$('offDay');
   const officeH=$('officeH'), routeH=$('routeH'), totalH=$('totalH');
   const expEnd=$('expEnd'), expMeta=$('expMeta');
+  const actualEnd=$('actualEnd'), actualMeta=$('actualMeta');
   const badgeVolume=$('badgeVolume'), badgeRouteEff=$('badgeRouteEff'), badgeOverall=$('badgeOverall');
   const dConnEl=$('dConn'), dAuthEl=$('dAuth'), dWriteEl=$('dWrite');
 
@@ -2872,6 +2873,20 @@ function getHourlyRateFromEval(){
     const predictedTotalHours = prediction?.predicted?.totalHours ?? null;
     expEnd.textContent = prediction?.predicted?.endTime || '—';
     expMeta.textContent = `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]} avg ${predictedTotalHours ? predictedTotalHours.toFixed(2)+'h':'—'}`;
+    if (actualEnd && actualMeta) {
+      const actualTotalHours = prediction?.actual?.totalHours ?? null;
+      const deltaMinutes = prediction?.delta?.totalMinutes ?? null;
+      const hitMiss = prediction?.delta?.hitMiss ?? null;
+      actualEnd.textContent = prediction?.actual?.endTime || '—';
+      if (actualTotalHours == null) {
+        actualMeta.textContent = 'No actual end logged';
+      } else {
+        const deltaClass = hitMiss === 'hit' ? 'eval-good' : (hitMiss === 'miss' ? 'eval-bad' : '');
+        const deltaPrefix = Number.isFinite(deltaMinutes) && deltaMinutes > 0 ? '+' : '';
+        const deltaText = Number.isFinite(deltaMinutes) ? `${deltaPrefix}${deltaMinutes}m` : '—';
+        actualMeta.innerHTML = `${actualTotalHours.toFixed(2)}h · <span class="${deltaClass || ''}">${hitMiss === 'hit' ? 'Hit' : (hitMiss === 'miss' ? 'Miss' : 'Δ')} ${deltaText}</span>`;
+      }
+    }
     // Enable click-to-toggle help on snapshot tiles (once)
     (function enableTileHelp(){
       try{

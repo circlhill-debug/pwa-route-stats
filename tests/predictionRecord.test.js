@@ -21,7 +21,7 @@ describe('buildPredictionRecord', () => {
     expect(record.predicted.routeHours).toBeCloseTo(4.875, 3);
     expect(record.predicted.endTime).toBe('2:45 PM');
     expect(record.actual.totalHours).toBe(7.5);
-    expect(record.actual.endTime).toBe('15:30');
+    expect(record.actual.endTime).toBe('3:30 PM');
     expect(record.delta.totalMinutes).toBe(45);
     expect(record.delta.hitMiss).toBe('miss');
   });
@@ -56,7 +56,7 @@ describe('buildPredictionRecord', () => {
     });
 
     expect(record.actual.totalHours).toBe(7.25);
-    expect(record.actual.endTime).toBe('15:30');
+    expect(record.actual.endTime).toBe('3:30 PM');
     expect(record.row?.return_time).toBe('15:15');
   });
 });

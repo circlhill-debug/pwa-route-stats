@@ -35,6 +35,15 @@ function hoursToClock(iso, hours, { startHour = 8 } = {}) {
   return base.plus({ hours }).toFormat('h:mm a');
 }
 
+function timeStringToClock(iso, timeString) {
+  if (!(iso && timeString)) return null;
+  const value = String(timeString).trim();
+  if (!value) return null;
+  const dt = DateTime.fromISO(`${iso}T${value}`, { zone: ZONE });
+  if (dt.isValid) return dt.toFormat('h:mm a');
+  return value;
+}
+
 export function buildPredictionRecord(rows, options = {}) {
   const now = options.now || DateTime.now().setZone(ZONE);
   const todayIso = options.todayIso || now.toISODate();
@@ -58,7 +67,7 @@ export function buildPredictionRecord(rows, options = {}) {
   const actualTotalHours = parseHours(todayRow?.hours);
   const actualOfficeHours = parseHours(todayRow?.office_minutes);
   const actualRouteHours = parseHours(todayRow?.route_minutes);
-  const actualEndTime = todayRow?.end_time || todayRow?.return_time || null;
+  const actualEndTime = timeStringToClock(todayIso, todayRow?.end_time || todayRow?.return_time || null);
 
   const deltaHours = (predictedTotalHours != null && actualTotalHours != null)
     ? actualTotalHours - predictedTotalHours

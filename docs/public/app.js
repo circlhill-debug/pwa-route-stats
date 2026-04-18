@@ -1641,6 +1641,14 @@
     const base = DateTime.fromISO(iso, { zone: ZONE }).set({ hour: startHour, minute: 0, second: 0, millisecond: 0 });
     return base.plus({ hours }).toFormat("h:mm a");
   }
+  function timeStringToClock(iso, timeString) {
+    if (!(iso && timeString)) return null;
+    const value = String(timeString).trim();
+    if (!value) return null;
+    const dt = DateTime.fromISO(`${iso}T${value}`, { zone: ZONE });
+    if (dt.isValid) return dt.toFormat("h:mm a");
+    return value;
+  }
   function buildPredictionRecord(rows, options = {}) {
     var _a5, _b, _c, _d;
     const now = options.now || DateTime.now().setZone(ZONE);
@@ -1658,7 +1666,7 @@
     const actualTotalHours = parseHours(todayRow == null ? void 0 : todayRow.hours);
     const actualOfficeHours = parseHours(todayRow == null ? void 0 : todayRow.office_minutes);
     const actualRouteHours = parseHours(todayRow == null ? void 0 : todayRow.route_minutes);
-    const actualEndTime = (todayRow == null ? void 0 : todayRow.end_time) || (todayRow == null ? void 0 : todayRow.return_time) || null;
+    const actualEndTime = timeStringToClock(todayIso2, (todayRow == null ? void 0 : todayRow.end_time) || (todayRow == null ? void 0 : todayRow.return_time) || null);
     const deltaHours = predictedTotalHours != null && actualTotalHours != null ? actualTotalHours - predictedTotalHours : null;
     return {
       iso: todayIso2,
@@ -7068,6 +7076,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var totalH = $("totalH");
   var expEnd = $("expEnd");
   var expMeta = $("expMeta");
+  var actualEnd = $("actualEnd");
+  var actualMeta = $("actualMeta");
   var badgeVolume = $("badgeVolume");
   var badgeRouteEff = $("badgeRouteEff");
   var badgeOverall = $("badgeOverall");
@@ -8174,7 +8184,7 @@ Entries are filtered by this id.`);
     alert(`Imported ${rows.length} rows into this account.`);
   });
   function buildSnapshot(rows) {
-    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
+    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G;
     rows = filterRowsForView(rows || []);
     const today = DateTime.now().setZone(ZONE);
     const dow = today.weekday % 7;
@@ -8183,6 +8193,20 @@ Entries are filtered by this id.`);
     const predictedTotalHours = (_b = (_a5 = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _a5.totalHours) != null ? _b : null;
     expEnd.textContent = ((_c = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _c.endTime) || "\u2014";
     expMeta.textContent = `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dow]} avg ${predictedTotalHours ? predictedTotalHours.toFixed(2) + "h" : "\u2014"}`;
+    if (actualEnd && actualMeta) {
+      const actualTotalHours = (_e = (_d = prediction == null ? void 0 : prediction.actual) == null ? void 0 : _d.totalHours) != null ? _e : null;
+      const deltaMinutes = (_g = (_f = prediction == null ? void 0 : prediction.delta) == null ? void 0 : _f.totalMinutes) != null ? _g : null;
+      const hitMiss = (_i = (_h = prediction == null ? void 0 : prediction.delta) == null ? void 0 : _h.hitMiss) != null ? _i : null;
+      actualEnd.textContent = ((_j = prediction == null ? void 0 : prediction.actual) == null ? void 0 : _j.endTime) || "\u2014";
+      if (actualTotalHours == null) {
+        actualMeta.textContent = "No actual end logged";
+      } else {
+        const deltaClass = hitMiss === "hit" ? "eval-good" : hitMiss === "miss" ? "eval-bad" : "";
+        const deltaPrefix = Number.isFinite(deltaMinutes) && deltaMinutes > 0 ? "+" : "";
+        const deltaText = Number.isFinite(deltaMinutes) ? `${deltaPrefix}${deltaMinutes}m` : "\u2014";
+        actualMeta.innerHTML = `${actualTotalHours.toFixed(2)}h \xB7 <span class="${deltaClass || ""}">${hitMiss === "hit" ? "Hit" : hitMiss === "miss" ? "Miss" : "\u0394"} ${deltaText}</span>`;
+      }
+    }
     (function enableTileHelp() {
       try {
         const pairs = [
@@ -8282,7 +8306,7 @@ Note: ${adjNote}`;
       }
     } catch (_) {
     }
-    const totToday = (_e = (_d = prediction == null ? void 0 : prediction.actual) == null ? void 0 : _d.totalHours) != null ? _e : 0;
+    const totToday = (_l = (_k = prediction == null ? void 0 : prediction.actual) == null ? void 0 : _k.totalHours) != null ? _l : 0;
     const exp = predictedTotalHours || 0;
     const overallScore = exp > 0 ? Math.max(0, Math.min(10, Math.round((1 - (totToday - exp) / Math.max(1, exp)) * 10))) : 0;
     badgeOverall.textContent = `${overallScore}/10`;
@@ -8603,11 +8627,11 @@ Score: ${overallScore}/10 (higher is better)`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_f = thisWeek[i]) == null ? void 0 : _f.h) || 0 : null;
-          let base = ((_g = lastWeek[i]) == null ? void 0 : _g.h) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_m = thisWeek[i]) == null ? void 0 : _m.h) || 0 : null;
+          let base = ((_n = lastWeek[i]) == null ? void 0 : _n.h) || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_h = lastWeek[i - 1]) == null ? void 0 : _h.h) || 0) + (((_i = lastWeek[i]) == null ? void 0 : _i.h) || 0);
+            base = (((_o = lastWeek[i - 1]) == null ? void 0 : _o.h) || 0) + (((_p = lastWeek[i]) == null ? void 0 : _p.h) || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8648,11 +8672,11 @@ Score: ${overallScore}/10 (higher is better)`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_j = thisWeek[i]) == null ? void 0 : _j.p) || 0 : null;
-          let base = ((_k = lastWeek[i]) == null ? void 0 : _k.p) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_q = thisWeek[i]) == null ? void 0 : _q.p) || 0 : null;
+          let base = ((_r = lastWeek[i]) == null ? void 0 : _r.p) || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_l = lastWeek[i - 1]) == null ? void 0 : _l.p) || 0) + (((_m = lastWeek[i]) == null ? void 0 : _m.p) || 0);
+            base = (((_s = lastWeek[i - 1]) == null ? void 0 : _s.p) || 0) + (((_t = lastWeek[i]) == null ? void 0 : _t.p) || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8686,11 +8710,11 @@ Score: ${overallScore}/10 (higher is better)`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_n = thisWeek[i]) == null ? void 0 : _n.l) || 0 : null;
-          let base = ((_o = lastWeek[i]) == null ? void 0 : _o.l) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_u = thisWeek[i]) == null ? void 0 : _u.l) || 0 : null;
+          let base = ((_v = lastWeek[i]) == null ? void 0 : _v.l) || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_p = lastWeek[i - 1]) == null ? void 0 : _p.l) || 0) + (((_q = lastWeek[i]) == null ? void 0 : _q.l) || 0);
+            base = (((_w = lastWeek[i - 1]) == null ? void 0 : _w.l) || 0) + (((_x = lastWeek[i]) == null ? void 0 : _x.l) || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8776,9 +8800,9 @@ Score: ${overallScore}/10 (higher is better)`;
     const dayPct = (val, base) => val == null || !base ? null : (val - base) / base * 100;
     const tdp = dayPct(todayParcels, baseParcels), tdl = dayPct(todayLetters, baseLetters);
     const wkNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    (_t = (_s = (_r = document.querySelector("#todayParcelsDelta")) == null ? void 0 : _r.closest(".stat")) == null ? void 0 : _s.querySelector("small.muted")) == null ? void 0 : _t.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
-    (_w = (_v = (_u = document.querySelector("#todayLettersDelta")) == null ? void 0 : _u.closest(".stat")) == null ? void 0 : _v.querySelector("small.muted")) == null ? void 0 : _w.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
-    (_z = (_y = (_x = document.querySelector("#todayOfficeDelta")) == null ? void 0 : _x.closest(".stat")) == null ? void 0 : _y.querySelector("small.muted")) == null ? void 0 : _z.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    (_A = (_z = (_y = document.querySelector("#todayParcelsDelta")) == null ? void 0 : _y.closest(".stat")) == null ? void 0 : _z.querySelector("small.muted")) == null ? void 0 : _A.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    (_D = (_C = (_B = document.querySelector("#todayLettersDelta")) == null ? void 0 : _B.closest(".stat")) == null ? void 0 : _C.querySelector("small.muted")) == null ? void 0 : _D.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    (_G = (_F = (_E = document.querySelector("#todayOfficeDelta")) == null ? void 0 : _E.closest(".stat")) == null ? void 0 : _F.querySelector("small.muted")) == null ? void 0 : _G.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
     const baseOffice = lastSame ? +lastSame.office_minutes || 0 : null;
     const todayOffice = todaysRow ? +todaysRow.office_minutes || 0 : null;
     const fmtTiny = (p) => p == null ? "\u2014" : p >= 0 ? `\u2191 ${p.toFixed(0)}%` : `\u2193 ${Math.abs(p).toFixed(0)}%`;

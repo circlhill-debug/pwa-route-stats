@@ -1638,6 +1638,14 @@
     const base = DateTime.fromISO(iso, { zone: ZONE }).set({ hour: startHour, minute: 0, second: 0, millisecond: 0 });
     return base.plus({ hours }).toFormat("h:mm a");
   }
+  function timeStringToClock(iso, timeString) {
+    if (!(iso && timeString)) return null;
+    const value = String(timeString).trim();
+    if (!value) return null;
+    const dt = DateTime.fromISO(`${iso}T${value}`, { zone: ZONE });
+    if (dt.isValid) return dt.toFormat("h:mm a");
+    return value;
+  }
   function buildPredictionRecord(rows, options = {}) {
     const now = options.now || DateTime.now().setZone(ZONE);
     const todayIso2 = options.todayIso || now.toISODate();
@@ -1654,7 +1662,7 @@
     const actualTotalHours = parseHours(todayRow?.hours);
     const actualOfficeHours = parseHours(todayRow?.office_minutes);
     const actualRouteHours = parseHours(todayRow?.route_minutes);
-    const actualEndTime = todayRow?.end_time || todayRow?.return_time || null;
+    const actualEndTime = timeStringToClock(todayIso2, todayRow?.end_time || todayRow?.return_time || null);
     const deltaHours = predictedTotalHours != null && actualTotalHours != null ? actualTotalHours - predictedTotalHours : null;
     return {
       iso: todayIso2,
@@ -7004,6 +7012,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var totalH = $("totalH");
   var expEnd = $("expEnd");
   var expMeta = $("expMeta");
+  var actualEnd = $("actualEnd");
+  var actualMeta = $("actualMeta");
   var badgeVolume = $("badgeVolume");
   var badgeRouteEff = $("badgeRouteEff");
   var badgeOverall = $("badgeOverall");
@@ -8108,6 +8118,20 @@ Entries are filtered by this id.`);
     const predictedTotalHours = prediction?.predicted?.totalHours ?? null;
     expEnd.textContent = prediction?.predicted?.endTime || "\u2014";
     expMeta.textContent = `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dow]} avg ${predictedTotalHours ? predictedTotalHours.toFixed(2) + "h" : "\u2014"}`;
+    if (actualEnd && actualMeta) {
+      const actualTotalHours = prediction?.actual?.totalHours ?? null;
+      const deltaMinutes = prediction?.delta?.totalMinutes ?? null;
+      const hitMiss = prediction?.delta?.hitMiss ?? null;
+      actualEnd.textContent = prediction?.actual?.endTime || "\u2014";
+      if (actualTotalHours == null) {
+        actualMeta.textContent = "No actual end logged";
+      } else {
+        const deltaClass = hitMiss === "hit" ? "eval-good" : hitMiss === "miss" ? "eval-bad" : "";
+        const deltaPrefix = Number.isFinite(deltaMinutes) && deltaMinutes > 0 ? "+" : "";
+        const deltaText = Number.isFinite(deltaMinutes) ? `${deltaPrefix}${deltaMinutes}m` : "\u2014";
+        actualMeta.innerHTML = `${actualTotalHours.toFixed(2)}h \xB7 <span class="${deltaClass || ""}">${hitMiss === "hit" ? "Hit" : hitMiss === "miss" ? "Miss" : "\u0394"} ${deltaText}</span>`;
+      }
+    }
     (function enableTileHelp() {
       try {
         const pairs = [

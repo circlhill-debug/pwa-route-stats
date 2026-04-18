@@ -512,9 +512,9 @@
       const pW2 = byW(W2, (r) => +r.parcels || 0);
       const lW1 = byW(W1, (r) => +r.letters || 0);
       const lW2 = byW(W2, (r) => +r.letters || 0);
-      const mean = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-      const parcels2 = Array.from({ length: 7 }, (_, i) => mean([...pW1[i] || [], ...pW2[i] || []]));
-      const letters2 = Array.from({ length: 7 }, (_, i) => mean([...lW1[i] || [], ...lW2[i] || []]));
+      const mean2 = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+      const parcels2 = Array.from({ length: 7 }, (_, i) => mean2([...pW1[i] || [], ...pW2[i] || []]));
+      const letters2 = Array.from({ length: 7 }, (_, i) => mean2([...lW1[i] || [], ...lW2[i] || []]));
       const snap = { weekStart: weekStartIso, parcels: parcels2, letters: letters2 };
       localStorage.setItem(BASELINE_KEY, JSON.stringify(snap));
       return snap;
@@ -1612,6 +1612,82 @@
     };
   }
 
+  // src/modules/predictionRecord.js
+  function mean(values) {
+    if (!Array.isArray(values) || !values.length) return null;
+    const total = values.reduce((sum, value) => sum + value, 0);
+    return total / values.length;
+  }
+  function parseHours(value) {
+    const num = Number(value);
+    return Number.isFinite(num) && num > 0 ? num : null;
+  }
+  function scoreRowCompleteness(row) {
+    if (!row || row.status === "off") return -1;
+    let score = 0;
+    if (row == null ? void 0 : row.end_time) score += 3;
+    if (row == null ? void 0 : row.return_time) score += 2;
+    if (Number(row == null ? void 0 : row.hours) > 0) score += 4;
+    if (Number(row == null ? void 0 : row.route_minutes) > 0) score += 2;
+    if (Number(row == null ? void 0 : row.office_minutes) > 0) score += 1;
+    return score;
+  }
+  function selectBestRow(rows) {
+    if (!Array.isArray(rows) || !rows.length) return null;
+    return rows.reduce((best, row) => scoreRowCompleteness(row) > scoreRowCompleteness(best) ? row : best, null);
+  }
+  function hoursToClock(iso, hours, { startHour = 8 } = {}) {
+    if (!(iso && Number.isFinite(hours) && hours > 0)) return null;
+    const base = DateTime.fromISO(iso, { zone: ZONE }).set({ hour: startHour, minute: 0, second: 0, millisecond: 0 });
+    return base.plus({ hours }).toFormat("h:mm a");
+  }
+  function buildPredictionRecord(rows, options = {}) {
+    var _a5, _b, _c, _d;
+    const now = options.now || DateTime.now().setZone(ZONE);
+    const todayIso2 = options.todayIso || now.toISODate();
+    const todayDow = (_a5 = options.todayDow) != null ? _a5 : now.weekday % 7;
+    const startHour = Number.isFinite(options.startHour) ? options.startHour : 8;
+    const sourceRows = Array.isArray(rows) ? rows.filter((row) => row && row.status !== "off") : [];
+    const todayCandidates = sourceRows.filter((row) => row.work_date === todayIso2);
+    const todayRow = selectBestRow(todayCandidates);
+    const historicalRows = sourceRows.filter((row) => row.work_date !== todayIso2);
+    const sameDowRows = historicalRows.filter((row) => dowIndex(row.work_date) === todayDow);
+    const predictedTotalHours = (_b = mean(sameDowRows.map((row) => parseHours(row.hours)).filter(Boolean))) != null ? _b : mean(historicalRows.map((row) => parseHours(row.hours)).filter(Boolean));
+    const predictedOfficeHours = (_c = mean(sameDowRows.map((row) => parseHours(row.office_minutes)).filter(Boolean))) != null ? _c : mean(historicalRows.map((row) => parseHours(row.office_minutes)).filter(Boolean));
+    const predictedRouteHours = (_d = mean(sameDowRows.map((row) => parseHours(row.route_minutes)).filter(Boolean))) != null ? _d : mean(historicalRows.map((row) => parseHours(row.route_minutes)).filter(Boolean));
+    const actualTotalHours = parseHours(todayRow == null ? void 0 : todayRow.hours);
+    const actualOfficeHours = parseHours(todayRow == null ? void 0 : todayRow.office_minutes);
+    const actualRouteHours = parseHours(todayRow == null ? void 0 : todayRow.route_minutes);
+    const actualEndTime = (todayRow == null ? void 0 : todayRow.end_time) || (todayRow == null ? void 0 : todayRow.return_time) || null;
+    const deltaHours = predictedTotalHours != null && actualTotalHours != null ? actualTotalHours - predictedTotalHours : null;
+    return {
+      iso: todayIso2,
+      weekday: todayDow,
+      source: {
+        type: sameDowRows.length ? "weekday_average" : "overall_average",
+        sampleSize: sameDowRows.length || historicalRows.length
+      },
+      predicted: {
+        totalHours: predictedTotalHours,
+        officeHours: predictedOfficeHours,
+        routeHours: predictedRouteHours,
+        endTime: hoursToClock(todayIso2, predictedTotalHours, { startHour })
+      },
+      actual: {
+        totalHours: actualTotalHours,
+        officeHours: actualOfficeHours,
+        routeHours: actualRouteHours,
+        endTime: actualEndTime
+      },
+      delta: {
+        totalHours: deltaHours,
+        totalMinutes: Number.isFinite(deltaHours) ? Math.round(deltaHours * 60) : null,
+        hitMiss: deltaHours == null ? null : Math.abs(deltaHours * 60) <= 15 ? "hit" : "miss"
+      },
+      row: todayRow
+    };
+  }
+
   // src/modules/userSettingsSync.js
   var USER_SETTINGS_TABLE = "user_settings";
   var USER_SETTINGS_SELECT = "eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed";
@@ -2254,13 +2330,13 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const stats = (() => {
           const pool = residuals.filter((r) => !dismissedMap.has(r.iso));
           if (!pool.length) return { mean: 0, std: 0 };
-          const mean = pool.reduce((acc, r) => acc + r.residMin, 0) / pool.length;
-          if (pool.length < 2) return { mean, std: 0 };
+          const mean2 = pool.reduce((acc, r) => acc + r.residMin, 0) / pool.length;
+          if (pool.length < 2) return { mean: mean2, std: 0 };
           const variance = pool.reduce((acc, r) => {
-            const diff = r.residMin - mean;
+            const diff = r.residMin - mean2;
             return acc + diff * diff;
           }, 0) / (pool.length - 1);
-          return { mean, std: Math.sqrt(Math.max(variance, 0)) };
+          return { mean: mean2, std: Math.sqrt(Math.max(variance, 0)) };
         })();
         const visibleResiduals = residuals.filter((r) => !dismissedMap.has(r.iso));
         const top = [...visibleResiduals].sort((a, b) => Math.abs(b.residMin) - Math.abs(a.residMin)).slice(0, 10);
@@ -8097,30 +8173,16 @@ Entries are filtered by this id.`);
     rebuildAll();
     alert(`Imported ${rows.length} rows into this account.`);
   });
-  function hhmmFrom(baseDateStr, hours) {
-    if (hours == null) return "\u2014";
-    const d = DateTime.fromISO(baseDateStr, { zone: ZONE }).set({ hour: 8, minute: 0 });
-    return d.plus({ hours }).toFormat("h:mm a");
-  }
   function buildSnapshot(rows) {
-    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u;
+    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
     rows = filterRowsForView(rows || []);
     const today = DateTime.now().setZone(ZONE);
     const dow = today.weekday % 7;
     const workRows = rows.filter((r) => r.status !== "off");
-    const byDow = Array.from({ length: 7 }, () => ({ h: 0, c: 0 }));
-    for (const r of workRows) {
-      const h = Number(r.hours || 0);
-      if (h > 0) {
-        const d = dowIndex(r.work_date);
-        byDow[d].h += h;
-        byDow[d].c++;
-      }
-    }
-    const avgH = byDow.map((x) => x.c ? x.h / x.c : null);
-    const todayAvgH = avgH[dow];
-    expEnd.textContent = todayAvgH ? hhmmFrom(today.toISODate(), todayAvgH) : "\u2014";
-    expMeta.textContent = `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dow]} avg ${todayAvgH ? todayAvgH.toFixed(2) + "h" : "\u2014"}`;
+    const prediction = buildPredictionRecord(workRows, { now: today });
+    const predictedTotalHours = (_b = (_a5 = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _a5.totalHours) != null ? _b : null;
+    expEnd.textContent = ((_c = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _c.endTime) || "\u2014";
+    expMeta.textContent = `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dow]} avg ${predictedTotalHours ? predictedTotalHours.toFixed(2) + "h" : "\u2014"}`;
     (function enableTileHelp() {
       try {
         const pairs = [
@@ -8220,8 +8282,8 @@ Note: ${adjNote}`;
       }
     } catch (_) {
     }
-    const totToday = workRows[0] ? +workRows[0].hours || 0 : 0;
-    const exp = todayAvgH || 0;
+    const totToday = (_e = (_d = prediction == null ? void 0 : prediction.actual) == null ? void 0 : _d.totalHours) != null ? _e : 0;
+    const exp = predictedTotalHours || 0;
     const overallScore = exp > 0 ? Math.max(0, Math.min(10, Math.round((1 - (totToday - exp) / Math.max(1, exp)) * 10))) : 0;
     badgeOverall.textContent = `${overallScore}/10`;
     try {
@@ -8541,11 +8603,11 @@ Score: ${overallScore}/10 (higher is better)`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_a5 = thisWeek[i]) == null ? void 0 : _a5.h) || 0 : null;
-          let base = ((_b = lastWeek[i]) == null ? void 0 : _b.h) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_f = thisWeek[i]) == null ? void 0 : _f.h) || 0 : null;
+          let base = ((_g = lastWeek[i]) == null ? void 0 : _g.h) || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_c = lastWeek[i - 1]) == null ? void 0 : _c.h) || 0) + (((_d = lastWeek[i]) == null ? void 0 : _d.h) || 0);
+            base = (((_h = lastWeek[i - 1]) == null ? void 0 : _h.h) || 0) + (((_i = lastWeek[i]) == null ? void 0 : _i.h) || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8586,11 +8648,11 @@ Score: ${overallScore}/10 (higher is better)`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_e = thisWeek[i]) == null ? void 0 : _e.p) || 0 : null;
-          let base = ((_f = lastWeek[i]) == null ? void 0 : _f.p) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_j = thisWeek[i]) == null ? void 0 : _j.p) || 0 : null;
+          let base = ((_k = lastWeek[i]) == null ? void 0 : _k.p) || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_g = lastWeek[i - 1]) == null ? void 0 : _g.p) || 0) + (((_h = lastWeek[i]) == null ? void 0 : _h.p) || 0);
+            base = (((_l = lastWeek[i - 1]) == null ? void 0 : _l.p) || 0) + (((_m = lastWeek[i]) == null ? void 0 : _m.p) || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8624,11 +8686,11 @@ Score: ${overallScore}/10 (higher is better)`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_i = thisWeek[i]) == null ? void 0 : _i.l) || 0 : null;
-          let base = ((_j = lastWeek[i]) == null ? void 0 : _j.l) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_n = thisWeek[i]) == null ? void 0 : _n.l) || 0 : null;
+          let base = ((_o = lastWeek[i]) == null ? void 0 : _o.l) || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_k = lastWeek[i - 1]) == null ? void 0 : _k.l) || 0) + (((_l = lastWeek[i]) == null ? void 0 : _l.l) || 0);
+            base = (((_p = lastWeek[i - 1]) == null ? void 0 : _p.l) || 0) + (((_q = lastWeek[i]) == null ? void 0 : _q.l) || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8714,9 +8776,9 @@ Score: ${overallScore}/10 (higher is better)`;
     const dayPct = (val, base) => val == null || !base ? null : (val - base) / base * 100;
     const tdp = dayPct(todayParcels, baseParcels), tdl = dayPct(todayLetters, baseLetters);
     const wkNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    (_o = (_n = (_m = document.querySelector("#todayParcelsDelta")) == null ? void 0 : _m.closest(".stat")) == null ? void 0 : _n.querySelector("small.muted")) == null ? void 0 : _o.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
-    (_r = (_q = (_p = document.querySelector("#todayLettersDelta")) == null ? void 0 : _p.closest(".stat")) == null ? void 0 : _q.querySelector("small.muted")) == null ? void 0 : _r.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
-    (_u = (_t = (_s = document.querySelector("#todayOfficeDelta")) == null ? void 0 : _s.closest(".stat")) == null ? void 0 : _t.querySelector("small.muted")) == null ? void 0 : _u.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    (_t = (_s = (_r = document.querySelector("#todayParcelsDelta")) == null ? void 0 : _r.closest(".stat")) == null ? void 0 : _s.querySelector("small.muted")) == null ? void 0 : _t.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    (_w = (_v = (_u = document.querySelector("#todayLettersDelta")) == null ? void 0 : _u.closest(".stat")) == null ? void 0 : _v.querySelector("small.muted")) == null ? void 0 : _w.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    (_z = (_y = (_x = document.querySelector("#todayOfficeDelta")) == null ? void 0 : _x.closest(".stat")) == null ? void 0 : _y.querySelector("small.muted")) == null ? void 0 : _z.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
     const baseOffice = lastSame ? +lastSame.office_minutes || 0 : null;
     const todayOffice = todaysRow ? +todaysRow.office_minutes || 0 : null;
     const fmtTiny = (p) => p == null ? "\u2014" : p >= 0 ? `\u2191 ${p.toFixed(0)}%` : `\u2193 ${Math.abs(p).toFixed(0)}%`;
@@ -9103,11 +9165,11 @@ Score: ${overallScore}/10 (higher is better)`;
     const effRaw = series.map((s) => s.efficiency);
     const zScore = (values) => {
       const valid = values.filter((v) => Number.isFinite(v));
-      const mean = valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : 0;
-      const variance = valid.length ? valid.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / valid.length : 0;
+      const mean2 = valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : 0;
+      const variance = valid.length ? valid.reduce((a, b) => a + Math.pow(b - mean2, 2), 0) / valid.length : 0;
       const std = variance > 0 ? Math.sqrt(variance) : 0;
-      const z = values.map((v) => std > 0 && Number.isFinite(v) ? (v - mean) / std : 0);
-      return { z, mean, std };
+      const z = values.map((v) => std > 0 && Number.isFinite(v) ? (v - mean2) / std : 0);
+      return { z, mean: mean2, std };
     };
     const view = (parserView == null ? void 0 : parserView.value) || "relationship";
     if (view === "efficiency") {

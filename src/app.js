@@ -56,6 +56,7 @@ import {
 } from './services/supabaseClient.js';
 import { computeForecastText, storeForecastSnapshot, saveForecastSnapshot, syncForecastSnapshotsFromSupabase, loadLatestForecastMessage } from './modules/forecast.js';
 import { buildForecastRenderPlan, buildForecastSnapshotFromPayload } from './modules/forecastSurface.js';
+import { buildPredictionRecord } from './modules/predictionRecord.js';
 import { USER_SETTINGS_SELECT, USER_SETTINGS_TABLE, applyRemoteUserSettingsData, buildUserSettingsPayload } from './modules/userSettingsSync.js';
 import { fitVolumeTimeModel as fitSharedVolumeTimeModel, learnedLetterWeightFromModel } from './modules/volumeModel.js';
 
@@ -2862,21 +2863,15 @@ function getHourlyRateFromEval(){
     alert(`Imported ${rows.length} rows into this account.`);
   });
 
-
-  function hhmmFrom(baseDateStr, hours){ if(hours==null) return '—'; const d=DateTime.fromISO(baseDateStr,{zone:ZONE}).set({hour:8,minute:0}); return d.plus({hours}).toFormat('h:mm a'); }
-
   function buildSnapshot(rows){
     rows = filterRowsForView(rows||[]);
     const today=DateTime.now().setZone(ZONE);
     const dow=today.weekday%7; // 0=Sun
     const workRows=rows.filter(r=>r.status!=='off');
-
-    // Baselines by DOW for expected end
-    const byDow=Array.from({length:7},()=>({h:0,c:0}));
-    for(const r of workRows){ const h=Number(r.hours||0); if(h>0){ const d=dowIndex(r.work_date); byDow[d].h+=h; byDow[d].c++; } }
-    const avgH=byDow.map(x=> x.c? x.h/x.c : null); const todayAvgH=avgH[dow];
-    expEnd.textContent = todayAvgH? hhmmFrom(today.toISODate(), todayAvgH) : '—';
-    expMeta.textContent = `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]} avg ${todayAvgH? todayAvgH.toFixed(2)+'h':'—'}`;
+    const prediction = buildPredictionRecord(workRows, { now: today });
+    const predictedTotalHours = prediction?.predicted?.totalHours ?? null;
+    expEnd.textContent = prediction?.predicted?.endTime || '—';
+    expMeta.textContent = `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]} avg ${predictedTotalHours ? predictedTotalHours.toFixed(2)+'h':'—'}`;
     // Enable click-to-toggle help on snapshot tiles (once)
     (function enableTileHelp(){
       try{
@@ -2952,7 +2947,7 @@ function getHourlyRateFromEval(){
         },0);
       }
     }catch(_){ }
-    const totToday = workRows[0]? (+workRows[0].hours||0) : 0; const exp = todayAvgH || 0; const overallScore = exp>0? Math.max(0, Math.min(10, Math.round((1 - (totToday - exp)/Math.max(1,exp))*10))) : 0; badgeOverall.textContent = `${overallScore}/10`;
+    const totToday = prediction?.actual?.totalHours ?? 0; const exp = predictedTotalHours || 0; const overallScore = exp>0? Math.max(0, Math.min(10, Math.round((1 - (totToday - exp)/Math.max(1,exp))*10))) : 0; badgeOverall.textContent = `${overallScore}/10`;
     try{
       const deltaPctTot = exp>0? Math.round(((totToday - exp)/exp)*100) : null;
       badgeOverall.title = `Total hours: ${totToday.toFixed(2)} vs expected ${exp?exp.toFixed(2):'—'} (weekday avg)\nΔ vs expected: ${deltaPctTot==null?'—':(deltaPctTot>=0?('+'+deltaPctTot):('−'+Math.abs(deltaPctTot)))}%\nScore: ${overallScore}/10 (higher is better)`;

@@ -214,8 +214,8 @@
               id,
               year,
               label,
-              unlockedAt: (prev == null ? void 0 : prev.unlockedAt) || (/* @__PURE__ */ new Date()).toISOString(),
-              message: (prev == null ? void 0 : prev.message) || `\u{1F3C5} ${label} \u2014 ${threshold.toLocaleString()} ${key} delivered in ${year}!`
+              unlockedAt: prev?.unlockedAt || (/* @__PURE__ */ new Date()).toISOString(),
+              message: prev?.message || `\u{1F3C5} ${label} \u2014 ${threshold.toLocaleString()} ${key} delivered in ${year}!`
             });
           }
         });
@@ -243,7 +243,6 @@
     }
   }
   function sanitizeEvalProfile(input, fallback) {
-    var _a5, _b, _c;
     const base = { ...DEFAULT_EVAL_PROFILE, ...fallback || {} };
     const merged = { ...base, ...input || {} };
     const providedId = typeof merged.profileId === "string" && merged.profileId.trim() ? merged.profileId.trim() : typeof merged.id === "string" && merged.id.trim() ? merged.id.trim() : null;
@@ -263,9 +262,9 @@
       hoursPerDay: toNumberOrNull(merged.hoursPerDay),
       officeHoursPerDay: toNumberOrNull(merged.officeHoursPerDay),
       annualSalary: toNumberOrNull(merged.annualSalary),
-      evalDaysPerYear: toNumberOrNull((_a5 = merged.evalDaysPerYear) != null ? _a5 : merged.workDaysPerYear),
-      effectiveFrom: normalizeDateValue((_b = merged.effectiveFrom) != null ? _b : merged.from),
-      effectiveTo: normalizeDateValue((_c = merged.effectiveTo) != null ? _c : merged.to)
+      evalDaysPerYear: toNumberOrNull(merged.evalDaysPerYear ?? merged.workDaysPerYear),
+      effectiveFrom: normalizeDateValue(merged.effectiveFrom ?? merged.from),
+      effectiveTo: normalizeDateValue(merged.effectiveTo ?? merged.to)
     };
   }
   function sanitizeEvalProfileList(list) {
@@ -407,7 +406,6 @@
     }
   }
   function deleteEvalProfile(profileId) {
-    var _a5;
     if (!profileId) return loadEvalProfiles();
     try {
       let profiles = loadEvalProfiles().filter((p) => p.profileId !== profileId);
@@ -417,7 +415,7 @@
       saveEvalProfiles(profiles);
       const activeId = getActiveEvalId();
       if (activeId === profileId) {
-        const nextActive = ((_a5 = profiles[0]) == null ? void 0 : _a5.profileId) || null;
+        const nextActive = profiles[0]?.profileId || null;
         if (nextActive) {
           setActiveEvalId(nextActive);
           localStorage.setItem(EVAL_KEY, JSON.stringify(legacyEvalPayload(profiles[0])));
@@ -437,8 +435,8 @@
   function loadVacation() {
     try {
       const v = JSON.parse(localStorage.getItem(VACAY_KEY) || "{}");
-      const ranges = Array.isArray(v == null ? void 0 : v.ranges) ? v.ranges : [];
-      return { ranges: ranges.filter((r) => (r == null ? void 0 : r.from) && (r == null ? void 0 : r.to)) };
+      const ranges = Array.isArray(v?.ranges) ? v.ranges : [];
+      return { ranges: ranges.filter((r) => r?.from && r?.to) };
     } catch (_) {
       return { ...EMPTY_VACATION };
     }
@@ -466,9 +464,9 @@
   function savePeakSeason(cfg) {
     try {
       setStored(PEAK_SEASON_KEY, {
-        from: (cfg == null ? void 0 : cfg.from) || "",
-        to: (cfg == null ? void 0 : cfg.to) || "",
-        excludeFromModel: !!(cfg == null ? void 0 : cfg.excludeFromModel)
+        from: cfg?.from || "",
+        to: cfg?.to || "",
+        excludeFromModel: !!cfg?.excludeFromModel
       });
     } catch (_) {
     }
@@ -496,7 +494,7 @@
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
         return d >= from && d <= to;
       };
-      const worked = (rows || []).filter((r) => (r == null ? void 0 : r.status) !== "off");
+      const worked = (rows || []).filter((r) => r?.status !== "off");
       const W1 = worked.filter((r) => inRange(r, startLast, endLast));
       const W2 = worked.filter((r) => inRange(r, startPrev, endPrev));
       const byW = (arr, fn) => {
@@ -512,9 +510,9 @@
       const pW2 = byW(W2, (r) => +r.parcels || 0);
       const lW1 = byW(W1, (r) => +r.letters || 0);
       const lW2 = byW(W2, (r) => +r.letters || 0);
-      const mean = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-      const parcels2 = Array.from({ length: 7 }, (_, i) => mean([...pW1[i] || [], ...pW2[i] || []]));
-      const letters2 = Array.from({ length: 7 }, (_, i) => mean([...lW1[i] || [], ...lW2[i] || []]));
+      const mean2 = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+      const parcels2 = Array.from({ length: 7 }, (_, i) => mean2([...pW1[i] || [], ...pW2[i] || []]));
+      const letters2 = Array.from({ length: 7 }, (_, i) => mean2([...lW1[i] || [], ...lW2[i] || []]));
       const snap = { weekStart: weekStartIso, parcels: parcels2, letters: letters2 };
       localStorage.setItem(BASELINE_KEY, JSON.stringify(snap));
       return snap;
@@ -532,7 +530,7 @@
   function computeAnchorBaselines(rows, weeks = 8) {
     try {
       const now = DateTime.now().setZone(ZONE);
-      const worked = (rows || []).filter((r) => (r == null ? void 0 : r.status) !== "off");
+      const worked = (rows || []).filter((r) => r?.status !== "off");
       const weeksArr = [];
       for (let w = 1; w <= weeks; w++) {
         const s = startOfWeekMonday(now.minus({ weeks: w }));
@@ -857,8 +855,8 @@
       if (hasHashToken || code) {
         window.history.replaceState({}, document.title, url.origin + url.pathname);
       }
-      console.log("[Auth] session ready", (out == null ? void 0 : out.session) ? "(signed in)" : "(no session)");
-      return (out == null ? void 0 : out.session) || null;
+      console.log("[Auth] session ready", out?.session ? "(signed in)" : "(no session)");
+      return out?.session || null;
     } catch (err) {
       console.warn("Auth callback error \u2013", err);
       return null;
@@ -884,7 +882,7 @@
   var CATALOG_BY_KEY = new Map(DIAGNOSTIC_TAG_CATALOG.map((item) => [item.key, item]));
   function tagLabelForKey(key) {
     const item = CATALOG_BY_KEY.get(String(key || "").trim());
-    return (item == null ? void 0 : item.label) || "Misc";
+    return item?.label || "Misc";
   }
   function canonicalizeTagReason(rawReason) {
     const reason = String(rawReason || "").replace(/\s+/g, " ").trim();
@@ -1036,7 +1034,6 @@
     return Math.round(numericValue);
   }
   function normalizeSnapshot(snapshot) {
-    var _a5, _b, _c, _d, _e, _f, _g, _h, _i;
     if (!snapshot || typeof snapshot !== "object") return null;
     const isoSource = snapshot.iso || snapshot.date || snapshot.work_date || snapshot.workDate;
     const iso = typeof isoSource === "string" && isoSource ? isoSource : null;
@@ -1044,14 +1041,14 @@
     const dt = new Date(iso);
     const weekdayCandidate = Number(snapshot.weekday);
     const weekday = Number.isFinite(weekdayCandidate) ? weekdayCandidate : Number.isNaN(dt.getTime()) ? null : dt.getDay();
-    const totalTime = (_e = normalizeDurationMinutes(
-      (_d = (_c = (_b = (_a5 = snapshot.totalTime) != null ? _a5 : snapshot.total_time) != null ? _b : snapshot.total_minutes) != null ? _c : snapshot.totalMinutes) != null ? _d : snapshot.total,
+    const totalTime = normalizeDurationMinutes(
+      snapshot.totalTime ?? snapshot.total_time ?? snapshot.total_minutes ?? snapshot.totalMinutes ?? snapshot.total,
       { hourLikeThreshold: 16 }
-    )) != null ? _e : Number.isFinite(snapshot.hours) ? Math.round(Number(snapshot.hours) * 60) : null;
-    const officeTime = (_i = normalizeDurationMinutes(
-      (_h = (_g = (_f = snapshot.officeTime) != null ? _f : snapshot.office_time) != null ? _g : snapshot.office_minutes) != null ? _h : snapshot.officeMinutes,
+    ) ?? (Number.isFinite(snapshot.hours) ? Math.round(Number(snapshot.hours) * 60) : null);
+    const officeTime = normalizeDurationMinutes(
+      snapshot.officeTime ?? snapshot.office_time ?? snapshot.office_minutes ?? snapshot.officeMinutes,
       { hourLikeThreshold: 12 }
-    )) != null ? _i : Number.isFinite(snapshot.office_hours) ? Math.round(Number(snapshot.office_hours) * 60) : null;
+    ) ?? (Number.isFinite(snapshot.office_hours) ? Math.round(Number(snapshot.office_hours) * 60) : null);
     const endTime = snapshot.endTime || snapshot.end_time || snapshot.return_time || null;
     let tags = [];
     if (Array.isArray(snapshot.tags)) {
@@ -1276,7 +1273,7 @@
   function buildTrendForecastCore(targetDow, badgeData) {
     const logger = typeof window !== "undefined" && typeof window.logToScreen === "function" ? window.logToScreen : null;
     if (logger) {
-      logger(`Forecast Engine: Received ${(badgeData == null ? void 0 : badgeData.length) || 0} total snapshots.`);
+      logger(`Forecast Engine: Received ${badgeData?.length || 0} total snapshots.`);
     }
     const dataList = Array.isArray(badgeData) ? badgeData : [];
     if (!dataList.length) {
@@ -1563,7 +1560,7 @@
     }
     if (hour < 8) {
       const todayIso2 = now.toISODate();
-      if ((latestForecastMessage == null ? void 0 : latestForecastMessage.iso) === todayIso2 && (latestForecastMessage == null ? void 0 : latestForecastMessage.text)) {
+      if (latestForecastMessage?.iso === todayIso2 && latestForecastMessage?.text) {
         return {
           title: "\u{1F324} Tomorrow\u2019s Forecast",
           message: latestForecastMessage.text,
@@ -1612,6 +1609,81 @@
     };
   }
 
+  // src/modules/predictionRecord.js
+  function mean(values) {
+    if (!Array.isArray(values) || !values.length) return null;
+    const total = values.reduce((sum, value) => sum + value, 0);
+    return total / values.length;
+  }
+  function parseHours(value) {
+    const num = Number(value);
+    return Number.isFinite(num) && num > 0 ? num : null;
+  }
+  function scoreRowCompleteness(row) {
+    if (!row || row.status === "off") return -1;
+    let score = 0;
+    if (row?.end_time) score += 3;
+    if (row?.return_time) score += 2;
+    if (Number(row?.hours) > 0) score += 4;
+    if (Number(row?.route_minutes) > 0) score += 2;
+    if (Number(row?.office_minutes) > 0) score += 1;
+    return score;
+  }
+  function selectBestRow(rows) {
+    if (!Array.isArray(rows) || !rows.length) return null;
+    return rows.reduce((best, row) => scoreRowCompleteness(row) > scoreRowCompleteness(best) ? row : best, null);
+  }
+  function hoursToClock(iso, hours, { startHour = 8 } = {}) {
+    if (!(iso && Number.isFinite(hours) && hours > 0)) return null;
+    const base = DateTime.fromISO(iso, { zone: ZONE }).set({ hour: startHour, minute: 0, second: 0, millisecond: 0 });
+    return base.plus({ hours }).toFormat("h:mm a");
+  }
+  function buildPredictionRecord(rows, options = {}) {
+    const now = options.now || DateTime.now().setZone(ZONE);
+    const todayIso2 = options.todayIso || now.toISODate();
+    const todayDow = options.todayDow ?? now.weekday % 7;
+    const startHour = Number.isFinite(options.startHour) ? options.startHour : 8;
+    const sourceRows = Array.isArray(rows) ? rows.filter((row) => row && row.status !== "off") : [];
+    const todayCandidates = sourceRows.filter((row) => row.work_date === todayIso2);
+    const todayRow = selectBestRow(todayCandidates);
+    const historicalRows = sourceRows.filter((row) => row.work_date !== todayIso2);
+    const sameDowRows = historicalRows.filter((row) => dowIndex(row.work_date) === todayDow);
+    const predictedTotalHours = mean(sameDowRows.map((row) => parseHours(row.hours)).filter(Boolean)) ?? mean(historicalRows.map((row) => parseHours(row.hours)).filter(Boolean));
+    const predictedOfficeHours = mean(sameDowRows.map((row) => parseHours(row.office_minutes)).filter(Boolean)) ?? mean(historicalRows.map((row) => parseHours(row.office_minutes)).filter(Boolean));
+    const predictedRouteHours = mean(sameDowRows.map((row) => parseHours(row.route_minutes)).filter(Boolean)) ?? mean(historicalRows.map((row) => parseHours(row.route_minutes)).filter(Boolean));
+    const actualTotalHours = parseHours(todayRow?.hours);
+    const actualOfficeHours = parseHours(todayRow?.office_minutes);
+    const actualRouteHours = parseHours(todayRow?.route_minutes);
+    const actualEndTime = todayRow?.end_time || todayRow?.return_time || null;
+    const deltaHours = predictedTotalHours != null && actualTotalHours != null ? actualTotalHours - predictedTotalHours : null;
+    return {
+      iso: todayIso2,
+      weekday: todayDow,
+      source: {
+        type: sameDowRows.length ? "weekday_average" : "overall_average",
+        sampleSize: sameDowRows.length || historicalRows.length
+      },
+      predicted: {
+        totalHours: predictedTotalHours,
+        officeHours: predictedOfficeHours,
+        routeHours: predictedRouteHours,
+        endTime: hoursToClock(todayIso2, predictedTotalHours, { startHour })
+      },
+      actual: {
+        totalHours: actualTotalHours,
+        officeHours: actualOfficeHours,
+        routeHours: actualRouteHours,
+        endTime: actualEndTime
+      },
+      delta: {
+        totalHours: deltaHours,
+        totalMinutes: Number.isFinite(deltaHours) ? Math.round(deltaHours * 60) : null,
+        hitMiss: deltaHours == null ? null : Math.abs(deltaHours * 60) <= 15 ? "hit" : "miss"
+      },
+      row: todayRow
+    };
+  }
+
   // src/modules/userSettingsSync.js
   var USER_SETTINGS_TABLE = "user_settings";
   var USER_SETTINGS_SELECT = "eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed";
@@ -1633,39 +1705,38 @@
     };
   }
   function applyRemoteUserSettingsData(data, deps = {}) {
-    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j;
     let pushTokenUsageAfterSync = false;
     if (!data || typeof data !== "object") {
       return { pushTokenUsageAfterSync: true };
     }
     if (Array.isArray(data.eval_profiles)) {
-      (_a5 = deps.saveEvalProfiles) == null ? void 0 : _a5.call(deps, data.eval_profiles);
-      if (data.active_eval_id) (_b = deps.setActiveEvalId) == null ? void 0 : _b.call(deps, data.active_eval_id);
-      (_c = deps.syncEvalGlobals) == null ? void 0 : _c.call(deps);
+      deps.saveEvalProfiles?.(data.eval_profiles);
+      if (data.active_eval_id) deps.setActiveEvalId?.(data.active_eval_id);
+      deps.syncEvalGlobals?.();
     }
     if (Array.isArray(data.vacation_ranges)) {
-      const sanitized = data.vacation_ranges.filter((r) => (r == null ? void 0 : r.from) && (r == null ? void 0 : r.to)).map((r) => ({ from: r.from, to: r.to }));
+      const sanitized = data.vacation_ranges.filter((r) => r?.from && r?.to).map((r) => ({ from: r.from, to: r.to }));
       const normalized = deps.normalizeRanges ? deps.normalizeRanges(sanitized) : sanitized;
-      (_d = deps.applyVacationRanges) == null ? void 0 : _d.call(deps, normalized);
+      deps.applyVacationRanges?.(normalized);
     }
     if (data.extra_trip && typeof data.extra_trip === "object") {
       const emaVal = parseFloat(data.extra_trip.ema);
-      if (Number.isFinite(emaVal)) (_e = deps.setExtraTripEma) == null ? void 0 : _e.call(deps, emaVal);
+      if (Number.isFinite(emaVal)) deps.setExtraTripEma?.(emaVal);
     }
     if (data.ai_token_usage && typeof data.ai_token_usage === "object") {
-      const localUsage = (_f = deps.loadTokenUsage) == null ? void 0 : _f.call(deps);
-      const merged = ((_g = deps.mergeTokenUsage) == null ? void 0 : _g.call(deps, localUsage, data.ai_token_usage)) || { merged: data.ai_token_usage, source: "incoming" };
+      const localUsage = deps.loadTokenUsage?.();
+      const merged = deps.mergeTokenUsage?.(localUsage, data.ai_token_usage) || { merged: data.ai_token_usage, source: "incoming" };
       if (merged.source === "incoming") {
-        (_h = deps.saveTokenUsage) == null ? void 0 : _h.call(deps, merged.merged, { preserveTimestamp: true });
+        deps.saveTokenUsage?.(merged.merged, { preserveTimestamp: true });
       } else {
-        (_i = deps.saveTokenUsage) == null ? void 0 : _i.call(deps, merged.merged);
+        deps.saveTokenUsage?.(merged.merged);
         pushTokenUsageAfterSync = true;
       }
     } else {
       pushTokenUsageAfterSync = true;
     }
     if (Array.isArray(data.diagnostics_dismissed)) {
-      (_j = deps.saveDismissedResiduals) == null ? void 0 : _j.call(deps, data.diagnostics_dismissed);
+      deps.saveDismissedResiduals?.(data.diagnostics_dismissed);
     }
     return { pushTokenUsageAfterSync };
   }
@@ -1673,7 +1744,7 @@
   // src/modules/volumeModel.js
   function fitVolumeTimeModel(rows, options = {}) {
     const weightFn = typeof options.weightFn === "function" ? options.weightFn : null;
-    const minutesForRow = typeof options.minutesForRow === "function" ? options.minutesForRow : (row) => Number(row == null ? void 0 : row.route_minutes) || 0;
+    const minutesForRow = typeof options.minutesForRow === "function" ? options.minutesForRow : (row) => Number(row?.route_minutes) || 0;
     const prepared = (rows || []).filter((row) => row && row.status !== "off").map((row) => {
       const parcels2 = +row.parcels || 0;
       const letters2 = +row.letters || 0;
@@ -1846,17 +1917,16 @@
       return limit && sorted.length > limit ? sorted.slice(0, limit) : sorted;
     }
     function choosePreferredDayRow(a, b) {
-      const updatedA = Date.parse((a == null ? void 0 : a.updated_at) || (a == null ? void 0 : a.created_at) || "");
-      const updatedB = Date.parse((b == null ? void 0 : b.updated_at) || (b == null ? void 0 : b.created_at) || "");
+      const updatedA = Date.parse(a?.updated_at || a?.created_at || "");
+      const updatedB = Date.parse(b?.updated_at || b?.created_at || "");
       if (Number.isFinite(updatedA) && Number.isFinite(updatedB) && updatedA !== updatedB) {
         return updatedA > updatedB ? a : b;
       }
       const score = (row) => {
-        var _a5, _b, _c;
-        const routeHours = normalizeHours((_a5 = row == null ? void 0 : row.route_minutes) != null ? _a5 : row == null ? void 0 : row.routeMinutes);
-        const officeHours = normalizeHours((_b = row == null ? void 0 : row.office_minutes) != null ? _b : row == null ? void 0 : row.officeMinutes);
+        const routeHours = normalizeHours(row?.route_minutes ?? row?.routeMinutes);
+        const officeHours = normalizeHours(row?.office_minutes ?? row?.officeMinutes);
         const combined = routeHours + officeHours;
-        const total = normalizeHours((_c = row == null ? void 0 : row.hours) != null ? _c : row == null ? void 0 : row.totalHours);
+        const total = normalizeHours(row?.hours ?? row?.totalHours);
         if (!combined || !total) return 0;
         const ratio = total > combined ? total / combined : combined / total;
         return ratio <= 1.35 ? 2 : 1;
@@ -1903,13 +1973,12 @@
       return row ? dayMetricsFromRow(row, { source: "manualReference", label: row.work_date }) : null;
     }
     function dayMetricsFromRow(row, meta) {
-      var _a5, _b;
       if (!row) return null;
       const parcels2 = +row.parcels || 0;
       const letters2 = +row.letters || 0;
       const volume = combinedVolume2(parcels2, letters2);
-      const routeHours = normalizeHours((_a5 = row.route_minutes) != null ? _a5 : row.routeMinutes);
-      const officeHours = normalizeHours((_b = row.office_minutes) != null ? _b : row.officeMinutes);
+      const routeHours = normalizeHours(row.route_minutes ?? row.routeMinutes);
+      const officeHours = normalizeHours(row.office_minutes ?? row.officeMinutes);
       const totalHours = normalizeTotalHours(row, routeHours, officeHours);
       const miles2 = Number(row.miles) || 0;
       const efficiencyMinutes = volume > 0 ? routeHours * 60 / volume : null;
@@ -1934,9 +2003,8 @@
       const valid = rows.filter(Boolean);
       if (!valid.length) return null;
       const totals = valid.reduce((acc, row) => {
-        var _a5, _b;
-        const routeHours = normalizeHours((_a5 = row.route_minutes) != null ? _a5 : row.routeMinutes);
-        const officeHours = normalizeHours((_b = row.office_minutes) != null ? _b : row.officeMinutes);
+        const routeHours = normalizeHours(row.route_minutes ?? row.routeMinutes);
+        const officeHours = normalizeHours(row.office_minutes ?? row.officeMinutes);
         acc.totalHours += normalizeTotalHours(row, routeHours, officeHours);
         acc.routeHours += routeHours;
         acc.officeHours += officeHours;
@@ -1964,7 +2032,6 @@
     __testApi.dayMetricsFromRow = dayMetricsFromRow;
     __testApi.aggregateDayMetrics = aggregateDayMetrics;
     function computeDeltaDetails(subject, reference) {
-      var _a5, _b, _c, _d, _e;
       if (!subject || !reference) return { rows: [], highlights: [], reasoning: "" };
       const metricDefs = [
         { key: "totalHours", label: "Total hours", decimals: 2, suffix: "h" },
@@ -1984,12 +2051,12 @@
         const delta = subjVal != null && refVal != null ? subjVal - refVal : null;
         const pct = refVal != null && refVal !== 0 && delta != null ? delta / refVal * 100 : null;
         const colorDelta = def.invert && pct != null ? -pct : pct;
-        const displayDelta = delta == null ? "\u2014" : formatNumber2(delta, { decimals: (_a5 = def.decimals) != null ? _a5 : 2, suffix: def.suffix || "" });
+        const displayDelta = delta == null ? "\u2014" : formatNumber2(delta, { decimals: def.decimals ?? 2, suffix: def.suffix || "" });
         const pctTxt = pct == null || !Number.isFinite(pct) ? "" : ` (${pct >= 0 ? "+" : ""}${Math.round(pct)}%)`;
         const deltaText = delta == null ? "\u2014" : `${displayDelta}${pctTxt}`;
-        const subjectText = formatNumber2(subjVal, { decimals: (_b = def.decimals) != null ? _b : 2, suffix: def.suffix || "" });
-        const referenceText = formatNumber2(refVal, { decimals: (_c = def.decimals) != null ? _c : 2, suffix: def.suffix || "" });
-        const color = colorForDelta2(colorDelta != null ? colorDelta : 0).fg;
+        const subjectText = formatNumber2(subjVal, { decimals: def.decimals ?? 2, suffix: def.suffix || "" });
+        const referenceText = formatNumber2(refVal, { decimals: def.decimals ?? 2, suffix: def.suffix || "" });
+        const color = colorForDelta2(colorDelta ?? 0).fg;
         rowsOut.push({
           key: def.key,
           label: def.label,
@@ -1999,10 +2066,10 @@
           color,
           delta,
           pct,
-          score: Math.abs((_d = pct != null ? pct : delta) != null ? _d : 0)
+          score: Math.abs(pct ?? delta ?? 0)
         });
         if (delta != null) {
-          highlights.push({ key: def.key, label: def.label, deltaText, color, score: Math.abs((_e = pct != null ? pct : delta) != null ? _e : 0) });
+          highlights.push({ key: def.key, label: def.label, deltaText, color, score: Math.abs(pct ?? delta ?? 0) });
         }
       }
       highlights.sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
@@ -2069,7 +2136,7 @@
     }
     function fitVolumeTimeModel3(rows, opts) {
       return fitVolumeTimeModel(rows, {
-        weightFn: opts == null ? void 0 : opts.weightFn,
+        weightFn: opts?.weightFn,
         minutesForRow: routeAdjustedMinutes2
       });
     }
@@ -2111,7 +2178,6 @@
       el.style.display = "flex";
     }
     function buildDiagnostics2(rows) {
-      var _a5, _b, _c, _d, _e;
       const filteredRows = filterRowsForView2(rows || []);
       const card = document.getElementById("diagnosticsCard");
       if (!card) return;
@@ -2133,8 +2199,8 @@
       if (weightBtn) {
         if (!weightBtn.dataset.bound) {
           weightBtn.addEventListener("click", () => {
-            const next = !(isHolidayDownweightEnabled2 == null ? void 0 : isHolidayDownweightEnabled2());
-            setHolidayDownweightEnabled2 == null ? void 0 : setHolidayDownweightEnabled2(next);
+            const next = !isHolidayDownweightEnabled2?.();
+            setHolidayDownweightEnabled2?.(next);
             residModelCache = null;
             rebuildAll2();
           });
@@ -2209,7 +2275,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           summaryText += ` \xB7 ${parts.join(" \u2022 ")}`;
         }
         if (weightCfg.enabled) {
-          const avgW = (_a5 = model.weighting) == null ? void 0 : _a5.averageWeight;
+          const avgW = model.weighting?.averageWeight;
           const avgTxt = avgW ? ` (~${avgW.toFixed(2)}\xD7 weight)` : "";
           summaryText += ` \xB7 Holiday downweight ON${avgTxt}`;
         }
@@ -2254,19 +2320,18 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const stats = (() => {
           const pool = residuals.filter((r) => !dismissedMap.has(r.iso));
           if (!pool.length) return { mean: 0, std: 0 };
-          const mean = pool.reduce((acc, r) => acc + r.residMin, 0) / pool.length;
-          if (pool.length < 2) return { mean, std: 0 };
+          const mean2 = pool.reduce((acc, r) => acc + r.residMin, 0) / pool.length;
+          if (pool.length < 2) return { mean: mean2, std: 0 };
           const variance = pool.reduce((acc, r) => {
-            const diff = r.residMin - mean;
+            const diff = r.residMin - mean2;
             return acc + diff * diff;
           }, 0) / (pool.length - 1);
-          return { mean, std: Math.sqrt(Math.max(variance, 0)) };
+          return { mean: mean2, std: Math.sqrt(Math.max(variance, 0)) };
         })();
         const visibleResiduals = residuals.filter((r) => !dismissedMap.has(r.iso));
         const top = [...visibleResiduals].sort((a, b) => Math.abs(b.residMin) - Math.abs(a.residMin)).slice(0, 10);
         const topContext = [];
         tbody.innerHTML = top.map((d) => {
-          var _a6;
           const rowSummary = summarizeEntry(d.row, model, stats, dismissedMap);
           topContext.push({
             iso: d.iso,
@@ -2278,7 +2343,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             boxholders: inferBoxholderLabel2(d.row),
             weather: rowSummary.weatherSnippet,
             notes: rowSummary.notesPlain,
-            tags: Array.isArray((_a6 = d.row) == null ? void 0 : _a6._tags) ? d.row._tags : []
+            tags: Array.isArray(d.row?._tags) ? d.row._tags : []
           });
           return `<tr>
           <td class="text-left">${rowSummary.dtHtml || escapeHtml(rowSummary.dt)}</td>
@@ -2302,14 +2367,13 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           catchupSummary,
           weight: {
             enabled: weightCfg.enabled,
-            averageWeight: (_c = (_b = model.weighting) == null ? void 0 : _b.averageWeight) != null ? _c : null,
-            downweighted: (_e = (_d = model.weighting) == null ? void 0 : _d.downweighted) != null ? _e : 0
+            averageWeight: model.weighting?.averageWeight ?? null,
+            downweighted: model.weighting?.downweighted ?? 0
           }
         };
-        updateAiSummaryAvailability2 == null ? void 0 : updateAiSummaryAvailability2();
+        updateAiSummaryAvailability2?.();
         tbody.onclick = async (event) => {
-          var _a6, _b2, _c2, _d2, _e2;
-          const dismissBtn = (_b2 = (_a6 = event.target) == null ? void 0 : _a6.closest) == null ? void 0 : _b2.call(_a6, ".diag-dismiss");
+          const dismissBtn = event.target?.closest?.(".diag-dismiss");
           if (dismissBtn) {
             const iso = dismissBtn.dataset.dismissIso;
             if (!iso) return;
@@ -2339,12 +2403,12 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
               return;
             }
             persistDismissedResidualWithTags({ iso, tags });
-            (_c2 = window.renderTomorrowForecast) == null ? void 0 : _c2.call(window);
+            window.renderTomorrowForecast?.();
             notifyDismissedChange();
             buildDiagnostics2(rows);
             return;
           }
-          const noteBtn = (_e2 = (_d2 = event.target) == null ? void 0 : _d2.closest) == null ? void 0 : _e2.call(_d2, ".diag-note");
+          const noteBtn = event.target?.closest?.(".diag-note");
           if (noteBtn) {
             const note = noteBtn.dataset.noteFull ? decodeURIComponent(noteBtn.dataset.noteFull) : "";
             if (!note) {
@@ -2396,12 +2460,11 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       let result = null;
       const collect = () => {
         const tags = checkboxNodes.filter((node) => node.checked).map((node) => {
-          var _a5;
           const key = node.dataset.tagKey;
           const minInput = dialog.querySelector(`input[data-minutes-for="${key}"]`);
-          const rawMinutes = ((minInput == null ? void 0 : minInput.value) || "").trim();
+          const rawMinutes = (minInput?.value || "").trim();
           const minutes = rawMinutes !== "" ? Number(rawMinutes) : null;
-          const reason = key === "misc" ? (((_a5 = dialog.querySelector("#diagDismissMiscNote")) == null ? void 0 : _a5.value) || "").trim() || "misc" : key;
+          const reason = key === "misc" ? (dialog.querySelector("#diagDismissMiscNote")?.value || "").trim() || "misc" : key;
           return {
             key,
             reason,
@@ -2418,12 +2481,12 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         dialog.remove();
       };
       return new Promise((resolve) => {
-        cancelBtn == null ? void 0 : cancelBtn.addEventListener("click", () => {
+        cancelBtn?.addEventListener("click", () => {
           result = null;
           closeDialog();
           resolve(null);
         });
-        saveBtn == null ? void 0 : saveBtn.addEventListener("click", () => {
+        saveBtn?.addEventListener("click", () => {
           const payload = collect();
           result = payload.tags.length ? payload : null;
           if (!result) {
@@ -2454,9 +2517,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       });
     }
     function formatNumber2(val, opts) {
-      var _a5;
-      const decimals = (_a5 = opts == null ? void 0 : opts.decimals) != null ? _a5 : 2;
-      const suffix = (opts == null ? void 0 : opts.suffix) || "";
+      const decimals = opts?.decimals ?? 2;
+      const suffix = opts?.suffix || "";
       const n = val == null ? null : Number(val);
       if (n == null || !Number.isFinite(n)) return "\u2014";
       return `${n.toFixed(decimals)}${suffix}`;
@@ -2468,8 +2530,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       return n;
     }
     function normalizeTotalHours(row, routeHours, officeHours) {
-      var _a5;
-      const stored = normalizeHours((_a5 = row == null ? void 0 : row.hours) != null ? _a5 : row == null ? void 0 : row.totalHours);
+      const stored = normalizeHours(row?.hours ?? row?.totalHours);
       const combined = routeHours + officeHours;
       if (!Number.isFinite(stored) || stored <= 0) return combined;
       if (combined > 0) {
@@ -2479,7 +2540,6 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       return stored;
     }
     function buildDayCompare2(rows) {
-      var _a5;
       const flags = getFlags();
       const filteredRows = filterRowsForView2(rows || []);
       const card = document.getElementById("dayCompareCard");
@@ -2537,7 +2597,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         }
       }
       subjectSelect.innerHTML = worked.map((row) => `<option value="${row.work_date}">${formatOption(row)}</option>`).join("");
-      subjectSelect.value = storedSubject && subjectSelect.querySelector(`option[value="${storedSubject}"]`) ? storedSubject : ((_a5 = worked[0]) == null ? void 0 : _a5.work_date) || "";
+      subjectSelect.value = storedSubject && subjectSelect.querySelector(`option[value="${storedSubject}"]`) ? storedSubject : worked[0]?.work_date || "";
       const manualOption = referenceSelect.querySelector('option[value="manual"]');
       const manualAvailable = worked.length > 1;
       if (manualOption) {
@@ -2546,8 +2606,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       }
       referenceSelect.value = storedMode;
       function subjectIso() {
-        var _a6;
-        return subjectSelect.value || ((_a6 = worked[0]) == null ? void 0 : _a6.work_date);
+        return subjectSelect.value || worked[0]?.work_date;
       }
       function modeLabel(mode) {
         if (mode === "last") return "Last weekday";
@@ -2989,7 +3048,6 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       return lines.join("\n");
     }
     async function generateSummary() {
-      var _a5, _b, _c, _d;
       if (!button) return;
       const key = getOpenAiKey();
       if (!key) {
@@ -3029,11 +3087,11 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         }
         const data = await response.json();
         let text = "";
-        const content2 = (_c = (_b = (_a5 = data == null ? void 0 : data.choices) == null ? void 0 : _a5[0]) == null ? void 0 : _b.message) == null ? void 0 : _c.content;
+        const content2 = data?.choices?.[0]?.message?.content;
         if (typeof content2 === "string") {
           text = content2;
         } else if (Array.isArray(content2)) {
-          text = content2.map((part) => typeof part === "string" ? part : (part == null ? void 0 : part.text) || "").join("");
+          text = content2.map((part) => typeof part === "string" ? part : part?.text || "").join("");
         } else if (content2 && typeof content2 === "object" && "text" in content2) {
           text = content2.text;
         }
@@ -3045,7 +3103,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const persisted = saveLastSummary(summaryPayload);
         await saveAiSummaryToSupabase(summaryPayload);
         if (persisted) renderLastSummary();
-        const tokensUsed = (_d = data == null ? void 0 : data.usage) == null ? void 0 : _d.total_tokens;
+        const tokensUsed = data?.usage?.total_tokens;
         if (Number.isFinite(tokensUsed) && tokensUsed > 0) {
           addTokenUsage(tokensUsed);
         }
@@ -3165,8 +3223,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             control.appendChild(btn);
           });
           control.addEventListener("click", (event) => {
-            var _a5, _b;
-            const btn = (_b = (_a5 = event.target) == null ? void 0 : _a5.closest) == null ? void 0 : _b.call(_a5, "button[data-trend-range]");
+            const btn = event.target?.closest?.("button[data-trend-range]");
             if (!btn) return;
             const next = btn.dataset.trendRange;
             if (!next || next === trendRangeKey) return;
@@ -3180,17 +3237,16 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       updateTrendRangeControlState();
     }
     function applyTrendRange(sortedWorkedRows) {
-      var _a5;
       const rows = Array.isArray(sortedWorkedRows) ? sortedWorkedRows : [];
       if (!rows.length) return rows;
       const days = getTrendRangeDays();
       if (!Number.isFinite(days) || days <= 0) return rows;
-      const lastIso = (_a5 = rows[rows.length - 1]) == null ? void 0 : _a5.work_date;
+      const lastIso = rows[rows.length - 1]?.work_date;
       if (!lastIso) return rows;
       const cutoff = DateTime.fromISO(lastIso, { zone: ZONE }).minus({ days: Math.max(0, days - 1) });
-      if (!(cutoff == null ? void 0 : cutoff.isValid)) return rows;
+      if (!cutoff?.isValid) return rows;
       return rows.filter((row) => {
-        const iso = row == null ? void 0 : row.work_date;
+        const iso = row?.work_date;
         if (!iso) return false;
         const dt = DateTime.fromISO(iso, { zone: ZONE });
         return dt.isValid && dt >= cutoff;
@@ -3269,8 +3325,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
               animation: { duration: 0 },
               callbacks: {
                 title: (items) => {
-                  var _a5;
-                  const iso = (_a5 = items == null ? void 0 : items[0]) == null ? void 0 : _a5.label;
+                  const iso = items?.[0]?.label;
                   if (!iso) return "";
                   const d = DateTime.fromISO(iso, { zone: ZONE });
                   return d.toFormat("cccc \u2022 MMM d, yyyy") + (vacGlyph2 ? vacGlyph2(iso) : "");
@@ -3312,8 +3367,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
               animation: { duration: 0 },
               callbacks: {
                 title: (items) => {
-                  var _a5;
-                  const iso = (_a5 = items == null ? void 0 : items[0]) == null ? void 0 : _a5.label;
+                  const iso = items?.[0]?.label;
                   if (!iso) return "";
                   const d = DateTime.fromISO(iso, { zone: ZONE });
                   return d.toFormat("cccc \u2022 MMM d, yyyy") + (vacGlyph2 ? vacGlyph2(iso) : "");
@@ -3506,10 +3560,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             });
             canvas.tabIndex = 0;
             canvas.addEventListener("keydown", (e) => {
-              var _a5;
               if (e.key !== "Enter" && e.key !== " ") return;
               e.preventDefault();
-              const cur = (labels.indexOf((_a5 = (summary.textContent || "").split("\xB7").pop()) == null ? void 0 : _a5.trim()) + 1) % dataArr.length;
+              const cur = (labels.indexOf((summary.textContent || "").split("\xB7").pop()?.trim()) + 1) % dataArr.length;
               summary.textContent = `${metricName}: ${fmtVal(dataArr[cur])} \xB7 ${fmtRange(cur)}`;
             });
           };
@@ -3704,9 +3757,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const data = (series || []).map((value, i) => {
           const actualVal = Array.isArray(actual) ? actual[i] : null;
           if (!Number.isFinite(value)) {
-            return { x: labels ? labels[i] : i, y: null, actual: actualVal != null ? actualVal : null };
+            return { x: labels ? labels[i] : i, y: null, actual: actualVal ?? null };
           }
-          return { x: labels ? labels[i] : i, y: value + offset, actual: actualVal != null ? actualVal : null };
+          return { x: labels ? labels[i] : i, y: value + offset, actual: actualVal ?? null };
         });
         return { data, offset };
       });
@@ -3714,8 +3767,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     const baselineStrokeCleanupPlugin = {
       id: "baselineStrokeCleanup",
       beforeDatasetDraw(chart, args) {
-        var _a5;
-        const dataset = (_a5 = chart.data.datasets) == null ? void 0 : _a5[args.index];
+        const dataset = chart.data.datasets?.[args.index];
         if (!dataset) return;
         const label = dataset.label || "";
         if (!/baseline/i.test(label)) return;
@@ -3822,7 +3874,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const uniqueDayCount = (arr) => {
         const seen = /* @__PURE__ */ new Set();
         arr.forEach((r) => {
-          if (r == null ? void 0 : r.work_date) seen.add(r.work_date);
+          if (r?.work_date) seen.add(r.work_date);
         });
         return seen.size;
       };
@@ -4137,9 +4189,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
                     return lbl + (vacGlyph2 ? vacGlyph2(lbl) : "");
                   },
                   label: (item) => {
-                    var _a5;
                     const idx = item.dataIndex;
-                    const datasetLabel = ((_a5 = item.dataset) == null ? void 0 : _a5.label) || "";
+                    const datasetLabel = item.dataset?.label || "";
                     const volThis = thisBy[idx];
                     const volLast = lastBy[idx];
                     const routeThis = thisRoute[idx];
@@ -4187,7 +4238,6 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       } catch (_) {
       }
       (function buildMixDrift() {
-        var _a5, _b, _c, _d;
         const driftCanvas = document.getElementById("mixDrift");
         const driftText = document.getElementById("mixDriftText");
         if (!driftCanvas && !driftText) return;
@@ -4232,8 +4282,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const labels = weekStats.map((w) => w.start.toFormat("MMM d"));
         const parcelsSeries = weekStats.map((w) => w.parcels);
         const lettersSeries = weekStats.map((w) => w.letters);
-        const baselineParcels = (baselines == null ? void 0 : baselines.parcels) || null;
-        const baselineLetters = (baselines == null ? void 0 : baselines.letters) || null;
+        const baselineParcels = baselines?.parcels || null;
+        const baselineLetters = baselines?.letters || null;
         const parcBaselineSeries = baselineParcels ? weekStats.map(() => {
           const val = baselineParcels.reduce((sum2, n, idx) => {
             return sum2 + (Number.isFinite(n) ? n : 0);
@@ -4261,7 +4311,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         );
         const parcelsSeparated = separatedDrift[0] || { data: [], offset: 0 };
         const lettersSeparated = separatedDrift[1] || { data: [], offset: 0 };
-        const extractRange = (arr) => computeRange((arr || []).map((pt) => Number.isFinite(pt == null ? void 0 : pt.y) ? pt.y : null), 10);
+        const extractRange = (arr) => computeRange((arr || []).map((pt) => Number.isFinite(pt?.y) ? pt.y : null), 10);
         const parcelsRange = extractRange(parcelsSeparated.data);
         const lettersRange = extractRange(lettersSeparated.data);
         const baselineParcelsData = parcBaselineSeries ? parcBaselineSeries.map((val, idx) => {
@@ -4314,16 +4364,15 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
                     return `Week of ${startLbl} \u2192 ${endLbl}`;
                   },
                   label: (item) => {
-                    var _a6, _b2;
                     const idx = item.dataIndex;
                     const w = weekStats[idx];
                     if (!w) return "";
-                    const label = ((_a6 = item.dataset) == null ? void 0 : _a6.label) || "";
+                    const label = item.dataset?.label || "";
                     if (label.startsWith("Parcels")) return `Parcels: ${Math.round(w.parcels).toLocaleString()}`;
                     if (label.startsWith("Letters")) return `Letters: ${Math.round(w.letters).toLocaleString()}`;
                     if (label.includes("Baseline")) {
-                      const actual = (_b2 = item.raw) == null ? void 0 : _b2.actual;
-                      return `Baseline: ${Math.round(actual != null ? actual : 0).toLocaleString()}`;
+                      const actual = item.raw?.actual;
+                      return `Baseline: ${Math.round(actual ?? 0).toLocaleString()}`;
                     }
                     return "";
                   }
@@ -4349,10 +4398,10 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             if (val == null) return "\u2014";
             return val >= 0 ? `\u2191 ${val}%` : `\u2193 ${Math.abs(val)}%`;
           };
-          const parcelsDelta = pct((_a5 = latest == null ? void 0 : latest.parcels) != null ? _a5 : 0, (_b = prev == null ? void 0 : prev.parcels) != null ? _b : 0);
-          const lettersDelta = pct((_c = latest == null ? void 0 : latest.letters) != null ? _c : 0, (_d = prev == null ? void 0 : prev.letters) != null ? _d : 0);
-          const parcelsSummary = `${fmtArrow(parcelsDelta)} (${Math.round((latest == null ? void 0 : latest.parcels) || 0).toLocaleString()} vs ${Math.round((prev == null ? void 0 : prev.parcels) || 0).toLocaleString()})${(latest == null ? void 0 : latest.vacation) ? " (Vacation)" : ""}`;
-          const lettersSummary = `${fmtArrow(lettersDelta)} (${Math.round((latest == null ? void 0 : latest.letters) || 0).toLocaleString()} vs ${Math.round((prev == null ? void 0 : prev.letters) || 0).toLocaleString()})${(latest == null ? void 0 : latest.vacation) ? " (Vacation)" : ""}`;
+          const parcelsDelta = pct(latest?.parcels ?? 0, prev?.parcels ?? 0);
+          const lettersDelta = pct(latest?.letters ?? 0, prev?.letters ?? 0);
+          const parcelsSummary = `${fmtArrow(parcelsDelta)} (${Math.round(latest?.parcels || 0).toLocaleString()} vs ${Math.round(prev?.parcels || 0).toLocaleString()})${latest?.vacation ? " (Vacation)" : ""}`;
+          const lettersSummary = `${fmtArrow(lettersDelta)} (${Math.round(latest?.letters || 0).toLocaleString()} vs ${Math.round(prev?.letters || 0).toLocaleString()})${latest?.vacation ? " (Vacation)" : ""}`;
           driftText.innerHTML = `<span style="color:${parcelsColor};font-weight:600">Parcels</span>: ${parcelsSummary} \u2022 <span style="color:${lettersColor};font-weight:600">Letters</span>: ${lettersSummary}`;
         }
       })();
@@ -4536,18 +4585,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         });
         return map;
       }, /* @__PURE__ */ new Map());
-      const serP = lastN.map((r) => {
-        var _a5, _b;
-        return (_b = (_a5 = availableMetrics.get(r.work_date)) == null ? void 0 : _a5.parcels) != null ? _b : null;
-      });
-      const serL = lastN.map((r) => {
-        var _a5, _b;
-        return (_b = (_a5 = availableMetrics.get(r.work_date)) == null ? void 0 : _a5.letters) != null ? _b : null;
-      });
-      const serH = lastN.map((r) => {
-        var _a5, _b;
-        return (_b = (_a5 = availableMetrics.get(r.work_date)) == null ? void 0 : _a5.hours) != null ? _b : null;
-      });
+      const serP = lastN.map((r) => availableMetrics.get(r.work_date)?.parcels ?? null);
+      const serL = lastN.map((r) => availableMetrics.get(r.work_date)?.letters ?? null);
+      const serH = lastN.map((r) => availableMetrics.get(r.work_date)?.hours ?? null);
       const showP = !!(cbP ? cbP.checked : true);
       const showL = !!(cbL ? cbL.checked : true);
       const showH = !!(cbH ? cbH.checked : true);
@@ -4640,9 +4680,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
               layout: { padding: { top: 8, right: 6, bottom: 6, left: 6 } },
               interaction: { mode: "nearest", intersect: false },
               plugins: { legend: { display: false }, tooltip: { enabled: true, callbacks: { label: (ctx2) => {
-                var _a5, _b;
-                const label = ((_a5 = ctx2.dataset) == null ? void 0 : _a5.label) || "";
-                const actual = (_b = ctx2.raw) == null ? void 0 : _b.actual;
+                const label = ctx2.dataset?.label || "";
+                const actual = ctx2.raw?.actual;
                 if (!Number.isFinite(+actual)) return `${label}: \u2014`;
                 if (label === "Hours") return `${label}: ${(+actual).toFixed(2)}h`;
                 return `${label}: ${Math.round(+actual)}`;
@@ -4663,19 +4702,19 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         }
       }
       const handler = () => buildQuickFilter2(rows);
-      sel == null ? void 0 : sel.removeEventListener("change", buildQuickFilter2._handlerSel || (() => {
+      sel?.removeEventListener("change", buildQuickFilter2._handlerSel || (() => {
       }));
-      cbP == null ? void 0 : cbP.removeEventListener("change", buildQuickFilter2._handlerP || (() => {
+      cbP?.removeEventListener("change", buildQuickFilter2._handlerP || (() => {
       }));
-      cbL == null ? void 0 : cbL.removeEventListener("change", buildQuickFilter2._handlerL || (() => {
+      cbL?.removeEventListener("change", buildQuickFilter2._handlerL || (() => {
       }));
-      cbH == null ? void 0 : cbH.removeEventListener("change", buildQuickFilter2._handlerH || (() => {
+      cbH?.removeEventListener("change", buildQuickFilter2._handlerH || (() => {
       }));
-      selN == null ? void 0 : selN.removeEventListener("change", buildQuickFilter2._handlerN || (() => {
+      selN?.removeEventListener("change", buildQuickFilter2._handlerN || (() => {
       }));
-      cbAll == null ? void 0 : cbAll.removeEventListener("change", buildQuickFilter2._handlerAll || (() => {
+      cbAll?.removeEventListener("change", buildQuickFilter2._handlerAll || (() => {
       }));
-      cbRuler == null ? void 0 : cbRuler.removeEventListener("change", buildQuickFilter2._handlerRuler || (() => {
+      cbRuler?.removeEventListener("change", buildQuickFilter2._handlerRuler || (() => {
       }));
       buildQuickFilter2._handlerSel = () => {
         handler();
@@ -4691,7 +4730,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         handler();
       };
       buildQuickFilter2._handlerAll = () => {
-        const on = !!(cbAll == null ? void 0 : cbAll.checked);
+        const on = !!cbAll?.checked;
         if (cbP) cbP.checked = on;
         if (cbL) cbL.checked = on;
         if (cbH) cbH.checked = on;
@@ -4704,13 +4743,13 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         }
         handler();
       };
-      sel == null ? void 0 : sel.addEventListener("change", buildQuickFilter2._handlerSel);
-      cbP == null ? void 0 : cbP.addEventListener("change", handler);
-      cbL == null ? void 0 : cbL.addEventListener("change", handler);
-      cbH == null ? void 0 : cbH.addEventListener("change", handler);
-      selN == null ? void 0 : selN.addEventListener("change", buildQuickFilter2._handlerN);
-      cbAll == null ? void 0 : cbAll.addEventListener("change", buildQuickFilter2._handlerAll);
-      cbRuler == null ? void 0 : cbRuler.addEventListener("change", buildQuickFilter2._handlerRuler);
+      sel?.addEventListener("change", buildQuickFilter2._handlerSel);
+      cbP?.addEventListener("change", handler);
+      cbL?.addEventListener("change", handler);
+      cbH?.addEventListener("change", handler);
+      selN?.addEventListener("change", buildQuickFilter2._handlerN);
+      cbAll?.addEventListener("change", buildQuickFilter2._handlerAll);
+      cbRuler?.addEventListener("change", buildQuickFilter2._handlerRuler);
     }
     return {
       buildCharts: buildCharts2,
@@ -4751,7 +4790,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       if (!el) return;
       try {
         const flags = getFlags();
-        if (!(flags == null ? void 0 : flags.smartSummary)) {
+        if (!flags?.smartSummary) {
           el.style.display = "none";
           return;
         }
@@ -4959,7 +4998,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       if (!el) return;
       try {
         const flags = getFlags();
-        if (!(flags == null ? void 0 : flags.headlineDigest)) {
+        if (!flags?.headlineDigest) {
           el.style.display = "none";
           return;
         }
@@ -5040,7 +5079,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (!iso) return [];
     const history = loadTagHistory2();
     const entry = history.find((item) => item && (item.iso === iso || item.date === iso));
-    return Array.isArray(entry == null ? void 0 : entry.tags) ? entry.tags.filter(Boolean) : [];
+    return Array.isArray(entry?.tags) ? entry.tags.filter(Boolean) : [];
   }
   function saveTagHistory(history) {
     try {
@@ -5090,17 +5129,17 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const history = loadTagHistory2();
       const byIso = /* @__PURE__ */ new Map();
       history.forEach((item) => {
-        const iso = (item == null ? void 0 : item.iso) || (item == null ? void 0 : item.date) || null;
+        const iso = item?.iso || item?.date || null;
         if (!iso) return;
         const tags = normalizeTagEntries(item.tags || []);
         if (!tags.length) return;
         byIso.set(iso, { iso, tags });
       });
       (seedFromDismissed || []).forEach((item) => {
-        const iso = (item == null ? void 0 : item.iso) || null;
+        const iso = item?.iso || null;
         if (!iso) return;
         const current = byIso.get(iso);
-        const mergedTags = mergeTagListsStable((current == null ? void 0 : current.tags) || [], normalizeTagEntries(item.tags || []));
+        const mergedTags = mergeTagListsStable(current?.tags || [], normalizeTagEntries(item.tags || []));
         if (!mergedTags.length) return;
         byIso.set(iso, { iso, tags: mergedTags });
       });
@@ -5177,10 +5216,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var PEAK_SEASON = loadPeakSeason();
   if (VACATION && Array.isArray(VACATION.ranges)) {
     const normalized = normalizeRanges(VACATION.ranges);
-    if (normalized.length !== VACATION.ranges.length || normalized.some((r, i) => {
-      var _a5, _b;
-      return r.from !== ((_a5 = VACATION.ranges[i]) == null ? void 0 : _a5.from) || r.to !== ((_b = VACATION.ranges[i]) == null ? void 0 : _b.to);
-    })) {
+    if (normalized.length !== VACATION.ranges.length || normalized.some((r, i) => r.from !== VACATION.ranges[i]?.from || r.to !== VACATION.ranges[i]?.to)) {
       VACATION = { ranges: normalized };
       saveVacation(VACATION);
     }
@@ -5217,14 +5253,14 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   applyThemePreference(loadThemePreference());
   function addVacationRange(fromIso, toIso) {
     if (!fromIso || !toIso) return;
-    const next = { ranges: [...(VACATION == null ? void 0 : VACATION.ranges) || [], { from: fromIso, to: toIso }] };
+    const next = { ranges: [...VACATION?.ranges || [], { from: fromIso, to: toIso }] };
     next.ranges = normalizeRanges(next.ranges);
     VACATION = next;
     saveVacation(VACATION);
     scheduleUserSettingsSave();
   }
   function removeVacationRange(index) {
-    const ranges = Array.isArray(VACATION == null ? void 0 : VACATION.ranges) ? [...VACATION.ranges] : [];
+    const ranges = Array.isArray(VACATION?.ranges) ? [...VACATION.ranges] : [];
     if (index < 0 || index >= ranges.length) return;
     ranges.splice(index, 1);
     VACATION = { ranges: normalizeRanges(ranges) };
@@ -5233,7 +5269,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   }
   function listVacationRanges() {
     const cfg = VACATION || loadVacation();
-    return Array.isArray(cfg == null ? void 0 : cfg.ranges) ? cfg.ranges : [];
+    return Array.isArray(cfg?.ranges) ? cfg.ranges : [];
   }
   function renderVacationRanges() {
     const container = document.getElementById("vacRanges");
@@ -5292,26 +5328,23 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var pendingSettingsPayload = null;
   var settingsSaveTimer = null;
   function collectUserSettingsPayload() {
-    const evalProfiles = (EVAL_PROFILES || []).map((profile) => {
-      var _a5, _b, _c, _d, _e, _f, _g, _h;
-      return {
-        profileId: profile.profileId,
-        label: profile.label,
-        routeId: profile.routeId,
-        evalCode: profile.evalCode,
-        boxes: (_a5 = profile.boxes) != null ? _a5 : null,
-        stops: (_b = profile.stops) != null ? _b : null,
-        hoursPerDay: (_c = profile.hoursPerDay) != null ? _c : null,
-        officeHoursPerDay: (_d = profile.officeHoursPerDay) != null ? _d : null,
-        annualSalary: (_e = profile.annualSalary) != null ? _e : null,
-        evalDaysPerYear: (_f = profile.evalDaysPerYear) != null ? _f : null,
-        effectiveFrom: (_g = profile.effectiveFrom) != null ? _g : null,
-        effectiveTo: (_h = profile.effectiveTo) != null ? _h : null
-      };
-    });
+    const evalProfiles = (EVAL_PROFILES || []).map((profile) => ({
+      profileId: profile.profileId,
+      label: profile.label,
+      routeId: profile.routeId,
+      evalCode: profile.evalCode,
+      boxes: profile.boxes ?? null,
+      stops: profile.stops ?? null,
+      hoursPerDay: profile.hoursPerDay ?? null,
+      officeHoursPerDay: profile.officeHoursPerDay ?? null,
+      annualSalary: profile.annualSalary ?? null,
+      evalDaysPerYear: profile.evalDaysPerYear ?? null,
+      effectiveFrom: profile.effectiveFrom ?? null,
+      effectiveTo: profile.effectiveTo ?? null
+    }));
     return buildUserSettingsPayload({
       evalProfiles,
-      activeEvalId: (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || getActiveEvalId(),
+      activeEvalId: USPS_EVAL?.profileId || getActiveEvalId(),
       vacationRanges: listVacationRanges().map((r) => ({ from: r.from, to: r.to })),
       extraTripEma: readStoredEma(),
       tokenUsage: loadTokenUsage(),
@@ -5417,7 +5450,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       } catch (_) {
       }
       try {
-        resetDiagnosticsCache == null ? void 0 : resetDiagnosticsCache();
+        resetDiagnosticsCache?.();
         buildDiagnostics(filterRowsForView(allRows || []));
       } catch (_) {
       }
@@ -5469,7 +5502,6 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (evalEffectiveToInput) evalEffectiveToInput.value = profile.effectiveTo || "";
   }
   function populateEvalProfileSelectUI(selectedId) {
-    var _a5;
     if (!evalProfileSelect) return;
     syncEvalGlobals();
     evalProfileSelect.innerHTML = "";
@@ -5479,12 +5511,12 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       opt.textContent = getEvalProfileDisplayName(profile);
       evalProfileSelect.appendChild(opt);
     });
-    const fallbackId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || EVAL_PROFILES && ((_a5 = EVAL_PROFILES[0]) == null ? void 0 : _a5.profileId) || null;
+    const fallbackId = USPS_EVAL?.profileId || EVAL_PROFILES && EVAL_PROFILES[0]?.profileId || null;
     const targetId = selectedId && getEvalProfileById(selectedId) ? selectedId : fallbackId;
     if (targetId) evalProfileSelect.value = targetId;
     applyEvalProfileToInputs(targetId);
     if (evalProfileDeleteBtn) {
-      evalProfileDeleteBtn.disabled = ((EVAL_PROFILES == null ? void 0 : EVAL_PROFILES.length) || 0) <= 1;
+      evalProfileDeleteBtn.disabled = (EVAL_PROFILES?.length || 0) <= 1;
     }
   }
   function readNumberInput(el) {
@@ -5496,9 +5528,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   }
   function collectEvalFormValues(profileId) {
     const base = getEvalProfileById(profileId) || USPS_EVAL || {};
-    const routeIdVal = ((evalRouteId == null ? void 0 : evalRouteId.value) || "").trim();
-    const evalCodeVal = ((evalCode == null ? void 0 : evalCode.value) || "").trim();
-    const labelVal = ((evalProfileLabelInput == null ? void 0 : evalProfileLabelInput.value) || "").trim();
+    const routeIdVal = (evalRouteId?.value || "").trim();
+    const evalCodeVal = (evalCode?.value || "").trim();
+    const labelVal = (evalProfileLabelInput?.value || "").trim();
     const label = labelVal || getEvalProfileDisplayName({ ...base, routeId: routeIdVal, evalCode: evalCodeVal });
     return {
       ...base,
@@ -5512,8 +5544,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       officeHoursPerDay: readNumberInput(evalOfficeHoursIn),
       annualSalary: readNumberInput(evalSalaryIn),
       evalDaysPerYear: readNumberInput(evalWorkDaysYearIn),
-      effectiveFrom: ((evalEffectiveFromInput == null ? void 0 : evalEffectiveFromInput.value) || "").trim() || null,
-      effectiveTo: ((evalEffectiveToInput == null ? void 0 : evalEffectiveToInput.value) || "").trim() || null
+      effectiveFrom: (evalEffectiveFromInput?.value || "").trim() || null,
+      effectiveTo: (evalEffectiveToInput?.value || "").trim() || null
     };
   }
   function rowsForEvaluationRange(rows, profile) {
@@ -5584,10 +5616,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     }
   }
   function getFlatCount(row) {
-    var _a5, _b;
-    const direct = Number((_b = (_a5 = row == null ? void 0 : row.flats) != null ? _a5 : row == null ? void 0 : row.flat_count) != null ? _b : row == null ? void 0 : row.flatCount);
+    const direct = Number(row?.flats ?? row?.flat_count ?? row?.flatCount);
     if (Number.isFinite(direct)) return direct;
-    return parseFlatsFromWeatherValue(row == null ? void 0 : row.weather_json);
+    return parseFlatsFromWeatherValue(row?.weather_json);
   }
   function getProfileRange(profile) {
     if (!profile) return { from: null, to: null };
@@ -5629,9 +5660,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       if (range.from && range.from.isValid) return range.from < now;
       return false;
     }).sort((a, b) => {
-      var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
-      const aTs = (_f = (_e = (_b = (_a5 = a.range.to) == null ? void 0 : _a5.toMillis) == null ? void 0 : _b.call(_a5)) != null ? _e : (_d = (_c = a.range.from) == null ? void 0 : _c.toMillis) == null ? void 0 : _d.call(_c)) != null ? _f : -Infinity;
-      const bTs = (_l = (_k = (_h = (_g = b.range.to) == null ? void 0 : _g.toMillis) == null ? void 0 : _h.call(_g)) != null ? _k : (_j = (_i = b.range.from) == null ? void 0 : _i.toMillis) == null ? void 0 : _j.call(_i)) != null ? _l : -Infinity;
+      const aTs = a.range.to?.toMillis?.() ?? a.range.from?.toMillis?.() ?? -Infinity;
+      const bTs = b.range.to?.toMillis?.() ?? b.range.from?.toMillis?.() ?? -Infinity;
       return bTs - aTs;
     });
     if (pastCandidates.length) return pastCandidates[0].profile.profileId;
@@ -5640,9 +5670,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     return profiles[0].profileId;
   }
   function getEvalProfileSortValue(profile) {
-    var _a5, _b, _c, _d, _e, _f;
     const range = getProfileRange(profile);
-    return (_f = (_e = (_b = (_a5 = range.from) == null ? void 0 : _a5.toMillis) == null ? void 0 : _b.call(_a5)) != null ? _e : (_d = (_c = range.to) == null ? void 0 : _c.toMillis) == null ? void 0 : _d.call(_c)) != null ? _f : -Infinity;
+    return range.from?.toMillis?.() ?? range.to?.toMillis?.() ?? -Infinity;
   }
   function getOrderedEvalProfiles() {
     return [...EVAL_PROFILES || []].sort((a, b) => getEvalProfileSortValue(a) - getEvalProfileSortValue(b));
@@ -5679,20 +5708,19 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       }
     }
     const days = selected.length;
-    const evalHoursPerDay = Number(profile == null ? void 0 : profile.hoursPerDay);
+    const evalHoursPerDay = Number(profile?.hoursPerDay);
     let totals = { parcels: 0, letters: 0, flats: 0, volume: 0, hours: 0, officeTime: 0, miles: 0 };
     let deltaSum = 0;
     let deltaCount = 0;
     let overEvalDays = 0;
     let underEvalDays = 0;
     selected.forEach((row) => {
-      var _a5;
-      const parcels2 = Number(row == null ? void 0 : row.parcels) || 0;
-      const letters2 = Number(row == null ? void 0 : row.letters) || 0;
+      const parcels2 = Number(row?.parcels) || 0;
+      const letters2 = Number(row?.letters) || 0;
       const flats = getFlatCount(row);
-      const hours = Number(row == null ? void 0 : row.hours) || 0;
-      const officeTime = Number((_a5 = row == null ? void 0 : row.office_minutes) != null ? _a5 : row == null ? void 0 : row.officeMinutes) || 0;
-      const miles2 = Number(row == null ? void 0 : row.miles) || 0;
+      const hours = Number(row?.hours) || 0;
+      const officeTime = Number(row?.office_minutes ?? row?.officeMinutes) || 0;
+      const miles2 = Number(row?.miles) || 0;
       const volume = parcels2 + letters2 + flats;
       totals.parcels += parcels2;
       totals.letters += letters2;
@@ -5711,7 +5739,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     });
     const avg = (value) => days > 0 ? value / days : null;
     const avgDeltaHoursPerDay = deltaCount > 0 ? deltaSum / deltaCount : null;
-    const quarterlyPay = Number.isFinite(Number(profile == null ? void 0 : profile.annualSalary)) ? Number(profile.annualSalary) / 4 : null;
+    const quarterlyPay = Number.isFinite(Number(profile?.annualSalary)) ? Number(profile.annualSalary) / 4 : null;
     const effectiveHourly = quarterlyPay && totals.hours > 0 ? quarterlyPay / totals.hours : null;
     const volumePerHour = totals.hours > 0 ? totals.volume / totals.hours : null;
     const parcelsPerHour = totals.hours > 0 ? totals.parcels / totals.hours : null;
@@ -5773,7 +5801,6 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     return { value, pct };
   }
   function makeComparisonRow(group, label, baseline, active, options = {}) {
-    var _a5;
     const { value, pct } = computeDelta(active, baseline);
     return {
       group,
@@ -5782,13 +5809,12 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       active,
       delta: value,
       pct,
-      digits: (_a5 = options.digits) != null ? _a5 : 2,
+      digits: options.digits ?? 2,
       suffix: options.suffix || "",
       meaning: options.meaning || "neutral"
     };
   }
   function buildComparisonSummary(activeMetrics, baselineMetrics) {
-    var _a5, _b, _c, _d;
     if (!activeMetrics || !baselineMetrics) return null;
     const rows = [
       makeComparisonRow("time", "Avg hours/day", baselineMetrics.averages.hoursPerDay, activeMetrics.averages.hoursPerDay, { digits: 2, suffix: "h", meaning: "loadGoodDown" }),
@@ -5804,7 +5830,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       makeComparisonRow("efficiency", "Parcels/hour", baselineMetrics.density.parcelsPerHour, activeMetrics.density.parcelsPerHour, { digits: 2, meaning: "efficiencyGoodUp" }),
       makeComparisonRow("efficiency", "Volume/eval hour", baselineMetrics.density.volumePerEvalHour, activeMetrics.density.volumePerEvalHour, { digits: 2, meaning: "efficiencyGoodUp" }),
       makeComparisonRow("efficiency", "Delta hours per 1000 volume", baselineMetrics.density.deltaPer1000Volume, activeMetrics.density.deltaPer1000Volume, { digits: 2, suffix: "h", meaning: "overUnder" }),
-      makeComparisonRow("pay", "Eval annual pay", (_a5 = baselineMetrics.profile) == null ? void 0 : _a5.annualSalary, (_b = activeMetrics.profile) == null ? void 0 : _b.annualSalary, { digits: 0, meaning: "efficiencyGoodUp" }),
+      makeComparisonRow("pay", "Eval annual pay", baselineMetrics.profile?.annualSalary, activeMetrics.profile?.annualSalary, { digits: 0, meaning: "efficiencyGoodUp" }),
       makeComparisonRow("pay", "Eval route hours/day", baselineMetrics.evalHoursPerDay, activeMetrics.evalHoursPerDay, { digits: 2, suffix: "h", meaning: "neutral" }),
       makeComparisonRow("pay", "Effective $/hour", baselineMetrics.effectiveHourly, activeMetrics.effectiveHourly, { digits: 2, meaning: "efficiencyGoodUp" })
     ];
@@ -5812,10 +5838,10 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     const hrsDelta = rows.find((row) => row.label === "Avg hours/day");
     const volDelta = rows.find((row) => row.label === "Avg volume/day");
     const effDelta = rows.find((row) => row.label === "Volume/hour");
-    const deltaDir = ((_c = topDelta == null ? void 0 : topDelta.delta) != null ? _c : 0) < -0.1 ? "improving" : ((_d = topDelta == null ? void 0 : topDelta.delta) != null ? _d : 0) > 0.1 ? "worsening" : "steady";
+    const deltaDir = (topDelta?.delta ?? 0) < -0.1 ? "improving" : (topDelta?.delta ?? 0) > 0.1 ? "worsening" : "steady";
     const narrative = [
-      `Time per day is ${formatSignedMaybe(hrsDelta == null ? void 0 : hrsDelta.delta, 2, "h")} and workload per day is ${formatSignedMaybe(volDelta == null ? void 0 : volDelta.delta, 1)} vs baseline.`,
-      `Efficiency (volume/hour) shifted ${formatSignedMaybe(effDelta == null ? void 0 : effDelta.delta, 2)} and over/under evaluation is ${deltaDir} (${formatSignedMaybe(topDelta == null ? void 0 : topDelta.delta, 2, "h/day")}).`,
+      `Time per day is ${formatSignedMaybe(hrsDelta?.delta, 2, "h")} and workload per day is ${formatSignedMaybe(volDelta?.delta, 1)} vs baseline.`,
+      `Efficiency (volume/hour) shifted ${formatSignedMaybe(effDelta?.delta, 2)} and over/under evaluation is ${deltaDir} (${formatSignedMaybe(topDelta?.delta, 2, "h/day")}).`,
       `Effective $/hour moved ${formatSignedMaybe((rows.find((r) => r.label === "Effective $/hour") || {}).delta, 2)} (${formatMoney(baselineMetrics.effectiveHourly)} \u2192 ${formatMoney(activeMetrics.effectiveHourly)}).`
     ].join(" ");
     return { rows, narrative, topDelta };
@@ -5840,7 +5866,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     return { hasActiveWindow: true, start: from, end: to, totalDays, elapsedDays, remainingDays, progressPct, today };
   }
   function computeTwoWeekBlock(progress) {
-    if (!(progress == null ? void 0 : progress.hasActiveWindow) || !progress.start || !progress.today) return null;
+    if (!progress?.hasActiveWindow || !progress.start || !progress.today) return null;
     const daysFromStart = Math.max(0, Math.floor(progress.today.diff(progress.start, "days").days));
     const blockNumber = Math.floor(daysFromStart / 14) + 1;
     const blockStart = progress.start.plus({ days: (blockNumber - 1) * 14 }).startOf("day");
@@ -5911,7 +5937,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         return false;
       }
     });
-    if (!(PEAK_SEASON == null ? void 0 : PEAK_SEASON.excludeFromModel) || !PEAK_SEASON.from || !PEAK_SEASON.to) return base;
+    if (!PEAK_SEASON?.excludeFromModel || !PEAK_SEASON.from || !PEAK_SEASON.to) return base;
     return base.filter((r) => !isPeakSeasonDate(r.work_date));
   }
   (function initModelScopeUI() {
@@ -5949,10 +5975,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const oh = cfg.officeHoursPerDay != null ? cfg.officeHoursPerDay : "\u2014";
       $("evalHours").textContent = `${hp}h (${oh} office)`;
       tag.style.display = "block";
-      tag.onclick = () => {
-        var _a5;
-        return (_a5 = document.getElementById("btnSettings")) == null ? void 0 : _a5.click();
-      };
+      tag.onclick = () => document.getElementById("btnSettings")?.click();
     } catch (_) {
     }
   }
@@ -6013,9 +6036,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   renderUspsEvalTag();
   renderVacationRanges();
   (async () => {
-    var _a5;
     const session = await authReadyPromise;
-    CURRENT_USER_ID = ((_a5 = session == null ? void 0 : session.user) == null ? void 0 : _a5.id) || null;
+    CURRENT_USER_ID = session?.user?.id || null;
     if (window.__sb && CURRENT_USER_ID) {
       try {
         await syncForecastSnapshotsFromSupabase(window.__sb, CURRENT_USER_ID, { silent: true });
@@ -6140,7 +6162,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     (rows || []).forEach((row) => {
       if (!hasTag(row, "holiday_catchup")) return;
       stats.count++;
-      const ctx = (row == null ? void 0 : row._holidayCatchup) || {};
+      const ctx = row?._holidayCatchup || {};
       if (ctx.routeMinutes != null && ctx.baselineRouteMinutes != null) {
         const delta = Math.max(0, ctx.routeMinutes - ctx.baselineRouteMinutes);
         stats.addedMinutes += delta;
@@ -6170,10 +6192,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     const enabled = isHolidayDownweightEnabled();
     if (!enabled) return { enabled: false, fn: null };
     const fn = (row) => {
-      var _a5, _b;
       if (!row) return 1;
       if (!hasTag(row, "holiday_catchup")) return 1;
-      const hint = (_b = (_a5 = row._weightHints) == null ? void 0 : _a5.holidayCatchup) == null ? void 0 : _b.recommended;
+      const hint = row._weightHints?.holidayCatchup?.recommended;
       if (Number.isFinite(hint) && hint > 0 && hint <= 1) return hint;
       return 0.65;
     };
@@ -6182,7 +6203,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var aiSummary = null;
   function updateAiSummaryAvailability() {
     try {
-      aiSummary == null ? void 0 : aiSummary.updateAvailability();
+      aiSummary?.updateAvailability();
     } catch (_) {
     }
   }
@@ -6252,7 +6273,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   }
   var authReadyPromise = handleAuthCallback(sb);
   authReadyPromise.then((session) => {
-    if (session == null ? void 0 : session.user) {
+    if (session?.user) {
       CURRENT_USER_ID = session.user.id;
       dAuth.textContent = "Session";
       ensureUserSettingsSync();
@@ -6281,7 +6302,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     try {
       await fetch(SUPABASE_URL, { mode: "no-cors" });
       dConn.textContent = "Connected";
-    } catch (e) {
+    } catch {
       dConn.textContent = "Error";
     }
   })();
@@ -6322,13 +6343,13 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var doLogin = $("doLogin");
   var doSignup = $("doSignup");
   var authMsg = $("authMsg");
-  signInBtn == null ? void 0 : signInBtn.addEventListener("click", () => {
+  signInBtn?.addEventListener("click", () => {
     authMsg.textContent = "";
     loginEmail.value = loginEmail.value || "";
     loginPass.value = "";
     pwDlg.showModal();
   });
-  doLogin == null ? void 0 : doLogin.addEventListener("click", async (e) => {
+  doLogin?.addEventListener("click", async (e) => {
     e.preventDefault();
     authMsg.textContent = "Signing in\u2026";
     const { error } = await sb.auth.signInWithPassword({
@@ -6347,7 +6368,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     allRows = rows;
     rebuildAll();
   });
-  doSignup == null ? void 0 : doSignup.addEventListener("click", async () => {
+  doSignup?.addEventListener("click", async () => {
     authMsg.textContent = "Creating account\u2026";
     const { error } = await sb.auth.signUp({
       email: (loginEmail.value || "").trim(),
@@ -6361,13 +6382,13 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var newPass2 = $("newPass2");
   var setPwMsg = $("setPwMsg");
   var doSetPw = $("doSetPw");
-  setPwBtn == null ? void 0 : setPwBtn.addEventListener("click", () => {
+  setPwBtn?.addEventListener("click", () => {
     setPwMsg.textContent = "";
     newPass.value = "";
     newPass2.value = "";
     setPwDlg.showModal();
   });
-  doSetPw == null ? void 0 : doSetPw.addEventListener("click", async (e) => {
+  doSetPw?.addEventListener("click", async (e) => {
     e.preventDefault();
     const p1 = newPass.value || "";
     const p2 = newPass2.value || "";
@@ -6502,10 +6523,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var drinkWeekdayCanvas = document.getElementById("drinkWeekdayChart");
   var CURRENT_USER_ID = null;
   (async () => {
-    var _a5;
     try {
       const { data } = await sb.auth.getUser();
-      CURRENT_USER_ID = ((_a5 = data == null ? void 0 : data.user) == null ? void 0 : _a5.id) || null;
+      CURRENT_USER_ID = data?.user?.id || null;
     } catch (_) {
       CURRENT_USER_ID = null;
     }
@@ -6537,7 +6557,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     defaultPrompt: DEFAULT_AI_BASE_PROMPT,
     onTokenUsageChange: scheduleUserSettingsSave
   });
-  btnSettings == null ? void 0 : btnSettings.addEventListener("click", () => {
+  btnSettings?.addEventListener("click", () => {
     flagWeekdayTicks.checked = !!FLAGS.weekdayTicks;
     flagProgressivePills.checked = !!FLAGS.progressivePills;
     if (modelScopeSelect) modelScopeSelect.value = getModelScope();
@@ -6555,27 +6575,27 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (flagSleepDrink) flagSleepDrink.checked = !!FLAGS.sleepDrink;
     if (themeSelect) themeSelect.value = CURRENT_THEME;
     try {
-      populateEvalProfileSelectUI(USPS_EVAL == null ? void 0 : USPS_EVAL.profileId);
+      populateEvalProfileSelectUI(USPS_EVAL?.profileId);
     } catch (_) {
     }
     try {
       const v = VACATION || loadVacation();
       const last = (v.ranges || [])[(v.ranges || []).length - 1];
-      if (vacFrom) vacFrom.value = (last == null ? void 0 : last.from) || "";
-      if (vacTo) vacTo.value = (last == null ? void 0 : last.to) || "";
+      if (vacFrom) vacFrom.value = last?.from || "";
+      if (vacTo) vacTo.value = last?.to || "";
     } catch (_) {
     }
     try {
       const p = PEAK_SEASON || loadPeakSeason();
-      if (peakFrom) peakFrom.value = (p == null ? void 0 : p.from) || "";
-      if (peakTo) peakTo.value = (p == null ? void 0 : p.to) || "";
-      if (peakExclude) peakExclude.checked = !!(p == null ? void 0 : p.excludeFromModel);
+      if (peakFrom) peakFrom.value = p?.from || "";
+      if (peakTo) peakTo.value = p?.to || "";
+      if (peakExclude) peakExclude.checked = !!p?.excludeFromModel;
     } catch (_) {
     }
     try {
       if (settingsEmaRate) {
         const stored = localStorage.getItem(SECOND_TRIP_EMA_KEY);
-        settingsEmaRate.value = stored != null ? stored : (secondTripEmaInput == null ? void 0 : secondTripEmaInput.value) || "";
+        settingsEmaRate.value = stored != null ? stored : secondTripEmaInput?.value || "";
       }
     } catch (_) {
     }
@@ -6590,7 +6610,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     renderVacationRanges();
     settingsDlg.showModal();
   });
-  peakClear == null ? void 0 : peakClear.addEventListener("click", () => {
+  peakClear?.addEventListener("click", () => {
     if (peakFrom) peakFrom.value = "";
     if (peakTo) peakTo.value = "";
     if (peakExclude) peakExclude.checked = false;
@@ -6598,27 +6618,26 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     savePeakSeason(PEAK_SEASON);
     updateModelScopeBadge();
   });
-  evalProfileSelect == null ? void 0 : evalProfileSelect.addEventListener("change", () => {
+  evalProfileSelect?.addEventListener("change", () => {
     const nextId = evalProfileSelect.value;
     applyEvalProfileToInputs(nextId);
     if (evalProfileDeleteBtn) {
-      evalProfileDeleteBtn.disabled = ((EVAL_PROFILES == null ? void 0 : EVAL_PROFILES.length) || 0) <= 1;
+      evalProfileDeleteBtn.disabled = (EVAL_PROFILES?.length || 0) <= 1;
     }
   });
-  evalProfileAddBtn == null ? void 0 : evalProfileAddBtn.addEventListener("click", () => {
-    var _a5, _b, _c, _d, _e, _f;
+  evalProfileAddBtn?.addEventListener("click", () => {
     try {
-      const base = getEvalProfileById(evalProfileSelect == null ? void 0 : evalProfileSelect.value) || USPS_EVAL || {};
+      const base = getEvalProfileById(evalProfileSelect?.value) || USPS_EVAL || {};
       const newProfile = createEvalProfile({
-        label: `Evaluation ${((EVAL_PROFILES == null ? void 0 : EVAL_PROFILES.length) || 0) + 1}`,
+        label: `Evaluation ${(EVAL_PROFILES?.length || 0) + 1}`,
         routeId: base.routeId || "R1",
         evalCode: base.evalCode || "",
-        boxes: (_a5 = base.boxes) != null ? _a5 : null,
-        stops: (_b = base.stops) != null ? _b : null,
-        hoursPerDay: (_c = base.hoursPerDay) != null ? _c : null,
-        officeHoursPerDay: (_d = base.officeHoursPerDay) != null ? _d : null,
-        annualSalary: (_e = base.annualSalary) != null ? _e : null,
-        evalDaysPerYear: (_f = base.evalDaysPerYear) != null ? _f : null,
+        boxes: base.boxes ?? null,
+        stops: base.stops ?? null,
+        hoursPerDay: base.hoursPerDay ?? null,
+        officeHoursPerDay: base.officeHoursPerDay ?? null,
+        annualSalary: base.annualSalary ?? null,
+        evalDaysPerYear: base.evalDaysPerYear ?? null,
         effectiveFrom: null,
         effectiveTo: null
       });
@@ -6631,24 +6650,23 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     } catch (_) {
     }
   });
-  evalProfileDeleteBtn == null ? void 0 : evalProfileDeleteBtn.addEventListener("click", () => {
-    var _a5;
-    const id = evalProfileSelect == null ? void 0 : evalProfileSelect.value;
+  evalProfileDeleteBtn?.addEventListener("click", () => {
+    const id = evalProfileSelect?.value;
     if (!id) return;
-    if (((EVAL_PROFILES == null ? void 0 : EVAL_PROFILES.length) || 0) <= 1) {
+    if ((EVAL_PROFILES?.length || 0) <= 1) {
       alert("At least one evaluation profile is required.");
       return;
     }
     if (!confirm("Delete this evaluation profile? You can recreate it later if needed.")) return;
     deleteEvalProfile(id);
     syncEvalGlobals();
-    const fallbackId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || EVAL_PROFILES && ((_a5 = EVAL_PROFILES[0]) == null ? void 0 : _a5.profileId) || null;
+    const fallbackId = USPS_EVAL?.profileId || EVAL_PROFILES && EVAL_PROFILES[0]?.profileId || null;
     populateEvalProfileSelectUI(fallbackId);
     applyEvalProfileToInputs(fallbackId);
     buildEvalCompare(allRows || []);
     scheduleUserSettingsSave();
   });
-  saveSettings == null ? void 0 : saveSettings.addEventListener("click", (e) => {
+  saveSettings?.addEventListener("click", (e) => {
     e.preventDefault();
     if (modelScopeSelect) setModelScope(modelScopeSelect.value);
     updateModelScopeBadge();
@@ -6667,29 +6685,29 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (flagUspsEval) FLAGS.uspsEval = !!flagUspsEval.checked;
     if (flagSleepDrink) FLAGS.sleepDrink = !!flagSleepDrink.checked;
     try {
-      const selectedId = (evalProfileSelect == null ? void 0 : evalProfileSelect.value) || (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || null;
+      const selectedId = evalProfileSelect?.value || USPS_EVAL?.profileId || null;
       const updated = collectEvalFormValues(selectedId);
       saveEval(updated);
       syncEvalGlobals();
       USPS_EVAL = getEvalProfileById(updated.profileId) || updated;
-      populateEvalProfileSelectUI(USPS_EVAL == null ? void 0 : USPS_EVAL.profileId);
+      populateEvalProfileSelectUI(USPS_EVAL?.profileId);
       if (!evalCompareState.activeId || evalCompareState.activeId === selectedId) {
-        evalCompareState.activeId = (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || selectedId || evalCompareState.activeId;
+        evalCompareState.activeId = USPS_EVAL?.profileId || selectedId || evalCompareState.activeId;
       }
     } catch (_) {
     }
     try {
-      const f = vacFrom == null ? void 0 : vacFrom.value;
-      const t = vacTo == null ? void 0 : vacTo.value;
+      const f = vacFrom?.value;
+      const t = vacTo?.value;
       if (f && t) addVacationRange(f, t);
       if (vacFrom) vacFrom.value = "";
       if (vacTo) vacTo.value = "";
     } catch (_) {
     }
     try {
-      const from = (peakFrom == null ? void 0 : peakFrom.value) || "";
-      const to = (peakTo == null ? void 0 : peakTo.value) || "";
-      const exclude = !!(peakExclude == null ? void 0 : peakExclude.checked);
+      const from = peakFrom?.value || "";
+      const to = peakTo?.value || "";
+      const exclude = !!peakExclude?.checked;
       PEAK_SEASON = { from, to, excludeFromModel: exclude };
       savePeakSeason(PEAK_SEASON);
       updateModelScopeBadge();
@@ -6750,50 +6768,48 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     aiSummary.updateAvailability();
     aiSummary.renderLastSummary();
   });
-  evalWindowPrimary == null ? void 0 : evalWindowPrimary.addEventListener("change", () => {
-    var _a5;
+  evalWindowPrimary?.addEventListener("change", () => {
     const next = evalWindowPrimary.value;
     if (next) evalCompareState.activeId = next;
     const activeProfile = getEvalProfileById(evalCompareState.activeId);
     const priorProfiles = getPriorEvalProfiles(activeProfile);
     if (!priorProfiles.find((p) => p.profileId === evalCompareState.compareId)) {
       const previous = getPreviousEvalProfile(evalCompareState.activeId);
-      evalCompareState.compareId = (previous == null ? void 0 : previous.profileId) || ((_a5 = priorProfiles[priorProfiles.length - 1]) == null ? void 0 : _a5.profileId) || null;
+      evalCompareState.compareId = previous?.profileId || priorProfiles[priorProfiles.length - 1]?.profileId || null;
     }
     buildEvalCompare(allRows || []);
   });
-  evalWindowRecent14 == null ? void 0 : evalWindowRecent14.addEventListener("change", () => {
+  evalWindowRecent14?.addEventListener("change", () => {
     evalCompareState.last14 = !!evalWindowRecent14.checked;
     buildEvalCompare(allRows || []);
   });
-  evalCompareToggle == null ? void 0 : evalCompareToggle.addEventListener("click", () => {
-    var _a5;
+  evalCompareToggle?.addEventListener("click", () => {
     const activeProfile = getEvalProfileById(evalCompareState.activeId);
     const priorProfiles = getPriorEvalProfiles(activeProfile);
     evalCompareState.compareEnabled = priorProfiles.length > 0;
     if (!evalCompareState.compareId || !priorProfiles.find((p) => p.profileId === evalCompareState.compareId)) {
       const previous = getPreviousEvalProfile(evalCompareState.activeId);
-      evalCompareState.compareId = (previous == null ? void 0 : previous.profileId) || ((_a5 = priorProfiles[priorProfiles.length - 1]) == null ? void 0 : _a5.profileId) || null;
+      evalCompareState.compareId = previous?.profileId || priorProfiles[priorProfiles.length - 1]?.profileId || null;
     }
     buildEvalCompare(allRows || []);
   });
-  evalCompareClose == null ? void 0 : evalCompareClose.addEventListener("click", () => {
+  evalCompareClose?.addEventListener("click", () => {
     evalCompareState.compareEnabled = false;
     buildEvalCompare(allRows || []);
   });
-  evalWindowCompare == null ? void 0 : evalWindowCompare.addEventListener("change", () => {
+  evalWindowCompare?.addEventListener("change", () => {
     if (evalWindowCompare.value) evalCompareState.compareId = evalWindowCompare.value;
     evalCompareState.compareEnabled = true;
     buildEvalCompare(allRows || []);
   });
-  clearOpenAiKeyBtn == null ? void 0 : clearOpenAiKeyBtn.addEventListener("click", () => {
+  clearOpenAiKeyBtn?.addEventListener("click", () => {
     if (settingsOpenAiKey) settingsOpenAiKey.value = "";
     setOpenAiKey("");
     aiSummary.updateAvailability();
     if (aiSummaryStatus) aiSummaryStatus.textContent = "OpenAI key cleared.";
   });
-  aiSummaryBtn == null ? void 0 : aiSummaryBtn.addEventListener("click", aiSummary.generateSummary);
-  toggleAiSummaryBtn == null ? void 0 : toggleAiSummaryBtn.addEventListener("click", () => {
+  aiSummaryBtn?.addEventListener("click", aiSummary.generateSummary);
+  toggleAiSummaryBtn?.addEventListener("click", () => {
     aiSummary.toggleCollapsed();
   });
   aiSummary.updateAvailability();
@@ -6801,10 +6817,10 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var initialTokenUsage = loadTokenUsage();
   aiSummary.updateTokenUsageCard(initialTokenUsage);
   aiSummary.populateTokenInputs(initialTokenUsage);
-  vacAdd == null ? void 0 : vacAdd.addEventListener("click", () => {
+  vacAdd?.addEventListener("click", () => {
     try {
-      const f = vacFrom == null ? void 0 : vacFrom.value;
-      const t = vacTo == null ? void 0 : vacTo.value;
+      const f = vacFrom?.value;
+      const t = vacTo?.value;
       if (f && t) {
         addVacationRange(f, t);
         if (vacFrom) vacFrom.value = "";
@@ -6815,7 +6831,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     } catch (_) {
     }
   });
-  vacRangesEl == null ? void 0 : vacRangesEl.addEventListener("click", (event) => {
+  vacRangesEl?.addEventListener("click", (event) => {
     const target = event.target;
     if (!target || !target.matches("button.vac-remove[data-index]")) return;
     const idx = parseInt(target.getAttribute("data-index") || "", 10);
@@ -6825,9 +6841,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       rebuildAll();
     }
   });
-  var _a;
-  (_a = document.getElementById("forceRefreshBtn")) == null ? void 0 : _a.addEventListener("click", async (e) => {
-    var _a5;
+  document.getElementById("forceRefreshBtn")?.addEventListener("click", async (e) => {
     e.preventDefault();
     try {
       try {
@@ -6838,11 +6852,11 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       if ("serviceWorker" in navigator) {
         const reg = await navigator.serviceWorker.getRegistration();
         try {
-          await (reg == null ? void 0 : reg.update());
+          await reg?.update();
         } catch (_) {
         }
         try {
-          (_a5 = reg == null ? void 0 : reg.waiting) == null ? void 0 : _a5.postMessage({ type: "SKIP_WAITING" });
+          reg?.waiting?.postMessage({ type: "SKIP_WAITING" });
         } catch (_) {
         }
       }
@@ -6906,9 +6920,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     }
   }
   sb.auth.onAuthStateChange((_evt, session) => {
-    var _a5;
     const authed = !!session;
-    CURRENT_USER_ID = authed ? ((_a5 = session == null ? void 0 : session.user) == null ? void 0 : _a5.id) || null : null;
+    CURRENT_USER_ID = authed ? session?.user?.id || null : null;
     const signOutBtn = $("signOut");
     if (signOutBtn) signOutBtn.style.display = authed ? "inline-block" : "none";
     dAuth.textContent = authed ? "Session" : "No session";
@@ -6925,9 +6938,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     }
   });
   sb.auth.getSession().then(({ data }) => {
-    var _a5;
-    const session = (data == null ? void 0 : data.session) || null;
-    CURRENT_USER_ID = ((_a5 = session == null ? void 0 : session.user) == null ? void 0 : _a5.id) || null;
+    const session = data?.session || null;
+    CURRENT_USER_ID = session?.user?.id || null;
     if (CURRENT_USER_ID) {
       aiSummary.renderLastSummary();
       ensureUserSettingsSync();
@@ -7007,7 +7019,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     const trip = getSecondTripInputs();
     const extraHours = trip.actualMinutes ? trip.actualMinutes / 60 : 0;
     const extraPaidMinutes = trip.miles ? trip.miles * 2 : 0;
-    const breakMinutesVal = parseFloat((breakMinutesInput == null ? void 0 : breakMinutesInput.value) || "0");
+    const breakMinutesVal = parseFloat(breakMinutesInput?.value || "0");
     const breakHours = Number.isFinite(breakMinutesVal) && breakMinutesVal > 0 ? breakMinutesVal / 60 : 0;
     if (offDay.checked) {
       officeH.textContent = "0.00";
@@ -7025,7 +7037,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     }
     const officeDisplay = (off != null ? off : 0) + extraHours;
     const routeDisplay = rte != null ? Math.max(0, rte - breakHours) : null;
-    const tot = Math.max(0, (off != null ? off : 0) + (rte != null ? rte : 0) + extraHours - breakHours);
+    const tot = Math.max(0, (off ?? 0) + (rte ?? 0) + extraHours - breakHours);
     officeH.textContent = off != null || extraHours ? officeDisplay.toFixed(2) : "\u2014";
     routeH.textContent = routeDisplay != null ? routeDisplay.toFixed(2) : "\u2014";
     totalH.textContent = off != null || rte != null || extraHours || breakHours ? tot.toFixed(2) : "\u2014";
@@ -7033,7 +7045,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (diag) {
       const extraTxt = extraHours ? ` \xB7 <b>Extra:</b> ${trip.actualMinutes.toFixed(0)}m (${extraPaidMinutes.toFixed(0)}m paid)` : "";
       const breakTxt = breakHours ? ` \xB7 <b>Break:</b> ${breakMinutesVal.toFixed(0)}m` : "";
-      diag.innerHTML = `ROUTE STATS \xB7 Supabase: <b id="dConn">${dConn.textContent}</b> \xB7 Auth: <b id="dAuth">${dAuth.textContent}</b> \xB7 Write: <b id="dWrite">${dWrite.textContent}</b> \xB7 <b>Off:</b> ${off != null ? off : "\u2014"}h \xB7 <b>Route:</b> ${rte != null ? rte : "\u2014"}h \xB7 <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
+      diag.innerHTML = `ROUTE STATS \xB7 Supabase: <b id="dConn">${dConn.textContent}</b> \xB7 Auth: <b id="dAuth">${dAuth.textContent}</b> \xB7 Write: <b id="dWrite">${dWrite.textContent}</b> \xB7 <b>Off:</b> ${off ?? "\u2014"}h \xB7 <b>Route:</b> ${rte ?? "\u2014"}h \xB7 <b>Total:</b> ${tot.toFixed(2)}h${extraTxt}`;
       if (breakTxt) diag.innerHTML += breakTxt;
     }
     return tot;
@@ -7206,34 +7218,33 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       computeBreakdown();
     }
   });
-  [date, start, departTime, returnTime, end, parcels, misdeliveryInput, letters, miles, offDay, weather, temp, boxholders, flatsMinutesInput].forEach((el) => el == null ? void 0 : el.addEventListener("input", computeBreakdown));
-  secondTripMilesInput == null ? void 0 : secondTripMilesInput.addEventListener("input", updateSecondTripSummary);
-  secondTripTimeInput == null ? void 0 : secondTripTimeInput.addEventListener("input", updateSecondTripSummary);
-  secondTripEmaInput == null ? void 0 : secondTripEmaInput.addEventListener("input", updateSecondTripSummary);
+  [date, start, departTime, returnTime, end, parcels, misdeliveryInput, letters, miles, offDay, weather, temp, boxholders, flatsMinutesInput].forEach((el) => el?.addEventListener("input", computeBreakdown));
+  secondTripMilesInput?.addEventListener("input", updateSecondTripSummary);
+  secondTripTimeInput?.addEventListener("input", updateSecondTripSummary);
+  secondTripEmaInput?.addEventListener("input", updateSecondTripSummary);
   document.addEventListener("keydown", (e) => {
-    var _a5, _b, _c;
     const mod = e.metaKey || e.ctrlKey;
     if (!mod) return;
     const k = e.key.toLowerCase();
     if (k === "s") {
       e.preventDefault();
-      (_a5 = $("save")) == null ? void 0 : _a5.click();
+      $("save")?.click();
     } else if (k === "d") {
       e.preventDefault();
-      (_b = $("btnEditLast")) == null ? void 0 : _b.click();
+      $("btnEditLast")?.click();
     } else if (e.key === "Backspace") {
       e.preventDefault();
-      (_c = $("btnDeleteDay")) == null ? void 0 : _c.click();
+      $("btnDeleteDay")?.click();
     }
   });
   function weatherString() {
     const parts = [];
-    if (weather == null ? void 0 : weather.value) parts.push(weather.value);
-    if (temp == null ? void 0 : temp.value) parts.push(`${temp.value}\xB0F`);
-    if (boxholders == null ? void 0 : boxholders.value) parts.push(`Box: ${boxholders.value}`);
-    if (holiday == null ? void 0 : holiday.checked) parts.push("Holiday");
-    if (reasonTag == null ? void 0 : reasonTag.value) parts.push(`Reason: ${reasonTag.value}`);
-    const breakVal = parseFloat((breakMinutesInput == null ? void 0 : breakMinutesInput.value) || "0");
+    if (weather?.value) parts.push(weather.value);
+    if (temp?.value) parts.push(`${temp.value}\xB0F`);
+    if (boxholders?.value) parts.push(`Box: ${boxholders.value}`);
+    if (holiday?.checked) parts.push("Holiday");
+    if (reasonTag?.value) parts.push(`Reason: ${reasonTag.value}`);
+    const breakVal = parseFloat(breakMinutesInput?.value || "0");
     if (Number.isFinite(breakVal) && breakVal > 0) parts.push(`Break:${breakVal}`);
     const st = getSecondTripPayload();
     if (st) {
@@ -7251,12 +7262,12 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (flatsMinutes != null) {
       parts.push(`FlatsTime:${flatsMinutes}`);
     }
-    const sleepValRaw = sleepInput == null ? void 0 : sleepInput.value;
+    const sleepValRaw = sleepInput?.value;
     const sleepVal = sleepValRaw === "" || sleepValRaw == null ? null : Number(sleepValRaw);
     if (sleepVal != null && Number.isFinite(sleepVal) && sleepVal >= 0) {
       parts.push(`Sleep:${sleepVal}`);
     }
-    const drinkVal = (drinkInput == null ? void 0 : drinkInput.value) || "";
+    const drinkVal = drinkInput?.value || "";
     if (drinkVal) {
       parts.push(`Drink:${drinkVal}`);
     }
@@ -7273,11 +7284,11 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     }
     const trip = getSecondTripInputs();
     const extraHours = trip.actualMinutes ? trip.actualMinutes / 60 : 0;
-    const breakMinutesVal = parseFloat((breakMinutesInput == null ? void 0 : breakMinutesInput.value) || "0");
+    const breakMinutesVal = parseFloat(breakMinutesInput?.value || "0");
     const breakHours = Number.isFinite(breakMinutesVal) && breakMinutesVal > 0 ? breakMinutesVal / 60 : 0;
     const off = offDay.checked ? 0 : offRaw;
     const rte = offDay.checked ? 0 : rteRaw;
-    const tot = offDay.checked ? 0 : Math.max(0, (off != null ? off : 0) + (rte != null ? rte : 0) + extraHours - breakHours);
+    const tot = offDay.checked ? 0 : Math.max(0, (off ?? 0) + (rte ?? 0) + extraHours - breakHours);
     const officeForStore = offDay.checked ? 0 : offRaw != null ? +(offRaw + extraHours).toFixed(2) : extraHours ? +extraHours.toFixed(2) : null;
     return {
       user_id: userId,
@@ -7322,9 +7333,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       setSecondTripInputs(null);
       if (breakMinutesInput) breakMinutesInput.value = "0";
       if (parcelHelperInput) parcelHelperInput.value = "0";
-      if (misdeliveryInput) misdeliveryInput.value = String(Number((r == null ? void 0 : r.misdelivery_count) || 0) || 0);
+      if (misdeliveryInput) misdeliveryInput.value = String(Number(r?.misdelivery_count || 0) || 0);
       if (flatsMinutesInput) {
-        const flatsMinutes = Number.isFinite(Number(r == null ? void 0 : r.flats_minutes)) ? Math.max(0, Math.round(Number(r.flats_minutes))) : parseFlatsMinutesFromWeatherString((r == null ? void 0 : r.weather_json) || "");
+        const flatsMinutes = Number.isFinite(Number(r?.flats_minutes)) ? Math.max(0, Math.round(Number(r.flats_minutes))) : parseFlatsMinutesFromWeatherString(r?.weather_json || "");
         flatsMinutesInput.value = flatsMinutes == null ? "" : String(flatsMinutes);
       }
       if (sleepInput) sleepInput.value = "";
@@ -7379,13 +7390,13 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       if (misdeliveryInput) {
         const parsed = parseFloat(misdeliveryVal);
         if (Number.isFinite(parsed) && parsed >= 0) misdeliveryInput.value = String(Math.round(parsed));
-        else misdeliveryInput.value = String(Number((r == null ? void 0 : r.misdelivery_count) || 0) || 0);
+        else misdeliveryInput.value = String(Number(r?.misdelivery_count || 0) || 0);
       }
       if (flatsMinutesInput) {
         const parsed = parseFloat(flatsMinutesVal);
         if (Number.isFinite(parsed) && parsed >= 0) flatsMinutesInput.value = String(Math.round(parsed));
         else {
-          const fromRow = Number(r == null ? void 0 : r.flats_minutes);
+          const fromRow = Number(r?.flats_minutes);
           flatsMinutesInput.value = Number.isFinite(fromRow) && fromRow >= 0 ? String(Math.round(fromRow)) : "";
         }
       }
@@ -7451,9 +7462,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     return Math.max(0, Math.round(val));
   }
   function readFlatsMinutesInput() {
-    var _a5;
     if (!flatsMinutesInput) return null;
-    const raw = String((_a5 = flatsMinutesInput.value) != null ? _a5 : "").trim();
+    const raw = String(flatsMinutesInput.value ?? "").trim();
     if (raw === "") return null;
     const val = parseFloat(raw);
     if (!Number.isFinite(val) || val < 0) return null;
@@ -7576,7 +7586,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     try {
       const snapshot = buildForecastSnapshotFromPayload(payload, {
         userId,
-        tags: readTagHistoryForIso(payload == null ? void 0 : payload.work_date)
+        tags: readTagHistoryForIso(payload?.work_date)
       });
       if (!snapshot) return;
       await saveForecastSnapshot(snapshot, { supabaseClient: sb, silent: true });
@@ -7712,8 +7722,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       clone.classList.remove("ghost");
     });
   })();
-  var _a2;
-  (_a2 = $("btnEditLast")) == null ? void 0 : _a2.addEventListener("click", async () => {
+  $("btnEditLast")?.addEventListener("click", async () => {
     const rows = await fetchEntries();
     if (!rows.length) {
       alert("No entries yet.");
@@ -7724,8 +7733,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     await loadByDate();
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
-  var _a3;
-  (_a3 = $("btnDeleteDay")) == null ? void 0 : _a3.addEventListener("click", async () => {
+  $("btnDeleteDay")?.addEventListener("click", async () => {
     const { data: { user } } = await sb.auth.getUser();
     if (!user) {
       alert("No session. Try Link devices.");
@@ -7777,7 +7785,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     rebuildAll();
     alert(`Deleted ${d}. You can Undo now.`);
   });
-  btnUndoDelete == null ? void 0 : btnUndoDelete.addEventListener("click", async () => {
+  btnUndoDelete?.addEventListener("click", async () => {
     if (!lastDeleted) {
       showUndo(false);
       return;
@@ -7811,22 +7819,22 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     const byDate = /* @__PURE__ */ new Map();
     const scoreRow = (row) => {
       let score = 0;
-      if ((row == null ? void 0 : row.status) === "worked") score += 2;
-      if (row == null ? void 0 : row.start_time) score += 1;
-      if (row == null ? void 0 : row.depart_time) score += 1;
-      if (row == null ? void 0 : row.end_time) score += 1;
-      if (row == null ? void 0 : row.return_time) score += 1;
-      if (Number(row == null ? void 0 : row.hours) > 0) score += 2;
-      if (Number(row == null ? void 0 : row.parcels) > 0) score += 1;
-      if (Number(row == null ? void 0 : row.letters) > 0) score += 1;
+      if (row?.status === "worked") score += 2;
+      if (row?.start_time) score += 1;
+      if (row?.depart_time) score += 1;
+      if (row?.end_time) score += 1;
+      if (row?.return_time) score += 1;
+      if (Number(row?.hours) > 0) score += 2;
+      if (Number(row?.parcels) > 0) score += 1;
+      if (Number(row?.letters) > 0) score += 1;
       return score;
     };
     const rowStamp = (row) => {
-      const t = Date.parse((row == null ? void 0 : row.updated_at) || (row == null ? void 0 : row.created_at) || "");
+      const t = Date.parse(row?.updated_at || row?.created_at || "");
       return Number.isFinite(t) ? t : 0;
     };
     for (const row of rows || []) {
-      const key = row == null ? void 0 : row.work_date;
+      const key = row?.work_date;
       if (!key) continue;
       const prev = byDate.get(key);
       if (!prev) {
@@ -7846,8 +7854,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   function applyHelperParcels(rows) {
     return (rows || []).map((row) => {
       const helper = parseHelperParcelsFromWeatherString(row.weather_json || "");
-      const misdelivery = Number.isFinite(Number(row == null ? void 0 : row.misdelivery_count)) ? Math.max(0, Math.round(Number(row.misdelivery_count))) : parseMisdeliveryFromWeatherString(row.weather_json || "");
-      const flatsMinutes = Number.isFinite(Number(row == null ? void 0 : row.flats_minutes)) ? Math.max(0, Math.round(Number(row.flats_minutes))) : parseFlatsMinutesFromWeatherString(row.weather_json || "");
+      const misdelivery = Number.isFinite(Number(row?.misdelivery_count)) ? Math.max(0, Math.round(Number(row.misdelivery_count))) : parseMisdeliveryFromWeatherString(row.weather_json || "");
+      const flatsMinutes = Number.isFinite(Number(row?.flats_minutes)) ? Math.max(0, Math.round(Number(row.flats_minutes))) : parseFlatsMinutesFromWeatherString(row.weather_json || "");
       const base = Number(row.parcels) || 0;
       return {
         ...row,
@@ -7917,9 +7925,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         return;
       }
       const markup = thresholds.map(([id, { label, key, threshold }]) => {
-        var _a5;
         const unlocked = badges.find((b) => b && b.id === id && b.year === year);
-        const progressRaw = (_a5 = totals == null ? void 0 : totals[year]) == null ? void 0 : _a5[key];
+        const progressRaw = totals?.[year]?.[key];
         const progressVal = Number(progressRaw);
         const progress = Number.isFinite(progressVal) ? progressVal : 0;
         const status = unlocked ? "unlocked" : "locked";
@@ -7997,11 +8004,11 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         let v;
         if (h === "route") v = "R1";
         else if (h === "misdelivery_count") {
-          const fromRow = Number(r == null ? void 0 : r.misdelivery_count);
-          v = Number.isFinite(fromRow) ? Math.max(0, Math.round(fromRow)) : parseMisdeliveryFromWeatherString((r == null ? void 0 : r.weather_json) || "");
+          const fromRow = Number(r?.misdelivery_count);
+          v = Number.isFinite(fromRow) ? Math.max(0, Math.round(fromRow)) : parseMisdeliveryFromWeatherString(r?.weather_json || "");
         } else if (h === "flats_minutes") {
-          const fromRow = Number(r == null ? void 0 : r.flats_minutes);
-          const parsed = Number.isFinite(fromRow) && fromRow >= 0 ? Math.round(fromRow) : parseFlatsMinutesFromWeatherString((r == null ? void 0 : r.weather_json) || "");
+          const fromRow = Number(r?.flats_minutes);
+          const parsed = Number.isFinite(fromRow) && fromRow >= 0 ? Math.round(fromRow) : parseFlatsMinutesFromWeatherString(r?.weather_json || "");
           v = parsed == null ? "" : parsed;
         } else v = r[h];
         if (v == null) return "";
@@ -8029,7 +8036,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     a.click();
   });
   var showUidBtn = $("showUid");
-  showUidBtn == null ? void 0 : showUidBtn.addEventListener("click", async () => {
+  showUidBtn?.addEventListener("click", async () => {
     const { data: { user } } = await sb.auth.getUser();
     if (!user) {
       alert("No session. Use Link devices.");
@@ -8041,11 +8048,9 @@ ${user.id}
 Entries are filtered by this id.`);
   });
   var importFile = $("importFile");
-  var _a4;
-  (_a4 = $("importCsv")) == null ? void 0 : _a4.addEventListener("click", () => importFile.click());
-  importFile == null ? void 0 : importFile.addEventListener("change", async () => {
-    var _a5;
-    const file = (_a5 = importFile.files) == null ? void 0 : _a5[0];
+  $("importCsv")?.addEventListener("click", () => importFile.click());
+  importFile?.addEventListener("change", async () => {
+    const file = importFile.files?.[0];
     if (!file) return;
     const text = await file.text();
     const lines = text.split(/\r?\n/).filter(Boolean);
@@ -8065,10 +8070,7 @@ Entries are filtered by this id.`);
     const rows = [];
     for (let i = 1; i < lines.length; i++) {
       const cols = splitCsv(lines[i]);
-      const get = (name) => {
-        var _a6;
-        return unq((_a6 = cols[idx(name)]) != null ? _a6 : "");
-      };
+      const get = (name) => unq(cols[idx(name)] ?? "");
       const misRaw = +(get("misdelivery_count") || 0);
       const misCount = Number.isFinite(misRaw) && misRaw > 0 ? Math.round(misRaw) : 0;
       const flatsRaw = +(get("flats_minutes") || 0);
@@ -8097,30 +8099,15 @@ Entries are filtered by this id.`);
     rebuildAll();
     alert(`Imported ${rows.length} rows into this account.`);
   });
-  function hhmmFrom(baseDateStr, hours) {
-    if (hours == null) return "\u2014";
-    const d = DateTime.fromISO(baseDateStr, { zone: ZONE }).set({ hour: 8, minute: 0 });
-    return d.plus({ hours }).toFormat("h:mm a");
-  }
   function buildSnapshot(rows) {
-    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u;
     rows = filterRowsForView(rows || []);
     const today = DateTime.now().setZone(ZONE);
     const dow = today.weekday % 7;
     const workRows = rows.filter((r) => r.status !== "off");
-    const byDow = Array.from({ length: 7 }, () => ({ h: 0, c: 0 }));
-    for (const r of workRows) {
-      const h = Number(r.hours || 0);
-      if (h > 0) {
-        const d = dowIndex(r.work_date);
-        byDow[d].h += h;
-        byDow[d].c++;
-      }
-    }
-    const avgH = byDow.map((x) => x.c ? x.h / x.c : null);
-    const todayAvgH = avgH[dow];
-    expEnd.textContent = todayAvgH ? hhmmFrom(today.toISODate(), todayAvgH) : "\u2014";
-    expMeta.textContent = `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dow]} avg ${todayAvgH ? todayAvgH.toFixed(2) + "h" : "\u2014"}`;
+    const prediction = buildPredictionRecord(workRows, { now: today });
+    const predictedTotalHours = prediction?.predicted?.totalHours ?? null;
+    expEnd.textContent = prediction?.predicted?.endTime || "\u2014";
+    expMeta.textContent = `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dow]} avg ${predictedTotalHours ? predictedTotalHours.toFixed(2) + "h" : "\u2014"}`;
     (function enableTileHelp() {
       try {
         const pairs = [
@@ -8131,7 +8118,7 @@ Entries are filtered by this id.`);
         pairs.forEach((p) => {
           const badge = document.getElementById(p.id);
           const help = document.getElementById(p.help);
-          const tile = badge == null ? void 0 : badge.closest(".stat");
+          const tile = badge?.closest(".stat");
           if (!badge || !help || !tile) return;
           if (tile.dataset.helpReady) return;
           tile.dataset.helpReady = "1";
@@ -8208,10 +8195,9 @@ Note: ${adjNote}`;
           const btn = document.getElementById("linkRouteEffDetails");
           if (btn) {
             btn.onclick = (e) => {
-              var _a6;
               e.preventDefault();
               try {
-                (_a6 = document.getElementById("mixVizCard")) == null ? void 0 : _a6.scrollIntoView({ behavior: "smooth", block: "start" });
+                document.getElementById("mixVizCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
               } catch (_) {
               }
             };
@@ -8220,8 +8206,8 @@ Note: ${adjNote}`;
       }
     } catch (_) {
     }
-    const totToday = workRows[0] ? +workRows[0].hours || 0 : 0;
-    const exp = todayAvgH || 0;
+    const totToday = prediction?.actual?.totalHours ?? 0;
+    const exp = predictedTotalHours || 0;
     const overallScore = exp > 0 ? Math.max(0, Math.min(10, Math.round((1 - (totToday - exp) / Math.max(1, exp)) * 10))) : 0;
     badgeOverall.textContent = `${overallScore}/10`;
     try {
@@ -8377,15 +8363,14 @@ Score: ${overallScore}/10 (higher is better)`;
     }
     const offIdxThisWeek = new Set(rows.filter((r) => r.status === "off" && inRange(r, weekStart, weekEnd)).map((r) => (DateTime.fromISO(r.work_date, { zone: ZONE }).weekday + 6) % 7));
     const normalizedTotals = (key) => {
-      var _a6, _b2, _c2, _d2;
       let curTotal = 0;
       let baseTotal = 0;
       for (let i = 0; i <= dayIndexToday && i < 7; i++) {
         if (offIdxThisWeek.has(i)) continue;
-        const curVal = ((_a6 = thisWeek[i]) == null ? void 0 : _a6[key]) || 0;
-        let baseVal = ((_b2 = lastWeek[i]) == null ? void 0 : _b2[key]) || 0;
+        const curVal = thisWeek[i]?.[key] || 0;
+        let baseVal = lastWeek[i]?.[key] || 0;
         if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-          baseVal = (((_c2 = lastWeek[i - 1]) == null ? void 0 : _c2[key]) || 0) + (((_d2 = lastWeek[i]) == null ? void 0 : _d2[key]) || 0);
+          baseVal = (lastWeek[i - 1]?.[key] || 0) + (lastWeek[i]?.[key] || 0);
         }
         curTotal += curVal || 0;
         baseTotal += baseVal || 0;
@@ -8440,9 +8425,8 @@ Score: ${overallScore}/10 (higher is better)`;
       const totalActual = tripsThisWeek.reduce((sum2, entry) => sum2 + (+entry.data.t || 0), 0);
       const totalPaid = tripsThisWeek.reduce((sum2, entry) => sum2 + (+entry.data.m || 0) * 2, 0);
       const totalGas = tripsThisWeek.reduce((sum2, entry) => {
-        var _a6;
         const miles2 = +entry.data.m || 0;
-        const emaRaw = (_a6 = entry.data) == null ? void 0 : _a6.e;
+        const emaRaw = entry.data?.e;
         const ema = Number.isFinite(+emaRaw) && +emaRaw >= 0 ? +emaRaw : readStoredEma();
         return sum2 + miles2 * ema;
       }, 0);
@@ -8464,13 +8448,12 @@ Score: ${overallScore}/10 (higher is better)`;
       }
     }
     const dailyDeltas = (key) => {
-      var _a6, _b2;
       const arr = [];
       for (let i = 0; i <= dayIndexToday && i < 7; i++) {
         const cur = offIdxThisWeek.has(i) ? null : thisWeek[i][key];
         let base = lastWeek[i][key];
         if (holidayAdjEnabled && carryNext.has(i)) {
-          base = (((_a6 = lastWeek[i - 1]) == null ? void 0 : _a6[key]) || 0) + (((_b2 = lastWeek[i]) == null ? void 0 : _b2[key]) || 0);
+          base = (lastWeek[i - 1]?.[key] || 0) + (lastWeek[i]?.[key] || 0);
         }
         arr.push(cur == null ? null : pct(cur || 0, base || 0));
       }
@@ -8506,16 +8489,15 @@ Score: ${overallScore}/10 (higher is better)`;
     const cumP = cumulative(dP);
     const cumL = cumulative(dL);
     function sameCountDelta(key) {
-      var _a6, _b2;
       const cur = [];
       for (let i = 0; i <= dayIndexToday && i < 7; i++) {
-        const v2 = ((_a6 = thisWeek[i]) == null ? void 0 : _a6[key]) || 0;
+        const v2 = thisWeek[i]?.[key] || 0;
         if (v2 > 0) cur.push(v2);
       }
       const N = cur.length;
       const prior = [];
       for (let i = 0; i < 7; i++) {
-        const v2 = ((_b2 = lastWeek[i]) == null ? void 0 : _b2[key]) || 0;
+        const v2 = lastWeek[i]?.[key] || 0;
         if (v2 > 0) prior.push(v2);
       }
       const M = prior.length;
@@ -8541,11 +8523,11 @@ Score: ${overallScore}/10 (higher is better)`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_a5 = thisWeek[i]) == null ? void 0 : _a5.h) || 0 : null;
-          let base = ((_b = lastWeek[i]) == null ? void 0 : _b.h) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : thisWeek[i]?.h || 0 : null;
+          let base = lastWeek[i]?.h || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_c = lastWeek[i - 1]) == null ? void 0 : _c.h) || 0) + (((_d = lastWeek[i]) == null ? void 0 : _d.h) || 0);
+            base = (lastWeek[i - 1]?.h || 0) + (lastWeek[i]?.h || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8586,11 +8568,11 @@ Score: ${overallScore}/10 (higher is better)`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_e = thisWeek[i]) == null ? void 0 : _e.p) || 0 : null;
-          let base = ((_f = lastWeek[i]) == null ? void 0 : _f.p) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : thisWeek[i]?.p || 0 : null;
+          let base = lastWeek[i]?.p || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_g = lastWeek[i - 1]) == null ? void 0 : _g.p) || 0) + (((_h = lastWeek[i]) == null ? void 0 : _h.p) || 0);
+            base = (lastWeek[i - 1]?.p || 0) + (lastWeek[i]?.p || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8624,11 +8606,11 @@ Score: ${overallScore}/10 (higher is better)`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_i = thisWeek[i]) == null ? void 0 : _i.l) || 0 : null;
-          let base = ((_j = lastWeek[i]) == null ? void 0 : _j.l) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : thisWeek[i]?.l || 0 : null;
+          let base = lastWeek[i]?.l || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_k = lastWeek[i - 1]) == null ? void 0 : _k.l) || 0) + (((_l = lastWeek[i]) == null ? void 0 : _l.l) || 0);
+            base = (lastWeek[i - 1]?.l || 0) + (lastWeek[i]?.l || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8656,18 +8638,17 @@ Score: ${overallScore}/10 (higher is better)`;
       console.warn("Failed to populate weekly letters details", e);
     }
     const renderTrendPanel = (bodyId, dailyArr, weightedVal, cumulativeVal, key, sc) => {
-      var _a6, _b2, _c2, _d2;
       const body = document.getElementById(bodyId);
       if (!body) return;
       const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
       const rows2 = [];
       for (let i = 0; i <= dayIndexToday && i < 7; i++) {
         const v2 = dailyArr[i];
-        const cur = offIdxThisWeek.has(i) ? null : ((_a6 = thisWeek[i]) == null ? void 0 : _a6[key]) || 0;
-        let base = ((_b2 = lastWeek[i]) == null ? void 0 : _b2[key]) || 0;
+        const cur = offIdxThisWeek.has(i) ? null : thisWeek[i]?.[key] || 0;
+        let base = lastWeek[i]?.[key] || 0;
         let adjMark = "";
         if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-          base = (((_c2 = lastWeek[i - 1]) == null ? void 0 : _c2[key]) || 0) + (((_d2 = lastWeek[i]) == null ? void 0 : _d2[key]) || 0);
+          base = (lastWeek[i - 1]?.[key] || 0) + (lastWeek[i]?.[key] || 0);
           adjMark = " (adj)";
         }
         const pctTxt = v2 == null || !isFinite(v2) ? "\u2014" : v2 >= 0 ? `\u2191 ${Math.round(v2)}%` : `\u2193 ${Math.abs(Math.round(v2))}%`;
@@ -8714,9 +8695,9 @@ Score: ${overallScore}/10 (higher is better)`;
     const dayPct = (val, base) => val == null || !base ? null : (val - base) / base * 100;
     const tdp = dayPct(todayParcels, baseParcels), tdl = dayPct(todayLetters, baseLetters);
     const wkNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    (_o = (_n = (_m = document.querySelector("#todayParcelsDelta")) == null ? void 0 : _m.closest(".stat")) == null ? void 0 : _n.querySelector("small.muted")) == null ? void 0 : _o.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
-    (_r = (_q = (_p = document.querySelector("#todayLettersDelta")) == null ? void 0 : _p.closest(".stat")) == null ? void 0 : _q.querySelector("small.muted")) == null ? void 0 : _r.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
-    (_u = (_t = (_s = document.querySelector("#todayOfficeDelta")) == null ? void 0 : _s.closest(".stat")) == null ? void 0 : _t.querySelector("small.muted")) == null ? void 0 : _u.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    document.querySelector("#todayParcelsDelta")?.closest(".stat")?.querySelector("small.muted")?.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    document.querySelector("#todayLettersDelta")?.closest(".stat")?.querySelector("small.muted")?.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    document.querySelector("#todayOfficeDelta")?.closest(".stat")?.querySelector("small.muted")?.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
     const baseOffice = lastSame ? +lastSame.office_minutes || 0 : null;
     const todayOffice = todaysRow ? +todaysRow.office_minutes || 0 : null;
     const fmtTiny = (p) => p == null ? "\u2014" : p >= 0 ? `\u2191 ${p.toFixed(0)}%` : `\u2193 ${Math.abs(p).toFixed(0)}%`;
@@ -8752,7 +8733,6 @@ Score: ${overallScore}/10 (higher is better)`;
     })();
   }
   function buildEvalCompare(rows) {
-    var _a5, _b, _c, _d;
     try {
       if (!evalCompareCard) return;
       syncEvalGlobals();
@@ -8765,14 +8745,14 @@ Score: ${overallScore}/10 (higher is better)`;
       }
       const activeByDateId = findActiveEvalProfileId();
       if (!evalCompareState.activeId || !getEvalProfileById(evalCompareState.activeId)) {
-        evalCompareState.activeId = activeByDateId || (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || profiles[0].profileId;
+        evalCompareState.activeId = activeByDateId || USPS_EVAL?.profileId || profiles[0].profileId;
       }
       setActiveEvalId(evalCompareState.activeId);
       const activeProfile = getEvalProfileById(evalCompareState.activeId);
       const priorProfiles = getPriorEvalProfiles(activeProfile);
       const previousProfile = getPreviousEvalProfile(evalCompareState.activeId);
       if (!evalCompareState.compareId || evalCompareState.compareId === evalCompareState.activeId || !getEvalProfileById(evalCompareState.compareId) || !priorProfiles.find((p) => p.profileId === evalCompareState.compareId)) {
-        evalCompareState.compareId = (previousProfile == null ? void 0 : previousProfile.profileId) || ((_a5 = priorProfiles[priorProfiles.length - 1]) == null ? void 0 : _a5.profileId) || null;
+        evalCompareState.compareId = previousProfile?.profileId || priorProfiles[priorProfiles.length - 1]?.profileId || null;
       }
       if (evalWindowPrimary) {
         evalWindowPrimary.innerHTML = profiles.map((profile) => `<option value="${profile.profileId}">${getEvalProfileDisplayName(profile)}</option>`).join("");
@@ -8803,7 +8783,7 @@ Score: ${overallScore}/10 (higher is better)`;
       const activeLabel = getEvalHeaderLabel(activeProfile);
       const activeDays = activeMetrics.workedDays;
       if (evalCompareSummary) {
-        const baselineMode = (compareMetrics == null ? void 0 : compareMetrics.sampleMode) === "windowFallback" ? " \u2022 Baseline uses full-window average (fewer than 14 worked days)" : "";
+        const baselineMode = compareMetrics?.sampleMode === "windowFallback" ? " \u2022 Baseline uses full-window average (fewer than 14 worked days)" : "";
         evalCompareSummary.textContent = `${activeLabel} \u2022 ${modeLabel} \u2022 ${activeDays} worked day(s)${baselineMode}`;
       }
       const deltaText = Number.isFinite(activeMetrics.avgDeltaHoursPerDay) ? `${formatSigned(activeMetrics.avgDeltaHoursPerDay, 2)} hrs ${activeMetrics.avgDeltaHoursPerDay >= 0 ? "over" : "under"} evaluation` : "No eval hours/day set";
@@ -8825,7 +8805,7 @@ Score: ${overallScore}/10 (higher is better)`;
         `;
       }
       if (evalSingleGrid) {
-        const avgHoursCls = metricClassByDelta(((_b = activeMetrics.averages.hoursPerDay) != null ? _b : 0) - ((_c = activeMetrics.evalHoursPerDay) != null ? _c : 0), "overUnder");
+        const avgHoursCls = metricClassByDelta((activeMetrics.averages.hoursPerDay ?? 0) - (activeMetrics.evalHoursPerDay ?? 0), "overUnder");
         evalSingleGrid.innerHTML = [
           { k: "Avg hours/worked day", v: formatMaybe(activeMetrics.averages.hoursPerDay, 2, "h"), cls: avgHoursCls },
           { k: "Evaluated hours/day", v: formatMaybe(activeMetrics.evalHoursPerDay, 2, "h"), cls: "eval-neutral" },
@@ -8849,7 +8829,7 @@ Score: ${overallScore}/10 (higher is better)`;
       if (evalCompareDashboard) evalCompareDashboard.style.display = evalCompareState.compareEnabled && canCompare ? "" : "none";
       if (evalCompareState.compareEnabled && canCompare && compareMetrics) {
         const comparison = buildComparisonSummary(activeMetrics, compareMetrics);
-        const topDelta = (_d = comparison == null ? void 0 : comparison.topDelta) == null ? void 0 : _d.delta;
+        const topDelta = comparison?.topDelta?.delta;
         if (evalComparePrimaryDelta) {
           evalComparePrimaryDelta.textContent = `${formatSignedMaybe(topDelta, 2, " hrs/day")}`;
           evalComparePrimaryDelta.className = `value ${metricClassByDelta(topDelta, "overUnder")}`;
@@ -8857,24 +8837,21 @@ Score: ${overallScore}/10 (higher is better)`;
         if (evalComparePrimaryMeta) {
           evalComparePrimaryMeta.innerHTML = `<span>${activeLabel} minus ${getEvalHeaderLabel(compareProfile)} (Active - Baseline)</span>`;
         }
-        const paneItems = (metrics) => {
-          var _a6;
-          return [
-            { label: "Days logged", value: formatNumber(metrics.workedDays, 0) },
-            { label: "Total volume", value: formatNumber(metrics.totals.volume, 0) },
-            { label: "Total hours", value: formatMaybe(metrics.totals.hours, 1, "h") },
-            { label: "Avg volume/day", value: formatMaybe(metrics.averages.volumePerDay, 1) },
-            { label: "Avg hours/day", value: formatMaybe(metrics.averages.hoursPerDay, 2, "h") },
-            { label: "Avg delta/day", value: formatSignedMaybe(metrics.avgDeltaHoursPerDay, 2, "h"), cls: metricClassByDelta(metrics.avgDeltaHoursPerDay, "overUnder") },
-            { label: "Effective $/hour", value: formatMoney(metrics.effectiveHourly) },
-            { label: "Evaluated pay", value: formatMoney((_a6 = metrics.profile) == null ? void 0 : _a6.annualSalary, 0) }
-          ];
-        };
+        const paneItems = (metrics) => [
+          { label: "Days logged", value: formatNumber(metrics.workedDays, 0) },
+          { label: "Total volume", value: formatNumber(metrics.totals.volume, 0) },
+          { label: "Total hours", value: formatMaybe(metrics.totals.hours, 1, "h") },
+          { label: "Avg volume/day", value: formatMaybe(metrics.averages.volumePerDay, 1) },
+          { label: "Avg hours/day", value: formatMaybe(metrics.averages.hoursPerDay, 2, "h") },
+          { label: "Avg delta/day", value: formatSignedMaybe(metrics.avgDeltaHoursPerDay, 2, "h"), cls: metricClassByDelta(metrics.avgDeltaHoursPerDay, "overUnder") },
+          { label: "Effective $/hour", value: formatMoney(metrics.effectiveHourly) },
+          { label: "Evaluated pay", value: formatMoney(metrics.profile?.annualSalary, 0) }
+        ];
         renderEvalList(evalPaneA, paneItems(compareMetrics));
         renderEvalList(evalPaneB, paneItems(activeMetrics));
         const orderedGroups = ["time", "workload", "efficiency", "pay"];
         const deltaRows = orderedGroups.flatMap((group) => {
-          const groupRows = ((comparison == null ? void 0 : comparison.rows) || []).filter((row) => row.group === group);
+          const groupRows = (comparison?.rows || []).filter((row) => row.group === group);
           return groupRows.map((row) => {
             const deltaText2 = formatSignedMaybe(row.delta, row.digits, row.suffix);
             const pctText = row.pct == null ? "" : ` (${formatSignedMaybe(row.pct, 1, "%")})`;
@@ -8901,27 +8878,27 @@ Score: ${overallScore}/10 (higher is better)`;
   function getCssVar(name, fallback) {
     try {
       const raw = getComputedStyle(document.documentElement).getPropertyValue(name);
-      return (raw == null ? void 0 : raw.trim()) || fallback;
+      return raw?.trim() || fallback;
     } catch (_) {
       return fallback;
     }
   }
   function getBaseParcels(row) {
-    const base = (row == null ? void 0 : row.parcels_base) != null ? Number(row.parcels_base) : Number(row == null ? void 0 : row.parcels);
+    const base = row?.parcels_base != null ? Number(row.parcels_base) : Number(row?.parcels);
     return Number.isFinite(base) ? base : 0;
   }
   function combinedVolumeBase(row, weight) {
-    return combinedVolume(getBaseParcels(row), Number((row == null ? void 0 : row.letters) || 0), weight);
+    return combinedVolume(getBaseParcels(row), Number(row?.letters || 0), weight);
   }
   function filterRowsForParser(rows, includePeak) {
     const filtered = filterRowsForView(rows || []);
-    if (includePeak || !(PEAK_SEASON == null ? void 0 : PEAK_SEASON.from) || !(PEAK_SEASON == null ? void 0 : PEAK_SEASON.to)) return filtered;
+    if (includePeak || !PEAK_SEASON?.from || !PEAK_SEASON?.to) return filtered;
     return filtered.filter((r) => !isPeakSeasonDate(r.work_date));
   }
   function getAvailableYears(rows) {
     const years = /* @__PURE__ */ new Set();
     (rows || []).forEach((r) => {
-      if (!(r == null ? void 0 : r.work_date)) return;
+      if (!r?.work_date) return;
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       if (d.isValid) years.add(d.year);
     });
@@ -8932,7 +8909,7 @@ Score: ${overallScore}/10 (higher is better)`;
     const periods = [];
     const asCount = count === "all" ? null : Number(count || 0);
     const minDate = (rows || []).reduce((min, r) => {
-      if (!(r == null ? void 0 : r.work_date)) return min;
+      if (!r?.work_date) return min;
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       if (!d.isValid) return min;
       return !min || d < min ? d : min;
@@ -8968,12 +8945,12 @@ Score: ${overallScore}/10 (higher is better)`;
   }
   function buildYearlySummary(rows) {
     if (!yearlySummaryCard || !yearlySummaryStats || !yearlySummaryYear) return;
-    const peakConfigured = !!((PEAK_SEASON == null ? void 0 : PEAK_SEASON.from) && (PEAK_SEASON == null ? void 0 : PEAK_SEASON.to));
+    const peakConfigured = !!(PEAK_SEASON?.from && PEAK_SEASON?.to);
     if (yearlySummaryIncludePeak) {
       yearlySummaryIncludePeak.disabled = !peakConfigured;
       if (!peakConfigured) yearlySummaryIncludePeak.checked = false;
     }
-    const includePeak = !!(yearlySummaryIncludePeak == null ? void 0 : yearlySummaryIncludePeak.checked);
+    const includePeak = !!yearlySummaryIncludePeak?.checked;
     const filtered = filterRowsForParser(rows, includePeak).filter((r) => r.status !== "off");
     const years = getAvailableYears(filtered);
     if (!years.length) {
@@ -8995,7 +8972,7 @@ Score: ${overallScore}/10 (higher is better)`;
       if (Math.abs(n) > 24) return n / 60;
       return n;
     };
-    const salary = (USPS_EVAL == null ? void 0 : USPS_EVAL.annualSalary) != null ? Number(USPS_EVAL.annualSalary) : null;
+    const salary = USPS_EVAL?.annualSalary != null ? Number(USPS_EVAL.annualSalary) : null;
     const totals = {
       parcels: yearRows.reduce((t, r) => t + (Number(r.parcels) || 0), 0),
       letters: yearRows.reduce((t, r) => t + (Number(r.letters) || 0), 0),
@@ -9021,14 +8998,13 @@ Score: ${overallScore}/10 (higher is better)`;
     }));
     const letterW = CURRENT_LETTER_WEIGHT || 0.33;
     yearRows.forEach((r) => {
-      var _a5;
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       if (!d.isValid) return;
       const bucket = byMonth[d.month - 1];
       bucket.parcels += Number(r.parcels) || 0;
       bucket.letters += Number(r.letters) || 0;
       bucket.hours += Number(r.hours) || 0;
-      bucket.officeHours += normalizeHoursLocal((_a5 = r.office_minutes) != null ? _a5 : r.officeMinutes);
+      bucket.officeHours += normalizeHoursLocal(r.office_minutes ?? r.officeMinutes);
       bucket.routeHours += routeAdjustedHours(r);
       bucket.volumeBase += combinedVolumeBase(r, letterW);
     });
@@ -9075,12 +9051,12 @@ Score: ${overallScore}/10 (higher is better)`;
   }
   function buildParserChart(rows) {
     if (!parserCard || !parserGranularity || !parserCount || !parserChartCanvas) return;
-    const peakConfigured = !!((PEAK_SEASON == null ? void 0 : PEAK_SEASON.from) && (PEAK_SEASON == null ? void 0 : PEAK_SEASON.to));
+    const peakConfigured = !!(PEAK_SEASON?.from && PEAK_SEASON?.to);
     if (parserIncludePeak) {
       parserIncludePeak.disabled = !peakConfigured;
       if (!peakConfigured) parserIncludePeak.checked = false;
     }
-    const includePeak = !!(parserIncludePeak == null ? void 0 : parserIncludePeak.checked);
+    const includePeak = !!parserIncludePeak?.checked;
     const filtered = filterRowsForParser(rows, includePeak).filter((r) => r.status !== "off");
     const granularity = parserGranularity.value || "month";
     const count = parserCount.value || "12";
@@ -9103,13 +9079,13 @@ Score: ${overallScore}/10 (higher is better)`;
     const effRaw = series.map((s) => s.efficiency);
     const zScore = (values) => {
       const valid = values.filter((v) => Number.isFinite(v));
-      const mean = valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : 0;
-      const variance = valid.length ? valid.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / valid.length : 0;
+      const mean2 = valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : 0;
+      const variance = valid.length ? valid.reduce((a, b) => a + Math.pow(b - mean2, 2), 0) / valid.length : 0;
       const std = variance > 0 ? Math.sqrt(variance) : 0;
-      const z = values.map((v) => std > 0 && Number.isFinite(v) ? (v - mean) / std : 0);
-      return { z, mean, std };
+      const z = values.map((v) => std > 0 && Number.isFinite(v) ? (v - mean2) / std : 0);
+      return { z, mean: mean2, std };
     };
-    const view = (parserView == null ? void 0 : parserView.value) || "relationship";
+    const view = parserView?.value || "relationship";
     if (view === "efficiency") {
       [parserShowParcels, parserShowLetters, parserShowHours].forEach((el) => {
         if (!el) return;
@@ -9146,16 +9122,16 @@ Score: ${overallScore}/10 (higher is better)`;
         raw: effRaw
       });
     } else {
-      if ((parserShowParcels == null ? void 0 : parserShowParcels.checked) !== false) {
+      if (parserShowParcels?.checked !== false) {
         metrics.push({ label: "Parcels", color: getCssVar("--rs-parcels", "#2b7fff"), raw: parcelsRaw });
       }
-      if ((parserShowLetters == null ? void 0 : parserShowLetters.checked) !== false) {
+      if (parserShowLetters?.checked !== false) {
         metrics.push({ label: "Letters", color: getCssVar("--rs-letters", "#f5c542"), raw: lettersRaw });
       }
-      if ((parserShowHours == null ? void 0 : parserShowHours.checked) !== false) {
+      if (parserShowHours?.checked !== false) {
         metrics.push({ label: "Hours", color: getCssVar("--rs-hours", "#f59e0b"), raw: hoursRaw });
       }
-      if ((parserShowEfficiency == null ? void 0 : parserShowEfficiency.checked) !== false) {
+      if (parserShowEfficiency?.checked !== false) {
         metrics.push({ label: "Efficiency", color: getCssVar("--rs-eff", "#22c55e"), raw: effRaw });
       }
     }
@@ -9219,10 +9195,7 @@ Score: ${overallScore}/10 (higher is better)`;
           legend: {
             display: true,
             labels: {
-              filter: (item, data) => {
-                var _a5, _b;
-                return !((_b = (_a5 = data == null ? void 0 : data.datasets) == null ? void 0 : _a5[item.datasetIndex]) == null ? void 0 : _b._baseline);
-              }
+              filter: (item, data) => !data?.datasets?.[item.datasetIndex]?._baseline
             }
           },
           tooltip: {
@@ -9247,14 +9220,14 @@ Score: ${overallScore}/10 (higher is better)`;
     });
   }
   function initParserControls() {
-    if (parserCard == null ? void 0 : parserCard.dataset.ready) return;
+    if (parserCard?.dataset.ready) return;
     if (parserCard) parserCard.dataset.ready = "1";
     const rerender = () => {
       buildYearlySummary(allRows || []);
       buildParserChart(allRows || []);
     };
     [parserGranularity, parserCount, parserView, parserIncludePeak, parserShowParcels, parserShowLetters, parserShowHours, parserShowEfficiency, yearlySummaryYear, yearlySummaryIncludePeak].forEach((el) => {
-      el == null ? void 0 : el.addEventListener("change", rerender);
+      el?.addEventListener("change", rerender);
     });
   }
   function buildSleepDrinkChart(rows) {
@@ -9533,7 +9506,7 @@ Score: ${overallScore}/10 (higher is better)`;
       rebuildAll();
     }).subscribe();
   } catch (e) {
-    console.warn("Realtime not enabled:", (e == null ? void 0 : e.message) || e);
+    console.warn("Realtime not enabled:", e?.message || e);
   }
   $("fab").addEventListener("click", () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -9690,14 +9663,14 @@ Score: ${overallScore}/10 (higher is better)`;
       panel.style.display = "block";
       panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
     };
-    openBtn == null ? void 0 : openBtn.addEventListener("click", showPanel);
-    openBtn == null ? void 0 : openBtn.addEventListener("keydown", (e) => {
+    openBtn?.addEventListener("click", showPanel);
+    openBtn?.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         showPanel();
       }
     });
-    closeBtn == null ? void 0 : closeBtn.addEventListener("click", () => {
+    closeBtn?.addEventListener("click", () => {
       if (panel) panel.style.display = "none";
     });
   })();
@@ -9726,14 +9699,14 @@ Score: ${overallScore}/10 (higher is better)`;
           panel.style.display = "none";
         }
       };
-      tile == null ? void 0 : tile.addEventListener("click", toggle);
-      tile == null ? void 0 : tile.addEventListener("keydown", (e) => {
+      tile?.addEventListener("click", toggle);
+      tile?.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           toggle();
         }
       });
-      close == null ? void 0 : close.addEventListener("click", () => {
+      close?.addEventListener("click", () => {
         if (panel) panel.style.display = "none";
       });
     }
@@ -9768,7 +9741,7 @@ Score: ${overallScore}/10 (higher is better)`;
   })();
   console.log("Route Stats loaded \u2014", VERSION_TAG);
   window.__sb.auth.getUser().then(async ({ data, error }) => {
-    if (error || !(data == null ? void 0 : data.user)) {
+    if (error || !data?.user) {
       console.warn("[Auth] No valid session found \u2014 refreshing...");
       await window.__sb.auth.refreshSession();
     } else {

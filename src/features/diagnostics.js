@@ -625,35 +625,8 @@ export function createDiagnostics({
         if (dismissBtn) {
           const iso = dismissBtn.dataset.dismissIso;
           if (!iso) return;
-          const residual = residuals.find(r => r.iso === iso);
-          const deltaMinutes = residual ? Math.round(residual.residMin) : null;
-          const parcels = residual ? Math.round(residual.parcels) : null;
-          const letters = residual ? Math.round(residual.letters) : null;
-          const defaultReason = (() => {
-            if (!residual) return [];
-            if (parcels != null && parcels > 0 && letters != null && letters === 0) return [{ key: 'parcels', reason: 'parcels', minutes: null }];
-            if (letters != null && letters > parcels) return [{ key: 'letters', reason: 'letters', minutes: null }];
-            return [];
-          })();
-          const hintParts = [];
-          if (deltaMinutes != null) hintParts.push(`Residual: ${deltaMinutes}m`);
-          if (parcels != null) hintParts.push(`Parcels: ${parcels}`);
-          if (letters != null) hintParts.push(`Letters: ${letters}`);
-          const tagResult = await showTagDismissDialog({
-            title: `Tag residual ${iso}`,
-            hint: hintParts.join(' · '),
-            defaults: defaultReason
-          });
-          if (!tagResult) return;
-          const tags = normalizeTagEntries(tagResult.tags || [], { notedAt: new Date().toISOString() });
-          if (!tags.length) {
-            window.alert('No reason provided; dismissal cancelled.');
-            return;
-          }
-          persistDismissedResidualWithTags({ iso, tags });
-          window.renderTomorrowForecast?.();
-          notifyDismissedChange();
-          buildDiagnostics(rows);
+          const ok = await triggerTagDismissForIso(rows, iso, { residuals, model });
+          if (!ok) return;
           return;
         }
 
@@ -668,6 +641,53 @@ export function createDiagnostics({
         }
       };
     }
+  }
+
+  async function triggerTagDismissForIso(rows, iso, context = {}) {
+    if (!iso) return false;
+    const filteredRows = filterRowsForView(rows || []);
+    const model = context.model || getResidualModel(filteredRows);
+    if (!model) {
+      window.alert('Diagnostics model is not available yet.');
+      return false;
+    }
+    const residuals = Array.isArray(context.residuals) && context.residuals.length
+      ? context.residuals
+      : (model.residuals || []);
+    const residual = residuals.find(r => r.iso === iso) || null;
+    const row = residual?.row || filteredRows.find(r => r?.work_date === iso && r?.status !== 'off') || null;
+    if (!row) {
+      window.alert(`No worked entry found for ${iso}.`);
+      return false;
+    }
+    const deltaMinutes = residual ? Math.round(residual.residMin) : Math.round(computeResidualForRow(row, model) || 0);
+    const parcels = residual ? Math.round(residual.parcels) : Math.round(+row.parcels || 0);
+    const letters = residual ? Math.round(residual.letters) : Math.round(+row.letters || 0);
+    const defaultReason = (() => {
+      if (parcels != null && parcels > 0 && letters != null && letters === 0) return [{ key: 'parcels', reason: 'parcels', minutes: null }];
+      if (letters != null && letters > parcels) return [{ key: 'letters', reason: 'letters', minutes: null }];
+      return [];
+    })();
+    const hintParts = [];
+    if (Number.isFinite(deltaMinutes)) hintParts.push(`Residual: ${deltaMinutes}m`);
+    if (parcels != null) hintParts.push(`Parcels: ${parcels}`);
+    if (letters != null) hintParts.push(`Letters: ${letters}`);
+    const tagResult = await showTagDismissDialog({
+      title: `Tag residual ${iso}`,
+      hint: hintParts.join(' · '),
+      defaults: defaultReason
+    });
+    if (!tagResult) return false;
+    const tags = normalizeTagEntries(tagResult.tags || [], { notedAt: new Date().toISOString() });
+    if (!tags.length) {
+      window.alert('No reason provided; dismissal cancelled.');
+      return false;
+    }
+    persistDismissedResidualWithTags({ iso, tags });
+    window.renderTomorrowForecast?.();
+    notifyDismissedChange();
+    buildDiagnostics(rows);
+    return true;
   }
 
   function showTagDismissDialog({ title, hint, defaults }) {
@@ -1086,6 +1106,7 @@ export function createDiagnostics({
     buildDiagnostics,
     buildDayCompare,
     buildVolumeLeaderboard,
+    triggerTagDismissForIso,
     fitVolumeTimeModel,
     getResidualModel,
     getLatestDiagnosticsContext: () => latestDiagnosticsContext,

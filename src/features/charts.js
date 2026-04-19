@@ -803,10 +803,10 @@ export function createCharts({
             used++;
           }
         }
-        if (!used || baseSum<=0) return { delta:null, used:0 };
+        if (!used || baseSum<=0) return { delta:null, used:0, current:curSum, baseline:baseSum };
         let delta = Math.round(((curSum - baseSum)/baseSum)*100);
         if (delta>100) delta=100; if (delta<-100) delta=-100;
-        return { delta, used };
+        return { delta, used, current:curSum, baseline:baseSum };
       };
       const pThisW = byW(W0, r=> +r.parcels||0);
       const lThisW = byW(W0, r=> +r.letters||0);
@@ -838,9 +838,15 @@ export function createCharts({
       const usedL = (resL && resL.used) ? `, ${resL.used} day(s) used` : '';
       const parcelsColor = (brand || '#2b7fff').trim() || '#2b7fff';
       const lettersColor = (warnColor || '#f97316').trim() || '#f97316';
+      const parcelsContext = flags.baselineCompare
+        ? `(${Math.round(resP?.current ?? p0)} vs ${Math.round(resP?.baseline ?? p1)}${usedP})`
+        : `(${p0} vs ${p1}${usedP})`;
+      const lettersContext = flags.baselineCompare
+        ? `(${Math.round(resL?.current ?? l0)} vs ${Math.round(resL?.baseline ?? l1)}${usedL})`
+        : `(${l0} vs ${l1}${usedL})`;
       details.innerHTML = [
-        line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, parcelsColor),
-        line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, lettersColor),
+        line(lineLabelP, dP, parcelsContext, parcelsColor),
+        line(lineLabelL, dLx, lettersContext, lettersColor),
         line('Hours', dH, `(${hoursThisWeek.toFixed(1)}h vs ${hoursLastWeek.toFixed(1)}h)`)
       ].join('');
       details.style.display = 'block';

@@ -1220,6 +1220,7 @@ window.__sb = createSupabaseClient();
     buildDiagnostics,
     buildDayCompare,
     buildVolumeLeaderboard,
+    triggerTagDismissForIso,
     fitVolumeTimeModel,
     getResidualModel,
     getLatestDiagnosticsContext,
@@ -1933,6 +1934,7 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
   const officeH=$('officeH'), routeH=$('routeH'), totalH=$('totalH');
   const expEnd=$('expEnd'), expMeta=$('expMeta');
   const actualEnd=$('actualEnd'), actualMeta=$('actualMeta');
+  const actualTile=actualEnd?.closest('.stat') || null;
   const badgeVolume=$('badgeVolume'), badgeRouteEff=$('badgeRouteEff'), badgeOverall=$('badgeOverall');
   const dConnEl=$('dConn'), dAuthEl=$('dAuth'), dWriteEl=$('dWrite');
 
@@ -2886,6 +2888,37 @@ function getHourlyRateFromEval(){
         const deltaText = Number.isFinite(deltaMinutes) ? `${deltaPrefix}${deltaMinutes}m` : '—';
         actualMeta.innerHTML = `${actualTotalHours.toFixed(2)}h · <span class="${deltaClass || ''}">${hitMiss === 'hit' ? 'Hit' : (hitMiss === 'miss' ? 'Miss' : 'Δ')} ${deltaText}</span>`;
       }
+    }
+    if (actualTile) {
+      const iso = prediction?.iso || null;
+      const hasActual = !!prediction?.actual?.totalHours;
+      actualTile.style.cursor = hasActual ? 'pointer' : '';
+      actualTile.title = hasActual
+        ? 'Click for Tag & dismiss, Open Diagnostics, or Read full notes'
+        : 'No actual end logged yet';
+      actualTile.onclick = async (event) => {
+        if (!hasActual || !iso) return;
+        if (event.target.closest('button,a,input,select,textarea')) return;
+        const todayRow = prediction?.row || null;
+        const noteText = (todayRow?.notes || '').trim();
+        const choice = window.prompt(
+          `Actual ${prediction.actual.endTime || '—'} · ${prediction.actual.totalHours?.toFixed?.(2) || '—'}h\n\nChoose action:\n1 = Tag & dismiss\n2 = Open Diagnostics\n3 = Read full`,
+          '1'
+        );
+        if (!choice) return;
+        const normalized = choice.trim().toLowerCase();
+        if (normalized === '1' || normalized === 'tag' || normalized === 'dismiss') {
+          await triggerTagDismissForIso(allRows || rows || [], iso);
+          return;
+        }
+        if (normalized === '2' || normalized === 'diag' || normalized === 'diagnostics') {
+          try{ document.getElementById('diagnosticsCard')?.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+          return;
+        }
+        if (normalized === '3' || normalized === 'read' || normalized === 'notes') {
+          window.alert(noteText || 'No notes recorded for this day.');
+        }
+      };
     }
     // Enable click-to-toggle help on snapshot tiles (once)
     (function enableTileHelp(){

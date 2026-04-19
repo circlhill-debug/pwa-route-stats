@@ -2392,43 +2392,16 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         };
         updateAiSummaryAvailability2 == null ? void 0 : updateAiSummaryAvailability2();
         tbody.onclick = async (event) => {
-          var _a6, _b2, _c2, _d2, _e2;
+          var _a6, _b2, _c2, _d2;
           const dismissBtn = (_b2 = (_a6 = event.target) == null ? void 0 : _a6.closest) == null ? void 0 : _b2.call(_a6, ".diag-dismiss");
           if (dismissBtn) {
             const iso = dismissBtn.dataset.dismissIso;
             if (!iso) return;
-            const residual = residuals.find((r) => r.iso === iso);
-            const deltaMinutes = residual ? Math.round(residual.residMin) : null;
-            const parcels2 = residual ? Math.round(residual.parcels) : null;
-            const letters2 = residual ? Math.round(residual.letters) : null;
-            const defaultReason = (() => {
-              if (!residual) return [];
-              if (parcels2 != null && parcels2 > 0 && letters2 != null && letters2 === 0) return [{ key: "parcels", reason: "parcels", minutes: null }];
-              if (letters2 != null && letters2 > parcels2) return [{ key: "letters", reason: "letters", minutes: null }];
-              return [];
-            })();
-            const hintParts = [];
-            if (deltaMinutes != null) hintParts.push(`Residual: ${deltaMinutes}m`);
-            if (parcels2 != null) hintParts.push(`Parcels: ${parcels2}`);
-            if (letters2 != null) hintParts.push(`Letters: ${letters2}`);
-            const tagResult = await showTagDismissDialog({
-              title: `Tag residual ${iso}`,
-              hint: hintParts.join(" \xB7 "),
-              defaults: defaultReason
-            });
-            if (!tagResult) return;
-            const tags = normalizeTagEntries(tagResult.tags || [], { notedAt: (/* @__PURE__ */ new Date()).toISOString() });
-            if (!tags.length) {
-              window.alert("No reason provided; dismissal cancelled.");
-              return;
-            }
-            persistDismissedResidualWithTags({ iso, tags });
-            (_c2 = window.renderTomorrowForecast) == null ? void 0 : _c2.call(window);
-            notifyDismissedChange();
-            buildDiagnostics2(rows);
+            const ok = await triggerTagDismissForIso2(rows, iso, { residuals, model });
+            if (!ok) return;
             return;
           }
-          const noteBtn = (_e2 = (_d2 = event.target) == null ? void 0 : _d2.closest) == null ? void 0 : _e2.call(_d2, ".diag-note");
+          const noteBtn = (_d2 = (_c2 = event.target) == null ? void 0 : _c2.closest) == null ? void 0 : _d2.call(_c2, ".diag-note");
           if (noteBtn) {
             const note = noteBtn.dataset.noteFull ? decodeURIComponent(noteBtn.dataset.noteFull) : "";
             if (!note) {
@@ -2439,6 +2412,51 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           }
         };
       }
+    }
+    async function triggerTagDismissForIso2(rows, iso, context = {}) {
+      var _a5;
+      if (!iso) return false;
+      const filteredRows = filterRowsForView2(rows || []);
+      const model = context.model || getResidualModel2(filteredRows);
+      if (!model) {
+        window.alert("Diagnostics model is not available yet.");
+        return false;
+      }
+      const residuals = Array.isArray(context.residuals) && context.residuals.length ? context.residuals : model.residuals || [];
+      const residual = residuals.find((r) => r.iso === iso) || null;
+      const row = (residual == null ? void 0 : residual.row) || filteredRows.find((r) => (r == null ? void 0 : r.work_date) === iso && (r == null ? void 0 : r.status) !== "off") || null;
+      if (!row) {
+        window.alert(`No worked entry found for ${iso}.`);
+        return false;
+      }
+      const deltaMinutes = residual ? Math.round(residual.residMin) : Math.round(computeResidualForRow(row, model) || 0);
+      const parcels2 = residual ? Math.round(residual.parcels) : Math.round(+row.parcels || 0);
+      const letters2 = residual ? Math.round(residual.letters) : Math.round(+row.letters || 0);
+      const defaultReason = (() => {
+        if (parcels2 != null && parcels2 > 0 && letters2 != null && letters2 === 0) return [{ key: "parcels", reason: "parcels", minutes: null }];
+        if (letters2 != null && letters2 > parcels2) return [{ key: "letters", reason: "letters", minutes: null }];
+        return [];
+      })();
+      const hintParts = [];
+      if (Number.isFinite(deltaMinutes)) hintParts.push(`Residual: ${deltaMinutes}m`);
+      if (parcels2 != null) hintParts.push(`Parcels: ${parcels2}`);
+      if (letters2 != null) hintParts.push(`Letters: ${letters2}`);
+      const tagResult = await showTagDismissDialog({
+        title: `Tag residual ${iso}`,
+        hint: hintParts.join(" \xB7 "),
+        defaults: defaultReason
+      });
+      if (!tagResult) return false;
+      const tags = normalizeTagEntries(tagResult.tags || [], { notedAt: (/* @__PURE__ */ new Date()).toISOString() });
+      if (!tags.length) {
+        window.alert("No reason provided; dismissal cancelled.");
+        return false;
+      }
+      persistDismissedResidualWithTags({ iso, tags });
+      (_a5 = window.renderTomorrowForecast) == null ? void 0 : _a5.call(window);
+      notifyDismissedChange();
+      buildDiagnostics2(rows);
+      return true;
     }
     function showTagDismissDialog({ title, hint, defaults }) {
       const normalizedDefaults = normalizeTagEntries(defaults || []);
@@ -2809,6 +2827,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       buildDiagnostics: buildDiagnostics2,
       buildDayCompare: buildDayCompare2,
       buildVolumeLeaderboard: buildVolumeLeaderboard2,
+      triggerTagDismissForIso: triggerTagDismissForIso2,
       fitVolumeTimeModel: fitVolumeTimeModel3,
       getResidualModel: getResidualModel2,
       getLatestDiagnosticsContext: () => latestDiagnosticsContext,
@@ -3820,6 +3839,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       }
     }
     function buildMixViz2(rows) {
+      var _a5, _b, _c, _d;
       rows = filterRowsForView2(rows || []);
       const flags = getFlags();
       const card = document.getElementById("mixVizCard");
@@ -4033,11 +4053,11 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
               used++;
             }
           }
-          if (!used || baseSum <= 0) return { delta: null, used: 0 };
+          if (!used || baseSum <= 0) return { delta: null, used: 0, current: curSum, baseline: baseSum };
           let delta = Math.round((curSum - baseSum) / baseSum * 100);
           if (delta > 100) delta = 100;
           if (delta < -100) delta = -100;
-          return { delta, used };
+          return { delta, used, current: curSum, baseline: baseSum };
         };
         const pThisW = byW(W0, (r) => +r.parcels || 0);
         const lThisW = byW(W0, (r) => +r.letters || 0);
@@ -4067,9 +4087,11 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const usedL = resL && resL.used ? `, ${resL.used} day(s) used` : "";
         const parcelsColor = (brand || "#2b7fff").trim() || "#2b7fff";
         const lettersColor = (warnColor || "#f97316").trim() || "#f97316";
+        const parcelsContext = flags.baselineCompare ? `(${Math.round((_a5 = resP == null ? void 0 : resP.current) != null ? _a5 : p0)} vs ${Math.round((_b = resP == null ? void 0 : resP.baseline) != null ? _b : p1)}${usedP})` : `(${p0} vs ${p1}${usedP})`;
+        const lettersContext = flags.baselineCompare ? `(${Math.round((_c = resL == null ? void 0 : resL.current) != null ? _c : l0)} vs ${Math.round((_d = resL == null ? void 0 : resL.baseline) != null ? _d : l1)}${usedL})` : `(${l0} vs ${l1}${usedL})`;
         details.innerHTML = [
-          line(lineLabelP, dP, `(${p0} vs ${p1}${usedP})`, parcelsColor),
-          line(lineLabelL, dLx, `(${l0} vs ${l1}${usedL})`, lettersColor),
+          line(lineLabelP, dP, parcelsContext, parcelsColor),
+          line(lineLabelL, dLx, lettersContext, lettersColor),
           line("Hours", dH, `(${hoursThisWeek.toFixed(1)}h vs ${hoursLastWeek.toFixed(1)}h)`)
         ].join("");
         details.style.display = "block";
@@ -4221,9 +4243,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
                     return lbl + (vacGlyph2 ? vacGlyph2(lbl) : "");
                   },
                   label: (item) => {
-                    var _a5;
+                    var _a6;
                     const idx = item.dataIndex;
-                    const datasetLabel = ((_a5 = item.dataset) == null ? void 0 : _a5.label) || "";
+                    const datasetLabel = ((_a6 = item.dataset) == null ? void 0 : _a6.label) || "";
                     const volThis = thisBy[idx];
                     const volLast = lastBy[idx];
                     const routeThis = thisRoute[idx];
@@ -4271,7 +4293,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       } catch (_) {
       }
       (function buildMixDrift() {
-        var _a5, _b, _c, _d;
+        var _a6, _b2, _c2, _d2;
         const driftCanvas = document.getElementById("mixDrift");
         const driftText = document.getElementById("mixDriftText");
         if (!driftCanvas && !driftText) return;
@@ -4398,15 +4420,15 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
                     return `Week of ${startLbl} \u2192 ${endLbl}`;
                   },
                   label: (item) => {
-                    var _a6, _b2;
+                    var _a7, _b3;
                     const idx = item.dataIndex;
                     const w = weekStats[idx];
                     if (!w) return "";
-                    const label = ((_a6 = item.dataset) == null ? void 0 : _a6.label) || "";
+                    const label = ((_a7 = item.dataset) == null ? void 0 : _a7.label) || "";
                     if (label.startsWith("Parcels")) return `Parcels: ${Math.round(w.parcels).toLocaleString()}`;
                     if (label.startsWith("Letters")) return `Letters: ${Math.round(w.letters).toLocaleString()}`;
                     if (label.includes("Baseline")) {
-                      const actual = (_b2 = item.raw) == null ? void 0 : _b2.actual;
+                      const actual = (_b3 = item.raw) == null ? void 0 : _b3.actual;
                       return `Baseline: ${Math.round(actual != null ? actual : 0).toLocaleString()}`;
                     }
                     return "";
@@ -4433,8 +4455,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             if (val == null) return "\u2014";
             return val >= 0 ? `\u2191 ${val}%` : `\u2193 ${Math.abs(val)}%`;
           };
-          const parcelsDelta = pct((_a5 = latest == null ? void 0 : latest.parcels) != null ? _a5 : 0, (_b = prev == null ? void 0 : prev.parcels) != null ? _b : 0);
-          const lettersDelta = pct((_c = latest == null ? void 0 : latest.letters) != null ? _c : 0, (_d = prev == null ? void 0 : prev.letters) != null ? _d : 0);
+          const parcelsDelta = pct((_a6 = latest == null ? void 0 : latest.parcels) != null ? _a6 : 0, (_b2 = prev == null ? void 0 : prev.parcels) != null ? _b2 : 0);
+          const lettersDelta = pct((_c2 = latest == null ? void 0 : latest.letters) != null ? _c2 : 0, (_d2 = prev == null ? void 0 : prev.letters) != null ? _d2 : 0);
           const parcelsSummary = `${fmtArrow(parcelsDelta)} (${Math.round((latest == null ? void 0 : latest.parcels) || 0).toLocaleString()} vs ${Math.round((prev == null ? void 0 : prev.parcels) || 0).toLocaleString()})${(latest == null ? void 0 : latest.vacation) ? " (Vacation)" : ""}`;
           const lettersSummary = `${fmtArrow(lettersDelta)} (${Math.round((latest == null ? void 0 : latest.letters) || 0).toLocaleString()} vs ${Math.round((prev == null ? void 0 : prev.letters) || 0).toLocaleString()})${(latest == null ? void 0 : latest.vacation) ? " (Vacation)" : ""}`;
           driftText.innerHTML = `<span style="color:${parcelsColor};font-weight:600">Parcels</span>: ${parcelsSummary} \u2022 <span style="color:${lettersColor};font-weight:600">Letters</span>: ${lettersSummary}`;
@@ -6308,6 +6330,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     buildDiagnostics,
     buildDayCompare,
     buildVolumeLeaderboard,
+    triggerTagDismissForIso,
     fitVolumeTimeModel: fitVolumeTimeModel2,
     getResidualModel,
     getLatestDiagnosticsContext,
@@ -7078,6 +7101,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var expMeta = $("expMeta");
   var actualEnd = $("actualEnd");
   var actualMeta = $("actualMeta");
+  var actualTile = (actualEnd == null ? void 0 : actualEnd.closest(".stat")) || null;
   var badgeVolume = $("badgeVolume");
   var badgeRouteEff = $("badgeRouteEff");
   var badgeOverall = $("badgeOverall");
@@ -8184,7 +8208,7 @@ Entries are filtered by this id.`);
     alert(`Imported ${rows.length} rows into this account.`);
   });
   function buildSnapshot(rows) {
-    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G;
+    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H;
     rows = filterRowsForView(rows || []);
     const today = DateTime.now().setZone(ZONE);
     const dow = today.weekday % 7;
@@ -8206,6 +8230,44 @@ Entries are filtered by this id.`);
         const deltaText = Number.isFinite(deltaMinutes) ? `${deltaPrefix}${deltaMinutes}m` : "\u2014";
         actualMeta.innerHTML = `${actualTotalHours.toFixed(2)}h \xB7 <span class="${deltaClass || ""}">${hitMiss === "hit" ? "Hit" : hitMiss === "miss" ? "Miss" : "\u0394"} ${deltaText}</span>`;
       }
+    }
+    if (actualTile) {
+      const iso = (prediction == null ? void 0 : prediction.iso) || null;
+      const hasActual = !!((_k = prediction == null ? void 0 : prediction.actual) == null ? void 0 : _k.totalHours);
+      actualTile.style.cursor = hasActual ? "pointer" : "";
+      actualTile.title = hasActual ? "Click for Tag & dismiss, Open Diagnostics, or Read full notes" : "No actual end logged yet";
+      actualTile.onclick = async (event) => {
+        var _a6, _b2, _c2;
+        if (!hasActual || !iso) return;
+        if (event.target.closest("button,a,input,select,textarea")) return;
+        const todayRow2 = (prediction == null ? void 0 : prediction.row) || null;
+        const noteText = ((todayRow2 == null ? void 0 : todayRow2.notes) || "").trim();
+        const choice = window.prompt(
+          `Actual ${prediction.actual.endTime || "\u2014"} \xB7 ${((_b2 = (_a6 = prediction.actual.totalHours) == null ? void 0 : _a6.toFixed) == null ? void 0 : _b2.call(_a6, 2)) || "\u2014"}h
+
+Choose action:
+1 = Tag & dismiss
+2 = Open Diagnostics
+3 = Read full`,
+          "1"
+        );
+        if (!choice) return;
+        const normalized = choice.trim().toLowerCase();
+        if (normalized === "1" || normalized === "tag" || normalized === "dismiss") {
+          await triggerTagDismissForIso(allRows || rows || [], iso);
+          return;
+        }
+        if (normalized === "2" || normalized === "diag" || normalized === "diagnostics") {
+          try {
+            (_c2 = document.getElementById("diagnosticsCard")) == null ? void 0 : _c2.scrollIntoView({ behavior: "smooth", block: "start" });
+          } catch (_) {
+          }
+          return;
+        }
+        if (normalized === "3" || normalized === "read" || normalized === "notes") {
+          window.alert(noteText || "No notes recorded for this day.");
+        }
+      };
     }
     (function enableTileHelp() {
       try {
@@ -8306,7 +8368,7 @@ Note: ${adjNote}`;
       }
     } catch (_) {
     }
-    const totToday = (_l = (_k = prediction == null ? void 0 : prediction.actual) == null ? void 0 : _k.totalHours) != null ? _l : 0;
+    const totToday = (_m = (_l = prediction == null ? void 0 : prediction.actual) == null ? void 0 : _l.totalHours) != null ? _m : 0;
     const exp = predictedTotalHours || 0;
     const overallScore = exp > 0 ? Math.max(0, Math.min(10, Math.round((1 - (totToday - exp) / Math.max(1, exp)) * 10))) : 0;
     badgeOverall.textContent = `${overallScore}/10`;
@@ -8627,11 +8689,11 @@ Score: ${overallScore}/10 (higher is better)`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_m = thisWeek[i]) == null ? void 0 : _m.h) || 0 : null;
-          let base = ((_n = lastWeek[i]) == null ? void 0 : _n.h) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_n = thisWeek[i]) == null ? void 0 : _n.h) || 0 : null;
+          let base = ((_o = lastWeek[i]) == null ? void 0 : _o.h) || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_o = lastWeek[i - 1]) == null ? void 0 : _o.h) || 0) + (((_p = lastWeek[i]) == null ? void 0 : _p.h) || 0);
+            base = (((_p = lastWeek[i - 1]) == null ? void 0 : _p.h) || 0) + (((_q = lastWeek[i]) == null ? void 0 : _q.h) || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8672,11 +8734,11 @@ Score: ${overallScore}/10 (higher is better)`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_q = thisWeek[i]) == null ? void 0 : _q.p) || 0 : null;
-          let base = ((_r = lastWeek[i]) == null ? void 0 : _r.p) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_r = thisWeek[i]) == null ? void 0 : _r.p) || 0 : null;
+          let base = ((_s = lastWeek[i]) == null ? void 0 : _s.p) || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_s = lastWeek[i - 1]) == null ? void 0 : _s.p) || 0) + (((_t = lastWeek[i]) == null ? void 0 : _t.p) || 0);
+            base = (((_t = lastWeek[i - 1]) == null ? void 0 : _t.p) || 0) + (((_u = lastWeek[i]) == null ? void 0 : _u.p) || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8710,11 +8772,11 @@ Score: ${overallScore}/10 (higher is better)`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_u = thisWeek[i]) == null ? void 0 : _u.l) || 0 : null;
-          let base = ((_v = lastWeek[i]) == null ? void 0 : _v.l) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_v = thisWeek[i]) == null ? void 0 : _v.l) || 0 : null;
+          let base = ((_w = lastWeek[i]) == null ? void 0 : _w.l) || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_w = lastWeek[i - 1]) == null ? void 0 : _w.l) || 0) + (((_x = lastWeek[i]) == null ? void 0 : _x.l) || 0);
+            base = (((_x = lastWeek[i - 1]) == null ? void 0 : _x.l) || 0) + (((_y = lastWeek[i]) == null ? void 0 : _y.l) || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8800,9 +8862,9 @@ Score: ${overallScore}/10 (higher is better)`;
     const dayPct = (val, base) => val == null || !base ? null : (val - base) / base * 100;
     const tdp = dayPct(todayParcels, baseParcels), tdl = dayPct(todayLetters, baseLetters);
     const wkNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    (_A = (_z = (_y = document.querySelector("#todayParcelsDelta")) == null ? void 0 : _y.closest(".stat")) == null ? void 0 : _z.querySelector("small.muted")) == null ? void 0 : _A.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
-    (_D = (_C = (_B = document.querySelector("#todayLettersDelta")) == null ? void 0 : _B.closest(".stat")) == null ? void 0 : _C.querySelector("small.muted")) == null ? void 0 : _D.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
-    (_G = (_F = (_E = document.querySelector("#todayOfficeDelta")) == null ? void 0 : _E.closest(".stat")) == null ? void 0 : _F.querySelector("small.muted")) == null ? void 0 : _G.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    (_B = (_A = (_z = document.querySelector("#todayParcelsDelta")) == null ? void 0 : _z.closest(".stat")) == null ? void 0 : _A.querySelector("small.muted")) == null ? void 0 : _B.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    (_E = (_D = (_C = document.querySelector("#todayLettersDelta")) == null ? void 0 : _C.closest(".stat")) == null ? void 0 : _D.querySelector("small.muted")) == null ? void 0 : _E.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    (_H = (_G = (_F = document.querySelector("#todayOfficeDelta")) == null ? void 0 : _F.closest(".stat")) == null ? void 0 : _G.querySelector("small.muted")) == null ? void 0 : _H.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
     const baseOffice = lastSame ? +lastSame.office_minutes || 0 : null;
     const todayOffice = todaysRow ? +todaysRow.office_minutes || 0 : null;
     const fmtTiny = (p) => p == null ? "\u2014" : p >= 0 ? `\u2191 ${p.toFixed(0)}%` : `\u2193 ${Math.abs(p).toFixed(0)}%`;

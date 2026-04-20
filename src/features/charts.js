@@ -1,6 +1,7 @@
 // Charts + visualization helpers: dashboard charts, monthly glance, mixviz, office compare, quick filter.
 import { DateTime, ZONE, dowIndex, startOfWeekMonday, endOfWeekSunday } from '../utils/date.js';
 import { ensureWeeklyBaselines, getWeeklyBaselines, computeAnchorBaselines } from '../utils/storage.js';
+import { buildWeeklyComparisonPacket, getWeeklyComparisonMode, formatWeeklyComparisonSummary } from '../modules/weeklyComparisons.js';
 
 export function createCharts({
   getFlags,
@@ -767,7 +768,8 @@ export function createCharts({
             if (prev <= 0) return;
             const diff = Math.round(((val-prev)/prev)*100);
             if (Math.abs(diff)>=10){
-              out.push(`${days[idx]}: ${diff>=0?'↑':'↓'}${Math.abs(diff)}%`);
+              const fg = diff >= 0 ? 'var(--good)' : 'var(--bad)';
+              out.push(`${days[idx]}: <span style="color:${fg};font-weight:600">${diff>=0?'↑':'↓'}${Math.abs(diff)}%</span>`);
             }
           });
           const routeColor = (goodColor || '#7CE38B').trim() || '#7CE38B';
@@ -786,6 +788,21 @@ export function createCharts({
     const baselines = ensureWeeklyBaselines(rows) || getWeeklyBaselines();
     const anchor = computeAnchorBaselines(rows, 8);
     const nowDayIdx = (now.weekday + 6) % 7;
+    let comparisonPacketP = buildWeeklyComparisonPacket('matched_workday_count', {
+      currentTotal: p0,
+      referenceTotal: p1,
+      currentDays: thisWeekDayCount,
+      referenceDays: uniqueDayCount(W1Compare),
+      usedDays: thisWeekDayCount
+    });
+    let comparisonPacketL = buildWeeklyComparisonPacket('matched_workday_count', {
+      currentTotal: l0,
+      referenceTotal: l1,
+      currentDays: thisWeekDayCount,
+      referenceDays: uniqueDayCount(W1Compare),
+      usedDays: thisWeekDayCount
+    });
+    let detailMode = getWeeklyComparisonMode('matched_workday_count');
     if (flags.baselineCompare){
       const mins = 5;
       const byW = (arr,fn)=>{
@@ -818,6 +835,17 @@ export function createCharts({
       dLx= resL.delta;
       lineLabelP = 'Parcels (vs baseline)';
       lineLabelL = 'Letters (vs baseline)';
+      detailMode = getWeeklyComparisonMode('baseline_array');
+      comparisonPacketP = buildWeeklyComparisonPacket('baseline_array', {
+        currentTotal: resP.current,
+        referenceTotal: resP.baseline,
+        usedDays: resP.used
+      });
+      comparisonPacketL = buildWeeklyComparisonPacket('baseline_array', {
+        currentTotal: resL.current,
+        referenceTotal: resL.baseline,
+        usedDays: resL.used
+      });
     } else {
       dP = d(p0,p1);
       dLx= d(l0,l1);
@@ -827,17 +855,33 @@ export function createCharts({
     const dEff = ((p0+ln0)>0 && (p1+ln1)>0)
       ? Math.round((( (rm1/(p1+ln1)) - (rm0/(p0+ln0)) ) / (rm1/(p1+ln1)) )*100)
       : null;
-    const arrow=(v)=> v==null?'—':(v>=0?'↑ '+v+'%':'↓ '+Math.abs(v)+'%');
+    const arrow=(v)=>{
+      if (v == null || !Number.isFinite(v)) return '—';
+      const abs = Math.abs(v);
+      const decimals = abs > 0 && abs < 1 ? 1 : 0;
+      const value = abs.toFixed(decimals);
+      return v>=0 ? `↑ ${value}%` : `↓ ${value}%`;
+    };
     const color=(v)=> v==null?'var(--text)':(v>=0?'var(--good)':'var(--bad)');
     const line=(label,v,ctx,colorOverride)=>{
       const labelHtml = colorOverride ? `<span style="color:${colorOverride};font-weight:600">${label}</span>` : label;
-      return `<div>${labelHtml}: <span style="color:${color(v)}">${arrow(v)}</span> ${ctx||''}</div>`;
+      return `<div style="font-size:15px;line-height:1.45;margin-top:4px">${labelHtml}: <span style="color:${color(v)};font-weight:600">${arrow(v)}</span> ${ctx||''}</div>`;
     };
     if (details){
       const usedP = (resP && resP.used) ? `, ${resP.used} day(s) used` : '';
       const usedL = (resL && resL.used) ? `, ${resL.used} day(s) used` : '';
       const parcelsColor = (brand || '#2b7fff').trim() || '#2b7fff';
       const lettersColor = (warnColor || '#f97316').trim() || '#f97316';
+      const modeSummaryP = formatWeeklyComparisonSummary(comparisonPacketP, {
+        currentLabel: 'Current',
+        referenceLabel: 'Reference',
+        valueFormatter: (n) => `${Math.round(n)}`
+      });
+      const modeSummaryL = formatWeeklyComparisonSummary(comparisonPacketL, {
+        currentLabel: 'Current',
+        referenceLabel: 'Reference',
+        valueFormatter: (n) => `${Math.round(n)}`
+      });
       const parcelsContext = flags.baselineCompare
         ? `(${Math.round(resP?.current ?? p0)} vs ${Math.round(resP?.baseline ?? p1)}${usedP})`
         : `(${p0} vs ${p1}${usedP})`;
@@ -845,12 +889,17 @@ export function createCharts({
         ? `(${Math.round(resL?.current ?? l0)} vs ${Math.round(resL?.baseline ?? l1)}${usedL})`
         : `(${l0} vs ${l1}${usedL})`;
       details.innerHTML = [
+        `<div style="margin-bottom:6px"><strong style="font-size:15px">${detailMode.label}</strong></div>`,
+        `<div style="margin-bottom:6px"><span style="font-size:15px;color:var(--muted);line-height:1.45">${detailMode.description}</span></div>`,
         line(lineLabelP, dP, parcelsContext, parcelsColor),
         line(lineLabelL, dLx, lettersContext, lettersColor),
-        line('Hours', dH, `(${hoursThisWeek.toFixed(1)}h vs ${hoursLastWeek.toFixed(1)}h)`)
+        line('Hours', dH, `(${hoursThisWeek.toFixed(1)}h vs ${hoursLastWeek.toFixed(1)}h)`),
+        `<div style="font-size:15px;line-height:1.45;margin-top:6px;color:var(--muted)">${modeSummaryP}</div>`,
+        `<div style="font-size:15px;line-height:1.45;color:var(--muted)">${modeSummaryL}</div>`
       ].join('');
       details.style.display = 'block';
       if (btn) btn.setAttribute('aria-expanded', 'true');
+      if (btn) btn.title = detailMode.description;
     }
     try{
       if (overlay && window.Chart && overlay.getContext){

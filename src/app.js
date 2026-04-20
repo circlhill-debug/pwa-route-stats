@@ -57,6 +57,7 @@ import {
 import { computeForecastText, storeForecastSnapshot, saveForecastSnapshot, syncForecastSnapshotsFromSupabase, loadLatestForecastMessage } from './modules/forecast.js';
 import { buildForecastRenderPlan, buildForecastSnapshotFromPayload } from './modules/forecastSurface.js';
 import { buildPredictionRecord } from './modules/predictionRecord.js';
+import { buildWeeklyComparisonPacket, getWeeklyComparisonMode, formatWeeklyComparisonSummary } from './modules/weeklyComparisons.js';
 import { USER_SETTINGS_SELECT, USER_SETTINGS_TABLE, applyRemoteUserSettingsData, buildUserSettingsPayload } from './modules/userSettingsSync.js';
 import { fitVolumeTimeModel as fitSharedVolumeTimeModel, learnedLetterWeightFromModel } from './modules/volumeModel.js';
 
@@ -3102,11 +3103,41 @@ function getHourlyRateFromEval(){
 
     const hThis=sum(thisW,r=>+r.hours||0), pThis=sum(thisW,r=>+r.parcels||0), lThis=sum(thisW,r=>+r.letters||0);
     const hLast=sum(lastW,r=>+r.hours||0), pLast=sum(lastW,r=>+r.parcels||0), lLast=sum(lastW,r=>+r.letters||0);
+    const calendarMode = getWeeklyComparisonMode('calendar_same_range');
+    const weekHoursPacket = buildWeeklyComparisonPacket('calendar_same_range', {
+      currentTotal: hThis,
+      referenceTotal: hLast,
+      currentDays: dThis,
+      referenceDays: dLast
+    });
+    const weekParcelsPacket = buildWeeklyComparisonPacket('calendar_same_range', {
+      currentTotal: pThis,
+      referenceTotal: pLast,
+      currentDays: dThis,
+      referenceDays: dLast
+    });
+    const weekLettersPacket = buildWeeklyComparisonPacket('calendar_same_range', {
+      currentTotal: lThis,
+      referenceTotal: lLast,
+      currentDays: dThis,
+      referenceDays: dLast
+    });
 
     // Show live totals as "thisWeek / lastWeek"
     $('wkHours').textContent   = `${(hThis||0).toFixed(2)} / ${(hLast||0).toFixed(2)}`;
     $('wkParcels').textContent = `${pThis||0} / ${pLast||0}`;
     $('wkLetters').textContent = `${lThis||0} / ${lLast||0}`;
+    try{
+      const tileHours = document.getElementById('tileWkHours');
+      const tileParcels = document.getElementById('tileWkParcels');
+      const tileLetters = document.getElementById('tileWkLetters');
+      const hoursSummary = formatWeeklyComparisonSummary(weekHoursPacket, { currentLabel:'This week', referenceLabel:'Last week', valueFormatter:(n)=>`${n.toFixed(2)}h` });
+      const parcelsSummary = formatWeeklyComparisonSummary(weekParcelsPacket, { currentLabel:'This week', referenceLabel:'Last week', valueFormatter:(n)=>`${Math.round(n)}` });
+      const lettersSummary = formatWeeklyComparisonSummary(weekLettersPacket, { currentLabel:'This week', referenceLabel:'Last week', valueFormatter:(n)=>`${Math.round(n)}` });
+      if (tileHours) tileHours.title = `${calendarMode.description}\n${hoursSummary}`;
+      if (tileParcels) tileParcels.title = `${calendarMode.description}\n${parcelsSummary}`;
+      if (tileLetters) tileLetters.title = `${calendarMode.description}\n${lettersSummary}`;
+    }catch(_){ }
 
     // Carry-forward percentage = last full week's % vs prior week (per-worked-day averages)
     const avgOrNull=(tot,days)=> days? tot/days : null;
@@ -3354,7 +3385,7 @@ function getHourlyRateFromEval(){
         const { fg:totFg } = colorForDelta(totalDelta || 0);
         const totalRow = `<tr><th>Total</th><th class="right">${tThis.toFixed(2)}</th><th class="right">${tLast.toFixed(2)}</th><th class="right" style="color:${totFg}">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
 
-        const summaryHtml = `<small><span>This week so far: </span><span style=\"color:var(--warn)\">${tThis.toFixed(2)}h over ${dThis} day(s). Last week: ${tLast.toFixed(2)}h over ${dLast} day(s).</span></small>`;
+        const summaryHtml = `<small><span style=\"color:var(--muted)\">${calendarMode.label}:</span> <span style=\"color:var(--warn)\">${formatWeeklyComparisonSummary(weekHoursPacket, { currentLabel:'This week', referenceLabel:'Last week', valueFormatter:(n)=>`${n.toFixed(2)}h` })}</span></small>`;
 
         panelBody.innerHTML = `
           <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\">${summaryHtml}</div>
@@ -3399,7 +3430,7 @@ function getHourlyRateFromEval(){
         const totalDelta = (tLast === 0) ? null : ((tThis - tLast) / tLast) * 100;
         const { fg:totFg } = colorForDelta(totalDelta || 0);
         const totalRow = `<tr><th style=\"color:var(--brand)\">Total (this week vs last)</th><th class=\"right\">${tThis}</th><th class=\"right\">${tLast}</th><th class=\"right\" style=\"color:${totFg}\">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
-        const summaryHtml = `<small><span>This week so far: </span><span style=\"color:var(--warn)\">${tThis} parcels over ${dThis} day(s). Last week: ${tLast} parcels over ${dLast} day(s).</span></small>`;
+        const summaryHtml = `<small><span style=\"color:var(--muted)\">${calendarMode.label}:</span> <span style=\"color:var(--warn)\">${formatWeeklyComparisonSummary(weekParcelsPacket, { currentLabel:'This week', referenceLabel:'Last week', valueFormatter:(n)=>`${Math.round(n)} parcels` })}</span></small>`;
         panelBody.innerHTML = `
           <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\">${summaryHtml}</div>
           <table style=\"width:100%;border-collapse:collapse\">
@@ -3436,7 +3467,7 @@ function getHourlyRateFromEval(){
         const totalDelta = (tLast === 0) ? null : ((tThis - tLast) / tLast) * 100;
         const { fg:totFg } = colorForDelta(totalDelta || 0);
         const totalRow = `<tr><th style=\"color:var(--brand)\">Total (this week vs last)</th><th class=\"right\">${tThis}</th><th class=\"right\">${tLast}</th><th class=\"right\" style=\"color:${totFg}\">${totalDelta==null?'—':(totalDelta>=0?`↑ ${Math.round(totalDelta)}%`:`↓ ${Math.abs(Math.round(totalDelta))}%`)}</th></tr>`;
-        const summaryHtml = `<small><span>This week so far: </span><span style=\"color:var(--warn)\">${tThis} letters over ${dThis} day(s). Last week: ${tLast} letters over ${dLast} day(s).</span></small>`;
+        const summaryHtml = `<small><span style=\"color:var(--muted)\">${calendarMode.label}:</span> <span style=\"color:var(--warn)\">${formatWeeklyComparisonSummary(weekLettersPacket, { currentLabel:'This week', referenceLabel:'Last week', valueFormatter:(n)=>`${Math.round(n)} letters` })}</span></small>`;
         panelBody.innerHTML = `
           <div style=\"padding:8px 10px;border-bottom:1px solid var(--border)\">${summaryHtml}</div>
           <table style=\"width:100%;border-collapse:collapse\">

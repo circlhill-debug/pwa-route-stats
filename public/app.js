@@ -1696,6 +1696,61 @@
     };
   }
 
+  // src/modules/weeklyComparisons.js
+  var WEEKLY_COMPARISON_MODES = {
+    calendar_same_range: {
+      key: "calendar_same_range",
+      label: "Calendar same-range",
+      description: "Mon..today compared with the same weekday span from last calendar week."
+    },
+    matched_workday_count: {
+      key: "matched_workday_count",
+      label: "Matched workday count",
+      description: "Current worked days compared with the same count of worked days from the reference week."
+    },
+    baseline_array: {
+      key: "baseline_array",
+      label: "Baseline array",
+      description: "Current daily totals compared against stored weekday baseline averages."
+    }
+  };
+  function getWeeklyComparisonMode(modeKey) {
+    return WEEKLY_COMPARISON_MODES[modeKey] || WEEKLY_COMPARISON_MODES.calendar_same_range;
+  }
+  function buildWeeklyComparisonPacket(modeKey, payload = {}) {
+    const mode = getWeeklyComparisonMode(modeKey);
+    const currentTotal = Number(payload.currentTotal);
+    const referenceTotal = Number(payload.referenceTotal);
+    const deltaPct = Number.isFinite(currentTotal) && Number.isFinite(referenceTotal) && referenceTotal !== 0 ? (currentTotal - referenceTotal) / referenceTotal * 100 : null;
+    return {
+      mode: mode.key,
+      label: mode.label,
+      description: mode.description,
+      currentTotal: Number.isFinite(currentTotal) ? currentTotal : null,
+      referenceTotal: Number.isFinite(referenceTotal) ? referenceTotal : null,
+      deltaPct,
+      currentDays: Number.isFinite(payload.currentDays) ? payload.currentDays : null,
+      referenceDays: Number.isFinite(payload.referenceDays) ? payload.referenceDays : null,
+      usedDays: Number.isFinite(payload.usedDays) ? payload.usedDays : null
+    };
+  }
+  function formatWeeklyComparisonSummary(packet, {
+    currentLabel = "This week",
+    referenceLabel = "Reference",
+    valueFormatter = (value) => String(value != null ? value : "\u2014"),
+    dayUnit = "day(s)"
+  } = {}) {
+    if (!packet) return "";
+    const parts = [
+      `${currentLabel}: ${packet.currentTotal == null ? "\u2014" : valueFormatter(packet.currentTotal)}`
+    ];
+    if (packet.currentDays != null) parts[0] += ` over ${packet.currentDays} ${dayUnit}`;
+    let reference = `${referenceLabel}: ${packet.referenceTotal == null ? "\u2014" : valueFormatter(packet.referenceTotal)}`;
+    if (packet.referenceDays != null) reference += ` over ${packet.referenceDays} ${dayUnit}`;
+    parts.push(reference);
+    return `${packet.label} \xB7 ${parts.join(". ")}`;
+  }
+
   // src/modules/userSettingsSync.js
   var USER_SETTINGS_TABLE = "user_settings";
   var USER_SETTINGS_SELECT = "eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed";
@@ -4011,7 +4066,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
               if (prev <= 0) return;
               const diff = Math.round((val - prev) / prev * 100);
               if (Math.abs(diff) >= 10) {
-                out.push(`${days[idx]}: ${diff >= 0 ? "\u2191" : "\u2193"}${Math.abs(diff)}%`);
+                const fg = diff >= 0 ? "var(--good)" : "var(--bad)";
+                out.push(`${days[idx]}: <span style="color:${fg};font-weight:600">${diff >= 0 ? "\u2191" : "\u2193"}${Math.abs(diff)}%</span>`);
               }
             });
             const routeColor = (goodColor || "#7CE38B").trim() || "#7CE38B";
@@ -4032,6 +4088,21 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const baselines = ensureWeeklyBaselines(rows) || getWeeklyBaselines();
       const anchor = computeAnchorBaselines(rows, 8);
       const nowDayIdx = (now.weekday + 6) % 7;
+      let comparisonPacketP = buildWeeklyComparisonPacket("matched_workday_count", {
+        currentTotal: p0,
+        referenceTotal: p1,
+        currentDays: thisWeekDayCount,
+        referenceDays: uniqueDayCount(W1Compare),
+        usedDays: thisWeekDayCount
+      });
+      let comparisonPacketL = buildWeeklyComparisonPacket("matched_workday_count", {
+        currentTotal: l0,
+        referenceTotal: l1,
+        currentDays: thisWeekDayCount,
+        referenceDays: uniqueDayCount(W1Compare),
+        usedDays: thisWeekDayCount
+      });
+      let detailMode = getWeeklyComparisonMode("matched_workday_count");
       if (flags.baselineCompare) {
         const mins = 5;
         const byW = (arr, fn) => {
@@ -4069,6 +4140,17 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         dLx = resL.delta;
         lineLabelP = "Parcels (vs baseline)";
         lineLabelL = "Letters (vs baseline)";
+        detailMode = getWeeklyComparisonMode("baseline_array");
+        comparisonPacketP = buildWeeklyComparisonPacket("baseline_array", {
+          currentTotal: resP.current,
+          referenceTotal: resP.baseline,
+          usedDays: resP.used
+        });
+        comparisonPacketL = buildWeeklyComparisonPacket("baseline_array", {
+          currentTotal: resL.current,
+          referenceTotal: resL.baseline,
+          usedDays: resL.used
+        });
       } else {
         dP = d(p0, p1);
         dLx = d(l0, l1);
@@ -4076,26 +4158,47 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const expectationStroke = "rgba(255,140,0,0.85)";
       const expectationFill = "rgba(255,140,0,0.22)";
       const dEff = p0 + ln0 > 0 && p1 + ln1 > 0 ? Math.round((rm1 / (p1 + ln1) - rm0 / (p0 + ln0)) / (rm1 / (p1 + ln1)) * 100) : null;
-      const arrow = (v) => v == null ? "\u2014" : v >= 0 ? "\u2191 " + v + "%" : "\u2193 " + Math.abs(v) + "%";
+      const arrow = (v) => {
+        if (v == null || !Number.isFinite(v)) return "\u2014";
+        const abs = Math.abs(v);
+        const decimals = abs > 0 && abs < 1 ? 1 : 0;
+        const value = abs.toFixed(decimals);
+        return v >= 0 ? `\u2191 ${value}%` : `\u2193 ${value}%`;
+      };
       const color = (v) => v == null ? "var(--text)" : v >= 0 ? "var(--good)" : "var(--bad)";
       const line = (label, v, ctx, colorOverride) => {
         const labelHtml = colorOverride ? `<span style="color:${colorOverride};font-weight:600">${label}</span>` : label;
-        return `<div>${labelHtml}: <span style="color:${color(v)}">${arrow(v)}</span> ${ctx || ""}</div>`;
+        return `<div style="font-size:15px;line-height:1.45;margin-top:4px">${labelHtml}: <span style="color:${color(v)};font-weight:600">${arrow(v)}</span> ${ctx || ""}</div>`;
       };
       if (details) {
         const usedP = resP && resP.used ? `, ${resP.used} day(s) used` : "";
         const usedL = resL && resL.used ? `, ${resL.used} day(s) used` : "";
         const parcelsColor = (brand || "#2b7fff").trim() || "#2b7fff";
         const lettersColor = (warnColor || "#f97316").trim() || "#f97316";
+        const modeSummaryP = formatWeeklyComparisonSummary(comparisonPacketP, {
+          currentLabel: "Current",
+          referenceLabel: "Reference",
+          valueFormatter: (n) => `${Math.round(n)}`
+        });
+        const modeSummaryL = formatWeeklyComparisonSummary(comparisonPacketL, {
+          currentLabel: "Current",
+          referenceLabel: "Reference",
+          valueFormatter: (n) => `${Math.round(n)}`
+        });
         const parcelsContext = flags.baselineCompare ? `(${Math.round((_a5 = resP == null ? void 0 : resP.current) != null ? _a5 : p0)} vs ${Math.round((_b = resP == null ? void 0 : resP.baseline) != null ? _b : p1)}${usedP})` : `(${p0} vs ${p1}${usedP})`;
         const lettersContext = flags.baselineCompare ? `(${Math.round((_c = resL == null ? void 0 : resL.current) != null ? _c : l0)} vs ${Math.round((_d = resL == null ? void 0 : resL.baseline) != null ? _d : l1)}${usedL})` : `(${l0} vs ${l1}${usedL})`;
         details.innerHTML = [
+          `<div style="margin-bottom:6px"><strong style="font-size:15px">${detailMode.label}</strong></div>`,
+          `<div style="margin-bottom:6px"><span style="font-size:15px;color:var(--muted);line-height:1.45">${detailMode.description}</span></div>`,
           line(lineLabelP, dP, parcelsContext, parcelsColor),
           line(lineLabelL, dLx, lettersContext, lettersColor),
-          line("Hours", dH, `(${hoursThisWeek.toFixed(1)}h vs ${hoursLastWeek.toFixed(1)}h)`)
+          line("Hours", dH, `(${hoursThisWeek.toFixed(1)}h vs ${hoursLastWeek.toFixed(1)}h)`),
+          `<div style="font-size:15px;line-height:1.45;margin-top:6px;color:var(--muted)">${modeSummaryP}</div>`,
+          `<div style="font-size:15px;line-height:1.45;color:var(--muted)">${modeSummaryL}</div>`
         ].join("");
         details.style.display = "block";
         if (btn) btn.setAttribute("aria-expanded", "true");
+        if (btn) btn.title = detailMode.description;
       }
       try {
         if (overlay && window.Chart && overlay.getContext) {
@@ -8477,9 +8580,43 @@ Score: ${overallScore}/10 (higher is better)`;
     const dThis = daysWorked(thisW), dLast = daysWorked(lastW), dPrior = daysWorked(priorW);
     const hThis = sum(thisW, (r) => +r.hours || 0), pThis = sum(thisW, (r) => +r.parcels || 0), lThis = sum(thisW, (r) => +r.letters || 0);
     const hLast = sum(lastW, (r) => +r.hours || 0), pLast = sum(lastW, (r) => +r.parcels || 0), lLast = sum(lastW, (r) => +r.letters || 0);
+    const calendarMode = getWeeklyComparisonMode("calendar_same_range");
+    const weekHoursPacket = buildWeeklyComparisonPacket("calendar_same_range", {
+      currentTotal: hThis,
+      referenceTotal: hLast,
+      currentDays: dThis,
+      referenceDays: dLast
+    });
+    const weekParcelsPacket = buildWeeklyComparisonPacket("calendar_same_range", {
+      currentTotal: pThis,
+      referenceTotal: pLast,
+      currentDays: dThis,
+      referenceDays: dLast
+    });
+    const weekLettersPacket = buildWeeklyComparisonPacket("calendar_same_range", {
+      currentTotal: lThis,
+      referenceTotal: lLast,
+      currentDays: dThis,
+      referenceDays: dLast
+    });
     $("wkHours").textContent = `${(hThis || 0).toFixed(2)} / ${(hLast || 0).toFixed(2)}`;
     $("wkParcels").textContent = `${pThis || 0} / ${pLast || 0}`;
     $("wkLetters").textContent = `${lThis || 0} / ${lLast || 0}`;
+    try {
+      const tileHours = document.getElementById("tileWkHours");
+      const tileParcels = document.getElementById("tileWkParcels");
+      const tileLetters = document.getElementById("tileWkLetters");
+      const hoursSummary = formatWeeklyComparisonSummary(weekHoursPacket, { currentLabel: "This week", referenceLabel: "Last week", valueFormatter: (n) => `${n.toFixed(2)}h` });
+      const parcelsSummary = formatWeeklyComparisonSummary(weekParcelsPacket, { currentLabel: "This week", referenceLabel: "Last week", valueFormatter: (n) => `${Math.round(n)}` });
+      const lettersSummary = formatWeeklyComparisonSummary(weekLettersPacket, { currentLabel: "This week", referenceLabel: "Last week", valueFormatter: (n) => `${Math.round(n)}` });
+      if (tileHours) tileHours.title = `${calendarMode.description}
+${hoursSummary}`;
+      if (tileParcels) tileParcels.title = `${calendarMode.description}
+${parcelsSummary}`;
+      if (tileLetters) tileLetters.title = `${calendarMode.description}
+${lettersSummary}`;
+    } catch (_) {
+    }
     const avgOrNull = (tot, days) => days ? tot / days : null;
     const pct = (a, b) => a == null || b == null || b === 0 ? null : (a - b) / b * 100;
     const hCarry = pct(avgOrNull(hLast, dLast), avgOrNull(sum(priorW, (r) => +r.hours || 0), dPrior));
@@ -8708,7 +8845,7 @@ Score: ${overallScore}/10 (higher is better)`;
         const totalDelta = tLast === 0 ? null : (tThis - tLast) / tLast * 100;
         const { fg: totFg } = colorForDelta(totalDelta || 0);
         const totalRow = `<tr><th>Total</th><th class="right">${tThis.toFixed(2)}</th><th class="right">${tLast.toFixed(2)}</th><th class="right" style="color:${totFg}">${totalDelta == null ? "\u2014" : totalDelta >= 0 ? `\u2191 ${Math.round(totalDelta)}%` : `\u2193 ${Math.abs(Math.round(totalDelta))}%`}</th></tr>`;
-        const summaryHtml = `<small><span>This week so far: </span><span style="color:var(--warn)">${tThis.toFixed(2)}h over ${dThis} day(s). Last week: ${tLast.toFixed(2)}h over ${dLast} day(s).</span></small>`;
+        const summaryHtml = `<small><span style="color:var(--muted)">${calendarMode.label}:</span> <span style="color:var(--warn)">${formatWeeklyComparisonSummary(weekHoursPacket, { currentLabel: "This week", referenceLabel: "Last week", valueFormatter: (n) => `${n.toFixed(2)}h` })}</span></small>`;
         panelBody.innerHTML = `
           <div style="padding:8px 10px;border-bottom:1px solid var(--border)">${summaryHtml}</div>
           <table style="width:100%;border-collapse:collapse">
@@ -8753,7 +8890,7 @@ Score: ${overallScore}/10 (higher is better)`;
         const totalDelta = tLast === 0 ? null : (tThis - tLast) / tLast * 100;
         const { fg: totFg } = colorForDelta(totalDelta || 0);
         const totalRow = `<tr><th style="color:var(--brand)">Total (this week vs last)</th><th class="right">${tThis}</th><th class="right">${tLast}</th><th class="right" style="color:${totFg}">${totalDelta == null ? "\u2014" : totalDelta >= 0 ? `\u2191 ${Math.round(totalDelta)}%` : `\u2193 ${Math.abs(Math.round(totalDelta))}%`}</th></tr>`;
-        const summaryHtml = `<small><span>This week so far: </span><span style="color:var(--warn)">${tThis} parcels over ${dThis} day(s). Last week: ${tLast} parcels over ${dLast} day(s).</span></small>`;
+        const summaryHtml = `<small><span style="color:var(--muted)">${calendarMode.label}:</span> <span style="color:var(--warn)">${formatWeeklyComparisonSummary(weekParcelsPacket, { currentLabel: "This week", referenceLabel: "Last week", valueFormatter: (n) => `${Math.round(n)} parcels` })}</span></small>`;
         panelBody.innerHTML = `
           <div style="padding:8px 10px;border-bottom:1px solid var(--border)">${summaryHtml}</div>
           <table style="width:100%;border-collapse:collapse">
@@ -8791,7 +8928,7 @@ Score: ${overallScore}/10 (higher is better)`;
         const totalDelta = tLast === 0 ? null : (tThis - tLast) / tLast * 100;
         const { fg: totFg } = colorForDelta(totalDelta || 0);
         const totalRow = `<tr><th style="color:var(--brand)">Total (this week vs last)</th><th class="right">${tThis}</th><th class="right">${tLast}</th><th class="right" style="color:${totFg}">${totalDelta == null ? "\u2014" : totalDelta >= 0 ? `\u2191 ${Math.round(totalDelta)}%` : `\u2193 ${Math.abs(Math.round(totalDelta))}%`}</th></tr>`;
-        const summaryHtml = `<small><span>This week so far: </span><span style="color:var(--warn)">${tThis} letters over ${dThis} day(s). Last week: ${tLast} letters over ${dLast} day(s).</span></small>`;
+        const summaryHtml = `<small><span style="color:var(--muted)">${calendarMode.label}:</span> <span style="color:var(--warn)">${formatWeeklyComparisonSummary(weekLettersPacket, { currentLabel: "This week", referenceLabel: "Last week", valueFormatter: (n) => `${Math.round(n)} letters` })}</span></small>`;
         panelBody.innerHTML = `
           <div style="padding:8px 10px;border-bottom:1px solid var(--border)">${summaryHtml}</div>
           <table style="width:100%;border-collapse:collapse">

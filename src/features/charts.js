@@ -286,7 +286,7 @@ export function createCharts({
     const worked = rows.filter(r=> r.status!=='off');
     const totals = (from,to)=>{
       const arr = worked.filter(r=> inRange(r,from,to));
-      const h = arr.reduce((t,r)=> t + (+r.hours||0), 0);
+      const h = arr.reduce((t,r)=> t + normalizeHoursValue(r.hours), 0);
       const p = arr.reduce((t,r)=> t + (+r.parcels||0), 0);
       const l = arr.reduce((t,r)=> t + (+r.letters||0), 0);
       return {h,p,l};
@@ -483,7 +483,7 @@ export function createCharts({
         if (isFinite(hours)) return hours * 60;
       }
     }catch(_){ }
-    return Math.max(0, (+row.route_minutes||0));
+    return Math.max(0, normalizeHoursValue(row.route_minutes) * 60);
   }
 
   function mixLoadLetterWeightFallback(){
@@ -758,7 +758,7 @@ export function createCharts({
           const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
           const routeByDow = (arr)=>{
             const a = Array.from({length:7},()=>0);
-            arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= Math.max(0, (+r.route_minutes||0) - boxholderAdjMinutes(r)); });
+            arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= mixRouteAdjustedMinutes(r); });
             return a.map(n=> +(Math.round(n*100)/100).toFixed(2));
           };
           const thisBy = routeByDow(W0);
@@ -780,8 +780,8 @@ export function createCharts({
       }catch(_){ }
     }catch(_){ }
     const d = (a,b)=> (b>0)? Math.round(((a-b)/b)*100) : null;
-    const hoursThisWeek = sum(W0Compare,r=>+r.hours||0);
-    const hoursLastWeek = sum(W1Compare,r=>+r.hours||0);
+    const hoursThisWeek = sum(W0Compare,r=>normalizeHoursValue(r.hours));
+    const hoursLastWeek = sum(W1Compare,r=>normalizeHoursValue(r.hours));
     const dH = d(hoursThisWeek, hoursLastWeek);
     let dP, dLx, lineLabelP='Parcels', lineLabelL='Letters';
     let resP = { used: 0 };

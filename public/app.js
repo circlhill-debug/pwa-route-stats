@@ -3530,7 +3530,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const worked = rows.filter((r) => r.status !== "off");
       const totals = (from, to) => {
         const arr = worked.filter((r) => inRange(r, from, to));
-        const h = arr.reduce((t, r) => t + (+r.hours || 0), 0);
+        const h = arr.reduce((t, r) => t + normalizeHoursValue(r.hours), 0);
         const p = arr.reduce((t, r) => t + (+r.parcels || 0), 0);
         const l = arr.reduce((t, r) => t + (+r.letters || 0), 0);
         return { h, p, l };
@@ -3760,7 +3760,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         }
       } catch (_) {
       }
-      return Math.max(0, +row.route_minutes || 0);
+      return Math.max(0, normalizeHoursValue(row.route_minutes) * 60);
     }
     function mixLoadLetterWeightFallback() {
       const DEF = 0.33;
@@ -4068,7 +4068,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
               arr.forEach((r) => {
                 const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
                 const idx = (d2.weekday + 6) % 7;
-                a[idx] += Math.max(0, (+r.route_minutes || 0) - boxholderAdjMinutes2(r));
+                a[idx] += mixRouteAdjustedMinutes(r);
               });
               return a.map((n) => +(Math.round(n * 100) / 100).toFixed(2));
             };
@@ -4093,8 +4093,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       } catch (_) {
       }
       const d = (a, b) => b > 0 ? Math.round((a - b) / b * 100) : null;
-      const hoursThisWeek = sum(W0Compare, (r) => +r.hours || 0);
-      const hoursLastWeek = sum(W1Compare, (r) => +r.hours || 0);
+      const hoursThisWeek = sum(W0Compare, (r) => normalizeHoursValue(r.hours));
+      const hoursLastWeek = sum(W1Compare, (r) => normalizeHoursValue(r.hours));
       const dH = d(hoursThisWeek, hoursLastWeek);
       let dP, dLx, lineLabelP = "Parcels", lineLabelL = "Letters";
       let resP = { used: 0 };
@@ -6249,7 +6249,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     renderTomorrowForecast();
   })();
   function getLastNonEmptyWeek(rows, now, { excludeVacation = true } = {}) {
-    const worked = (rows || []).filter((r) => (+r.hours || 0) > 0);
+    const worked = (rows || []).filter((r) => normalizeHoursValue(r.hours) > 0);
     const weeksToScan = 12;
     const inRange = (r, from, to) => {
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
@@ -8583,10 +8583,10 @@ Score: ${overallScore}/10 (higher is better)`;
     const thisW = workRows.filter((r) => inRange(r, weekStart, weekEnd));
     const lastW = workRows.filter((r) => inRange(r, prevWeekStart, prevWeekEnd));
     const priorW = workRows.filter((r) => inRange(r, priorWeekStart, priorWeekEnd));
-    const daysWorked = (arr) => arr.filter((r) => (r.hours || 0) > 0).length;
+    const daysWorked = (arr) => arr.filter((r) => normalizeHoursValue(r.hours) > 0).length;
     const dThis = daysWorked(thisW), dLast = daysWorked(lastW), dPrior = daysWorked(priorW);
-    const hThis = sum(thisW, (r) => +r.hours || 0), pThis = sum(thisW, (r) => +r.parcels || 0), lThis = sum(thisW, (r) => +r.letters || 0);
-    const hLast = sum(lastW, (r) => +r.hours || 0), pLast = sum(lastW, (r) => +r.parcels || 0), lLast = sum(lastW, (r) => +r.letters || 0);
+    const hThis = sum(thisW, (r) => normalizeHoursValue(r.hours)), pThis = sum(thisW, (r) => +r.parcels || 0), lThis = sum(thisW, (r) => +r.letters || 0);
+    const hLast = sum(lastW, (r) => normalizeHoursValue(r.hours)), pLast = sum(lastW, (r) => +r.parcels || 0), lLast = sum(lastW, (r) => +r.letters || 0);
     const calendarMode = getWeeklyComparisonMode("calendar_same_range");
     const weekHoursPacket = buildWeeklyComparisonPacket("calendar_same_range", {
       currentTotal: hThis,
@@ -8626,7 +8626,7 @@ ${lettersSummary}`;
     }
     const avgOrNull = (tot, days) => days ? tot / days : null;
     const pct = (a, b) => a == null || b == null || b === 0 ? null : (a - b) / b * 100;
-    const hCarry = pct(avgOrNull(hLast, dLast), avgOrNull(sum(priorW, (r) => +r.hours || 0), dPrior));
+    const hCarry = pct(avgOrNull(hLast, dLast), avgOrNull(sum(priorW, (r) => normalizeHoursValue(r.hours)), dPrior));
     const pCarry = pct(avgOrNull(pLast, dLast), avgOrNull(sum(priorW, (r) => +r.parcels || 0), dPrior));
     const lCarry = pct(avgOrNull(lLast, dLast), avgOrNull(sum(priorW, (r) => +r.letters || 0), dPrior));
     const dayIndexToday = (today.weekday + 6) % 7;
@@ -8639,7 +8639,7 @@ ${lettersSummary}`;
       workRows.filter(inRange2).forEach((r) => {
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
         const idx = (d.weekday + 6) % 7;
-        const h = +r.hours || 0;
+        const h = normalizeHoursValue(r.hours);
         const p = +r.parcels || 0;
         const l = +r.letters || 0;
         out[idx].h += h;
@@ -10122,7 +10122,7 @@ ${lettersSummary}`;
           valEl.style.color = "";
         } else {
           const expHoursTotal = Math.max(0, cfg.hoursPerDay) * days;
-          const hoursTotal = worked.reduce((t, r) => t + (+r.hours || 0), 0);
+          const hoursTotal = worked.reduce((t, r) => t + normalizeHoursValue(r.hours), 0);
           const progress = expHoursTotal > 0 ? hoursTotal / expHoursTotal * 100 : null;
           if (progress == null || !isFinite(progress)) {
             valEl.textContent = "\u2014";
@@ -10155,7 +10155,7 @@ ${lettersSummary}`;
               const d = DateTime.fromISO(r.work_date, { zone: ZONE });
               return d >= rg.s && d <= rg.e;
             })());
-            const h = wk.reduce((t, r) => t + (+r.hours || 0), 0);
+            const h = wk.reduce((t, r) => t + normalizeHoursValue(r.hours), 0);
             if (h > 0) {
               totalHours += h;
               usedWeeks++;

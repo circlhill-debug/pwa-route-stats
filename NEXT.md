@@ -70,13 +70,16 @@ Done
 
 Next
 - Route / office / total normalization audit
-  - Verify every module treats:
-    - `hours`
-    - `office_minutes`
-    - `route_minutes`
-    consistently
-  - Check legacy hour-vs-minute naming drift
-  - Identify duplicated or conflicting normalization logic
+  - `1fa659a` `Centralize time normalization across core modules`
+  - Shared normalization helpers introduced in `src/utils/timeNormalization.js`
+  - Core consumers now routed through shared rules:
+    - `src/app.js`
+    - `src/features/diagnostics.js`
+    - `src/features/summaries.js`
+    - `src/features/charts.js`
+    - `src/modules/predictionRecord.js`
+  - Raw `hours` / `office_minutes` / `route_minutes` grep across `app.js`, `features`, and `modules` is now clean
+  - Item 2 is in progress; next step is judgment review of whether any display-only or edge-case paths still need `normalizeTotalHoursRecord(...)` instead of plain hour normalization
 
 - Weekly comparison math audit, sub-pass 2
   - Continue only after item above if needed
@@ -160,4 +163,4 @@ Current resume point
   - audit the whole site at one depth
   - then move to the next depth across the whole site
 - Next resume step:
-  - `Route / office / total normalization audit`
+  - finish `Route / office / total normalization audit` with an edge-case review of total-hours fallback usage, then re-check `Expected vs actual data-path audit`

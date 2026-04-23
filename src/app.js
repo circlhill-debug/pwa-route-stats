@@ -1022,7 +1022,7 @@ window.__sb = createSupabaseClient();
   })();
 
   function getLastNonEmptyWeek(rows, now, { excludeVacation = true } = {}){
-    const worked = (rows || []).filter(r => (+r.hours || 0) > 0);
+    const worked = (rows || []).filter(r => normalizeHoursValue(r.hours) > 0);
     const weeksToScan = 12;
     const inRange = (r, from, to) => {
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
@@ -3103,11 +3103,11 @@ function getHourlyRateFromEval(){
     const lastW = workRows.filter(r=> inRange(r,prevWeekStart,prevWeekEnd));
     const priorW= workRows.filter(r=> inRange(r,priorWeekStart,priorWeekEnd));
 
-    const daysWorked = arr=> arr.filter(r=> (r.hours||0)>0).length;
+    const daysWorked = arr=> arr.filter(r=> normalizeHoursValue(r.hours) > 0).length;
     const dThis = daysWorked(thisW), dLast = daysWorked(lastW), dPrior = daysWorked(priorW);
 
-    const hThis=sum(thisW,r=>+r.hours||0), pThis=sum(thisW,r=>+r.parcels||0), lThis=sum(thisW,r=>+r.letters||0);
-    const hLast=sum(lastW,r=>+r.hours||0), pLast=sum(lastW,r=>+r.parcels||0), lLast=sum(lastW,r=>+r.letters||0);
+    const hThis=sum(thisW,r=>normalizeHoursValue(r.hours)), pThis=sum(thisW,r=>+r.parcels||0), lThis=sum(thisW,r=>+r.letters||0);
+    const hLast=sum(lastW,r=>normalizeHoursValue(r.hours)), pLast=sum(lastW,r=>+r.parcels||0), lLast=sum(lastW,r=>+r.letters||0);
     const calendarMode = getWeeklyComparisonMode('calendar_same_range');
     const weekHoursPacket = buildWeeklyComparisonPacket('calendar_same_range', {
       currentTotal: hThis,
@@ -3148,7 +3148,7 @@ function getHourlyRateFromEval(){
     const avgOrNull=(tot,days)=> days? tot/days : null;
     const pct=(a,b)=> (a==null||b==null||b===0)? null : ((a-b)/b)*100;
 
-    const hCarry = pct(avgOrNull(hLast,dLast), avgOrNull(sum(priorW,r=>+r.hours||0), dPrior));
+    const hCarry = pct(avgOrNull(hLast,dLast), avgOrNull(sum(priorW,r=>normalizeHoursValue(r.hours)), dPrior));
     const pCarry = pct(avgOrNull(pLast,dLast), avgOrNull(sum(priorW,r=>+r.parcels||0), dPrior));
     const lCarry = pct(avgOrNull(lLast,dLast), avgOrNull(sum(priorW,r=>+r.letters||0), dPrior));
 
@@ -3167,7 +3167,7 @@ function getHourlyRateFromEval(){
       workRows.filter(inRange).forEach(r => {
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
         const idx = (d.weekday + 6) % 7; // Mon=0
-        const h = +r.hours || 0;
+        const h = normalizeHoursValue(r.hours);
         const p = +r.parcels || 0;
         const l = +r.letters || 0;
         out[idx].h += h; out[idx].p += p; out[idx].l += l;
@@ -4620,7 +4620,7 @@ if ('serviceWorker' in navigator) {
         if (!days || cfg.hoursPerDay==null){ valEl.textContent='—'; valEl.style.color=''; }
         else {
           const expHoursTotal = Math.max(0, cfg.hoursPerDay) * days;
-          const hoursTotal = worked.reduce((t,r)=> t + (+r.hours||0), 0);
+          const hoursTotal = worked.reduce((t,r)=> t + normalizeHoursValue(r.hours), 0);
           const progress = (expHoursTotal>0) ? (hoursTotal / expHoursTotal) * 100 : null;
           if (progress==null || !isFinite(progress)) { valEl.textContent='—'; valEl.style.color=''; }
           else {
@@ -4646,7 +4646,7 @@ if ('serviceWorker' in navigator) {
           let totalHours = 0, usedWeeks = 0;
           for (const rg of ranges){
             const wk = (rows||[]).filter(r=> r.status!=='off' && (()=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=rg.s && d<=rg.e; })());
-            const h = wk.reduce((t,r)=> t + (+r.hours||0), 0);
+            const h = wk.reduce((t,r)=> t + normalizeHoursValue(r.hours), 0);
             if (h > 0){ totalHours += h; usedWeeks++; }
           }
           if (!usedWeeks || totalHours<=0){

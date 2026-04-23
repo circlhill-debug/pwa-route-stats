@@ -4,6 +4,7 @@ Tracking note:
 - `NEXT.md` is the source-of-truth tracker for `main` app work.
 - `MOBILE_FOCUS_NEXT.md` is the source-of-truth tracker for Focus Mode mobile branch work.
 - Process rule: after any commit that changes behavior in either track, update the corresponding tracker in the same commit (or immediate follow-up).
+- Continuity rule: also update the tracker whenever the task list, audit depth, or recommended next resume point changes, even if no code was committed yet.
 - Branch rule: `main` stays production-only. Mobile Focus work must stay off `main` until explicitly finished and merged.
 - Sync rule: production fixes land on `main` first, then get merged or cherry-picked into `dev/mobile-focus-integrated` when that branch resumes.
 
@@ -44,25 +45,61 @@ Done
   - Added dedicated diagnostics storage helper
   - Added diagnostics storage coverage
 
-Next
 - App-state risk reduction around diagnostics/forecast boundaries
-  - Reduce cross-module state coupling
-  - Clarify ownership of diagnostics, forecast, and sync logic
-  - Reduce orchestration burden in `src/app.js`
-  - In progress:
-    - diagnostics tag persistence moved out of diagnostics UI into `src/utils/diagnosticsStorage.js`
-    - user-settings payload/apply logic moved out of `src/app.js` into `src/modules/userSettingsSync.js`
+  - `6238050` `Reduce app.js user-settings sync coupling`
+  - `8ebbfc1` `Extract forecast surface helpers from app state`
+  - `873a8ef` `Share volume-time model across diagnostics and summaries`
+  - `7a24700` `Refresh diagnostics after reinstating dismissed date`
+  - `994fca0` `Add shared daily prediction record`
+  - `2d95718` `Add actual end snapshot tile`
+  - `ed9f6ea` `Add actual tile actions and align weekly compare details`
+  - `fa47de8` `Expand state persistence and sync coverage`
+  - Prediction vs actual path now has a shared daily record
+  - Actual tile exists and routes into diagnostics/tagging workflow
+  - State persistence and sync coverage expanded
 
-- Test coverage expansion for settings/state persistence
-  - Settings persistence tests
-  - User-settings sync tests
-  - Diagnostics/forecast integration-path tests
+- Weekly comparison audit, sub-pass 1
+  - `ab4f34c` `Clarify weekly comparison modes and improve detail readability`
+  - Named weekly comparison modes introduced:
+    - `calendar_same_range`
+    - `matched_workday_count`
+    - `baseline_array`
+  - Weekly Compare details no longer mix percent source and displayed totals
+  - Weekly Compare readability/labels improved
+  - Item 1 remains in progress; deeper math unification is still open
+
+Next
+- Route / office / total normalization audit
+  - Verify every module treats:
+    - `hours`
+    - `office_minutes`
+    - `route_minutes`
+    consistently
+  - Check legacy hour-vs-minute naming drift
+  - Identify duplicated or conflicting normalization logic
+
+- Weekly comparison math audit, sub-pass 2
+  - Continue only after item above if needed
+  - Decide whether more weekly surfaces should consume shared comparison packets
+  - Verify no remaining weekly modules mix:
+    - different reference windows
+    - different day-count rules
+    - different percentage denominators
+
+- Expected vs actual data-path audit, sub-pass 2
+  - Verify all snapshot prediction/actual displays use the same normalized fields
+  - Confirm no remaining duplicate local calculations for expected/actual summary values
 
 Later
 - Split `src/features/charts.js` into smaller chart families
 - Split `src/utils/storage.js` by domain
 - Reduce direct DOM/UI complexity in diagnostics/day compare
 - Consider broader app-state structure cleanup only after the higher-risk fixes above
+- Flats / office-time modeling review
+  - Add average flats time/day reporting metric
+  - Audit where `flats_minutes` is currently ignored
+  - Review whether flats should affect office-time expectation and total-day prediction
+  - Review whether office-time averages/trends should become part of the predictive layer
 
 Immediate Tasks
 - Percentages correctness
@@ -117,3 +154,10 @@ How to verify
 - Quick Filter: Mondays → toggle metrics → lines render with normalization note and coverage text.
 - Monthly Glance: colors match (Parcels blue, Letters yellow, Hours green); clicking a point shows week summary.
 - No ReferenceErrors in banner after toggling Settings and reloading.
+
+Current resume point
+- Depth-first audit workflow is now preferred:
+  - audit the whole site at one depth
+  - then move to the next depth across the whole site
+- Next resume step:
+  - `Route / office / total normalization audit`

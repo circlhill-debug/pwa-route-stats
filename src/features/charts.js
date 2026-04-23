@@ -1,6 +1,7 @@
 // Charts + visualization helpers: dashboard charts, monthly glance, mixviz, office compare, quick filter.
 import { DateTime, ZONE, dowIndex, startOfWeekMonday, endOfWeekSunday } from '../utils/date.js';
 import { ensureWeeklyBaselines, getWeeklyBaselines, computeAnchorBaselines } from '../utils/storage.js';
+import { normalizeHoursValue } from '../utils/timeNormalization.js';
 import { buildWeeklyComparisonPacket, getWeeklyComparisonMode, formatWeeklyComparisonSummary } from '../modules/weeklyComparisons.js';
 
 export function createCharts({
@@ -1294,7 +1295,7 @@ export function createCharts({
       const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
       const offByDow = (arr)=>{
         const a=Array.from({length:7},()=>0);
-        arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= (+r.office_minutes||0); });
+        arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= normalizeHoursValue(r.office_minutes); });
         return a.map(n=> +(Math.round(n*100)/100).toFixed(2));
       };
       const thisBy = offByDow(W0);
@@ -1303,8 +1304,8 @@ export function createCharts({
       const dayIdxToday = (now.weekday + 6) % 7;
       const thisMasked = thisBy.map((v,i)=> i<=dayIdxToday? v : null);
       const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-      const off0 = sum(W0, r=> +r.office_minutes||0);
-      const off1same = sum(W1.filter(r=> inRange(r,startLast,lastEndSame)), r=> +r.office_minutes||0);
+      const off0 = sum(W0, r=> normalizeHoursValue(r.office_minutes));
+      const off1same = sum(W1.filter(r=> inRange(r,startLast,lastEndSame)), r=> normalizeHoursValue(r.office_minutes));
       const dPct = (off1same>0)? Math.round(((off0 - off1same)/off1same)*100) : null;
       if (summary) summary.textContent = `Office (so far): ${off0.toFixed(2)}h vs ${off1same.toFixed(2)}h (${dPct==null?'—':(dPct>=0?('↑ '+dPct+'%'):('↓ '+Math.abs(dPct)+'%'))})`;
       card.style.display='block';
@@ -1383,10 +1384,10 @@ export function createCharts({
     const count = filtered.length;
     const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
     const avg = (arr,fn)=> arr.length? sum(arr,fn)/arr.length : null;
-    const avgH = avg(filtered, r=> +r.hours||0);
+    const avgH = avg(filtered, r=> normalizeHoursValue(r.hours));
     const avgP = avg(filtered, r=> +r.parcels||0);
     const avgL = avg(filtered, r=> +r.letters||0);
-    const avgR = avg(filtered, r=> +r.route_minutes||0);
+    const avgR = avg(filtered, r=> normalizeHoursValue(r.route_minutes));
     const pill = (label,val,fmt)=> `<span class="pill"><small>${label}:</small> <b>${fmt(val)}</b></span>`;
     const nf = (v)=> v==null? '—' : (typeof v==='number'? (Math.round(v*100)/100).toString() : String(v));
     stats.innerHTML = [
@@ -1418,7 +1419,7 @@ export function createCharts({
       map.set(iso, {
         parcels:+r.parcels||0,
         letters:+r.letters||0,
-        hours:+r.hours||0
+        hours:normalizeHoursValue(r.hours)
       });
       return map;
     }, new Map());

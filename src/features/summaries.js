@@ -1,5 +1,6 @@
 // Smart summary and heaviness widgets for the dashboard.
 import { DateTime, ZONE, startOfWeekMonday, dowIndex } from '../utils/date.js';
+import { normalizeHoursValue } from '../utils/timeNormalization.js';
 
 export function createSummariesFeature({
   getFlags,
@@ -63,8 +64,8 @@ export function createSummariesFeature({
       }
 
       const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-      const h0 = sum(W0, r => +r.hours || 0);
-      const h1 = sum(W1, r => +r.hours || 0);
+      const h0 = sum(W0, r => normalizeHoursValue(r.hours));
+      const h1 = sum(W1, r => normalizeHoursValue(r.hours));
       const p0 = sum(W0, r => +r.parcels || 0);
       const p1 = sum(W1, r => +r.parcels || 0);
       const l0 = sum(W0, r => +r.letters || 0);
@@ -124,8 +125,8 @@ export function createSummariesFeature({
       }
 
       const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-      const office0 = sum(thisWeek, r => +r.office_minutes || 0);
-      const office1 = sum(lastWeek, r => +r.office_minutes || 0);
+      const office0 = sum(thisWeek, r => normalizeHoursValue(r.office_minutes));
+      const office1 = sum(lastWeek, r => normalizeHoursValue(r.office_minutes));
       const route0 = sum(thisWeek, r => routeAdjustedHours(r));
       const route1 = sum(lastWeek, r => routeAdjustedHours(r));
       const vol = arr => sum(arr, r => (+r.parcels || 0) + 0.33 * (+r.letters || 0));
@@ -179,17 +180,17 @@ export function createSummariesFeature({
         return;
       }
 
-      const offTodayH = +todayRow.office_minutes || 0;
+      const offTodayH = normalizeHoursValue(todayRow.office_minutes);
       const rteTodayH = routeAdjustedHours(todayRow);
-      const totTodayH = +todayRow.hours || offTodayH + rteTodayH;
+      const totTodayH = normalizeHoursValue(todayRow.hours) || offTodayH + rteTodayH;
       const sameDow = worked.filter(r => r.work_date !== todayIso && dowIndex(r.work_date) === dow);
       const avg = (arr, fn) => {
         const values = arr.map(fn).filter(val => val > 0);
         return values.length ? values.reduce((sum, val) => sum + val, 0) / values.length : null;
       };
-      const offAvgH = avg(sameDow, r => +r.office_minutes || 0);
+      const offAvgH = avg(sameDow, r => normalizeHoursValue(r.office_minutes));
       const rteAvgH = avg(sameDow, r => routeAdjustedHours(r));
-      const totAvgH = avg(sameDow, r => +r.hours || 0);
+      const totAvgH = avg(sameDow, r => normalizeHoursValue(r.hours));
       if (offAvgH == null && rteAvgH == null && totAvgH == null) {
         el.style.display = 'none';
         return;
@@ -241,12 +242,12 @@ export function createSummariesFeature({
       }
 
       const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-      const off0 = sum(thisWeek, r => +r.office_minutes || 0);
-      const off1 = sum(lastWeek, r => +r.office_minutes || 0);
+      const off0 = sum(thisWeek, r => normalizeHoursValue(r.office_minutes));
+      const off1 = sum(lastWeek, r => normalizeHoursValue(r.office_minutes));
       const rte0 = sum(thisWeek, r => routeAdjustedHours(r));
       const rte1 = sum(lastWeek, r => routeAdjustedHours(r));
-      const tot0 = sum(thisWeek, r => +r.hours || 0);
-      const tot1 = sum(lastWeek, r => +r.hours || 0);
+      const tot0 = sum(thisWeek, r => normalizeHoursValue(r.hours));
+      const tot1 = sum(lastWeek, r => normalizeHoursValue(r.hours));
       const dOff = off0 - off1;
       const dRte = rte0 - rte1;
       const dTot = tot0 - tot1;
@@ -310,8 +311,8 @@ export function createSummariesFeature({
       const lastWeek = worked.filter(r => inRange(r, lastStart, lastEnd));
       const priorWeek = worked.filter(r => inRange(r, priorStart, priorEnd));
 
-      const daysWorked = arr => arr.filter(row => (+row.hours || 0) > 0).length;
-      const sumHours = arr => arr.reduce((total, row) => total + (+row.hours || 0), 0);
+      const daysWorked = arr => arr.filter(row => normalizeHoursValue(row.hours) > 0).length;
+      const sumHours = arr => arr.reduce((total, row) => total + normalizeHoursValue(row.hours), 0);
       const avg = (total, days) => (days ? total / days : null);
       const pct = (current, baseline) => (current == null || baseline == null || baseline === 0 ? null : ((current - baseline) / baseline) * 100);
 

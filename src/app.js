@@ -12,6 +12,12 @@ import {
   moonPhaseEmoji,
   normalizeRanges
 } from './utils/date.js';
+import {
+  normalizeHoursValue,
+  normalizeTotalHoursRecord,
+  adjustedRouteHoursFromRow,
+  adjustedRouteMinutesFromRow
+} from './utils/timeNormalization.js';
 
 import {
   RESIDUAL_WEIGHT_PREF_KEY,
@@ -657,8 +663,8 @@ window.__sb = createSupabaseClient();
       const parcels = Number(row?.parcels) || 0;
       const letters = Number(row?.letters) || 0;
       const flats = getFlatCount(row);
-      const hours = Number(row?.hours) || 0;
-      const officeTime = Number(row?.office_minutes ?? row?.officeMinutes) || 0;
+      const hours = normalizeHoursValue(row?.hours);
+      const officeTime = normalizeHoursValue(row?.office_minutes ?? row?.officeMinutes);
       const miles = Number(row?.miles) || 0;
       const volume = parcels + letters + flats;
       totals.parcels += parcels;
@@ -2009,11 +2015,9 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
   }
   // Consistent: route_minutes are stored in HOURS; adjust by subtracting boxholder minutes converted to hours
   function routeAdjustedHours(row){
-    const baseH = (+row.route_minutes||0);
     const adjBox = boxholderAdjMinutes(row);
     const adjBreak = parseBreakMinutesFromRow(row);
-    const adjH  = (adjBox + adjBreak) / 60;
-    return Math.max(0, +(baseH - adjH).toFixed(2));
+    return adjustedRouteHoursFromRow(row, adjBox + adjBreak);
   }
 
   function formatBoxholderLabel(val){
@@ -2068,8 +2072,9 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
 
   function __sum(arr, fn){ let s=0; for (const x of arr) s += +fn(x) || 0; return s; }
   function routeAdjustedMinutes(row){
-    try{ if (typeof routeAdjustedHours === 'function'){ const h = routeAdjustedHours(row); return isFinite(h) ? h*60 : (+row.route_minutes||0); } }catch(_){ }
-    return Math.max(0, (+row.route_minutes||0));
+    const adjBox = boxholderAdjMinutes(row);
+    const adjBreak = parseBreakMinutesFromRow(row);
+    return adjustedRouteMinutesFromRow(row, adjBox + adjBreak);
   }
   function computeLetterWeight(sampleRows){
     const model = fitSharedVolumeTimeModel(sampleRows, {
@@ -2698,13 +2703,13 @@ function getHourlyRateFromEval(){
     resetDiagnosticsCache();
     const model = getResidualModel(rows);
     const byDow=Array.from({length:7},()=>[]);
-    rows.forEach(r=>{ if(r.status==='off') return; const h=Number(r.hours||0); const d=dowIndex(r.work_date); if(h>0) byDow[d].push(h); });
+    rows.forEach(r=>{ if(r.status==='off') return; const h=normalizeHoursValue(r.hours); const d=dowIndex(r.work_date); if(h>0) byDow[d].push(h); });
     const avgByDow=byDow.map(list=> list.length? (list.reduce((a,b)=>a+b,0)/list.length) : null);
 
     for(const r of rows){
-      const tot=Number(r.hours||0)||null;
-      const offH=(r.office_minutes!=null)? Number(r.office_minutes).toFixed(2):'';
-      const rteH=(r.route_minutes!=null)? Number(r.route_minutes).toFixed(2):'';
+      const tot=normalizeHoursValue(r.hours)||null;
+      const offH=(r.office_minutes!=null)? normalizeHoursValue(r.office_minutes).toFixed(2):'';
+      const rteH=(r.route_minutes!=null)? normalizeHoursValue(r.route_minutes).toFixed(2):'';
 
       // NEW: weekday shorthand + moon phase
       const dObj = DateTime.fromISO(r.work_date, { zone: ZONE });
@@ -3834,17 +3839,11 @@ function getHourlyRateFromEval(){
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       return d.isValid && d.year === current;
     });
-    const normalizeHoursLocal = (value)=>{
-      const n = Number(value);
-      if (!Number.isFinite(n)) return 0;
-      if (Math.abs(n) > 24) return n / 60;
-      return n;
-    };
     const salary = USPS_EVAL?.annualSalary != null ? Number(USPS_EVAL.annualSalary) : null;
     const totals = {
       parcels: yearRows.reduce((t,r)=> t + (Number(r.parcels)||0), 0),
       letters: yearRows.reduce((t,r)=> t + (Number(r.letters)||0), 0),
-      hours: yearRows.reduce((t,r)=> t + (Number(r.hours)||0), 0),
+      hours: yearRows.reduce((t,r)=> t + normalizeHoursValue(r.hours), 0),
       misdeliveries: yearRows.reduce((t,r)=> t + (Number(r.misdelivery_count)||0), 0)
     };
     const misdeliveryRate = totals.parcels > 0 ? (totals.misdeliveries / totals.parcels) * 100 : null;
@@ -3872,8 +3871,8 @@ function getHourlyRateFromEval(){
       const bucket = byMonth[d.month - 1];
       bucket.parcels += Number(r.parcels)||0;
       bucket.letters += Number(r.letters)||0;
-      bucket.hours += Number(r.hours)||0;
-      bucket.officeHours += normalizeHoursLocal(r.office_minutes ?? r.officeMinutes);
+      bucket.hours += normalizeHoursValue(r.hours);
+      bucket.officeHours += normalizeHoursValue(r.office_minutes ?? r.officeMinutes);
       bucket.routeHours += routeAdjustedHours(r);
       bucket.volumeBase += combinedVolumeBase(r, letterW);
     });
@@ -3888,7 +3887,7 @@ function getHourlyRateFromEval(){
       return eff < best.eff ? { ...m, eff } : best;
     }, null);
 
-    const workedDays = yearRows.filter(r=> (Number(r.hours)||0) > 0).length;
+    const workedDays = yearRows.filter(r=> normalizeHoursValue(r.hours) > 0).length;
     const weekKeys = new Set(yearRows.map(r=>{
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       return d.isValid ? startOfWeekMonday(d).toISODate() : null;
@@ -3939,7 +3938,7 @@ function getHourlyRateFromEval(){
       const inPeriod = filtered.filter(r=> dateInRangeISO(r.work_date, period.from.toISODate(), period.to.toISODate()));
       const parcels = inPeriod.reduce((t,r)=> t + (Number(r.parcels)||0), 0);
       const letters = inPeriod.reduce((t,r)=> t + (Number(r.letters)||0), 0);
-      const hours = inPeriod.reduce((t,r)=> t + (Number(r.hours)||0), 0);
+      const hours = inPeriod.reduce((t,r)=> t + normalizeHoursValue(r.hours), 0);
       const routeHours = inPeriod.reduce((t,r)=> t + routeAdjustedHours(r), 0);
       const volumeBase = inPeriod.reduce((t,r)=> t + combinedVolumeBase(r, letterW), 0);
       const efficiency = (routeHours > 0 && volumeBase > 0) ? (volumeBase / routeHours) : 0;

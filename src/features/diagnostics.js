@@ -1,6 +1,7 @@
 // Diagnostics + comparisons: residual model, day compare, and volume leaderboard.
 import { DateTime, ZONE, dowIndex, moonPhaseEmoji } from '../utils/date.js';
 import { DIAGNOSTIC_TAG_CATALOG, normalizeTagEntries, tagLabelForKey } from '../utils/diagnostics.js';
+import { normalizeHoursValue, normalizeTotalHoursRecord } from '../utils/timeNormalization.js';
 import { fitVolumeTimeModel as fitSharedVolumeTimeModel, learnedLetterWeightFromModel } from '../modules/volumeModel.js';
 
 export function createDiagnostics({
@@ -796,23 +797,8 @@ export function createDiagnostics({
     return `${n.toFixed(decimals)}${suffix}`;
   }
 
-  function normalizeHours(value) {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return 0;
-    if (Math.abs(n) > 24) return n / 60;
-    return n;
-  }
-
-  function normalizeTotalHours(row, routeHours, officeHours) {
-    const stored = normalizeHours(row?.hours ?? row?.totalHours);
-    const combined = routeHours + officeHours;
-    if (!Number.isFinite(stored) || stored <= 0) return combined;
-    if (combined > 0) {
-      const suspiciouslyHigh = stored - combined >= 2 && stored > (combined * 1.5);
-      if (suspiciouslyHigh) return combined;
-    }
-    return stored;
-  }
+  const normalizeHours = normalizeHoursValue;
+  const normalizeTotalHours = normalizeTotalHoursRecord;
 
   function buildDayCompare(rows) {
     const flags = getFlags();

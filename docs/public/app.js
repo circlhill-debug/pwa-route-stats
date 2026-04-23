@@ -79,6 +79,35 @@
     return "\u{1F318}";
   }
 
+  // src/utils/timeNormalization.js
+  function normalizeHoursValue(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    if (Math.abs(n) > 24) return n / 60;
+    return n;
+  }
+  function normalizeTotalHoursRecord(row, routeHours, officeHours) {
+    var _a5;
+    const stored = normalizeHoursValue((_a5 = row == null ? void 0 : row.hours) != null ? _a5 : row == null ? void 0 : row.totalHours);
+    const combined = (Number(routeHours) || 0) + (Number(officeHours) || 0);
+    if (!Number.isFinite(stored) || stored <= 0) return combined;
+    if (combined > 0) {
+      const suspiciouslyHigh = stored - combined >= 2 && stored > combined * 1.5;
+      if (suspiciouslyHigh) return combined;
+    }
+    return stored;
+  }
+  function adjustedRouteHoursFromRow(row, adjustmentMinutes = 0) {
+    var _a5;
+    const baseHours = normalizeHoursValue((_a5 = row == null ? void 0 : row.route_minutes) != null ? _a5 : row == null ? void 0 : row.routeMinutes);
+    const adjustmentHours = (Number(adjustmentMinutes) || 0) / 60;
+    return Math.max(0, +(baseHours - adjustmentHours).toFixed(2));
+  }
+  function adjustedRouteMinutesFromRow(row, adjustmentMinutes = 0) {
+    const hours = adjustedRouteHoursFromRow(row, adjustmentMinutes);
+    return Number.isFinite(hours) ? hours * 60 : 0;
+  }
+
   // src/utils/storage.js
   var FLAG_KEY = "routeStats.flags.v1";
   var EVAL_KEY = "routeStats.uspsEval.v1";
@@ -1619,7 +1648,7 @@
     return total / values.length;
   }
   function parseHours(value) {
-    const num = Number(value);
+    const num = normalizeHoursValue(value);
     return Number.isFinite(num) && num > 0 ? num : null;
   }
   function scoreRowCompleteness(row) {
@@ -2618,23 +2647,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       if (n == null || !Number.isFinite(n)) return "\u2014";
       return `${n.toFixed(decimals)}${suffix}`;
     }
-    function normalizeHours(value) {
-      const n = Number(value);
-      if (!Number.isFinite(n)) return 0;
-      if (Math.abs(n) > 24) return n / 60;
-      return n;
-    }
-    function normalizeTotalHours(row, routeHours, officeHours) {
-      var _a5;
-      const stored = normalizeHours((_a5 = row == null ? void 0 : row.hours) != null ? _a5 : row == null ? void 0 : row.totalHours);
-      const combined = routeHours + officeHours;
-      if (!Number.isFinite(stored) || stored <= 0) return combined;
-      if (combined > 0) {
-        const suspiciouslyHigh = stored - combined >= 2 && stored > combined * 1.5;
-        if (suspiciouslyHigh) return combined;
-      }
-      return stored;
-    }
+    const normalizeHours = normalizeHoursValue;
+    const normalizeTotalHours = normalizeTotalHoursRecord;
     function buildDayCompare2(rows) {
       var _a5;
       const flags = getFlags();
@@ -4604,7 +4618,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           arr.forEach((r) => {
             const d = DateTime.fromISO(r.work_date, { zone: ZONE });
             const idx = (d.weekday + 6) % 7;
-            a[idx] += +r.office_minutes || 0;
+            a[idx] += normalizeHoursValue(r.office_minutes);
           });
           return a.map((n) => +(Math.round(n * 100) / 100).toFixed(2));
         };
@@ -4614,8 +4628,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const dayIdxToday = (now.weekday + 6) % 7;
         const thisMasked = thisBy.map((v, i) => i <= dayIdxToday ? v : null);
         const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-        const off0 = sum(W0, (r) => +r.office_minutes || 0);
-        const off1same = sum(W1.filter((r) => inRange(r, startLast, lastEndSame)), (r) => +r.office_minutes || 0);
+        const off0 = sum(W0, (r) => normalizeHoursValue(r.office_minutes));
+        const off1same = sum(W1.filter((r) => inRange(r, startLast, lastEndSame)), (r) => normalizeHoursValue(r.office_minutes));
         const dPct = off1same > 0 ? Math.round((off0 - off1same) / off1same * 100) : null;
         if (summary) summary.textContent = `Office (so far): ${off0.toFixed(2)}h vs ${off1same.toFixed(2)}h (${dPct == null ? "\u2014" : dPct >= 0 ? "\u2191 " + dPct + "%" : "\u2193 " + Math.abs(dPct) + "%"})`;
         card.style.display = "block";
@@ -4702,10 +4716,10 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const count = filtered.length;
       const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
       const avg = (arr, fn) => arr.length ? sum(arr, fn) / arr.length : null;
-      const avgH = avg(filtered, (r) => +r.hours || 0);
+      const avgH = avg(filtered, (r) => normalizeHoursValue(r.hours));
       const avgP = avg(filtered, (r) => +r.parcels || 0);
       const avgL = avg(filtered, (r) => +r.letters || 0);
-      const avgR = avg(filtered, (r) => +r.route_minutes || 0);
+      const avgR = avg(filtered, (r) => normalizeHoursValue(r.route_minutes));
       const pill = (label, val, fmt) => `<span class="pill"><small>${label}:</small> <b>${fmt(val)}</b></span>`;
       const nf = (v) => v == null ? "\u2014" : typeof v === "number" ? (Math.round(v * 100) / 100).toString() : String(v);
       stats.innerHTML = [
@@ -4741,7 +4755,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         map.set(iso, {
           parcels: +r.parcels || 0,
           letters: +r.letters || 0,
-          hours: +r.hours || 0
+          hours: normalizeHoursValue(r.hours)
         });
         return map;
       }, /* @__PURE__ */ new Map());
@@ -4984,8 +4998,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           return;
         }
         const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-        const h0 = sum(W0, (r) => +r.hours || 0);
-        const h1 = sum(W1, (r) => +r.hours || 0);
+        const h0 = sum(W0, (r) => normalizeHoursValue(r.hours));
+        const h1 = sum(W1, (r) => normalizeHoursValue(r.hours));
         const p0 = sum(W0, (r) => +r.parcels || 0);
         const p1 = sum(W1, (r) => +r.parcels || 0);
         const l0 = sum(W0, (r) => +r.letters || 0);
@@ -5038,8 +5052,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           return;
         }
         const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-        const office0 = sum(thisWeek, (r) => +r.office_minutes || 0);
-        const office1 = sum(lastWeek, (r) => +r.office_minutes || 0);
+        const office0 = sum(thisWeek, (r) => normalizeHoursValue(r.office_minutes));
+        const office1 = sum(lastWeek, (r) => normalizeHoursValue(r.office_minutes));
         const route0 = sum(thisWeek, (r) => routeAdjustedHours2(r));
         const route1 = sum(lastWeek, (r) => routeAdjustedHours2(r));
         const vol = (arr) => sum(arr, (r) => (+r.parcels || 0) + 0.33 * (+r.letters || 0));
@@ -5084,17 +5098,17 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           el.style.display = "none";
           return;
         }
-        const offTodayH = +todayRow.office_minutes || 0;
+        const offTodayH = normalizeHoursValue(todayRow.office_minutes);
         const rteTodayH = routeAdjustedHours2(todayRow);
-        const totTodayH = +todayRow.hours || offTodayH + rteTodayH;
+        const totTodayH = normalizeHoursValue(todayRow.hours) || offTodayH + rteTodayH;
         const sameDow = worked.filter((r) => r.work_date !== todayIso2 && dowIndex(r.work_date) === dow);
         const avg = (arr, fn) => {
           const values = arr.map(fn).filter((val) => val > 0);
           return values.length ? values.reduce((sum, val) => sum + val, 0) / values.length : null;
         };
-        const offAvgH = avg(sameDow, (r) => +r.office_minutes || 0);
+        const offAvgH = avg(sameDow, (r) => normalizeHoursValue(r.office_minutes));
         const rteAvgH = avg(sameDow, (r) => routeAdjustedHours2(r));
-        const totAvgH = avg(sameDow, (r) => +r.hours || 0);
+        const totAvgH = avg(sameDow, (r) => normalizeHoursValue(r.hours));
         if (offAvgH == null && rteAvgH == null && totAvgH == null) {
           el.style.display = "none";
           return;
@@ -5139,12 +5153,12 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           return;
         }
         const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
-        const off0 = sum(thisWeek, (r) => +r.office_minutes || 0);
-        const off1 = sum(lastWeek, (r) => +r.office_minutes || 0);
+        const off0 = sum(thisWeek, (r) => normalizeHoursValue(r.office_minutes));
+        const off1 = sum(lastWeek, (r) => normalizeHoursValue(r.office_minutes));
         const rte0 = sum(thisWeek, (r) => routeAdjustedHours2(r));
         const rte1 = sum(lastWeek, (r) => routeAdjustedHours2(r));
-        const tot0 = sum(thisWeek, (r) => +r.hours || 0);
-        const tot1 = sum(lastWeek, (r) => +r.hours || 0);
+        const tot0 = sum(thisWeek, (r) => normalizeHoursValue(r.hours));
+        const tot1 = sum(lastWeek, (r) => normalizeHoursValue(r.hours));
         const dOff = off0 - off1;
         const dRte = rte0 - rte1;
         const dTot = tot0 - tot1;
@@ -5199,8 +5213,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const thisWeek = worked.filter((r) => inRange(r, startThis, endToday));
         const lastWeek = worked.filter((r) => inRange(r, lastStart, lastEnd));
         const priorWeek = worked.filter((r) => inRange(r, priorStart, priorEnd));
-        const daysWorked = (arr) => arr.filter((row) => (+row.hours || 0) > 0).length;
-        const sumHours = (arr) => arr.reduce((total, row) => total + (+row.hours || 0), 0);
+        const daysWorked = (arr) => arr.filter((row) => normalizeHoursValue(row.hours) > 0).length;
+        const sumHours = (arr) => arr.reduce((total, row) => total + normalizeHoursValue(row.hours), 0);
         const avg = (total, days) => days ? total / days : null;
         const pct = (current, baseline) => current == null || baseline == null || baseline === 0 ? null : (current - baseline) / baseline * 100;
         const thisDays = daysWorked(thisWeek);
@@ -5899,8 +5913,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const parcels2 = Number(row == null ? void 0 : row.parcels) || 0;
       const letters2 = Number(row == null ? void 0 : row.letters) || 0;
       const flats = getFlatCount(row);
-      const hours = Number(row == null ? void 0 : row.hours) || 0;
-      const officeTime = Number((_a5 = row == null ? void 0 : row.office_minutes) != null ? _a5 : row == null ? void 0 : row.officeMinutes) || 0;
+      const hours = normalizeHoursValue(row == null ? void 0 : row.hours);
+      const officeTime = normalizeHoursValue((_a5 = row == null ? void 0 : row.office_minutes) != null ? _a5 : row == null ? void 0 : row.officeMinutes);
       const miles2 = Number(row == null ? void 0 : row.miles) || 0;
       const volume = parcels2 + letters2 + flats;
       totals.parcels += parcels2;
@@ -7276,11 +7290,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     return n === 1 ? 30 : n === 2 ? 45 : n >= 3 ? 60 : 0;
   }
   function routeAdjustedHours(row) {
-    const baseH = +row.route_minutes || 0;
     const adjBox = boxholderAdjMinutes(row);
     const adjBreak = parseBreakMinutesFromRow(row);
-    const adjH = (adjBox + adjBreak) / 60;
-    return Math.max(0, +(baseH - adjH).toFixed(2));
+    return adjustedRouteHoursFromRow(row, adjBox + adjBreak);
   }
   function formatBoxholderLabel(val) {
     if (val == null || val === "") return "\u2014";
@@ -7319,14 +7331,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   }
   var CURRENT_LETTER_WEIGHT = 0.33;
   function routeAdjustedMinutes(row) {
-    try {
-      if (typeof routeAdjustedHours === "function") {
-        const h = routeAdjustedHours(row);
-        return isFinite(h) ? h * 60 : +row.route_minutes || 0;
-      }
-    } catch (_) {
-    }
-    return Math.max(0, +row.route_minutes || 0);
+    const adjBox = boxholderAdjMinutes(row);
+    const adjBreak = parseBreakMinutesFromRow(row);
+    return adjustedRouteMinutesFromRow(row, adjBox + adjBreak);
   }
   function computeLetterWeight(sampleRows) {
     const model = fitVolumeTimeModel(sampleRows, {
@@ -8088,15 +8095,15 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     const byDow = Array.from({ length: 7 }, () => []);
     rows.forEach((r) => {
       if (r.status === "off") return;
-      const h = Number(r.hours || 0);
+      const h = normalizeHoursValue(r.hours);
       const d = dowIndex(r.work_date);
       if (h > 0) byDow[d].push(h);
     });
     const avgByDow = byDow.map((list) => list.length ? list.reduce((a, b) => a + b, 0) / list.length : null);
     for (const r of rows) {
-      const tot = Number(r.hours || 0) || null;
-      const offH = r.office_minutes != null ? Number(r.office_minutes).toFixed(2) : "";
-      const rteH = r.route_minutes != null ? Number(r.route_minutes).toFixed(2) : "";
+      const tot = normalizeHoursValue(r.hours) || null;
+      const offH = r.office_minutes != null ? normalizeHoursValue(r.office_minutes).toFixed(2) : "";
+      const rteH = r.route_minutes != null ? normalizeHoursValue(r.route_minutes).toFixed(2) : "";
       const dObj = DateTime.fromISO(r.work_date, { zone: ZONE });
       const dowShort = dObj.toFormat("ccc").charAt(0);
       const moon = moonPhaseEmoji(r.work_date);
@@ -9274,17 +9281,11 @@ ${lettersSummary}`;
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       return d.isValid && d.year === current;
     });
-    const normalizeHoursLocal = (value) => {
-      const n = Number(value);
-      if (!Number.isFinite(n)) return 0;
-      if (Math.abs(n) > 24) return n / 60;
-      return n;
-    };
     const salary = (USPS_EVAL == null ? void 0 : USPS_EVAL.annualSalary) != null ? Number(USPS_EVAL.annualSalary) : null;
     const totals = {
       parcels: yearRows.reduce((t, r) => t + (Number(r.parcels) || 0), 0),
       letters: yearRows.reduce((t, r) => t + (Number(r.letters) || 0), 0),
-      hours: yearRows.reduce((t, r) => t + (Number(r.hours) || 0), 0),
+      hours: yearRows.reduce((t, r) => t + normalizeHoursValue(r.hours), 0),
       misdeliveries: yearRows.reduce((t, r) => t + (Number(r.misdelivery_count) || 0), 0)
     };
     const misdeliveryRate = totals.parcels > 0 ? totals.misdeliveries / totals.parcels * 100 : null;
@@ -9312,8 +9313,8 @@ ${lettersSummary}`;
       const bucket = byMonth[d.month - 1];
       bucket.parcels += Number(r.parcels) || 0;
       bucket.letters += Number(r.letters) || 0;
-      bucket.hours += Number(r.hours) || 0;
-      bucket.officeHours += normalizeHoursLocal((_a5 = r.office_minutes) != null ? _a5 : r.officeMinutes);
+      bucket.hours += normalizeHoursValue(r.hours);
+      bucket.officeHours += normalizeHoursValue((_a5 = r.office_minutes) != null ? _a5 : r.officeMinutes);
       bucket.routeHours += routeAdjustedHours(r);
       bucket.volumeBase += combinedVolumeBase(r, letterW);
     });
@@ -9327,7 +9328,7 @@ ${lettersSummary}`;
       if (!best) return { ...m, eff };
       return eff < best.eff ? { ...m, eff } : best;
     }, null);
-    const workedDays = yearRows.filter((r) => (Number(r.hours) || 0) > 0).length;
+    const workedDays = yearRows.filter((r) => normalizeHoursValue(r.hours) > 0).length;
     const weekKeys = new Set(yearRows.map((r) => {
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       return d.isValid ? startOfWeekMonday(d).toISODate() : null;
@@ -9375,7 +9376,7 @@ ${lettersSummary}`;
       const inPeriod = filtered.filter((r) => dateInRangeISO(r.work_date, period.from.toISODate(), period.to.toISODate()));
       const parcels2 = inPeriod.reduce((t, r) => t + (Number(r.parcels) || 0), 0);
       const letters2 = inPeriod.reduce((t, r) => t + (Number(r.letters) || 0), 0);
-      const hours = inPeriod.reduce((t, r) => t + (Number(r.hours) || 0), 0);
+      const hours = inPeriod.reduce((t, r) => t + normalizeHoursValue(r.hours), 0);
       const routeHours = inPeriod.reduce((t, r) => t + routeAdjustedHours(r), 0);
       const volumeBase = inPeriod.reduce((t, r) => t + combinedVolumeBase(r, letterW), 0);
       const efficiency = routeHours > 0 && volumeBase > 0 ? volumeBase / routeHours : 0;

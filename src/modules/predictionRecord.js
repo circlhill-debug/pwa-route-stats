@@ -1,4 +1,5 @@
 import { DateTime, ZONE, dowIndex } from '../utils/date.js';
+import { normalizeHoursValue } from '../utils/timeNormalization.js';
 
 function mean(values) {
   if (!Array.isArray(values) || !values.length) return null;
@@ -7,7 +8,7 @@ function mean(values) {
 }
 
 function parseHours(value) {
-  const num = Number(value);
+  const num = normalizeHoursValue(value);
   return Number.isFinite(num) && num > 0 ? num : null;
 }
 

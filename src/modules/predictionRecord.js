@@ -30,26 +30,43 @@ function selectBestRow(rows) {
   ), null);
 }
 
-function hoursToClock(iso, hours, { startHour = 8 } = {}) {
-  if (!(iso && Number.isFinite(hours) && hours > 0)) return null;
-  const base = DateTime.fromISO(iso, { zone: ZONE }).set({ hour: startHour, minute: 0, second: 0, millisecond: 0 });
-  return base.plus({ hours }).toFormat('h:mm a');
-}
-
-function timeStringToClock(iso, timeString) {
+function parseDateTimeForIso(iso, timeString) {
   if (!(iso && timeString)) return null;
   const value = String(timeString).trim();
   if (!value) return null;
   const dt = DateTime.fromISO(`${iso}T${value}`, { zone: ZONE });
-  if (dt.isValid) return dt.toFormat('h:mm a');
-  return value;
+  return dt.isValid ? dt : null;
+}
+
+function predictedEndDateTime(iso, hours, { startHour = 8.5, startTime = null } = {}) {
+  if (!(iso && Number.isFinite(hours) && hours > 0)) return null;
+  const parsedStart = parseDateTimeForIso(iso, startTime);
+  const wholeHour = Math.trunc(startHour);
+  const minutePart = Math.round((startHour - wholeHour) * 60);
+  const base = parsedStart || DateTime.fromISO(iso, { zone: ZONE }).set({ hour: wholeHour, minute: minutePart, second: 0, millisecond: 0 });
+  return base.plus({ hours });
+}
+
+function hoursToClock(iso, hours, options = {}) {
+  const dt = predictedEndDateTime(iso, hours, options);
+  return dt ? dt.toFormat('h:mm a') : null;
+}
+
+function timeStringToClock(iso, timeString) {
+  const dt = parseDateTimeForIso(iso, timeString);
+  return dt ? dt.toFormat('h:mm a') : (timeString ? String(timeString).trim() || null : null);
+}
+
+function clockDeltaMinutes(predictedDt, actualDt) {
+  if (!(predictedDt && actualDt)) return null;
+  return Math.round(actualDt.diff(predictedDt, 'minutes').minutes);
 }
 
 export function buildPredictionRecord(rows, options = {}) {
   const now = options.now || DateTime.now().setZone(ZONE);
   const todayIso = options.todayIso || now.toISODate();
   const todayDow = options.todayDow ?? (now.weekday % 7);
-  const startHour = Number.isFinite(options.startHour) ? options.startHour : 8;
+  const startHour = Number.isFinite(options.startHour) ? options.startHour : 8.5;
   const sourceRows = Array.isArray(rows) ? rows.filter((row) => row && row.status !== 'off') : [];
 
   const todayCandidates = sourceRows.filter((row) => row.work_date === todayIso);
@@ -65,14 +82,20 @@ export function buildPredictionRecord(rows, options = {}) {
   const predictedRouteHours = mean(sameDowRows.map((row) => parseHours(row.route_minutes)).filter(Boolean))
     ?? mean(historicalRows.map((row) => parseHours(row.route_minutes)).filter(Boolean));
 
+  const predictedStartTime = todayRow?.start_time || options.startTime || null;
+  const predictedEndDt = predictedEndDateTime(todayIso, predictedTotalHours, { startHour, startTime: predictedStartTime });
+  const predictedEndTime = predictedEndDt ? predictedEndDt.toFormat('h:mm a') : null;
+
   const actualTotalHours = parseHours(todayRow?.hours);
   const actualOfficeHours = parseHours(todayRow?.office_minutes);
   const actualRouteHours = parseHours(todayRow?.route_minutes);
-  const actualEndTime = timeStringToClock(todayIso, todayRow?.end_time || todayRow?.return_time || null);
+  const actualEndDt = parseDateTimeForIso(todayIso, todayRow?.end_time || todayRow?.return_time || null);
+  const actualEndTime = actualEndDt ? actualEndDt.toFormat('h:mm a') : timeStringToClock(todayIso, todayRow?.end_time || todayRow?.return_time || null);
 
   const deltaHours = (predictedTotalHours != null && actualTotalHours != null)
     ? actualTotalHours - predictedTotalHours
     : null;
+  const deltaEndMinutes = clockDeltaMinutes(predictedEndDt, actualEndDt);
 
   return {
     iso: todayIso,
@@ -85,7 +108,8 @@ export function buildPredictionRecord(rows, options = {}) {
       totalHours: predictedTotalHours,
       officeHours: predictedOfficeHours,
       routeHours: predictedRouteHours,
-      endTime: hoursToClock(todayIso, predictedTotalHours, { startHour })
+      startTime: predictedStartTime,
+      endTime: predictedEndTime
     },
     actual: {
       totalHours: actualTotalHours,
@@ -96,6 +120,7 @@ export function buildPredictionRecord(rows, options = {}) {
     delta: {
       totalHours: deltaHours,
       totalMinutes: Number.isFinite(deltaHours) ? Math.round(deltaHours * 60) : null,
+      endMinutes: deltaEndMinutes,
       hitMiss: deltaHours == null ? null : (Math.abs(deltaHours * 60) <= 15 ? 'hit' : 'miss')
     },
     row: todayRow

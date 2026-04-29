@@ -164,3 +164,112 @@ Current resume point
   - then move to the next depth across the whole site
 - Next resume step:
   - finish `Route / office / total normalization audit` with an edge-case review of total-hours fallback usage, then re-check `Expected vs actual data-path audit`
+
+---
+
+Intent Map (Apr 28, 2026)
+
+Purpose of this note
+- Preserve the meaning of each major surface so future work does not blur:
+  - diagnostics route model
+  - workday prediction layer
+  - summaries/insights heuristic layer
+
+1. Diagnostics route model
+- Primary purpose:
+  - explain route-model misses
+  - identify residual days where actual route behavior differed from predicted route behavior
+- This is the layer associated with:
+  - `bp`
+  - `bl`
+  - `w`
+  - `R²`
+- Diagnostics outliers are:
+  - route/workload model residual anomalies
+  - not general weekly anomalies
+- Tagging belongs conceptually to this layer:
+  - user explains why the route/model expectation missed
+  - tags are observational for now, not direct learning inputs
+- `Day Compare` is the supporting context tool for this layer:
+  - diagnostics flags the anomaly
+  - day compare explains what was different about the day
+
+2. Workday prediction layer
+- Primary purpose:
+  - give the user a practical workday forecast
+  - show expected end time, actual end, and overall workday comparison
+- This layer currently powers:
+  - `Expected End (today)`
+  - `Actual`
+  - `Overall`
+- Important rule:
+  - `Expected End` is a clock-out estimate
+  - `Actual` / hit-miss compares predicted worked hours vs actual worked hours
+  - `Overall` remains total-hours based
+- Default fallback start time:
+  - `8:30 AM`
+  - unless the user entered a different `start_time`
+- Lunch/break handling:
+  - total worked hours should exclude break/lunch
+  - clock-out estimate may later include lunch explicitly as a presentation layer if desired
+- Note:
+  - this is not the same thing as the diagnostics route model
+
+3. Summaries / insights heuristic layer
+- Primary purpose:
+  - make the app feel alive
+  - surface descriptive trends and what stands out
+- This family includes:
+  - `Smart Summary`
+  - `Weekly Movers`
+  - `Heaviness (today)`
+  - `Heaviness (week)`
+  - `Headline Digest`
+- This layer is:
+  - descriptive / heuristic
+  - not “the model”
+- It is allowed to mix:
+  - office
+  - route
+  - total
+  - volume
+  - and later flats / parcels / letters as additional first-class signals
+- Intended windows:
+  - `Heaviness (today)` uses a normalized comparison to same-weekday average
+  - `Heaviness (week)` gives current-week vs prior-week feel
+  - `Weekly Movers` can surface office-time movement even though office time is not part of the diagnostics route model
+
+4. Weekly comparison surfaces
+- `Week & USPS`
+  - practical operational compare
+  - “how is this week compared to last week?”
+  - `Hours` here means total worked hours
+- `Weekly Compare`
+  - mixed analytical summary
+  - top block stays practical week-vs-last-week
+  - `Efficiency (min/vol)` is route-time based
+  - `Outliers` here means weekday comparison anomalies
+  - not diagnostics model misses
+  - `Details` may use baseline-style comparison if clearly labeled
+
+5. Day Compare
+- Broad full-day context surface
+- Allowed to show together:
+  - route time
+  - office time
+  - total hours
+  - parcels
+  - letters
+  - miles
+  - flats / misdelivery when present
+- It is not constrained to route-only model logic
+- It exists to help the user understand why a flagged day differed
+
+Open follow-up ideas (not immediate audit fixes)
+- Add a distinct `Expected Route` or route-model tile near `Expected End`
+  - so the user can see route-model expectation without opening diagnostics
+- Improve terminology so users can distinguish:
+  - route-model miss
+  - workday miss
+  - weekly anomaly
+  at a glance

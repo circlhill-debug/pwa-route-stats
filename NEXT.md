@@ -53,9 +53,13 @@ Done
   - `994fca0` `Add shared daily prediction record`
   - `2d95718` `Add actual end snapshot tile`
   - `ed9f6ea` `Add actual tile actions and align weekly compare details`
+  - `ef1180b` `Align expected-end fallback and actual hit-miss logic`
+  - `e36fb4b` `Separate route model tiles from workday forecast`
   - `fa47de8` `Expand state persistence and sync coverage`
   - Prediction vs actual path now has a shared daily record
-  - Actual tile exists and routes into diagnostics/tagging workflow
+  - Workday forecast and route-model forecast are now separated in the Today snapshot
+  - `Expected End` uses `8:30 AM` fallback and real `start_time` when present
+  - Route-model tagging now belongs to the route result tile, not the workday estimate tile
   - State persistence and sync coverage expanded
 
 - Weekly comparison audit, sub-pass 1
@@ -92,6 +96,11 @@ Next
 - Expected vs actual data-path audit, sub-pass 2
   - Verify all snapshot prediction/actual displays use the same normalized fields
   - Confirm no remaining duplicate local calculations for expected/actual summary values
+  - Follow-up:
+    - route result tile workflow now needs language cleanup so users can distinguish:
+      - workday estimate
+      - route model
+      - diagnostics residual
 
 Later
 - Split `src/features/charts.js` into smaller chart families
@@ -163,7 +172,11 @@ Current resume point
   - audit the whole site at one depth
   - then move to the next depth across the whole site
 - Next resume step:
-  - finish `Route / office / total normalization audit` with an edge-case review of total-hours fallback usage, then re-check `Expected vs actual data-path audit`
+  - continue terminology cleanup:
+    - workday forecast vs route model vs diagnostics residual
+  - then decide whether to:
+    - implement the first optional insight-card section
+    - or continue deeper expected/actual edge-case review
 
 ---
 
@@ -273,3 +286,12 @@ Open follow-up ideas (not immediate audit fixes)
   - workday miss
   - weekly anomaly
   at a glance
+
+Recent workflow updates
+- Diagnostics default queue now prioritizes:
+  - unresolved residuals
+  - last 14 days
+  - newest first
+  - max 10 visible
+- Tagged/dismissed route outliers no longer keep prompting `Click to tag`
+- Re-tagging now correctly requires reinstating through `Manage dismissed`

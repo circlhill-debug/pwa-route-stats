@@ -2881,6 +2881,8 @@ function getHourlyRateFromEval(){
     const prediction = buildPredictionRecord(workRows, { now: today });
     const predictedTotalHours = prediction?.predicted?.totalHours ?? null;
     const todayRow = prediction?.row || workRows[0] || null;
+    const dismissedResiduals = loadDismissedResiduals(parseDismissReasonInput);
+    const dismissedSet = new Set((dismissedResiduals || []).map(item => item?.iso).filter(Boolean));
     expEnd.textContent = prediction?.predicted?.endTime || '—';
     expMeta.textContent = `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]} avg ${predictedTotalHours ? predictedTotalHours.toFixed(2)+'h':'—'}`;
     if (routeExpectedEl && routeExpectedMeta && routeHitMissEl && routeHitMissMeta) {
@@ -2915,11 +2917,12 @@ function getHourlyRateFromEval(){
     if (routeHitMissTile) {
       const iso = prediction?.iso || null;
       const routeModel = getResidualModel(workRows);
-      const canTagRoute = !!(iso && todayRow && routeModel && Number.isFinite(routeAdjustedMinutes(todayRow)));
+      const isDismissedRoute = !!(iso && dismissedSet.has(iso));
+      const canTagRoute = !!(iso && todayRow && routeModel && Number.isFinite(routeAdjustedMinutes(todayRow)) && !isDismissedRoute);
       routeHitMissTile.style.cursor = canTagRoute ? 'pointer' : '';
       routeHitMissTile.title = canTagRoute
         ? 'Click for Tag & dismiss, Open Diagnostics, or Read full notes'
-        : 'No route-model result available yet';
+        : (isDismissedRoute ? 'Already tagged/dismissed. Reinstate from Manage dismissed to tag again.' : 'No route-model result available yet');
       if (routeHitMissMeta && canTagRoute) {
         routeHitMissMeta.innerHTML += ` <span class="muted">· Click to tag</span>`;
       }

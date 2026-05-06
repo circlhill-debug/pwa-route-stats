@@ -1960,6 +1960,8 @@
     onDismissedChange,
     saveDismissedResidualWithTags: saveDismissedResidualWithTags2
   }) {
+    const ACTIVE_RESIDUAL_WINDOW_DAYS = 14;
+    const ACTIVE_RESIDUAL_LIMIT = 10;
     if (typeof getFlags !== "function") throw new Error("createDiagnostics: getFlags is required");
     if (typeof filterRowsForView2 !== "function") throw new Error("createDiagnostics: filterRowsForView is required");
     if (typeof rowsForModelScope2 !== "function") throw new Error("createDiagnostics: rowsForModelScope is required");
@@ -2448,7 +2450,16 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           return { mean: mean2, std: Math.sqrt(Math.max(variance, 0)) };
         })();
         const visibleResiduals = residuals.filter((r) => !dismissedMap.has(r.iso));
-        const top = [...visibleResiduals].sort((a, b) => Math.abs(b.residMin) - Math.abs(a.residMin)).slice(0, 10);
+        const cutoff = DateTime.now().setZone(ZONE).startOf("day").minus({ days: ACTIVE_RESIDUAL_WINDOW_DAYS - 1 });
+        const recentResiduals = visibleResiduals.filter((r) => {
+          try {
+            const dt = DateTime.fromISO(r.iso, { zone: ZONE }).startOf("day");
+            return dt >= cutoff;
+          } catch (_) {
+            return false;
+          }
+        });
+        const top = [...recentResiduals].sort((a, b) => b.iso.localeCompare(a.iso)).slice(0, ACTIVE_RESIDUAL_LIMIT);
         const topContext = [];
         tbody.innerHTML = top.map((d) => {
           var _a6;
@@ -2483,6 +2494,12 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           residuals: topContext,
           dismissed: dismissedList,
           summaryText: summaryTextForContext,
+          queue: {
+            kind: "recent_unresolved",
+            windowDays: ACTIVE_RESIDUAL_WINDOW_DAYS,
+            visible: top.length,
+            totalRecent: recentResiduals.length
+          },
           stats: { mean: stats.mean, std: stats.std },
           catchupSummary,
           weight: {
@@ -8345,6 +8362,8 @@ Entries are filtered by this id.`);
     const prediction = buildPredictionRecord(workRows, { now: today });
     const predictedTotalHours = (_b = (_a5 = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _a5.totalHours) != null ? _b : null;
     const todayRow = (prediction == null ? void 0 : prediction.row) || workRows[0] || null;
+    const dismissedResiduals = loadDismissedResiduals(parseDismissReasonInput);
+    const dismissedSet = new Set((dismissedResiduals || []).map((item) => item == null ? void 0 : item.iso).filter(Boolean));
     expEnd.textContent = ((_c = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _c.endTime) || "\u2014";
     expMeta.textContent = `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dow]} avg ${predictedTotalHours ? predictedTotalHours.toFixed(2) + "h" : "\u2014"}`;
     if (routeExpectedEl && routeExpectedMeta && routeHitMissEl && routeHitMissMeta) {
@@ -8370,9 +8389,10 @@ Entries are filtered by this id.`);
     if (routeHitMissTile) {
       const iso = (prediction == null ? void 0 : prediction.iso) || null;
       const routeModel = getResidualModel(workRows);
-      const canTagRoute = !!(iso && todayRow && routeModel && Number.isFinite(routeAdjustedMinutes(todayRow)));
+      const isDismissedRoute = !!(iso && dismissedSet.has(iso));
+      const canTagRoute = !!(iso && todayRow && routeModel && Number.isFinite(routeAdjustedMinutes(todayRow)) && !isDismissedRoute);
       routeHitMissTile.style.cursor = canTagRoute ? "pointer" : "";
-      routeHitMissTile.title = canTagRoute ? "Click for Tag & dismiss, Open Diagnostics, or Read full notes" : "No route-model result available yet";
+      routeHitMissTile.title = canTagRoute ? "Click for Tag & dismiss, Open Diagnostics, or Read full notes" : isDismissedRoute ? "Already tagged/dismissed. Reinstate from Manage dismissed to tag again." : "No route-model result available yet";
       if (routeHitMissMeta && canTagRoute) {
         routeHitMissMeta.innerHTML += ` <span class="muted">\xB7 Click to tag</span>`;
       }

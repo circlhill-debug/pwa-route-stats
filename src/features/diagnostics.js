@@ -27,6 +27,9 @@ export function createDiagnostics({
   onDismissedChange,
   saveDismissedResidualWithTags
 }) {
+  const ACTIVE_RESIDUAL_WINDOW_DAYS = 14;
+  const ACTIVE_RESIDUAL_LIMIT = 10;
+
   if (typeof getFlags !== 'function') throw new Error('createDiagnostics: getFlags is required');
   if (typeof filterRowsForView !== 'function') throw new Error('createDiagnostics: filterRowsForView is required');
   if (typeof rowsForModelScope !== 'function') throw new Error('createDiagnostics: rowsForModelScope is required');
@@ -572,9 +575,18 @@ export function createDiagnostics({
         return { mean, std: Math.sqrt(Math.max(variance, 0)) };
       })();
       const visibleResiduals = residuals.filter(r => !dismissedMap.has(r.iso));
-      const top = [...visibleResiduals]
-        .sort((a, b) => Math.abs(b.residMin) - Math.abs(a.residMin))
-        .slice(0, 10);
+      const cutoff = DateTime.now().setZone(ZONE).startOf('day').minus({ days: ACTIVE_RESIDUAL_WINDOW_DAYS - 1 });
+      const recentResiduals = visibleResiduals.filter(r => {
+        try {
+          const dt = DateTime.fromISO(r.iso, { zone: ZONE }).startOf('day');
+          return dt >= cutoff;
+        } catch (_) {
+          return false;
+        }
+      });
+      const top = [...recentResiduals]
+        .sort((a, b) => b.iso.localeCompare(a.iso))
+        .slice(0, ACTIVE_RESIDUAL_LIMIT);
       const topContext = [];
       tbody.innerHTML = top.map(d => {
         const rowSummary = summarizeEntry(d.row, model, stats, dismissedMap);
@@ -609,6 +621,12 @@ export function createDiagnostics({
         residuals: topContext,
         dismissed: dismissedList,
         summaryText: summaryTextForContext,
+        queue: {
+          kind: 'recent_unresolved',
+          windowDays: ACTIVE_RESIDUAL_WINDOW_DAYS,
+          visible: top.length,
+          totalRecent: recentResiduals.length
+        },
         stats: { mean: stats.mean, std: stats.std },
         catchupSummary,
         weight: {

@@ -1940,8 +1940,9 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
   const offDay=$('offDay');
   const officeH=$('officeH'), routeH=$('routeH'), totalH=$('totalH');
   const expEnd=$('expEnd'), expMeta=$('expMeta');
-  const actualEnd=$('actualEnd'), actualMeta=$('actualMeta');
-  const actualTile=actualEnd?.closest('.stat') || null;
+  const routeExpectedEl=$('routeExpected'), routeExpectedMeta=$('routeExpectedMeta');
+  const routeHitMissEl=$('routeHitMiss'), routeHitMissMeta=$('routeHitMissMeta');
+  const routeHitMissTile=routeHitMissEl?.closest('.stat') || null;
   const badgeVolume=$('badgeVolume'), badgeRouteEff=$('badgeRouteEff'), badgeOverall=$('badgeOverall');
   const dConnEl=$('dConn'), dAuthEl=$('dAuth'), dWriteEl=$('dWrite');
 
@@ -2879,36 +2880,55 @@ function getHourlyRateFromEval(){
     const workRows=rows.filter(r=>r.status!=='off');
     const prediction = buildPredictionRecord(workRows, { now: today });
     const predictedTotalHours = prediction?.predicted?.totalHours ?? null;
+    const todayRow = prediction?.row || workRows[0] || null;
     expEnd.textContent = prediction?.predicted?.endTime || '—';
     expMeta.textContent = `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]} avg ${predictedTotalHours ? predictedTotalHours.toFixed(2)+'h':'—'}`;
-    if (actualEnd && actualMeta) {
-      const actualTotalHours = prediction?.actual?.totalHours ?? null;
-      const deltaMinutes = prediction?.delta?.totalMinutes ?? null;
-      const hitMiss = prediction?.delta?.hitMiss ?? null;
-      actualEnd.textContent = prediction?.actual?.endTime || '—';
-      if (actualTotalHours == null) {
-        actualMeta.textContent = 'No actual end logged';
+    if (routeExpectedEl && routeExpectedMeta && routeHitMissEl && routeHitMissMeta) {
+      const model = getResidualModel(workRows);
+      const hasModel = !!(model && Number.isFinite(model.a) && Number.isFinite(model.bp) && Number.isFinite(model.bl) && todayRow);
+      const predictedRouteMin = hasModel
+        ? (model.a + model.bp * (+todayRow.parcels || 0) + model.bl * (+todayRow.letters || 0))
+        : null;
+      const actualRouteMin = todayRow ? routeAdjustedMinutes(todayRow) : null;
+      const routeResidualMin = (Number.isFinite(predictedRouteMin) && Number.isFinite(actualRouteMin))
+        ? Math.round(actualRouteMin - predictedRouteMin)
+        : null;
+      const routeHitMiss = routeResidualMin == null ? null : (Math.abs(routeResidualMin) <= 15 ? 'Hit' : 'Miss');
+      routeExpectedEl.textContent = Number.isFinite(predictedRouteMin) ? `${(predictedRouteMin / 60).toFixed(2)}h` : '—';
+      routeExpectedMeta.textContent = hasModel
+        ? `Route model · R² ${(Math.max(0, Math.min(1, model.r2 || 0)) * 100).toFixed(0)}%`
+        : 'Route model pending';
+
+      if (!Number.isFinite(actualRouteMin) || routeResidualMin == null) {
+        routeHitMissEl.textContent = '—';
+        routeHitMissMeta.textContent = 'No route result logged';
       } else {
-        const deltaClass = hitMiss === 'hit' ? 'eval-good' : (hitMiss === 'miss' ? 'eval-bad' : '');
-        const deltaPrefix = Number.isFinite(deltaMinutes) && deltaMinutes > 0 ? '+' : '';
-        const deltaText = Number.isFinite(deltaMinutes) ? `${deltaPrefix}${deltaMinutes}m` : '—';
-        actualMeta.innerHTML = `${actualTotalHours.toFixed(2)}h · <span class="${deltaClass || ''}">${hitMiss === 'hit' ? 'Hit' : (hitMiss === 'miss' ? 'Miss' : 'Δ')} ${deltaText}</span>`;
+        const deltaClass = routeHitMiss === 'Hit' ? 'eval-good' : 'eval-bad';
+        const deltaPrefix = routeResidualMin > 0 ? '+' : '';
+        routeHitMissEl.textContent = `${(actualRouteMin / 60).toFixed(2)}h`;
+        routeHitMissMeta.innerHTML = `<span class="${deltaClass}">${routeHitMiss || 'Δ'} ${deltaPrefix}${routeResidualMin}m</span> · Pred ${(predictedRouteMin / 60).toFixed(2)}h`;
       }
+      routeHitMissEl.title = Number.isFinite(routeResidualMin)
+        ? `Route residual ${routeResidualMin > 0 ? '+' : ''}${routeResidualMin}m (actual minus predicted)`
+        : 'No route result logged yet';
     }
-    if (actualTile) {
+    if (routeHitMissTile) {
       const iso = prediction?.iso || null;
-      const hasActual = !!prediction?.actual?.totalHours;
-      actualTile.style.cursor = hasActual ? 'pointer' : '';
-      actualTile.title = hasActual
+      const routeModel = getResidualModel(workRows);
+      const canTagRoute = !!(iso && todayRow && routeModel && Number.isFinite(routeAdjustedMinutes(todayRow)));
+      routeHitMissTile.style.cursor = canTagRoute ? 'pointer' : '';
+      routeHitMissTile.title = canTagRoute
         ? 'Click for Tag & dismiss, Open Diagnostics, or Read full notes'
-        : 'No actual end logged yet';
-      actualTile.onclick = async (event) => {
-        if (!hasActual || !iso) return;
+        : 'No route-model result available yet';
+      if (routeHitMissMeta && canTagRoute) {
+        routeHitMissMeta.innerHTML += ` <span class="muted">· Click to tag</span>`;
+      }
+      routeHitMissTile.onclick = async (event) => {
+        if (!canTagRoute || !iso) return;
         if (event.target.closest('button,a,input,select,textarea')) return;
-        const todayRow = prediction?.row || null;
         const noteText = (todayRow?.notes || '').trim();
         const choice = window.prompt(
-          `Actual ${prediction.actual.endTime || '—'} · ${prediction.actual.totalHours?.toFixed?.(2) || '—'}h\n\nChoose action:\n1 = Tag & dismiss\n2 = Open Diagnostics\n3 = Read full`,
+          `Route model result for ${iso}\n\nChoose action:\n1 = Tag & dismiss\n2 = Open Diagnostics\n3 = Read full`,
           '1'
         );
         if (!choice) return;
@@ -3009,7 +3029,6 @@ function getHourlyRateFromEval(){
       if (ho) ho.textContent = `Total hours vs weekday expected. Today ${totToday.toFixed(2)}h vs exp ${exp?exp.toFixed(2)+'h':'—'}. Score ${overallScore}/10.`;
     }catch(_){ }
 
-    const todayRow = workRows[0] || null;
     const tripRaw = todayRow ? parseSecondTripFromRow(todayRow) : null;
     const evalHourly = getHourlyRateFromEval();
     let extraTrip = null;

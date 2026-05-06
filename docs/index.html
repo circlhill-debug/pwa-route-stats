@@ -1046,16 +1046,21 @@
           <small id="expMeta" style="color:var(--muted)">DOW avg —</small>
         </div>
         <div class="stat">
-          <small>Actual</small>
-          <span id="actualEnd" class="statValue statValue--lg">—</span>
-          <small id="actualMeta" style="color:var(--muted)">No actual end logged</small>
-        </div>
-        <div class="stat">
           <small>Volume</small>
           <span id="badgeVolume" class="statValue statValue--lg">—</span>
           <small class="muted">parcels + <span class="modelMetric">w×letters</span> (data-fit)</small>
           <div id="helpVolume" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
           <button id="openVolumeLeaderboard" type="button" class="ghost" style="align-self:flex-start;font-size:12px;padding:4px 8px;">Top days</button>
+        </div>
+        <div class="stat">
+          <small>Expected Route</small>
+          <span id="routeExpected" class="statValue statValue--lg">—</span>
+          <small id="routeExpectedMeta" class="muted">Route model pending</small>
+        </div>
+        <div class="stat">
+          <small>Actual</small>
+          <span id="routeHitMiss" class="statValue statValue--lg">—</span>
+          <small id="routeHitMissMeta" class="muted">No route result logged</small>
         </div>
         <div class="stat">
           <small>Route Eff.</small>

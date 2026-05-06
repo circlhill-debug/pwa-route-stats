@@ -8354,27 +8354,28 @@ Entries are filtered by this id.`);
     alert(`Imported ${rows.length} rows into this account.`);
   });
   function buildSnapshot(rows) {
-    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
+    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B;
     rows = filterRowsForView(rows || []);
     const today = DateTime.now().setZone(ZONE);
     const dow = today.weekday % 7;
     const workRows = rows.filter((r) => r.status !== "off");
     const prediction = buildPredictionRecord(workRows, { now: today });
     const predictedTotalHours = (_b = (_a5 = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _a5.totalHours) != null ? _b : null;
-    const todayRow = (prediction == null ? void 0 : prediction.row) || workRows[0] || null;
+    const todayRow = (prediction == null ? void 0 : prediction.row) || null;
     const dismissedResiduals = loadDismissedResiduals(parseDismissReasonInput);
     const dismissedSet = new Set((dismissedResiduals || []).map((item) => item == null ? void 0 : item.iso).filter(Boolean));
     expEnd.textContent = ((_c = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _c.endTime) || "\u2014";
     expMeta.textContent = `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dow]} avg ${predictedTotalHours ? predictedTotalHours.toFixed(2) + "h" : "\u2014"}`;
     if (routeExpectedEl && routeExpectedMeta && routeHitMissEl && routeHitMissMeta) {
       const model = getResidualModel(workRows);
-      const hasModel = !!(model && Number.isFinite(model.a) && Number.isFinite(model.bp) && Number.isFinite(model.bl) && todayRow);
-      const predictedRouteMin = hasModel ? model.a + model.bp * (+todayRow.parcels || 0) + model.bl * (+todayRow.letters || 0) : null;
+      const hasModel = !!(model && Number.isFinite(model.a) && Number.isFinite(model.bp) && Number.isFinite(model.bl));
+      const predictedRouteHours = (_e = (_d = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _d.routeHours) != null ? _e : null;
+      const predictedRouteMin = Number.isFinite(predictedRouteHours) ? Math.round(predictedRouteHours * 60) : null;
       const actualRouteMin = todayRow ? routeAdjustedMinutes(todayRow) : null;
       const routeResidualMin = Number.isFinite(predictedRouteMin) && Number.isFinite(actualRouteMin) ? Math.round(actualRouteMin - predictedRouteMin) : null;
       const routeHitMiss = routeResidualMin == null ? null : Math.abs(routeResidualMin) <= 15 ? "Hit" : "Miss";
       routeExpectedEl.textContent = Number.isFinite(predictedRouteMin) ? `${(predictedRouteMin / 60).toFixed(2)}h` : "\u2014";
-      routeExpectedMeta.textContent = hasModel ? `Route model \xB7 R\xB2 ${(Math.max(0, Math.min(1, model.r2 || 0)) * 100).toFixed(0)}%` : "Route model pending";
+      routeExpectedMeta.textContent = hasModel && Number.isFinite(predictedRouteMin) ? `Route model \xB7 R\xB2 ${(Math.max(0, Math.min(1, model.r2 || 0)) * 100).toFixed(0)}%` : "Route model pending";
       if (!Number.isFinite(actualRouteMin) || routeResidualMin == null) {
         routeHitMissEl.textContent = "\u2014";
         routeHitMissMeta.textContent = "No route result logged";
@@ -8527,7 +8528,7 @@ Note: ${adjNote}`;
       }
     } catch (_) {
     }
-    const totToday = (_e = (_d = prediction == null ? void 0 : prediction.actual) == null ? void 0 : _d.totalHours) != null ? _e : 0;
+    const totToday = (_g = (_f = prediction == null ? void 0 : prediction.actual) == null ? void 0 : _f.totalHours) != null ? _g : 0;
     const exp = predictedTotalHours || 0;
     const overallScore = exp > 0 ? Math.max(0, Math.min(10, Math.round((1 - (totToday - exp) / Math.max(1, exp)) * 10))) : 0;
     badgeOverall.textContent = `${overallScore}/10`;
@@ -8881,11 +8882,11 @@ ${lettersSummary}`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_f = thisWeek[i]) == null ? void 0 : _f.h) || 0 : null;
-          let base = ((_g = lastWeek[i]) == null ? void 0 : _g.h) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_h = thisWeek[i]) == null ? void 0 : _h.h) || 0 : null;
+          let base = ((_i = lastWeek[i]) == null ? void 0 : _i.h) || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_h = lastWeek[i - 1]) == null ? void 0 : _h.h) || 0) + (((_i = lastWeek[i]) == null ? void 0 : _i.h) || 0);
+            base = (((_j = lastWeek[i - 1]) == null ? void 0 : _j.h) || 0) + (((_k = lastWeek[i]) == null ? void 0 : _k.h) || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8926,11 +8927,11 @@ ${lettersSummary}`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_j = thisWeek[i]) == null ? void 0 : _j.p) || 0 : null;
-          let base = ((_k = lastWeek[i]) == null ? void 0 : _k.p) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_l = thisWeek[i]) == null ? void 0 : _l.p) || 0 : null;
+          let base = ((_m = lastWeek[i]) == null ? void 0 : _m.p) || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_l = lastWeek[i - 1]) == null ? void 0 : _l.p) || 0) + (((_m = lastWeek[i]) == null ? void 0 : _m.p) || 0);
+            base = (((_n = lastWeek[i - 1]) == null ? void 0 : _n.p) || 0) + (((_o = lastWeek[i]) == null ? void 0 : _o.p) || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -8964,11 +8965,11 @@ ${lettersSummary}`;
         const rowsHtml = [];
         let tThis = 0, tLast = 0;
         for (let i = 0; i < 7; i++) {
-          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_n = thisWeek[i]) == null ? void 0 : _n.l) || 0 : null;
-          let base = ((_o = lastWeek[i]) == null ? void 0 : _o.l) || 0;
+          const cur = i <= dayIndexToday ? offIdxThisWeek.has(i) ? null : ((_p = thisWeek[i]) == null ? void 0 : _p.l) || 0 : null;
+          let base = ((_q = lastWeek[i]) == null ? void 0 : _q.l) || 0;
           let adjMark = "";
           if (holidayAdjEnabled && carryNext && carryNext.has(i)) {
-            base = (((_p = lastWeek[i - 1]) == null ? void 0 : _p.l) || 0) + (((_q = lastWeek[i]) == null ? void 0 : _q.l) || 0);
+            base = (((_r = lastWeek[i - 1]) == null ? void 0 : _r.l) || 0) + (((_s = lastWeek[i]) == null ? void 0 : _s.l) || 0);
             adjMark = " (adj)";
           }
           if (cur != null) tThis += cur;
@@ -9054,9 +9055,9 @@ ${lettersSummary}`;
     const dayPct = (val, base) => val == null || !base ? null : (val - base) / base * 100;
     const tdp = dayPct(todayParcels, baseParcels), tdl = dayPct(todayLetters, baseLetters);
     const wkNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    (_t = (_s = (_r = document.querySelector("#todayParcelsDelta")) == null ? void 0 : _r.closest(".stat")) == null ? void 0 : _s.querySelector("small.muted")) == null ? void 0 : _t.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
-    (_w = (_v = (_u = document.querySelector("#todayLettersDelta")) == null ? void 0 : _u.closest(".stat")) == null ? void 0 : _v.querySelector("small.muted")) == null ? void 0 : _w.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
-    (_z = (_y = (_x = document.querySelector("#todayOfficeDelta")) == null ? void 0 : _x.closest(".stat")) == null ? void 0 : _y.querySelector("small.muted")) == null ? void 0 : _z.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    (_v = (_u = (_t = document.querySelector("#todayParcelsDelta")) == null ? void 0 : _t.closest(".stat")) == null ? void 0 : _u.querySelector("small.muted")) == null ? void 0 : _v.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    (_y = (_x = (_w = document.querySelector("#todayLettersDelta")) == null ? void 0 : _w.closest(".stat")) == null ? void 0 : _x.querySelector("small.muted")) == null ? void 0 : _y.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
+    (_B = (_A = (_z = document.querySelector("#todayOfficeDelta")) == null ? void 0 : _z.closest(".stat")) == null ? void 0 : _A.querySelector("small.muted")) == null ? void 0 : _B.replaceChildren(document.createTextNode(`vs last ${wkNames[dow]} (worked)`));
     const baseOffice = lastSame ? +lastSame.office_minutes || 0 : null;
     const todayOffice = todaysRow ? +todaysRow.office_minutes || 0 : null;
     const fmtTiny = (p) => p == null ? "\u2014" : p >= 0 ? `\u2191 ${p.toFixed(0)}%` : `\u2193 ${Math.abs(p).toFixed(0)}%`;

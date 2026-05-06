@@ -2880,24 +2880,23 @@ function getHourlyRateFromEval(){
     const workRows=rows.filter(r=>r.status!=='off');
     const prediction = buildPredictionRecord(workRows, { now: today });
     const predictedTotalHours = prediction?.predicted?.totalHours ?? null;
-    const todayRow = prediction?.row || workRows[0] || null;
+    const todayRow = prediction?.row || null;
     const dismissedResiduals = loadDismissedResiduals(parseDismissReasonInput);
     const dismissedSet = new Set((dismissedResiduals || []).map(item => item?.iso).filter(Boolean));
     expEnd.textContent = prediction?.predicted?.endTime || '—';
     expMeta.textContent = `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow]} avg ${predictedTotalHours ? predictedTotalHours.toFixed(2)+'h':'—'}`;
     if (routeExpectedEl && routeExpectedMeta && routeHitMissEl && routeHitMissMeta) {
       const model = getResidualModel(workRows);
-      const hasModel = !!(model && Number.isFinite(model.a) && Number.isFinite(model.bp) && Number.isFinite(model.bl) && todayRow);
-      const predictedRouteMin = hasModel
-        ? (model.a + model.bp * (+todayRow.parcels || 0) + model.bl * (+todayRow.letters || 0))
-        : null;
+      const hasModel = !!(model && Number.isFinite(model.a) && Number.isFinite(model.bp) && Number.isFinite(model.bl));
+      const predictedRouteHours = prediction?.predicted?.routeHours ?? null;
+      const predictedRouteMin = Number.isFinite(predictedRouteHours) ? Math.round(predictedRouteHours * 60) : null;
       const actualRouteMin = todayRow ? routeAdjustedMinutes(todayRow) : null;
       const routeResidualMin = (Number.isFinite(predictedRouteMin) && Number.isFinite(actualRouteMin))
         ? Math.round(actualRouteMin - predictedRouteMin)
         : null;
       const routeHitMiss = routeResidualMin == null ? null : (Math.abs(routeResidualMin) <= 15 ? 'Hit' : 'Miss');
       routeExpectedEl.textContent = Number.isFinite(predictedRouteMin) ? `${(predictedRouteMin / 60).toFixed(2)}h` : '—';
-      routeExpectedMeta.textContent = hasModel
+      routeExpectedMeta.textContent = hasModel && Number.isFinite(predictedRouteMin)
         ? `Route model · R² ${(Math.max(0, Math.min(1, model.r2 || 0)) * 100).toFixed(0)}%`
         : 'Route model pending';
 

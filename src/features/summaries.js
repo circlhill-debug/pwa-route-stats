@@ -211,7 +211,7 @@ export function createSummariesFeature({
 
       el.style.display = 'block';
       const pills = [pill('Office', dOff), pill('Route', dRte), pill('Total', dTot)].join(' ');
-      el.innerHTML = `<small>Heaviness (today)</small><div class="pill-row">${pills}</div>`;
+      el.innerHTML = `<small title="Compared to your same-weekday average, not yesterday.">Heaviness (today)</small><div class="pill-row">${pills}</div><div class="muted" style="margin-top:4px;font-size:12px">vs same-weekday average</div>`;
     } catch (_err) {
       /* ignore */
     }

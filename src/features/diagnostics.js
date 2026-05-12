@@ -612,7 +612,7 @@ export function createDiagnostics({
           <td class="text-left">${rowSummary.boxholders}</td>
           <td class="text-left weather-cell">${rowSummary.weatherCell}</td>
           <td class="notes-cell">${rowSummary.notesHtml}</td>
-          <td><button class="ghost diag-dismiss" data-dismiss-iso="${d.iso}">Tag & dismiss</button></td>
+          <td><button class="ghost diag-dismiss" data-dismiss-iso="${d.iso}">Tag route residual</button></td>
         </tr>`;
       }).join('');
 
@@ -692,7 +692,7 @@ export function createDiagnostics({
     if (parcels != null) hintParts.push(`Parcels: ${parcels}`);
     if (letters != null) hintParts.push(`Letters: ${letters}`);
     const tagResult = await showTagDismissDialog({
-      title: `Tag residual ${iso}`,
+      title: `Tag route residual ${iso}`,
       hint: hintParts.join(' · '),
       defaults: defaultReason
     });
@@ -717,7 +717,7 @@ export function createDiagnostics({
     dialog.style.width = 'calc(100vw - 32px)';
     dialog.innerHTML = `
       <form method="dialog" style="display:flex;flex-direction:column;gap:10px">
-        <h4 style="margin:0">${escapeHtml(title || 'Tag & dismiss')}</h4>
+        <h4 style="margin:0">${escapeHtml(title || 'Tag route residual')}</h4>
         <small class="muted">${escapeHtml(hint || 'Select one or more reasons and optional +/- minutes.')}</small>
         <div style="display:grid;gap:8px;max-height:52vh;overflow:auto;padding:4px 2px">
           ${DIAGNOSTIC_TAG_CATALOG.map(tag => {
@@ -738,7 +738,7 @@ export function createDiagnostics({
         </label>
         <div class="row" style="justify-content:flex-end">
           <button value="cancel" class="ghost" type="button" id="diagDismissCancel">Cancel</button>
-          <button value="ok" class="btn" type="button" id="diagDismissSave">Save Tag & Dismiss</button>
+          <button value="ok" class="btn" type="button" id="diagDismissSave">Save Route Residual Tag</button>
         </div>
       </form>
     `;
@@ -780,7 +780,7 @@ export function createDiagnostics({
         const payload = collect();
         result = payload.tags.length ? payload : null;
         if (!result) {
-          window.alert('Select at least one tag to dismiss this residual.');
+          window.alert('Select at least one tag to dismiss this route residual.');
           return;
         }
         closeDialog();

@@ -2,6 +2,13 @@
 
 This sheet explains what each number means and how it’s computed so you can trust what you see at a glance.
 
+## Model Guide
+- **Forecast**: the sentence-style heads-up tile for tomorrow. It is descriptive/heuristic and looks at recent trends, snapshots, and tags.
+- **Expected End**: the workday estimate for today. It uses worked-hours expectation and start time to give a practical end-of-day estimate.
+- **Expected Route Time / Actual Route Time**: the route-model surfaces for today. These belong with the Diagnostics route model, not the workday estimate.
+- **Diagnostics — Volume→Time Model**: the route-time prediction model (`bp`, `bl`, `w`, `R²`) plus residual review. Tagging belongs here and explains route-time misses only.
+- **Weekday anomalies**: weekly comparison anomalies from `Weekly Compare`. These are not diagnostics residuals.
+
 ## Units & Conventions
 - Hours: Stored/compared in hours (e.g., 4.75 = 4h45m).
 - Route adjusted hours: `route_hours − boxholder_offset_minutes/60` (x1=30m, x2=45m, x3=60m).
@@ -29,10 +36,10 @@ Click any tile to see a short plain‑English explanation. Hover tooltips show d
 ## Diagnostics — Volume→Time Model
 - View: Settings → Diagnostics → "Volume → Time" shows the model coefficients alongside fit quality.
 - Coefficients panel: watch `bp`, `bl`, `w`, and `R²` week-to-week; big swings hint at changes in route mix or data entry issues.
-- Residuals list: highlights days where actual route minutes were far above/below the prediction; use Reason tags to explain recurring outliers.
+- Residuals list: highlights days where actual route minutes were far above/below the prediction; use route residual tags to explain recurring outliers.
 - Toggle "Show Residuals" to sort the biggest misses (± minutes) and decide if they’re noise, weather, detours, or require baseline tweaks.
 - Export: copy the table straight into notes when coaching or reviewing past adjustments.
-- **Tag & dismiss workflow**: use the “Tag & dismiss” button to log one or more comma-separated reasons (e.g., `parcels +15, flats +10`). The residual is hidden, the tag list is stored locally (and in Supabase), and you can reinstate it via “Manage dismissed.” Tagged days feed future summaries.
+- **Tag route residual workflow**: use the route-residual tagging action to log one or more comma-separated reasons (e.g., `parcels +15, flats +10`). The residual is hidden from the active queue, the tag list is stored locally (and in Supabase), and you can reinstate it via “Manage dismissed.” Tagged days feed future summaries.
 
 ## Forecast badge (Phase 1 & 2)
 - Data sources:
@@ -59,7 +66,7 @@ Click any tile to see a short plain‑English explanation. Hover tooltips show d
 - Expectation band: translucent orange min/max envelope computed from up to four recent non-vacation weeks, so you can tell at a glance whether current volume is within the historical range.
 - Route h (this): Dashed line (right axis) for this week’s adjusted route hours per weekday.
 - Efficiency label: Shows `min/vol` this week vs last with an up/down indicator.
-- Outliers: Lists weekdays where route hours are >+10% vs the same weekday last week and shows any Reason tag.
+- Weekday anomalies: Lists weekdays where route hours are >+10% vs the same weekday last week and shows any Reason tag.
 
 ## USPS Evaluation (header tag + tiles)
 - Fixed tag: Route ID, Eval (e.g., 44K), Boxes, Salary, Hours/day, Office/day.

@@ -1047,18 +1047,21 @@
         </div>
         <div class="stat">
           <small>Volume</small>
-          <span id="badgeVolume" class="statValue statValue--lg">—</span>
+          <div class="row" style="align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span id="badgeVolume" class="statValue statValue--lg">—</span>
+            <span id="badgeVolumeToday" class="modelMetric" style="display:none;font-size:1rem;color:var(--good);font-weight:700">—</span>
+          </div>
           <small class="muted">parcels + <span class="modelMetric">w×letters</span> (data-fit)</small>
           <div id="helpVolume" style="display:none;margin-top:4px;font-size:12px;color:var(--muted)">—</div>
           <button id="openVolumeLeaderboard" type="button" class="ghost" style="align-self:flex-start;font-size:12px;padding:4px 8px;">Top days</button>
         </div>
         <div class="stat">
-          <small>Expected Route</small>
+          <small>Expected Route Time</small>
           <span id="routeExpected" class="statValue statValue--lg">—</span>
           <small id="routeExpectedMeta" class="muted">Route model pending</small>
         </div>
         <div class="stat">
-          <small>Actual</small>
+          <small>Actual Route Time</small>
           <span id="routeHitMiss" class="statValue statValue--lg">—</span>
           <small id="routeHitMissMeta" class="muted">No route result logged</small>
         </div>
@@ -1689,7 +1692,7 @@
       <button id="diagManageDismissed" type="button" class="ghost" style="font-size:12px;">Manage dismissed</button>
     </div>
     <div id="diagDetails" style="display:none;margin-top:8px">
-      <small class="muted">Top residual days (|actual − predicted|). Helps spot non-volume causes: detours, weather, boxholders, etc.</small>
+      <small class="muted">Top route-model residual days (|actual − predicted|). Helps spot non-volume causes: detours, weather, boxholders, etc.</small>
       <div class="diag-wrap" style="margin-top:8px;border:1px solid var(--border);border-radius:12px">
         <table class="diag-table" style="font-size:14px">
           <thead>

@@ -2486,7 +2486,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           <td class="text-left">${rowSummary.boxholders}</td>
           <td class="text-left weather-cell">${rowSummary.weatherCell}</td>
           <td class="notes-cell">${rowSummary.notesHtml}</td>
-          <td><button class="ghost diag-dismiss" data-dismiss-iso="${d.iso}">Tag & dismiss</button></td>
+          <td><button class="ghost diag-dismiss" data-dismiss-iso="${d.iso}">Tag route residual</button></td>
         </tr>`;
         }).join("");
         latestDiagnosticsContext = {
@@ -2560,7 +2560,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       if (parcels2 != null) hintParts.push(`Parcels: ${parcels2}`);
       if (letters2 != null) hintParts.push(`Letters: ${letters2}`);
       const tagResult = await showTagDismissDialog({
-        title: `Tag residual ${iso}`,
+        title: `Tag route residual ${iso}`,
         hint: hintParts.join(" \xB7 "),
         defaults: defaultReason
       });
@@ -2584,7 +2584,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       dialog.style.width = "calc(100vw - 32px)";
       dialog.innerHTML = `
       <form method="dialog" style="display:flex;flex-direction:column;gap:10px">
-        <h4 style="margin:0">${escapeHtml(title || "Tag & dismiss")}</h4>
+        <h4 style="margin:0">${escapeHtml(title || "Tag route residual")}</h4>
         <small class="muted">${escapeHtml(hint || "Select one or more reasons and optional +/- minutes.")}</small>
         <div style="display:grid;gap:8px;max-height:52vh;overflow:auto;padding:4px 2px">
           ${DIAGNOSTIC_TAG_CATALOG.map((tag) => {
@@ -2605,7 +2605,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         </label>
         <div class="row" style="justify-content:flex-end">
           <button value="cancel" class="ghost" type="button" id="diagDismissCancel">Cancel</button>
-          <button value="ok" class="btn" type="button" id="diagDismissSave">Save Tag & Dismiss</button>
+          <button value="ok" class="btn" type="button" id="diagDismissSave">Save Route Residual Tag</button>
         </div>
       </form>
     `;
@@ -2647,7 +2647,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           const payload = collect();
           result = payload.tags.length ? payload : null;
           if (!result) {
-            window.alert("Select at least one tag to dismiss this residual.");
+            window.alert("Select at least one tag to dismiss this route residual.");
             return;
           }
           closeDialog();
@@ -4119,7 +4119,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
               }
             });
             const routeColor = (goodColor || "#7CE38B").trim() || "#7CE38B";
-            const prefix = `<span style="color:${routeColor};font-weight:600">Outliers</span>`;
+            const prefix = `<span style="color:${routeColor};font-weight:600">Weekday anomalies</span>`;
             culprits.innerHTML = out.length ? `${prefix}: ${out.join(" \u2022 ")}` : `${prefix}: \u2014`;
           }
         } catch (_) {
@@ -4312,8 +4312,14 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           const thisMasked = thisBy.map((v, i) => i <= dayIdxToday ? v : null);
           const lastMasked = lastBy.map((v, i) => i <= dayIdxToday ? v : null);
           const thisEffMasked = thisEff.map((v, i) => i <= dayIdxToday ? v : null);
-          const volThisRange = computeRange(thisMasked, 5);
-          const volLastRange = computeRange(lastMasked.length ? lastMasked : lastBy, 5);
+          const safeBandMin = hasBand && Array.isArray(bandMinData) ? bandMinData : [];
+          const safeBandMax = hasBand && Array.isArray(bandMaxData) ? bandMaxData : [];
+          const combinedVolumeRange = computeRange([
+            ...thisMasked,
+            ...lastMasked.length ? lastMasked : lastBy,
+            ...safeBandMin.filter(Number.isFinite),
+            ...safeBandMax.filter(Number.isFinite)
+          ], 5);
           const effRange = computeRange(thisEffMasked, 1);
           const thisPointColors = days.map((_, idx) => {
             const iso = startThis.plus({ days: idx }).toISODate();
@@ -4353,7 +4359,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
               pointRadius: 0,
               spanGaps: true,
               fill: false,
-              yAxisID: "yVolThis"
+              yAxisID: "yVol"
             });
             datasets.push({
               label: "Vol expect max",
@@ -4364,12 +4370,12 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
               borderWidth: 0,
               spanGaps: true,
               fill: { target: "-1", above: "rgba(255,140,0,0.22)", below: "rgba(255,140,0,0.22)" },
-              yAxisID: "yVolThis"
+              yAxisID: "yVol"
             });
           }
           datasets.push(
-            { label: "Vol last", data: [...lastBy], borderColor: styleMap["Vol last"].color, backgroundColor: "rgba(43,127,255,0.12)", tension: 0.25, pointRadius: lastPointRadius, pointHoverRadius: lastHoverRadius, pointBorderColor: lastPointColors, pointBackgroundColor: lastPointColors, borderWidth: styleMap["Vol last"].width, spanGaps: true, yAxisID: "yVolLast", fill: "origin" },
-            { label: "Vol this", data: [...thisMasked], borderColor: styleMap["Vol this"].color, backgroundColor: "rgba(255,215,0,0.18)", tension: 0.25, pointRadius: thisPointRadius, pointHoverRadius: thisHoverRadius, pointBorderColor: thisPointColors, pointBackgroundColor: thisPointColors, borderWidth: styleMap["Vol this"].width, spanGaps: true, yAxisID: "yVolThis", fill: "origin" },
+            { label: "Vol last", data: [...lastBy], borderColor: styleMap["Vol last"].color, backgroundColor: "rgba(43,127,255,0.12)", tension: 0.25, pointRadius: lastPointRadius, pointHoverRadius: lastHoverRadius, pointBorderColor: lastPointColors, pointBackgroundColor: lastPointColors, borderWidth: styleMap["Vol last"].width, spanGaps: true, yAxisID: "yVol", fill: "origin" },
+            { label: "Vol this", data: [...thisMasked], borderColor: styleMap["Vol this"].color, backgroundColor: "rgba(255,215,0,0.18)", tension: 0.25, pointRadius: thisPointRadius, pointHoverRadius: thisHoverRadius, pointBorderColor: thisPointColors, pointBackgroundColor: thisPointColors, borderWidth: styleMap["Vol this"].width, spanGaps: true, yAxisID: "yVol", fill: "origin" },
             { label: "Efficiency (this)", data: [...thisEffMasked], borderColor: styleMap["Efficiency (this)"].color, backgroundColor: "transparent", borderDash: [4, 3], tension: 0.25, pointRadius: 2, pointHoverRadius: 5, pointHitRadius: 12, borderWidth: styleMap["Efficiency (this)"].width, spanGaps: true, yAxisID: "yEff", fill: false }
           );
           overlay._chart = new Chart(ctx, {
@@ -4434,8 +4440,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
               } },
               scales: {
                 x: { display: true, grid: { display: false } },
-                yVolThis: { type: "linear", display: false, suggestedMin: volThisRange.min, suggestedMax: volThisRange.max },
-                yVolLast: { type: "linear", display: false, suggestedMin: volLastRange.min, suggestedMax: volLastRange.max },
+                yVol: { type: "linear", display: false, suggestedMin: combinedVolumeRange.min, suggestedMax: combinedVolumeRange.max },
                 yEff: { type: "linear", display: false, suggestedMin: effRange.min, suggestedMax: effRange.max }
               }
             }
@@ -5161,7 +5166,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         };
         el.style.display = "block";
         const pills = [pill("Office", dOff), pill("Route", dRte), pill("Total", dTot)].join(" ");
-        el.innerHTML = `<small>Heaviness (today)</small><div class="pill-row">${pills}</div>`;
+        el.innerHTML = `<small title="Compared to your same-weekday average, not yesterday.">Heaviness (today)</small><div class="pill-row">${pills}</div><div class="muted" style="margin-top:4px;font-size:12px">vs same-weekday average</div>`;
       } catch (_err) {
       }
     }
@@ -8393,9 +8398,9 @@ Entries are filtered by this id.`);
       const isDismissedRoute = !!(iso && dismissedSet.has(iso));
       const canTagRoute = !!(iso && todayRow && routeModel && Number.isFinite(routeAdjustedMinutes(todayRow)) && !isDismissedRoute);
       routeHitMissTile.style.cursor = canTagRoute ? "pointer" : "";
-      routeHitMissTile.title = canTagRoute ? "Click for Tag & dismiss, Open Diagnostics, or Read full notes" : isDismissedRoute ? "Already tagged/dismissed. Reinstate from Manage dismissed to tag again." : "No route-model result available yet";
+      routeHitMissTile.title = canTagRoute ? "Click for Tag route residual, Open Diagnostics, or Read full notes" : isDismissedRoute ? "Already tagged/dismissed. Reinstate from Manage dismissed to tag this route residual again." : "No route-model result available yet";
       if (routeHitMissMeta && canTagRoute) {
-        routeHitMissMeta.innerHTML += ` <span class="muted">\xB7 Click to tag</span>`;
+        routeHitMissMeta.innerHTML += ` <span class="muted">\xB7 Click to tag route residual</span>`;
       }
       routeHitMissTile.onclick = async (event) => {
         var _a6;
@@ -8406,7 +8411,7 @@ Entries are filtered by this id.`);
           `Route model result for ${iso}
 
 Choose action:
-1 = Tag & dismiss
+1 = Tag route residual
 2 = Open Diagnostics
 3 = Read full`,
           "1"
@@ -8473,8 +8478,18 @@ Choose action:
       return (idx + 1) / s.length;
     };
     const volScore10 = vols.length ? Math.round(rank(vols, v) * 10) : null;
+    const badgeVolumeToday = document.getElementById("badgeVolumeToday");
     if (volScore10 == null) badgeVolume.textContent = "\u2014";
     else badgeVolume.textContent = `${volScore10}/10`;
+    if (badgeVolumeToday) {
+      if (Number.isFinite(v) && v > 0) {
+        badgeVolumeToday.style.display = "inline";
+        badgeVolumeToday.textContent = `vol today: ${v.toFixed(1)}`;
+      } else {
+        badgeVolumeToday.style.display = "none";
+        badgeVolumeToday.textContent = "\u2014";
+      }
+    }
     try {
       if (vols.length) {
         const s = [...vols].sort((a, b) => a - b);

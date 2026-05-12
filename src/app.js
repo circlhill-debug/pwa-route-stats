@@ -2920,17 +2920,17 @@ function getHourlyRateFromEval(){
       const canTagRoute = !!(iso && todayRow && routeModel && Number.isFinite(routeAdjustedMinutes(todayRow)) && !isDismissedRoute);
       routeHitMissTile.style.cursor = canTagRoute ? 'pointer' : '';
       routeHitMissTile.title = canTagRoute
-        ? 'Click for Tag & dismiss, Open Diagnostics, or Read full notes'
-        : (isDismissedRoute ? 'Already tagged/dismissed. Reinstate from Manage dismissed to tag again.' : 'No route-model result available yet');
+        ? 'Click for Tag route residual, Open Diagnostics, or Read full notes'
+        : (isDismissedRoute ? 'Already tagged/dismissed. Reinstate from Manage dismissed to tag this route residual again.' : 'No route-model result available yet');
       if (routeHitMissMeta && canTagRoute) {
-        routeHitMissMeta.innerHTML += ` <span class="muted">· Click to tag</span>`;
+        routeHitMissMeta.innerHTML += ` <span class="muted">· Click to tag route residual</span>`;
       }
       routeHitMissTile.onclick = async (event) => {
         if (!canTagRoute || !iso) return;
         if (event.target.closest('button,a,input,select,textarea')) return;
         const noteText = (todayRow?.notes || '').trim();
         const choice = window.prompt(
-          `Route model result for ${iso}\n\nChoose action:\n1 = Tag & dismiss\n2 = Open Diagnostics\n3 = Read full`,
+          `Route model result for ${iso}\n\nChoose action:\n1 = Tag route residual\n2 = Open Diagnostics\n3 = Read full`,
           '1'
         );
         if (!choice) return;
@@ -2988,7 +2988,17 @@ function getHourlyRateFromEval(){
       return (idx + 1) / s.length;
     };
     const volScore10 = vols.length? Math.round(rank(vols,v)*10) : null;
+    const badgeVolumeToday = document.getElementById('badgeVolumeToday');
     if (volScore10==null) badgeVolume.textContent = '—'; else badgeVolume.textContent = `${volScore10}/10`;
+    if (badgeVolumeToday){
+      if (Number.isFinite(v) && v > 0){
+        badgeVolumeToday.style.display = 'inline';
+        badgeVolumeToday.textContent = `vol today: ${v.toFixed(1)}`;
+      } else {
+        badgeVolumeToday.style.display = 'none';
+        badgeVolumeToday.textContent = '—';
+      }
+    }
     try{
     if (vols.length){
         const s=[...vols].sort((a,b)=>a-b); const min=s[0], max=s[s.length-1];

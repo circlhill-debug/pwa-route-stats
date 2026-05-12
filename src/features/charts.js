@@ -774,7 +774,7 @@ export function createCharts({
             }
           });
           const routeColor = (goodColor || '#7CE38B').trim() || '#7CE38B';
-          const prefix = `<span style="color:${routeColor};font-weight:600">Outliers</span>`;
+          const prefix = `<span style="color:${routeColor};font-weight:600">Weekday anomalies</span>`;
           culprits.innerHTML = out.length ? `${prefix}: ${out.join(' • ')}` : `${prefix}: —`;
         }
       }catch(_){ }
@@ -960,8 +960,14 @@ export function createCharts({
         const thisMasked = thisBy.map((v,i)=> i<=dayIdxToday? v : null);
         const lastMasked = lastBy.map((v,i)=> i<=dayIdxToday? v : null);
         const thisEffMasked = thisEff.map((v,i)=> i<=dayIdxToday? v : null);
-        const volThisRange = computeRange(thisMasked, 5);
-        const volLastRange = computeRange(lastMasked.length ? lastMasked : lastBy, 5);
+        const safeBandMin = hasBand && Array.isArray(bandMinData) ? bandMinData : [];
+        const safeBandMax = hasBand && Array.isArray(bandMaxData) ? bandMaxData : [];
+        const combinedVolumeRange = computeRange([
+          ...thisMasked,
+          ...(lastMasked.length ? lastMasked : lastBy),
+          ...safeBandMin.filter(Number.isFinite),
+          ...safeBandMax.filter(Number.isFinite)
+        ], 5);
         const effRange = computeRange(thisEffMasked, 1);
         const thisPointColors = days.map((_, idx) => {
           const iso = startThis.plus({ days: idx }).toISODate();
@@ -1001,7 +1007,7 @@ export function createCharts({
             pointRadius:0,
             spanGaps:true,
             fill:false,
-            yAxisID:'yVolThis'
+            yAxisID:'yVol'
           });
           datasets.push({
             label:'Vol expect max',
@@ -1012,12 +1018,12 @@ export function createCharts({
             borderWidth:0,
             spanGaps:true,
             fill:{ target:'-1', above:'rgba(255,140,0,0.22)', below:'rgba(255,140,0,0.22)' },
-            yAxisID:'yVolThis'
+            yAxisID:'yVol'
           });
         }
         datasets.push(
-          { label:'Vol last', data:[...lastBy], borderColor:styleMap['Vol last'].color, backgroundColor:'rgba(43,127,255,0.12)', tension:0.25, pointRadius:lastPointRadius, pointHoverRadius:lastHoverRadius, pointBorderColor:lastPointColors, pointBackgroundColor:lastPointColors, borderWidth:styleMap['Vol last'].width, spanGaps:true, yAxisID:'yVolLast', fill:'origin' },
-          { label:'Vol this', data:[...thisMasked], borderColor:styleMap['Vol this'].color,  backgroundColor:'rgba(255,215,0,0.18)', tension:0.25, pointRadius:thisPointRadius, pointHoverRadius:thisHoverRadius, pointBorderColor:thisPointColors, pointBackgroundColor:thisPointColors, borderWidth:styleMap['Vol this'].width, spanGaps:true, yAxisID:'yVolThis', fill:'origin' },
+          { label:'Vol last', data:[...lastBy], borderColor:styleMap['Vol last'].color, backgroundColor:'rgba(43,127,255,0.12)', tension:0.25, pointRadius:lastPointRadius, pointHoverRadius:lastHoverRadius, pointBorderColor:lastPointColors, pointBackgroundColor:lastPointColors, borderWidth:styleMap['Vol last'].width, spanGaps:true, yAxisID:'yVol', fill:'origin' },
+          { label:'Vol this', data:[...thisMasked], borderColor:styleMap['Vol this'].color,  backgroundColor:'rgba(255,215,0,0.18)', tension:0.25, pointRadius:thisPointRadius, pointHoverRadius:thisHoverRadius, pointBorderColor:thisPointColors, pointBackgroundColor:thisPointColors, borderWidth:styleMap['Vol this'].width, spanGaps:true, yAxisID:'yVol', fill:'origin' },
           { label:'Efficiency (this)', data:[...thisEffMasked], borderColor:styleMap['Efficiency (this)'].color, backgroundColor:'transparent', borderDash:[4,3], tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:styleMap['Efficiency (this)'].width, spanGaps:true, yAxisID:'yEff', fill:false }
         );
         overlay._chart = new Chart(ctx, {
@@ -1081,8 +1087,7 @@ export function createCharts({
             }},
             scales:{
               x:{ display:true, grid:{ display:false } },
-              yVolThis:{ type:'linear', display:false, suggestedMin: volThisRange.min, suggestedMax: volThisRange.max },
-              yVolLast:{ type:'linear', display:false, suggestedMin: volLastRange.min, suggestedMax: volLastRange.max },
+              yVol:{ type:'linear', display:false, suggestedMin: combinedVolumeRange.min, suggestedMax: combinedVolumeRange.max },
               yEff:{ type:'linear', display:false, suggestedMin: effRange.min, suggestedMax: effRange.max }
             }
           }

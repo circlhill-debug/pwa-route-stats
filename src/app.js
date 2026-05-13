@@ -2980,7 +2980,7 @@ function getHourlyRateFromEval(){
     const letterW = CURRENT_LETTER_WEIGHT || 0.33;
     const volMetric = (r)=> combinedVolume(r.parcels||0, r.letters||0, letterW);
     const vols = workRows.map(volMetric);
-    const v = vols.length? volMetric(workRows[0]||{}):0;
+    const v = todayRow ? volMetric(todayRow) : null;
     const rank = (arr,x)=>{
       const s=[...arr].sort((a,b)=>a-b);
       let idx = s.findIndex(n=> x <= n);
@@ -3000,7 +3000,7 @@ function getHourlyRateFromEval(){
       }
     }
     try{
-    if (vols.length){
+    if (vols.length && Number.isFinite(v) && v > 0){
         const s=[...vols].sort((a,b)=>a-b); const min=s[0], max=s[s.length-1];
         const mid = Math.floor(s.length/2); const med = s.length%2? s[mid] : (s[mid-1]+s[mid])/2;
         const pct = Math.round(rank(vols,v)*100);
@@ -3009,6 +3009,11 @@ function getHourlyRateFromEval(){
         try{ const tile = badgeVolume.closest('.stat'); if (tile) tile.title = volTip; }catch(_){ }
         const hv = document.getElementById('helpVolume');
         if (hv) hv.textContent = `Rank (all-time): ${volScore10}/10 (~${pct}th percentile). Today ${v.toFixed(1)}; min ${min.toFixed(1)}, median ${med.toFixed(1)}, max ${max.toFixed(1)}.`;
+      } else {
+        badgeVolume.title = 'No current-day volume logged yet';
+        try{ const tile = badgeVolume.closest('.stat'); if (tile) tile.title = 'No current-day volume logged yet'; }catch(_){ }
+        const hv = document.getElementById('helpVolume');
+        if (hv) hv.textContent = 'No current-day volume logged yet.';
       }
     }catch(_){ }
     const rhs = workRows

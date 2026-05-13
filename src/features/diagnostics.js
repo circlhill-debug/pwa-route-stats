@@ -29,6 +29,7 @@ export function createDiagnostics({
 }) {
   const ACTIVE_RESIDUAL_WINDOW_DAYS = 14;
   const ACTIVE_RESIDUAL_LIMIT = 10;
+  const ACTIVE_RESIDUAL_MINUTES = 15;
 
   if (typeof getFlags !== 'function') throw new Error('createDiagnostics: getFlags is required');
   if (typeof filterRowsForView !== 'function') throw new Error('createDiagnostics: filterRowsForView is required');
@@ -579,7 +580,7 @@ export function createDiagnostics({
       const recentResiduals = visibleResiduals.filter(r => {
         try {
           const dt = DateTime.fromISO(r.iso, { zone: ZONE }).startOf('day');
-          return dt >= cutoff;
+          return dt >= cutoff && Math.abs(Number(r.residMin) || 0) > ACTIVE_RESIDUAL_MINUTES;
         } catch (_) {
           return false;
         }
@@ -624,6 +625,7 @@ export function createDiagnostics({
         queue: {
           kind: 'recent_unresolved',
           windowDays: ACTIVE_RESIDUAL_WINDOW_DAYS,
+          minResidualMinutes: ACTIVE_RESIDUAL_MINUTES,
           visible: top.length,
           totalRecent: recentResiduals.length
         },
@@ -705,7 +707,7 @@ export function createDiagnostics({
     persistDismissedResidualWithTags({ iso, tags });
     window.renderTomorrowForecast?.();
     notifyDismissedChange();
-    buildDiagnostics(rows);
+    rebuildAll();
     return true;
   }
 

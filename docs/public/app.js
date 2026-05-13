@@ -1962,6 +1962,7 @@
   }) {
     const ACTIVE_RESIDUAL_WINDOW_DAYS = 14;
     const ACTIVE_RESIDUAL_LIMIT = 10;
+    const ACTIVE_RESIDUAL_MINUTES = 15;
     if (typeof getFlags !== "function") throw new Error("createDiagnostics: getFlags is required");
     if (typeof filterRowsForView2 !== "function") throw new Error("createDiagnostics: filterRowsForView is required");
     if (typeof rowsForModelScope2 !== "function") throw new Error("createDiagnostics: rowsForModelScope is required");
@@ -2454,7 +2455,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const recentResiduals = visibleResiduals.filter((r) => {
           try {
             const dt = DateTime.fromISO(r.iso, { zone: ZONE }).startOf("day");
-            return dt >= cutoff;
+            return dt >= cutoff && Math.abs(Number(r.residMin) || 0) > ACTIVE_RESIDUAL_MINUTES;
           } catch (_) {
             return false;
           }
@@ -2497,6 +2498,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           queue: {
             kind: "recent_unresolved",
             windowDays: ACTIVE_RESIDUAL_WINDOW_DAYS,
+            minResidualMinutes: ACTIVE_RESIDUAL_MINUTES,
             visible: top.length,
             totalRecent: recentResiduals.length
           },
@@ -2573,7 +2575,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       persistDismissedResidualWithTags({ iso, tags });
       (_a5 = window.renderTomorrowForecast) == null ? void 0 : _a5.call(window);
       notifyDismissedChange();
-      buildDiagnostics2(rows);
+      rebuildAll2();
       return true;
     }
     function showTagDismissDialog({ title, hint, defaults }) {
@@ -8470,7 +8472,7 @@ Choose action:
     const letterW = CURRENT_LETTER_WEIGHT || 0.33;
     const volMetric = (r) => combinedVolume(r.parcels || 0, r.letters || 0, letterW);
     const vols = workRows.map(volMetric);
-    const v = vols.length ? volMetric(workRows[0] || {}) : 0;
+    const v = todayRow ? volMetric(todayRow) : null;
     const rank = (arr, x) => {
       const s = [...arr].sort((a, b) => a - b);
       let idx = s.findIndex((n) => x <= n);
@@ -8491,7 +8493,7 @@ Choose action:
       }
     }
     try {
-      if (vols.length) {
+      if (vols.length && Number.isFinite(v) && v > 0) {
         const s = [...vols].sort((a, b) => a - b);
         const min = s[0], max = s[s.length - 1];
         const mid = Math.floor(s.length / 2);
@@ -8508,6 +8510,15 @@ Range: min ${min.toFixed(1)} \u2022 median ${med.toFixed(1)} \u2022 max ${max.to
         }
         const hv = document.getElementById("helpVolume");
         if (hv) hv.textContent = `Rank (all-time): ${volScore10}/10 (~${pct2}th percentile). Today ${v.toFixed(1)}; min ${min.toFixed(1)}, median ${med.toFixed(1)}, max ${max.toFixed(1)}.`;
+      } else {
+        badgeVolume.title = "No current-day volume logged yet";
+        try {
+          const tile = badgeVolume.closest(".stat");
+          if (tile) tile.title = "No current-day volume logged yet";
+        } catch (_) {
+        }
+        const hv = document.getElementById("helpVolume");
+        if (hv) hv.textContent = "No current-day volume logged yet.";
       }
     } catch (_) {
     }

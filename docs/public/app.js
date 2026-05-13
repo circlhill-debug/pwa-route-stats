@@ -8376,13 +8376,20 @@ Entries are filtered by this id.`);
     if (routeExpectedEl && routeExpectedMeta && routeHitMissEl && routeHitMissMeta) {
       const model = getResidualModel(workRows);
       const hasModel = !!(model && Number.isFinite(model.a) && Number.isFinite(model.bp) && Number.isFinite(model.bl));
-      const predictedRouteHours = (_e = (_d = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _d.routeHours) != null ? _e : null;
+      const routeResidualEntry = hasModel && (prediction == null ? void 0 : prediction.iso) ? (model.residuals || []).find((r) => (r == null ? void 0 : r.iso) === prediction.iso) || null : null;
+      const routeModelPredictedMinutes = routeResidualEntry ? Math.round(routeResidualEntry.predMin) : hasModel && todayRow ? (() => {
+        const parcels2 = +todayRow.parcels || 0;
+        const letters2 = +todayRow.letters || 0;
+        if (parcels2 <= 0 && letters2 <= 0) return null;
+        return Math.round(model.a + model.bp * parcels2 + model.bl * letters2);
+      })() : null;
+      const predictedRouteHours = Number.isFinite(routeModelPredictedMinutes) ? routeModelPredictedMinutes / 60 : (_e = (_d = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _d.routeHours) != null ? _e : null;
       const predictedRouteMin = Number.isFinite(predictedRouteHours) ? Math.round(predictedRouteHours * 60) : null;
-      const actualRouteMin = todayRow ? routeAdjustedMinutes(todayRow) : null;
+      const actualRouteMin = routeResidualEntry ? Math.round(routeResidualEntry.routeMin) : todayRow ? routeAdjustedMinutes(todayRow) : null;
       const routeResidualMin = Number.isFinite(predictedRouteMin) && Number.isFinite(actualRouteMin) ? Math.round(actualRouteMin - predictedRouteMin) : null;
       const routeHitMiss = routeResidualMin == null ? null : Math.abs(routeResidualMin) <= 15 ? "Hit" : "Miss";
       routeExpectedEl.textContent = Number.isFinite(predictedRouteMin) ? `${(predictedRouteMin / 60).toFixed(2)}h` : "\u2014";
-      routeExpectedMeta.textContent = hasModel && Number.isFinite(predictedRouteMin) ? `Route model \xB7 R\xB2 ${(Math.max(0, Math.min(1, model.r2 || 0)) * 100).toFixed(0)}%` : "Route model pending";
+      routeExpectedMeta.textContent = hasModel && Number.isFinite(routeModelPredictedMinutes) ? `Route model \xB7 R\xB2 ${(Math.max(0, Math.min(1, model.r2 || 0)) * 100).toFixed(0)}%` : Number.isFinite(predictedRouteMin) ? "Weekday avg fallback" : "Route model pending";
       if (!Number.isFinite(actualRouteMin) || routeResidualMin == null) {
         routeHitMissEl.textContent = "\u2014";
         routeHitMissMeta.textContent = "No route result logged";

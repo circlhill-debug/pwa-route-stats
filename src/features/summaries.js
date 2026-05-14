@@ -8,7 +8,10 @@ export function createSummariesFeature({
   routeAdjustedHours,
   computeLetterWeight,
   getCurrentLetterWeight,
-  colorForDelta
+  colorForDelta,
+  buildPredictionRecord,
+  getResidualModel,
+  combinedVolume
 }) {
   if (typeof getFlags !== 'function') throw new Error('createSummariesFeature: getFlags is required');
   if (typeof filterRowsForView !== 'function') throw new Error('createSummariesFeature: filterRowsForView is required');
@@ -16,6 +19,9 @@ export function createSummariesFeature({
   if (typeof computeLetterWeight !== 'function') throw new Error('createSummariesFeature: computeLetterWeight is required');
   if (typeof getCurrentLetterWeight !== 'function') throw new Error('createSummariesFeature: getCurrentLetterWeight is required');
   if (typeof colorForDelta !== 'function') throw new Error('createSummariesFeature: colorForDelta is required');
+  if (typeof buildPredictionRecord !== 'function') throw new Error('createSummariesFeature: buildPredictionRecord is required');
+  if (typeof getResidualModel !== 'function') throw new Error('createSummariesFeature: getResidualModel is required');
+  if (typeof combinedVolume !== 'function') throw new Error('createSummariesFeature: combinedVolume is required');
 
   function getLetterWeightForSummary(rows) {
     try {
@@ -29,6 +35,103 @@ export function createSummariesFeature({
       /* fall back */
     }
     return getCurrentLetterWeight();
+  }
+
+  function buildInsightStrip(rows) {
+    const card = document.getElementById('insightStripCard');
+    const el = document.getElementById('insightStrip');
+    if (!card || !el) return;
+
+    try {
+      const flags = getFlags();
+      if (!flags?.insightStrip) {
+        card.style.display = 'none';
+        return;
+      }
+
+      const scoped = filterRowsForView(rows || []);
+      const worked = scoped.filter(r => r && r.status !== 'off');
+      const now = DateTime.now().setZone(ZONE);
+      const prediction = buildPredictionRecord(worked, { now });
+      const todayRow = prediction?.row || null;
+      const todayIso = prediction?.iso || now.toISODate();
+      const model = getResidualModel(worked);
+      const hasModel = !!(model && Number.isFinite(model.a) && Number.isFinite(model.bp) && Number.isFinite(model.bl));
+      const residualEntry = hasModel ? (model.residuals || []).find(r => r?.iso === todayIso) || null : null;
+      const letterW = getLetterWeightForSummary(scoped);
+
+      const vols = worked.map(r => combinedVolume(+r.parcels || 0, +r.letters || 0, letterW)).filter(v => Number.isFinite(v) && v > 0);
+      const todayVolume = todayRow ? combinedVolume(+todayRow.parcels || 0, +todayRow.letters || 0, letterW) : null;
+      const volumePercentile = (() => {
+        if (!(vols.length && Number.isFinite(todayVolume) && todayVolume > 0)) return null;
+        const sorted = [...vols].sort((a, b) => a - b);
+        let idx = sorted.findIndex(n => todayVolume <= n);
+        if (idx < 0) idx = sorted.length - 1;
+        return Math.round(((idx + 1) / sorted.length) * 100);
+      })();
+      const volumeScore = volumePercentile == null ? null : Math.max(1, Math.min(10, Math.round((volumePercentile / 100) * 10)));
+
+      const workdayCard = {
+        kicker: 'Workday forecast',
+        headline: prediction?.predicted?.endTime || 'Pending',
+        support: prediction?.predicted?.totalHours != null
+          ? `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.weekday % 7]} avg ${prediction.predicted.totalHours.toFixed(2)}h`
+          : 'Need more history',
+        cue: prediction?.predicted?.totalHours != null
+          ? `<div style="height:6px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${Math.max(10, Math.min(100, Math.round((prediction.predicted.totalHours / 10) * 100)))}%;background:linear-gradient(90deg,var(--brand),var(--good))"></div></div>`
+          : `<div class="muted" style="font-size:12px">Expected end uses the workday estimate layer.</div>`
+      };
+
+      const routePredHours = residualEntry
+        ? (residualEntry.predMin / 60)
+        : (todayRow && hasModel && ((+todayRow.parcels || 0) + (+todayRow.letters || 0) > 0)
+            ? ((model.a + model.bp * (+todayRow.parcels || 0) + model.bl * (+todayRow.letters || 0)) / 60)
+            : null);
+      const routeR2 = hasModel ? Math.round(Math.max(0, Math.min(1, model.r2 || 0)) * 100) : null;
+      const routeCard = {
+        kicker: 'Route model',
+        headline: Number.isFinite(routePredHours) ? `${routePredHours.toFixed(2)}h` : 'Pending',
+        support: Number.isFinite(routeR2)
+          ? `Expected Route Time · R² ${routeR2}%`
+          : 'Expected Route Time pending',
+        cue: Number.isFinite(routeR2)
+          ? `<div style="display:flex;align-items:center;gap:8px"><span class="muted" style="font-size:12px">confidence</span><div style="flex:1;height:6px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${Math.max(0, Math.min(100, routeR2))}%;background:linear-gradient(90deg,var(--warn),var(--good))"></div></div></div>`
+          : `<div class="muted" style="font-size:12px">Add parcels and letters to activate the route model card.</div>`
+      };
+
+      let volumeHeadline = 'Pending';
+      let volumeSupport = 'No current-day volume logged yet';
+      let volumeCue = `<div class="muted" style="font-size:12px">Volume Driver activates after today’s entry exists.</div>`;
+      if (Number.isFinite(todayVolume) && todayVolume > 0) {
+        const { fg } = colorForDelta((volumePercentile || 50) - 50);
+        volumeHeadline = `${todayVolume.toFixed(1)} vol`;
+        volumeSupport = volumeScore != null
+          ? `${volumeScore}/10 · ${volumePercentile}th percentile`
+          : 'Today volume';
+        volumeCue = `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:${fg};font-weight:700">${volumeScore != null ? `${volumeScore}/10` : '—'}</span><div style="flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${Math.max(0, Math.min(100, volumePercentile || 0))}%;background:linear-gradient(90deg,var(--good),var(--brand))"></div></div></div>`;
+      }
+      const volumeCard = {
+        kicker: 'Volume level',
+        headline: volumeHeadline,
+        support: volumeSupport,
+        cue: volumeCue
+      };
+
+      const cards = [workdayCard, routeCard, volumeCard];
+      el.innerHTML = cards.map(cardDef => `
+        <div class="stat" style="min-height:132px;justify-content:space-between">
+          <div>
+            <small>${cardDef.kicker}</small>
+            <div class="statValue statValue--lg" style="margin-top:4px">${cardDef.headline}</div>
+            <small class="muted" style="display:block;margin-top:6px">${cardDef.support}</small>
+          </div>
+          <div style="margin-top:12px">${cardDef.cue}</div>
+        </div>
+      `).join('');
+      card.style.display = 'block';
+    } catch (_err) {
+      card.style.display = 'none';
+    }
   }
 
   function buildSmartSummary(rows) {
@@ -349,6 +452,7 @@ export function createSummariesFeature({
   }
   return {
     getLetterWeightForSummary,
+    buildInsightStrip,
     buildSmartSummary,
     buildTrendingFactors,
     buildHeavinessToday,

@@ -27,6 +27,7 @@ const DEFAULT_FLAGS = {
   quickFilter:true,
   headlineDigest:false,
   smartSummary:true,
+  insightStrip:false,
   mixViz:true,
   baselineCompare:true,
   quickEntry:false,

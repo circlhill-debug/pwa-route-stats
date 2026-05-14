@@ -1402,6 +1402,7 @@ const authReadyPromise = handleAuthCallback(sb);
   const flagSameRangeTotals = document.getElementById('flagSameRangeTotals');
   const flagHeadlineDigest = document.getElementById('flagHeadlineDigest');
   const flagMixViz = document.getElementById('flagMixViz');
+  const flagInsightStrip = document.getElementById('flagInsightStrip');
   const flagBaselineCompare = document.getElementById('flagBaselineCompare');
   const flagQuickEntry = document.getElementById('flagQuickEntry');
   const flagSmartSummary = document.getElementById('flagSmartSummary');
@@ -1552,6 +1553,7 @@ aiSummary = createAiSummary({
     if (flagSameRangeTotals) flagSameRangeTotals.checked = !!FLAGS.sameRangeTotals;
     if (flagHeadlineDigest) flagHeadlineDigest.checked = !!FLAGS.headlineDigest;
     if (flagMixViz) flagMixViz.checked = !!FLAGS.mixViz;
+    if (flagInsightStrip) flagInsightStrip.checked = !!FLAGS.insightStrip;
     if (flagBaselineCompare) flagBaselineCompare.checked = !!FLAGS.baselineCompare;
     if (flagQuickEntry) flagQuickEntry.checked = !!FLAGS.quickEntry;
     if (flagSmartSummary) flagSmartSummary.checked = !!FLAGS.smartSummary;
@@ -1665,6 +1667,7 @@ aiSummary = createAiSummary({
     if (flagSameRangeTotals) FLAGS.sameRangeTotals = !!flagSameRangeTotals.checked;
     if (flagHeadlineDigest) FLAGS.headlineDigest = !!flagHeadlineDigest.checked;
     if (flagMixViz) FLAGS.mixViz = !!flagMixViz.checked;
+    if (flagInsightStrip) FLAGS.insightStrip = !!flagInsightStrip.checked;
     if (flagBaselineCompare) FLAGS.baselineCompare = !!flagBaselineCompare.checked;
     if (flagQuickEntry) FLAGS.quickEntry = !!flagQuickEntry.checked;
     if (flagSmartSummary) FLAGS.smartSummary = !!flagSmartSummary.checked;
@@ -2128,6 +2131,7 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
 
   const {
     getLetterWeightForSummary,
+    buildInsightStrip,
     buildSmartSummary,
     buildTrendingFactors,
     buildHeavinessToday,
@@ -2139,7 +2143,10 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
     routeAdjustedHours,
     computeLetterWeight,
     getCurrentLetterWeight: () => CURRENT_LETTER_WEIGHT,
-    colorForDelta
+    colorForDelta,
+    buildPredictionRecord,
+    getResidualModel,
+    combinedVolume
   });
 
   // === Diagnostics model & outliers ===
@@ -2532,6 +2539,7 @@ function getHourlyRateFromEval(){
     renderTable(applySearch(rawRows));
     buildCharts(rawRows);
     buildSnapshot(rawRows);
+    buildInsightStrip(rawRows);
     buildMonthlyGlance(rawRows);
     buildQuickFilter(rawRows);
     buildMixViz(rawRows);

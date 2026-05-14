@@ -295,3 +295,12 @@ Recent workflow updates
   - max 10 visible
 - Tagged/dismissed route outliers no longer keep prompting `Click to tag`
 - Re-tagging now correctly requires reinstating through `Manage dismissed`
+
+Insight layer direction
+- Phase 1 uses a top-of-app insight strip behind a settings flag
+- The first three cards are stable anchor cards:
+  - `Workday forecast`
+  - `Route model`
+  - `Volume level`
+- Later cards may rotate based on significance, but the anchor cards should remain stable
+- If the strip proves useful, it may gradually replace some of the noisier small tiles so the cards become the primary narrative display layer and the raw metrics move further under the hood

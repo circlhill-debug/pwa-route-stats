@@ -1034,6 +1034,15 @@
 </header>
 
 <main class="wrap grid grid-2">
+  <section class="card fullWidth" id="insightStripCard" style="display:none">
+    <div class="row" style="justify-content:space-between;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <div>
+        <h3 style="margin:0">Today Insights</h3>
+        <small class="muted">A quick narrative layer built from the current dashboard metrics.</small>
+      </div>
+    </div>
+    <div id="insightStrip" class="snapshot-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px"></div>
+  </section>
   <!-- SNAPSHOT -->
   <section class="card fullWidth" id="snapshotCard">
     <div class="snapshot-sections">
@@ -1860,6 +1869,7 @@
     <label class="pill"><input id="flagSameRangeTotals" type="checkbox"> Compare weekly totals: Mon..today vs last Mon..today</label>
     <label class="pill"><input id="flagHeadlineDigest" type="checkbox"> Show headline digest (Wed evenings)</label>
     <label class="pill"><input id="flagSmartSummary" type="checkbox"> Smart summary (rule-based)</label>
+    <label class="pill"><input id="flagInsightStrip" type="checkbox"> Top insight strip (preview)</label>
     
     <label class="pill"><input id="flagBaselineCompare" type="checkbox"> Use baseline-normalized compare (2-week weekday avg)</label>
     <label class="pill"><input id="flagQuickEntry" type="checkbox"> Quick Entry (experimental)</label>

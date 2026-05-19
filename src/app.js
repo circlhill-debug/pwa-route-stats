@@ -2146,7 +2146,8 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
     colorForDelta,
     buildPredictionRecord,
     getResidualModel,
-    combinedVolume
+    combinedVolume,
+    loadDismissedResiduals: () => loadDismissedResiduals(parseDismissReasonInput)
   });
 
   // === Diagnostics model & outliers ===

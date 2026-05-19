@@ -11,7 +11,8 @@ export function createSummariesFeature({
   colorForDelta,
   buildPredictionRecord,
   getResidualModel,
-  combinedVolume
+  combinedVolume,
+  loadDismissedResiduals
 }) {
   if (typeof getFlags !== 'function') throw new Error('createSummariesFeature: getFlags is required');
   if (typeof filterRowsForView !== 'function') throw new Error('createSummariesFeature: filterRowsForView is required');
@@ -22,6 +23,7 @@ export function createSummariesFeature({
   if (typeof buildPredictionRecord !== 'function') throw new Error('createSummariesFeature: buildPredictionRecord is required');
   if (typeof getResidualModel !== 'function') throw new Error('createSummariesFeature: getResidualModel is required');
   if (typeof combinedVolume !== 'function') throw new Error('createSummariesFeature: combinedVolume is required');
+  if (typeof loadDismissedResiduals !== 'function') throw new Error('createSummariesFeature: loadDismissedResiduals is required');
 
   function getLetterWeightForSummary(rows) {
     try {
@@ -117,7 +119,74 @@ export function createSummariesFeature({
         cue: volumeCue
       };
 
-      const cards = [workdayCard, routeCard, volumeCard];
+      const dismissedSet = new Set((loadDismissedResiduals() || []).map(item => item?.iso).filter(Boolean));
+      const unresolvedResidual = residualEntry && !dismissedSet.has(todayIso) && Math.abs(Number(residualEntry.residMin) || 0) > 15
+        ? Math.round(residualEntry.residMin)
+        : null;
+
+      const sameDow = worked.filter(r => r.work_date !== todayIso && dowIndex(r.work_date) === (now.weekday % 7));
+      const average = (arr, fn) => {
+        const values = arr.map(fn).filter(val => Number.isFinite(val) && val > 0);
+        return values.length ? values.reduce((sum, val) => sum + val, 0) / values.length : null;
+      };
+      const officeTodayH = todayRow ? normalizeHoursValue(todayRow.office_minutes) : null;
+      const officeAvgH = average(sameDow, r => normalizeHoursValue(r.office_minutes));
+      const officeDeltaH = (officeTodayH != null && officeAvgH != null) ? officeTodayH - officeAvgH : null;
+      const officeDeltaPct = (officeDeltaH != null && officeAvgH && officeAvgH > 0)
+        ? Math.round((officeDeltaH / officeAvgH) * 100)
+        : null;
+      const officeElevated = officeDeltaH != null && officeDeltaPct != null && officeDeltaH >= 0.4 && officeDeltaPct >= 10;
+
+      const startThis = startOfWeekMonday(now);
+      const endThis = now.endOf('day');
+      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
+      const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf('day');
+      const inRange = (r, from, to) => {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        return d >= from && d <= to;
+      };
+      const thisWeek = worked.filter(r => inRange(r, startThis, endThis));
+      const lastWeek = worked.filter(r => inRange(r, startLast, lastEndSame));
+      const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
+      const totalThisWeek = sum(thisWeek, r => normalizeHoursValue(r.hours));
+      const totalLastWeek = sum(lastWeek, r => normalizeHoursValue(r.hours));
+      const weekDeltaPct = totalLastWeek > 0 ? Math.round(((totalThisWeek - totalLastWeek) / totalLastWeek) * 100) : null;
+      const weekHeavy = weekDeltaPct != null && Math.abs(weekDeltaPct) >= 10;
+
+      let rotatingCard;
+      if (unresolvedResidual != null) {
+        const isOver = unresolvedResidual > 0;
+        rotatingCard = {
+          kicker: 'Action needed',
+          headline: `${isOver ? '+' : ''}${unresolvedResidual}m`,
+          support: 'Route residual needs review',
+          cue: `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(${isOver ? '--bad' : '--good'});font-weight:700">${isOver ? 'Longer than predicted' : 'Faster than predicted'}</span><div style="flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${Math.max(15, Math.min(100, Math.abs(unresolvedResidual)))}%;background:linear-gradient(90deg,var(--warn),var(--bad))"></div></div></div>`
+        };
+      } else if (officeElevated) {
+        rotatingCard = {
+          kicker: 'Office time elevated',
+          headline: `+${officeDeltaH.toFixed(1)}h`,
+          support: `+${officeDeltaPct}% vs same weekday`,
+          cue: `<div style="display:flex;align-items:center;gap:8px"><span class="muted" style="font-size:12px">office</span><div style="flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${Math.max(15, Math.min(100, officeDeltaPct))}%;background:linear-gradient(90deg,var(--warn),var(--brand))"></div></div></div>`
+        };
+      } else if (weekHeavy) {
+        const weekIsHeavy = weekDeltaPct > 0;
+        rotatingCard = {
+          kicker: `Week running ${weekIsHeavy ? 'heavy' : 'light'}`,
+          headline: `${weekIsHeavy ? '+' : ''}${weekDeltaPct}%`,
+          support: 'vs last week same range',
+          cue: `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:${weekIsHeavy ? 'var(--warn)' : 'var(--good)'};font-weight:700">${weekIsHeavy ? 'Above recent pace' : 'Below recent pace'}</span><div style="flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${Math.max(15, Math.min(100, Math.abs(weekDeltaPct)))}%;background:linear-gradient(90deg,${weekIsHeavy ? 'var(--warn),var(--bad)' : 'var(--good),var(--brand)'})"></div></div></div>`
+        };
+      } else {
+        rotatingCard = {
+          kicker: 'Day status',
+          headline: 'Near normal',
+          support: 'No major exceptions detected',
+          cue: `<div class="muted" style="font-size:12px">Stable day. Forecast, route model, and weekly load are all within normal bounds.</div>`
+        };
+      }
+
+      const cards = [workdayCard, routeCard, volumeCard, rotatingCard];
       el.innerHTML = cards.map(cardDef => `
         <div class="stat" style="min-height:132px;justify-content:space-between">
           <div>

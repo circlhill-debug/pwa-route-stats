@@ -80,9 +80,15 @@ export function setStored(key, value){
 
 // === ROUTE STATS EXTENSION: YEARLY TOTALS & BADGES ===
 export const YEARLY_THRESHOLDS = {
-  parcelTitan: { key: 'parcels', threshold: 20000, label: 'Parcel Pounder' },
+  parcelTitan: { key: 'parcels', threshold: 10000, label: 'Parcel Pounder' },
   letterLegend: { key: 'letters', threshold: 100000, label: 'Mercury Magic' },
   hourHero: { key: 'hours', threshold: 2000, label: 'Your Ass Must be a Dragon!' }
+};
+
+export const CUMULATIVE_THRESHOLDS = {
+  lifetimeParcelPounder: { key: 'parcels', threshold: 20000, label: 'Lifetime Parcel Pounder' },
+  lifetimeMercuryMagic: { key: 'letters', threshold: 200000, label: 'Lifetime Mercury Magic' },
+  lifetimeHourDragon: { key: 'hours', threshold: 5000, label: 'Lifetime Dragon Hours' }
 };
 
 export function updateYearlyTotals(dayData){

@@ -51,6 +51,7 @@ import {
   getStored,
   updateYearlyTotals,
   YEARLY_THRESHOLDS,
+  CUMULATIVE_THRESHOLDS,
   recomputeYearlyStats,
   mergeTokenUsage
 } from './utils/storage.js';
@@ -2753,22 +2754,76 @@ function getHourlyRateFromEval(){
       const year = new Date().getFullYear();
       const badges = getStored('routeStats.badges', []) || [];
       const totals = getStored('routeStats.yearlyTotals', {}) || {};
-      const thresholds = Object.entries(YEARLY_THRESHOLDS || {});
-      if (!thresholds.length){
+      const yearlyThresholds = Object.entries(YEARLY_THRESHOLDS || {});
+      const cumulativeThresholds = Object.entries(CUMULATIVE_THRESHOLDS || {});
+      if (!yearlyThresholds.length){
         container.innerHTML = '<p class="muted">Milestones coming soon.</p>';
         return;
       }
-      const markup = thresholds.map(([id, { label, key, threshold }])=>{
+      const workedRows = (allRows || []).filter(r => r && r.status !== 'off');
+      const yearRows = workedRows.filter(r => {
+        const iso = r.work_date || r.date;
+        return iso && new Date(iso).getFullYear() === year;
+      });
+      const sumMetric = (rows, key) => {
+        if (key === 'hours') return rows.reduce((t, r) => t + normalizeHoursValue(r.hours), 0);
+        return rows.reduce((t, r) => t + (Number(r?.[key]) || 0), 0);
+      };
+      const currentYearTotals = {
+        parcels: sumMetric(yearRows, 'parcels'),
+        letters: sumMetric(yearRows, 'letters'),
+        hours: sumMetric(yearRows, 'hours')
+      };
+      const lifetimeTotals = {
+        parcels: sumMetric(workedRows, 'parcels'),
+        letters: sumMetric(workedRows, 'letters'),
+        hours: sumMetric(workedRows, 'hours')
+      };
+      const currentWeight = CURRENT_LETTER_WEIGHT || 0.33;
+      const recordDefs = [
+        { id:'mostParcels', label:'Most parcels ever', type:'max', value:(r)=> Number(r?.parcels) || 0, format:(v)=> `${Math.round(v).toLocaleString()} parcels` },
+        { id:'leastParcels', label:'Least parcels ever', type:'min', value:(r)=> Number(r?.parcels) || 0, format:(v)=> `${Math.round(v).toLocaleString()} parcels` },
+        { id:'mostLetters', label:'Most letters ever', type:'max', value:(r)=> Number(r?.letters) || 0, format:(v)=> `${Math.round(v).toLocaleString()} letters` },
+        { id:'leastLetters', label:'Least letters ever', type:'min', value:(r)=> Number(r?.letters) || 0, format:(v)=> `${Math.round(v).toLocaleString()} letters` },
+        { id:'highestVolume', label:'Heaviest volume ever', type:'max', value:(r)=> combinedVolume(Number(r?.parcels)||0, Number(r?.letters)||0, currentWeight), format:(v)=> `${v.toFixed(1)} vol` },
+        { id:'lowestVolume', label:'Lightest volume ever', type:'min', value:(r)=> combinedVolume(Number(r?.parcels)||0, Number(r?.letters)||0, currentWeight), format:(v)=> `${v.toFixed(1)} vol` },
+        { id:'quickestRoute', label:'Quickest route time', type:'min', value:(r)=> routeAdjustedHours(r), valid:(v)=> Number.isFinite(v) && v > 0, format:(v)=> `${v.toFixed(2)}h` }
+      ];
+      const computeRecord = (def) => {
+        let best = null;
+        for (const row of workedRows){
+          const value = def.value(row);
+          const isValid = typeof def.valid === 'function' ? def.valid(value) : Number.isFinite(value);
+          if (!isValid) continue;
+          if (!best){
+            best = { row, value };
+            continue;
+          }
+          const beats = def.type === 'min' ? value < best.value : value > best.value;
+          if (beats) best = { row, value };
+        }
+        return best;
+      };
+      const records = recordDefs
+        .map(def => ({ def, best: computeRecord(def) }))
+        .filter(entry => entry.best);
+      const section = (title, body) => `
+        <div style="margin-top:12px">
+          <div style="font-weight:700;margin-bottom:8px">${title}</div>
+          <div class="badge-history-grid">${body}</div>
+        </div>
+      `;
+
+      const yearlyMarkup = yearlyThresholds.map(([id, { label, key, threshold }])=>{
         const unlocked = badges.find(b => b && b.id === id && b.year === year);
-        const progressRaw = totals?.[year]?.[key];
-        const progressVal = Number(progressRaw);
+        const progressVal = Number(currentYearTotals?.[key] || 0);
         const progress = Number.isFinite(progressVal) ? progressVal : 0;
         const status = unlocked ? 'unlocked' : 'locked';
         const metricTitle = key.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
-        const progressDisplay = Math.max(0, progress).toLocaleString();
+        const progressDisplay = key === 'hours' ? progress.toFixed(1) : Math.max(0, progress).toLocaleString();
         const infoBlock = unlocked
           ? `<div class="badge-info"><h4>${label}</h4><p>${unlocked.message}</p></div>`
-          : '';
+          : `<div class="badge-info"><h4>${label}</h4><p>${Math.max(0, threshold - progress).toLocaleString()} to go in ${year}</p></div>`;
         return `<div class="badge-card ${status}">
   <div class="badge-count">
     ${progressDisplay}
@@ -2777,7 +2832,40 @@ function getHourlyRateFromEval(){
   ${infoBlock}
 </div>`;
       }).join('');
-      container.innerHTML = markup || '<p class="muted">No milestones defined.</p>';
+
+      const cumulativeMarkup = cumulativeThresholds.map(([id, { label, key, threshold }])=>{
+        const progressVal = Number(lifetimeTotals?.[key] || 0);
+        const progress = Number.isFinite(progressVal) ? progressVal : 0;
+        const status = progress >= threshold ? 'unlocked' : 'locked';
+        const metricTitle = key.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+        const progressDisplay = key === 'hours' ? progress.toFixed(1) : Math.max(0, progress).toLocaleString();
+        const remaining = Math.max(0, threshold - progress);
+        const infoBlock = status === 'unlocked'
+          ? `<div class="badge-info"><h4>${label}</h4><p>Lifetime ${metricTitle.toLowerCase()} crossed ${threshold.toLocaleString()}.</p></div>`
+          : `<div class="badge-info"><h4>${label}</h4><p>${remaining.toLocaleString()} to go lifetime</p></div>`;
+        return `<div class="badge-card ${status}">
+  <div class="badge-count">
+    ${progressDisplay}
+    <small>${metricTitle}</small>
+  </div>
+  ${infoBlock}
+</div>`;
+      }).join('');
+
+      const recordsMarkup = records.map(({ def, best }) => {
+        const iso = best.row?.work_date || best.row?.date || '—';
+        return `<div class="badge-history-item achieved">
+  <span class="badge-history-value">${def.format(best.value)}</span>
+  <small>${def.label}</small>
+  <div class="badge-history-note">${iso}</div>
+</div>`;
+      }).join('');
+
+      container.innerHTML = [
+        section(`${year} milestones`, yearlyMarkup || '<p class="muted">No yearly milestones defined.</p>'),
+        section('Lifetime milestones (cumulative)', cumulativeMarkup || '<p class="muted">No lifetime milestones defined.</p>'),
+        section('All-time records', recordsMarkup || '<p class="muted">No records yet.</p>')
+      ].join('');
 
       const historyYears = Object.keys(totals)
         .map(y => Number(y))

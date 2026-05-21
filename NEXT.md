@@ -304,3 +304,8 @@ Insight layer direction
   - `Volume level`
 - Later cards may rotate based on significance, but the anchor cards should remain stable
 - If the strip proves useful, it may gradually replace some of the noisier small tiles so the cards become the primary narrative display layer and the raw metrics move further under the hood
+
+Milestone follow-ups
+- Keep milestone progression slightly mysterious: show progress to next unlock without over-explaining every future reward
+- Add a lifetime parcel milestone ladder in 10k parcel increments with unique titles
+- Preload several lifetime parcel unlock titles so they can unfold over multiple years

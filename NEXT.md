@@ -307,5 +307,13 @@ Insight layer direction
 
 Milestone follow-ups
 - Keep milestone progression slightly mysterious: show progress to next unlock without over-explaining every future reward
-- Add a lifetime parcel milestone ladder in 10k parcel increments with unique titles
-- Preload several lifetime parcel unlock titles so they can unfold over multiple years
+- Lifetime parcel ladder is now defined at:
+  - `10k` `Parcel Pounder`
+  - `20k` `Box Crusher`
+  - `30k` `Scanster`
+  - `40k` `Route Mule`
+  - `50k` `Keeper of the Last Mile`
+- Card 4 can now temporarily yield to a `New unlock` milestone event
+  - click reveals/highlights the unlocked milestone in `Milestone Engine`
+- Next milestone step:
+  - decide whether yearly milestones should also participate in the same reveal flow or stay quieter than lifetime parcel ladder unlocks

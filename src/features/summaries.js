@@ -1,6 +1,7 @@
 // Smart summary and heaviness widgets for the dashboard.
 import { DateTime, ZONE, startOfWeekMonday, dowIndex } from '../utils/date.js';
 import { normalizeHoursValue } from '../utils/timeNormalization.js';
+import { getStored, buildBadgeStorageKey, loadRevealedBadgeKeys, saveRevealedBadgeKeys } from '../utils/storage.js';
 
 export function createSummariesFeature({
   getFlags,
@@ -123,6 +124,13 @@ export function createSummariesFeature({
       const unresolvedResidual = residualEntry && !dismissedSet.has(todayIso) && Math.abs(Number(residualEntry.residMin) || 0) > 15
         ? Math.round(residualEntry.residMin)
         : null;
+      const revealedBadgeKeys = new Set(loadRevealedBadgeKeys());
+      const latestUnrevealedBadge = (() => {
+        const badges = (getStored('routeStats.badges', []) || [])
+          .filter(badge => badge && badge.id && badge.unlockedAt)
+          .sort((a, b) => String(b.unlockedAt).localeCompare(String(a.unlockedAt)));
+        return badges.find(badge => !revealedBadgeKeys.has(buildBadgeStorageKey(badge))) || null;
+      })();
 
       const sameDow = worked.filter(r => r.work_date !== todayIso && dowIndex(r.work_date) === (now.weekday % 7));
       const average = (arr, fn) => {
@@ -154,7 +162,16 @@ export function createSummariesFeature({
       const weekHeavy = weekDeltaPct != null && Math.abs(weekDeltaPct) >= 10;
 
       let rotatingCard;
-      if (unresolvedResidual != null) {
+      if (latestUnrevealedBadge) {
+        rotatingCard = {
+          kicker: 'New unlock!',
+          headline: 'Milestone reached',
+          support: 'Click to reveal',
+          action: 'reveal-badge',
+          actionMeta: buildBadgeStorageKey(latestUnrevealedBadge),
+          cue: `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--good);font-weight:700">new reward</span><div style="flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:100%;background:linear-gradient(90deg,var(--warn),var(--good))"></div></div></div>`
+        };
+      } else if (unresolvedResidual != null) {
         const isOver = unresolvedResidual > 0;
         rotatingCard = {
           kicker: 'Action needed',
@@ -186,9 +203,93 @@ export function createSummariesFeature({
         };
       }
 
-      const cards = [workdayCard, routeCard, volumeCard, rotatingCard];
+      const aggregateMetrics = (rowsSet) => {
+        const valid = (rowsSet || []).filter(r => r && r.status !== 'off');
+        if (!valid.length) return null;
+        const totalHours = sum(valid, r => normalizeHoursValue(r.hours));
+        const routeHours = sum(valid, r => routeAdjustedHours(r));
+        const officeHours = sum(valid, r => normalizeHoursValue(r.office_minutes));
+        const parcels = sum(valid, r => +r.parcels || 0);
+        const letters = sum(valid, r => +r.letters || 0);
+        const volume = combinedVolume(parcels, letters, letterW);
+        return { totalHours, routeHours, officeHours, volume };
+      };
+      const metricDiff = (current, previous, formatter) => {
+        if (!(current && previous)) return { text: 'Need more history', bars: `<div class="muted" style="font-size:12px">No matching last-year history yet.</div>` };
+        const defs = [
+          { key: 'totalHours', label: 'total hours', fmt: (v) => `${v.toFixed(1)}h` },
+          { key: 'routeHours', label: 'route', fmt: (v) => `${v.toFixed(1)}h` },
+          { key: 'officeHours', label: 'office', fmt: (v) => `${v.toFixed(1)}h` },
+          { key: 'volume', label: 'volume', fmt: (v) => `${v.toFixed(1)} vol` }
+        ];
+        const ranked = defs
+          .map(def => {
+            const a = current[def.key];
+            const b = previous[def.key];
+            const pct = (Number.isFinite(a) && Number.isFinite(b) && b > 0) ? Math.round(((a - b) / b) * 100) : null;
+            return { ...def, current: a, previous: b, pct, score: Math.abs(pct ?? 0) };
+          })
+          .sort((a, b) => b.score - a.score);
+        const top = ranked[0];
+        if (!top || top.pct == null) return { text: 'Need more history', bars: `<div class="muted" style="font-size:12px">No matching last-year history yet.</div>` };
+        const relation = top.pct > 0 ? 'heavier' : top.pct < 0 ? 'lighter' : 'similar';
+        const maxVal = Math.max(top.current || 0, top.previous || 0, 1);
+        const currentW = Math.max(8, Math.round(((top.current || 0) / maxVal) * 100));
+        const previousW = Math.max(8, Math.round(((top.previous || 0) / maxVal) * 100));
+        return {
+          text: `${relation} on ${top.label} (${top.pct >= 0 ? '+' : ''}${top.pct}%)`,
+          bars: `
+            <div style="display:grid;gap:6px">
+              <div style="display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center">
+                <span class="muted" style="font-size:12px">Now</span>
+                <div style="height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${currentW}%;background:linear-gradient(90deg,var(--brand),var(--good))"></div></div>
+                <span style="font-size:12px">${top.fmt(top.current)}</span>
+              </div>
+              <div style="display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center">
+                <span class="muted" style="font-size:12px">2025</span>
+                <div style="height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${previousW}%;background:linear-gradient(90deg,rgba(255,255,255,0.25),rgba(255,255,255,0.5))"></div></div>
+                <span style="font-size:12px">${top.fmt(top.previous)}</span>
+              </div>
+            </div>`
+        };
+      };
+
+      const lyAnchor = now.minus({ years: 1 });
+      const startThisYearWeek = startOfWeekMonday(now);
+      const startLastYearWeek = startOfWeekMonday(lyAnchor);
+      const endLastYearSame = startLastYearWeek.plus({ days: now.weekday - 1 }).endOf('day');
+      const sameWeekLastYearRows = worked.filter(r => inRange(r, startLastYearWeek, endLastYearSame));
+      const lastYearSameWeekdayRow = sameWeekLastYearRows.find(r => dowIndex(r.work_date) === (now.weekday % 7)) || null;
+      const currentTodayMetrics = todayRow ? aggregateMetrics([todayRow]) : null;
+      const lastYearTodayMetrics = lastYearSameWeekdayRow ? aggregateMetrics([lastYearSameWeekdayRow]) : null;
+
+      const lastYearWeekRows = worked.filter(r => inRange(r, startLastYearWeek, endLastYearSame));
+      const currentWeekMetrics = aggregateMetrics(thisWeek);
+      const lastYearWeekMetrics = aggregateMetrics(lastYearWeekRows);
+      const todayEcho = metricDiff(currentTodayMetrics, lastYearTodayMetrics);
+      const weekEcho = metricDiff(currentWeekMetrics, lastYearWeekMetrics);
+      const lastYearEchoCard = {
+        kicker: 'Last Year Echo',
+        headline: 'Today + Week',
+        support: 'Quick callback to last year',
+        cue: `
+          <div style="display:grid;gap:10px">
+            <div>
+              <div style="font-size:12px;font-weight:700;margin-bottom:4px">Today</div>
+              <div class="muted" style="font-size:12px;margin-bottom:6px">${todayEcho.text}</div>
+              ${todayEcho.bars}
+            </div>
+            <div>
+              <div style="font-size:12px;font-weight:700;margin-bottom:4px">Week</div>
+              <div class="muted" style="font-size:12px;margin-bottom:6px">${weekEcho.text}</div>
+              ${weekEcho.bars}
+            </div>
+          </div>`
+      };
+
+      const cards = [workdayCard, routeCard, volumeCard, rotatingCard, lastYearEchoCard];
       el.innerHTML = cards.map(cardDef => `
-        <div class="stat" style="min-height:132px;justify-content:space-between">
+        <div class="stat" style="min-height:132px;justify-content:space-between${cardDef.action ? ';cursor:pointer' : ''}"${cardDef.action ? ` data-insight-action="${cardDef.action}" data-insight-meta="${cardDef.actionMeta || ''}"` : ''}>
           <div>
             <small>${cardDef.kicker}</small>
             <div class="statValue statValue--lg" style="margin-top:4px">${cardDef.headline}</div>
@@ -197,6 +298,29 @@ export function createSummariesFeature({
           <div style="margin-top:12px">${cardDef.cue}</div>
         </div>
       `).join('');
+      el.querySelectorAll('[data-insight-action="reveal-badge"]').forEach(node => {
+        node.addEventListener('click', () => {
+          const key = node.getAttribute('data-insight-meta') || '';
+          if (!key) return;
+          const nextKeys = [...new Set([...loadRevealedBadgeKeys(), key])];
+          saveRevealedBadgeKeys(nextKeys);
+          const milestoneCard = document.getElementById('milestoneCard');
+          const badgeCard = document.querySelector(`[data-badge-key="${key}"]`);
+          (badgeCard || milestoneCard)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const target = badgeCard || milestoneCard;
+          if (target) {
+            const prevOutline = target.style.outline;
+            const prevOffset = target.style.outlineOffset;
+            target.style.outline = '2px solid var(--good)';
+            target.style.outlineOffset = '4px';
+            window.setTimeout(() => {
+              target.style.outline = prevOutline;
+              target.style.outlineOffset = prevOffset;
+            }, 2200);
+          }
+          buildInsightStrip(rows);
+        }, { once: true });
+      });
       card.style.display = 'block';
     } catch (_err) {
       card.style.display = 'none';

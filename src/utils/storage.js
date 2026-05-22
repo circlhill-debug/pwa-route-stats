@@ -16,6 +16,7 @@ export const AI_LAST_SUMMARY_KEY = 'routeStats.ai.lastSummary';
 export const AI_SUMMARY_COLLAPSED_KEY = 'routeStats.ai.summaryCollapsed';
 export const TOKEN_USAGE_STORAGE = 'routeStats.ai.tokenUsage';
 export const AI_BASE_PROMPT_KEY = 'routeStats.ai.basePrompt';
+export const BADGE_REVEAL_KEY = 'routeStats.badges.revealed.v1';
 
 const DEFAULT_FLAGS = {
   weekdayTicks:true,
@@ -86,10 +87,30 @@ export const YEARLY_THRESHOLDS = {
 };
 
 export const CUMULATIVE_THRESHOLDS = {
-  lifetimeParcelPounder: { key: 'parcels', threshold: 20000, label: 'Lifetime Parcel Pounder' },
+  lifetimeParcels10k: { key: 'parcels', threshold: 10000, label: 'Parcel Pounder' },
+  lifetimeParcels20k: { key: 'parcels', threshold: 20000, label: 'Box Crusher' },
+  lifetimeParcels30k: { key: 'parcels', threshold: 30000, label: 'Scanster' },
+  lifetimeParcels40k: { key: 'parcels', threshold: 40000, label: 'Route Mule' },
+  lifetimeParcels50k: { key: 'parcels', threshold: 50000, label: 'Keeper of the Last Mile' },
   lifetimeMercuryMagic: { key: 'letters', threshold: 200000, label: 'Lifetime Mercury Magic' },
   lifetimeHourDragon: { key: 'hours', threshold: 5000, label: 'Lifetime Dragon Hours' }
 };
+
+export function buildBadgeStorageKey(badge){
+  if (!badge || !badge.id) return null;
+  const scope = badge.scope === 'lifetime' ? 'lifetime' : (badge.year ?? 'yearly');
+  return `${badge.id}:${scope}`;
+}
+
+export function loadRevealedBadgeKeys(){
+  const value = getStored(BADGE_REVEAL_KEY, []);
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+export function saveRevealedBadgeKeys(keys){
+  const uniq = [...new Set((Array.isArray(keys) ? keys : []).filter(Boolean))];
+  setStored(BADGE_REVEAL_KEY, uniq);
+}
 
 export function updateYearlyTotals(dayData){
   if (!dayData) return;
@@ -149,7 +170,7 @@ export function recomputeYearlyStats(rows){
     });
 
     const existing = getStored('routeStats.badges', []) || [];
-    const existingMap = new Map(existing.map(b=> [`${b.id}:${b.year}`, b]));
+    const existingMap = new Map(existing.map(b=> [buildBadgeStorageKey(b), b]));
     const nextBadges = [];
 
     Object.entries(totals).forEach(([yearKey, stats])=>{
@@ -160,6 +181,7 @@ export function recomputeYearlyStats(rows){
           const prev = existingMap.get(hash);
           nextBadges.push({
             id,
+            scope: 'yearly',
             year,
             label,
             unlockedAt: prev?.unlockedAt || new Date().toISOString(),
@@ -167,6 +189,26 @@ export function recomputeYearlyStats(rows){
           });
         }
       });
+    });
+
+    const workedRows = (rows || []).filter(row => row && row.status !== 'off');
+    const lifetimeTotals = {
+      parcels: workedRows.reduce((t, row) => t + (Number(row.parcels) || 0), 0),
+      letters: workedRows.reduce((t, row) => t + (Number(row.letters) || 0), 0),
+      hours: workedRows.reduce((t, row) => t + (Number(row.hours) || 0), 0)
+    };
+    Object.entries(CUMULATIVE_THRESHOLDS).forEach(([id, { key, threshold, label }])=>{
+      if ((lifetimeTotals[key] || 0) >= threshold){
+        const hash = `${id}:lifetime`;
+        const prev = existingMap.get(hash);
+        nextBadges.push({
+          id,
+          scope: 'lifetime',
+          label,
+          unlockedAt: prev?.unlockedAt || new Date().toISOString(),
+          message: prev?.message || `🏅 ${label} — ${threshold.toLocaleString()} lifetime ${key}!`
+        });
+      }
     });
 
     setStored('routeStats.yearlyTotals', totals);

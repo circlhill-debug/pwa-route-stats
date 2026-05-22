@@ -18,7 +18,12 @@ import {
   setModelScope,
   loadTokenUsage,
   saveTokenUsage,
-  mergeTokenUsage
+  mergeTokenUsage,
+  recomputeYearlyStats,
+  getStored,
+  buildBadgeStorageKey,
+  loadRevealedBadgeKeys,
+  saveRevealedBadgeKeys
 } from '../src/utils/storage.js';
 
 beforeEach(() => {
@@ -173,5 +178,26 @@ describe('token usage helpers', () => {
 
     expect(result.source).toBe('incoming');
     expect(result.merged.month).toBe(6);
+  });
+});
+
+describe('milestone badge helpers', () => {
+  it('computes yearly and lifetime badge keys distinctly', () => {
+    expect(buildBadgeStorageKey({ id: 'parcelTitan', year: 2026, scope: 'yearly' })).toBe('parcelTitan:2026');
+    expect(buildBadgeStorageKey({ id: 'lifetimeParcels20k', scope: 'lifetime' })).toBe('lifetimeParcels20k:lifetime');
+  });
+
+  it('stores revealed badge keys uniquely', () => {
+    saveRevealedBadgeKeys(['a', 'a', 'b']);
+    expect(loadRevealedBadgeKeys()).toEqual(['a', 'b']);
+  });
+
+  it('creates lifetime parcel ladder badges when thresholds are crossed', () => {
+    recomputeYearlyStats([
+      { work_date: '2026-01-10', status: 'worked', parcels: 12000, letters: 0, hours: 8 }
+    ]);
+    const badges = getStored('routeStats.badges', []);
+    expect(badges.some(b => b.id === 'lifetimeParcels10k' && b.scope === 'lifetime')).toBe(true);
+    expect(badges.some(b => b.id === 'lifetimeParcels20k' && b.scope === 'lifetime')).toBe(false);
   });
 });

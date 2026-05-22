@@ -124,6 +124,7 @@
   var AI_SUMMARY_COLLAPSED_KEY = "routeStats.ai.summaryCollapsed";
   var TOKEN_USAGE_STORAGE = "routeStats.ai.tokenUsage";
   var AI_BASE_PROMPT_KEY = "routeStats.ai.basePrompt";
+  var BADGE_REVEAL_KEY = "routeStats.badges.revealed.v1";
   var DEFAULT_FLAGS = {
     weekdayTicks: true,
     progressivePills: false,
@@ -183,10 +184,28 @@
     hourHero: { key: "hours", threshold: 2e3, label: "Your Ass Must be a Dragon!" }
   };
   var CUMULATIVE_THRESHOLDS = {
-    lifetimeParcelPounder: { key: "parcels", threshold: 2e4, label: "Lifetime Parcel Pounder" },
+    lifetimeParcels10k: { key: "parcels", threshold: 1e4, label: "Parcel Pounder" },
+    lifetimeParcels20k: { key: "parcels", threshold: 2e4, label: "Box Crusher" },
+    lifetimeParcels30k: { key: "parcels", threshold: 3e4, label: "Scanster" },
+    lifetimeParcels40k: { key: "parcels", threshold: 4e4, label: "Route Mule" },
+    lifetimeParcels50k: { key: "parcels", threshold: 5e4, label: "Keeper of the Last Mile" },
     lifetimeMercuryMagic: { key: "letters", threshold: 2e5, label: "Lifetime Mercury Magic" },
     lifetimeHourDragon: { key: "hours", threshold: 5e3, label: "Lifetime Dragon Hours" }
   };
+  function buildBadgeStorageKey(badge) {
+    var _a5;
+    if (!badge || !badge.id) return null;
+    const scope = badge.scope === "lifetime" ? "lifetime" : (_a5 = badge.year) != null ? _a5 : "yearly";
+    return `${badge.id}:${scope}`;
+  }
+  function loadRevealedBadgeKeys() {
+    const value = getStored(BADGE_REVEAL_KEY, []);
+    return Array.isArray(value) ? value.filter(Boolean) : [];
+  }
+  function saveRevealedBadgeKeys(keys) {
+    const uniq = [...new Set((Array.isArray(keys) ? keys : []).filter(Boolean))];
+    setStored(BADGE_REVEAL_KEY, uniq);
+  }
   function updateYearlyTotals(dayData) {
     if (!dayData) return;
     const iso = dayData.date || dayData.work_date;
@@ -237,7 +256,7 @@
         totals[year].hours += Number(row.hours) || 0;
       });
       const existing = getStored("routeStats.badges", []) || [];
-      const existingMap = new Map(existing.map((b) => [`${b.id}:${b.year}`, b]));
+      const existingMap = new Map(existing.map((b) => [buildBadgeStorageKey(b), b]));
       const nextBadges = [];
       Object.entries(totals).forEach(([yearKey, stats]) => {
         const year = Number(yearKey);
@@ -247,6 +266,7 @@
             const prev = existingMap.get(hash);
             nextBadges.push({
               id,
+              scope: "yearly",
               year,
               label,
               unlockedAt: (prev == null ? void 0 : prev.unlockedAt) || (/* @__PURE__ */ new Date()).toISOString(),
@@ -254,6 +274,25 @@
             });
           }
         });
+      });
+      const workedRows = (rows || []).filter((row) => row && row.status !== "off");
+      const lifetimeTotals = {
+        parcels: workedRows.reduce((t, row) => t + (Number(row.parcels) || 0), 0),
+        letters: workedRows.reduce((t, row) => t + (Number(row.letters) || 0), 0),
+        hours: workedRows.reduce((t, row) => t + (Number(row.hours) || 0), 0)
+      };
+      Object.entries(CUMULATIVE_THRESHOLDS).forEach(([id, { key, threshold, label }]) => {
+        if ((lifetimeTotals[key] || 0) >= threshold) {
+          const hash = `${id}:lifetime`;
+          const prev = existingMap.get(hash);
+          nextBadges.push({
+            id,
+            scope: "lifetime",
+            label,
+            unlockedAt: (prev == null ? void 0 : prev.unlockedAt) || (/* @__PURE__ */ new Date()).toISOString(),
+            message: (prev == null ? void 0 : prev.message) || `\u{1F3C5} ${label} \u2014 ${threshold.toLocaleString()} lifetime ${key}!`
+          });
+        }
       });
       setStored("routeStats.yearlyTotals", totals);
       setStored("routeStats.badges", nextBadges);
@@ -5086,6 +5125,11 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         };
         const dismissedSet = new Set((loadDismissedResiduals2() || []).map((item) => item == null ? void 0 : item.iso).filter(Boolean));
         const unresolvedResidual = residualEntry && !dismissedSet.has(todayIso2) && Math.abs(Number(residualEntry.residMin) || 0) > 15 ? Math.round(residualEntry.residMin) : null;
+        const revealedBadgeKeys = new Set(loadRevealedBadgeKeys());
+        const latestUnrevealedBadge = (() => {
+          const badges = (getStored("routeStats.badges", []) || []).filter((badge) => badge && badge.id && badge.unlockedAt).sort((a, b) => String(b.unlockedAt).localeCompare(String(a.unlockedAt)));
+          return badges.find((badge) => !revealedBadgeKeys.has(buildBadgeStorageKey(badge))) || null;
+        })();
         const sameDow = worked.filter((r) => r.work_date !== todayIso2 && dowIndex(r.work_date) === now.weekday % 7);
         const average = (arr, fn) => {
           const values = arr.map(fn).filter((val) => Number.isFinite(val) && val > 0);
@@ -5112,7 +5156,16 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const weekDeltaPct = totalLastWeek > 0 ? Math.round((totalThisWeek - totalLastWeek) / totalLastWeek * 100) : null;
         const weekHeavy = weekDeltaPct != null && Math.abs(weekDeltaPct) >= 10;
         let rotatingCard;
-        if (unresolvedResidual != null) {
+        if (latestUnrevealedBadge) {
+          rotatingCard = {
+            kicker: "New unlock!",
+            headline: "Milestone reached",
+            support: "Click to reveal",
+            action: "reveal-badge",
+            actionMeta: buildBadgeStorageKey(latestUnrevealedBadge),
+            cue: `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--good);font-weight:700">new reward</span><div style="flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:100%;background:linear-gradient(90deg,var(--warn),var(--good))"></div></div></div>`
+          };
+        } else if (unresolvedResidual != null) {
           const isOver = unresolvedResidual > 0;
           rotatingCard = {
             kicker: "Action needed",
@@ -5143,9 +5196,88 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             cue: `<div class="muted" style="font-size:12px">Stable day. Forecast, route model, and weekly load are all within normal bounds.</div>`
           };
         }
-        const cards = [workdayCard, routeCard, volumeCard, rotatingCard];
+        const aggregateMetrics = (rowsSet) => {
+          const valid = (rowsSet || []).filter((r) => r && r.status !== "off");
+          if (!valid.length) return null;
+          const totalHours = sum(valid, (r) => normalizeHoursValue(r.hours));
+          const routeHours = sum(valid, (r) => routeAdjustedHours2(r));
+          const officeHours = sum(valid, (r) => normalizeHoursValue(r.office_minutes));
+          const parcels2 = sum(valid, (r) => +r.parcels || 0);
+          const letters2 = sum(valid, (r) => +r.letters || 0);
+          const volume = combinedVolume2(parcels2, letters2, letterW);
+          return { totalHours, routeHours, officeHours, volume };
+        };
+        const metricDiff = (current, previous, formatter) => {
+          if (!(current && previous)) return { text: "Need more history", bars: `<div class="muted" style="font-size:12px">No matching last-year history yet.</div>` };
+          const defs = [
+            { key: "totalHours", label: "total hours", fmt: (v) => `${v.toFixed(1)}h` },
+            { key: "routeHours", label: "route", fmt: (v) => `${v.toFixed(1)}h` },
+            { key: "officeHours", label: "office", fmt: (v) => `${v.toFixed(1)}h` },
+            { key: "volume", label: "volume", fmt: (v) => `${v.toFixed(1)} vol` }
+          ];
+          const ranked = defs.map((def) => {
+            const a = current[def.key];
+            const b = previous[def.key];
+            const pct = Number.isFinite(a) && Number.isFinite(b) && b > 0 ? Math.round((a - b) / b * 100) : null;
+            return { ...def, current: a, previous: b, pct, score: Math.abs(pct != null ? pct : 0) };
+          }).sort((a, b) => b.score - a.score);
+          const top = ranked[0];
+          if (!top || top.pct == null) return { text: "Need more history", bars: `<div class="muted" style="font-size:12px">No matching last-year history yet.</div>` };
+          const relation = top.pct > 0 ? "heavier" : top.pct < 0 ? "lighter" : "similar";
+          const maxVal = Math.max(top.current || 0, top.previous || 0, 1);
+          const currentW = Math.max(8, Math.round((top.current || 0) / maxVal * 100));
+          const previousW = Math.max(8, Math.round((top.previous || 0) / maxVal * 100));
+          return {
+            text: `${relation} on ${top.label} (${top.pct >= 0 ? "+" : ""}${top.pct}%)`,
+            bars: `
+            <div style="display:grid;gap:6px">
+              <div style="display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center">
+                <span class="muted" style="font-size:12px">Now</span>
+                <div style="height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${currentW}%;background:linear-gradient(90deg,var(--brand),var(--good))"></div></div>
+                <span style="font-size:12px">${top.fmt(top.current)}</span>
+              </div>
+              <div style="display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center">
+                <span class="muted" style="font-size:12px">2025</span>
+                <div style="height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${previousW}%;background:linear-gradient(90deg,rgba(255,255,255,0.25),rgba(255,255,255,0.5))"></div></div>
+                <span style="font-size:12px">${top.fmt(top.previous)}</span>
+              </div>
+            </div>`
+          };
+        };
+        const lyAnchor = now.minus({ years: 1 });
+        const startThisYearWeek = startOfWeekMonday(now);
+        const startLastYearWeek = startOfWeekMonday(lyAnchor);
+        const endLastYearSame = startLastYearWeek.plus({ days: now.weekday - 1 }).endOf("day");
+        const sameWeekLastYearRows = worked.filter((r) => inRange(r, startLastYearWeek, endLastYearSame));
+        const lastYearSameWeekdayRow = sameWeekLastYearRows.find((r) => dowIndex(r.work_date) === now.weekday % 7) || null;
+        const currentTodayMetrics = todayRow ? aggregateMetrics([todayRow]) : null;
+        const lastYearTodayMetrics = lastYearSameWeekdayRow ? aggregateMetrics([lastYearSameWeekdayRow]) : null;
+        const lastYearWeekRows = worked.filter((r) => inRange(r, startLastYearWeek, endLastYearSame));
+        const currentWeekMetrics = aggregateMetrics(thisWeek);
+        const lastYearWeekMetrics = aggregateMetrics(lastYearWeekRows);
+        const todayEcho = metricDiff(currentTodayMetrics, lastYearTodayMetrics);
+        const weekEcho = metricDiff(currentWeekMetrics, lastYearWeekMetrics);
+        const lastYearEchoCard = {
+          kicker: "Last Year Echo",
+          headline: "Today + Week",
+          support: "Quick callback to last year",
+          cue: `
+          <div style="display:grid;gap:10px">
+            <div>
+              <div style="font-size:12px;font-weight:700;margin-bottom:4px">Today</div>
+              <div class="muted" style="font-size:12px;margin-bottom:6px">${todayEcho.text}</div>
+              ${todayEcho.bars}
+            </div>
+            <div>
+              <div style="font-size:12px;font-weight:700;margin-bottom:4px">Week</div>
+              <div class="muted" style="font-size:12px;margin-bottom:6px">${weekEcho.text}</div>
+              ${weekEcho.bars}
+            </div>
+          </div>`
+        };
+        const cards = [workdayCard, routeCard, volumeCard, rotatingCard, lastYearEchoCard];
         el.innerHTML = cards.map((cardDef) => `
-        <div class="stat" style="min-height:132px;justify-content:space-between">
+        <div class="stat" style="min-height:132px;justify-content:space-between${cardDef.action ? ";cursor:pointer" : ""}"${cardDef.action ? ` data-insight-action="${cardDef.action}" data-insight-meta="${cardDef.actionMeta || ""}"` : ""}>
           <div>
             <small>${cardDef.kicker}</small>
             <div class="statValue statValue--lg" style="margin-top:4px">${cardDef.headline}</div>
@@ -5154,6 +5286,30 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           <div style="margin-top:12px">${cardDef.cue}</div>
         </div>
       `).join("");
+        el.querySelectorAll('[data-insight-action="reveal-badge"]').forEach((node) => {
+          node.addEventListener("click", () => {
+            var _a6;
+            const key = node.getAttribute("data-insight-meta") || "";
+            if (!key) return;
+            const nextKeys = [.../* @__PURE__ */ new Set([...loadRevealedBadgeKeys(), key])];
+            saveRevealedBadgeKeys(nextKeys);
+            const milestoneCard = document.getElementById("milestoneCard");
+            const badgeCard = document.querySelector(`[data-badge-key="${key}"]`);
+            (_a6 = badgeCard || milestoneCard) == null ? void 0 : _a6.scrollIntoView({ behavior: "smooth", block: "center" });
+            const target = badgeCard || milestoneCard;
+            if (target) {
+              const prevOutline = target.style.outline;
+              const prevOffset = target.style.outlineOffset;
+              target.style.outline = "2px solid var(--good)";
+              target.style.outlineOffset = "4px";
+              window.setTimeout(() => {
+                target.style.outline = prevOutline;
+                target.style.outlineOffset = prevOffset;
+              }, 2200);
+            }
+            buildInsightStrip2(rows);
+          }, { once: true });
+        });
         card.style.display = "block";
       } catch (_err) {
         card.style.display = "none";
@@ -8397,31 +8553,35 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const status = unlocked ? "unlocked" : "locked";
         const metricTitle = key.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
         const progressDisplay = key === "hours" ? progress.toFixed(1) : Math.max(0, progress).toLocaleString();
-        const infoBlock = unlocked ? `<div class="badge-info"><h4>${label}</h4><p>${unlocked.message}</p></div>` : `<div class="badge-info"><h4>${label}</h4><p>${Math.max(0, threshold - progress).toLocaleString()} to go in ${year}</p></div>`;
-        return `<div class="badge-card ${status}">
+        const remaining = Math.max(0, threshold - progress);
+        const unlockUnit = key === "hours" ? `${remaining.toFixed(2)} hours to unlock in ${year}` : `${Math.round(remaining).toLocaleString()} ${metricTitle.toLowerCase()} to unlock in ${year}`;
+        if (unlocked) {
+          return `<div class="badge-history-item achieved" data-badge-key="${buildBadgeStorageKey({ id, year, scope: "yearly" }) || ""}">
+  <div class="badge-history-name">${label}</div>
+  <div class="badge-history-note">${unlocked.message}</div>
+</div>`;
+        }
+        return `<div class="badge-card ${status}" data-badge-key="${buildBadgeStorageKey({ id, year, scope: "yearly" }) || ""}">
   <div class="badge-count">
     ${progressDisplay}
     <small>${metricTitle}</small>
   </div>
-  ${infoBlock}
+  <div class="badge-info"><h4>${label}</h4><p>${unlockUnit}</p></div>
 </div>`;
       }).join("");
       const cumulativeMarkup = cumulativeThresholds.map(([id, { label, key, threshold }]) => {
+        const unlocked = badges.find((b) => b && b.id === id && b.scope === "lifetime");
         const progressVal = Number((lifetimeTotals == null ? void 0 : lifetimeTotals[key]) || 0);
         const progress = Number.isFinite(progressVal) ? progressVal : 0;
-        const status = progress >= threshold ? "unlocked" : "locked";
         const metricTitle = key.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
         const progressDisplay = key === "hours" ? progress.toFixed(1) : Math.max(0, progress).toLocaleString();
-        const remaining = Math.max(0, threshold - progress);
-        const infoBlock = status === "unlocked" ? `<div class="badge-info"><h4>${label}</h4><p>Lifetime ${metricTitle.toLowerCase()} crossed ${threshold.toLocaleString()}.</p></div>` : `<div class="badge-info"><h4>${label}</h4><p>${remaining.toLocaleString()} to go lifetime</p></div>`;
-        return `<div class="badge-card ${status}">
-  <div class="badge-count">
-    ${progressDisplay}
-    <small>${metricTitle}</small>
-  </div>
-  ${infoBlock}
+        if (!unlocked && progress < threshold) return "";
+        const thresholdLabel = key === "hours" ? `${threshold.toLocaleString()} lifetime hours!` : `${threshold.toLocaleString()} lifetime ${metricTitle.toLowerCase()}!`;
+        return `<div class="badge-history-item achieved" data-badge-key="${buildBadgeStorageKey({ id, scope: "lifetime" }) || ""}">
+  <div class="badge-history-name">${label}</div>
+  <div class="badge-history-note">\u{1F3C5} ${thresholdLabel}</div>
 </div>`;
-      }).join("");
+      }).filter(Boolean).join("");
       const recordsMarkup = records.map(({ def, best }) => {
         var _a5, _b;
         const iso = ((_a5 = best.row) == null ? void 0 : _a5.work_date) || ((_b = best.row) == null ? void 0 : _b.date) || "\u2014";
@@ -8433,7 +8593,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       }).join("");
       container.innerHTML = [
         section(`${year} milestones`, yearlyMarkup || '<p class="muted">No yearly milestones defined.</p>'),
-        section("Lifetime milestones (cumulative)", cumulativeMarkup || '<p class="muted">No lifetime milestones defined.</p>'),
+        section("Lifetime milestones (cumulative)", cumulativeMarkup || '<p class="muted">Future cumulative unlocks stay hidden until earned.</p>'),
         section("All-time records", recordsMarkup || '<p class="muted">No records yet.</p>')
       ].join("");
       const historyYears = Object.keys(totals).map((y) => Number(y)).filter((y) => y && y !== year).sort((a, b) => b - a);
@@ -8458,7 +8618,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
               const metricTitle = key.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
               const remaining = Math.max(0, (threshold || 0) - value);
               const statusCls = unlocked ? "achieved" : "";
-              const note = unlocked ? unlocked.message : threshold ? `${remaining.toLocaleString()} to go (goal ${threshold.toLocaleString()})` : "";
+              const note = unlocked ? unlocked.message : threshold ? key === "hours" ? `${remaining.toFixed(2)} hours to unlock in ${y}` : `${Math.round(remaining).toLocaleString()} ${metricTitle.toLowerCase()} to unlock in ${y}` : "";
               const labelBlock = unlocked ? `<div class="badge-history-note">${note}</div>` : note ? `<div class="badge-history-note">${note}</div>` : "";
               return `<div class="badge-history-item ${statusCls}">
   <span class="badge-history-value">${Math.max(0, value).toLocaleString()}</span>

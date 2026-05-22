@@ -49,6 +49,7 @@ import {
   loadTokenUsage,
   saveTokenUsage,
   getStored,
+  buildBadgeStorageKey,
   updateYearlyTotals,
   YEARLY_THRESHOLDS,
   CUMULATIVE_THRESHOLDS,
@@ -2821,36 +2822,40 @@ function getHourlyRateFromEval(){
         const status = unlocked ? 'unlocked' : 'locked';
         const metricTitle = key.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
         const progressDisplay = key === 'hours' ? progress.toFixed(1) : Math.max(0, progress).toLocaleString();
-        const infoBlock = unlocked
-          ? `<div class="badge-info"><h4>${label}</h4><p>${unlocked.message}</p></div>`
-          : `<div class="badge-info"><h4>${label}</h4><p>${Math.max(0, threshold - progress).toLocaleString()} to go in ${year}</p></div>`;
-        return `<div class="badge-card ${status}">
+        const remaining = Math.max(0, threshold - progress);
+        const unlockUnit = key === 'hours'
+          ? `${remaining.toFixed(2)} hours to unlock in ${year}`
+          : `${Math.round(remaining).toLocaleString()} ${metricTitle.toLowerCase()} to unlock in ${year}`;
+        if (unlocked) {
+          return `<div class="badge-history-item achieved" data-badge-key="${buildBadgeStorageKey({ id, year, scope: 'yearly' }) || ''}">
+  <div class="badge-history-name">${label}</div>
+  <div class="badge-history-note">${unlocked.message}</div>
+</div>`;
+        }
+        return `<div class="badge-card ${status}" data-badge-key="${buildBadgeStorageKey({ id, year, scope: 'yearly' }) || ''}">
   <div class="badge-count">
     ${progressDisplay}
     <small>${metricTitle}</small>
   </div>
-  ${infoBlock}
+  <div class="badge-info"><h4>${label}</h4><p>${unlockUnit}</p></div>
 </div>`;
       }).join('');
 
       const cumulativeMarkup = cumulativeThresholds.map(([id, { label, key, threshold }])=>{
+        const unlocked = badges.find(b => b && b.id === id && b.scope === 'lifetime');
         const progressVal = Number(lifetimeTotals?.[key] || 0);
         const progress = Number.isFinite(progressVal) ? progressVal : 0;
-        const status = progress >= threshold ? 'unlocked' : 'locked';
         const metricTitle = key.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
         const progressDisplay = key === 'hours' ? progress.toFixed(1) : Math.max(0, progress).toLocaleString();
-        const remaining = Math.max(0, threshold - progress);
-        const infoBlock = status === 'unlocked'
-          ? `<div class="badge-info"><h4>${label}</h4><p>Lifetime ${metricTitle.toLowerCase()} crossed ${threshold.toLocaleString()}.</p></div>`
-          : `<div class="badge-info"><h4>${label}</h4><p>${remaining.toLocaleString()} to go lifetime</p></div>`;
-        return `<div class="badge-card ${status}">
-  <div class="badge-count">
-    ${progressDisplay}
-    <small>${metricTitle}</small>
-  </div>
-  ${infoBlock}
+        if (!unlocked && progress < threshold) return '';
+        const thresholdLabel = key === 'hours'
+          ? `${threshold.toLocaleString()} lifetime hours!`
+          : `${threshold.toLocaleString()} lifetime ${metricTitle.toLowerCase()}!`;
+        return `<div class="badge-history-item achieved" data-badge-key="${buildBadgeStorageKey({ id, scope: 'lifetime' }) || ''}">
+  <div class="badge-history-name">${label}</div>
+  <div class="badge-history-note">🏅 ${thresholdLabel}</div>
 </div>`;
-      }).join('');
+      }).filter(Boolean).join('');
 
       const recordsMarkup = records.map(({ def, best }) => {
         const iso = best.row?.work_date || best.row?.date || '—';
@@ -2863,7 +2868,7 @@ function getHourlyRateFromEval(){
 
       container.innerHTML = [
         section(`${year} milestones`, yearlyMarkup || '<p class="muted">No yearly milestones defined.</p>'),
-        section('Lifetime milestones (cumulative)', cumulativeMarkup || '<p class="muted">No lifetime milestones defined.</p>'),
+        section('Lifetime milestones (cumulative)', cumulativeMarkup || '<p class="muted">Future cumulative unlocks stay hidden until earned.</p>'),
         section('All-time records', recordsMarkup || '<p class="muted">No records yet.</p>')
       ].join('');
 
@@ -2896,7 +2901,11 @@ function getHourlyRateFromEval(){
               const statusCls = unlocked ? 'achieved' : '';
               const note = unlocked
                 ? unlocked.message
-                : (threshold ? `${remaining.toLocaleString()} to go (goal ${threshold.toLocaleString()})` : '');
+                : (threshold
+                    ? (key === 'hours'
+                        ? `${remaining.toFixed(2)} hours to unlock in ${y}`
+                        : `${Math.round(remaining).toLocaleString()} ${metricTitle.toLowerCase()} to unlock in ${y}`)
+                    : '');
               const labelBlock = unlocked ? `<div class="badge-history-note">${note}</div>` : (note ? `<div class="badge-history-note">${note}</div>` : '');
               return `<div class="badge-history-item ${statusCls}">
   <span class="badge-history-value">${Math.max(0, value).toLocaleString()}</span>

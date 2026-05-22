@@ -23,7 +23,8 @@ import {
   getStored,
   buildBadgeStorageKey,
   loadRevealedBadgeKeys,
-  saveRevealedBadgeKeys
+  saveRevealedBadgeKeys,
+  ensureBadgeRevealSeeded
 } from '../src/utils/storage.js';
 
 beforeEach(() => {
@@ -192,6 +193,16 @@ describe('milestone badge helpers', () => {
     expect(loadRevealedBadgeKeys()).toEqual(['a', 'b']);
   });
 
+  it('seeds current badges as revealed once', () => {
+    const badges = [
+      { id: 'parcelTitan', year: 2026, scope: 'yearly' },
+      { id: 'lifetimeParcels20k', scope: 'lifetime' }
+    ];
+    const seeded = ensureBadgeRevealSeeded(badges);
+    expect(seeded).toEqual(['parcelTitan:2026', 'lifetimeParcels20k:lifetime']);
+    expect(loadRevealedBadgeKeys()).toEqual(['parcelTitan:2026', 'lifetimeParcels20k:lifetime']);
+  });
+
   it('creates lifetime parcel ladder badges when thresholds are crossed', () => {
     recomputeYearlyStats([
       { work_date: '2026-01-10', status: 'worked', parcels: 12000, letters: 0, hours: 8 }
@@ -199,5 +210,14 @@ describe('milestone badge helpers', () => {
     const badges = getStored('routeStats.badges', []);
     expect(badges.some(b => b.id === 'lifetimeParcels10k' && b.scope === 'lifetime')).toBe(true);
     expect(badges.some(b => b.id === 'lifetimeParcels20k' && b.scope === 'lifetime')).toBe(false);
+  });
+
+  it('creates lifetime letter ladder badges when thresholds are crossed', () => {
+    recomputeYearlyStats([
+      { work_date: '2026-01-10', status: 'worked', parcels: 0, letters: 120000, hours: 8 }
+    ]);
+    const badges = getStored('routeStats.badges', []);
+    expect(badges.some(b => b.id === 'lifetimeLetters100k' && b.scope === 'lifetime')).toBe(true);
+    expect(badges.some(b => b.id === 'lifetimeLetters200k' && b.scope === 'lifetime')).toBe(false);
   });
 });

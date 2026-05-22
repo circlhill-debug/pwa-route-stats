@@ -125,6 +125,7 @@
   var TOKEN_USAGE_STORAGE = "routeStats.ai.tokenUsage";
   var AI_BASE_PROMPT_KEY = "routeStats.ai.basePrompt";
   var BADGE_REVEAL_KEY = "routeStats.badges.revealed.v1";
+  var BADGE_REVEAL_SEEDED_KEY = "routeStats.badges.revealedSeeded.v1";
   var DEFAULT_FLAGS = {
     weekdayTicks: true,
     progressivePills: false,
@@ -189,7 +190,11 @@
     lifetimeParcels30k: { key: "parcels", threshold: 3e4, label: "Scanster" },
     lifetimeParcels40k: { key: "parcels", threshold: 4e4, label: "Route Mule" },
     lifetimeParcels50k: { key: "parcels", threshold: 5e4, label: "Keeper of the Last Mile" },
-    lifetimeMercuryMagic: { key: "letters", threshold: 2e5, label: "Lifetime Mercury Magic" },
+    lifetimeLetters100k: { key: "letters", threshold: 1e5, label: "Mercury Magic" },
+    lifetimeLetters200k: { key: "letters", threshold: 2e5, label: "Mail Master" },
+    lifetimeLetters300k: { key: "letters", threshold: 3e5, label: "Envelope Emperor" },
+    lifetimeLetters400k: { key: "letters", threshold: 4e5, label: "Keeper of the Post" },
+    lifetimeLetters500k: { key: "letters", threshold: 5e5, label: "Patron of the Mailstream" },
     lifetimeHourDragon: { key: "hours", threshold: 5e3, label: "Lifetime Dragon Hours" }
   };
   function buildBadgeStorageKey(badge) {
@@ -205,6 +210,14 @@
   function saveRevealedBadgeKeys(keys) {
     const uniq = [...new Set((Array.isArray(keys) ? keys : []).filter(Boolean))];
     setStored(BADGE_REVEAL_KEY, uniq);
+  }
+  function ensureBadgeRevealSeeded(badges) {
+    if (getStored(BADGE_REVEAL_SEEDED_KEY, false)) return loadRevealedBadgeKeys();
+    const current = Array.isArray(badges) ? badges : getStored("routeStats.badges", []) || [];
+    const seededKeys = current.map(buildBadgeStorageKey).filter(Boolean);
+    saveRevealedBadgeKeys(seededKeys);
+    setStored(BADGE_REVEAL_SEEDED_KEY, true);
+    return seededKeys;
   }
   function updateYearlyTotals(dayData) {
     if (!dayData) return;
@@ -5125,9 +5138,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         };
         const dismissedSet = new Set((loadDismissedResiduals2() || []).map((item) => item == null ? void 0 : item.iso).filter(Boolean));
         const unresolvedResidual = residualEntry && !dismissedSet.has(todayIso2) && Math.abs(Number(residualEntry.residMin) || 0) > 15 ? Math.round(residualEntry.residMin) : null;
-        const revealedBadgeKeys = new Set(loadRevealedBadgeKeys());
         const latestUnrevealedBadge = (() => {
           const badges = (getStored("routeStats.badges", []) || []).filter((badge) => badge && badge.id && badge.unlockedAt).sort((a, b) => String(b.unlockedAt).localeCompare(String(a.unlockedAt)));
+          const revealedBadgeKeys = new Set(ensureBadgeRevealSeeded(badges));
           return badges.find((badge) => !revealedBadgeKeys.has(buildBadgeStorageKey(badge))) || null;
         })();
         const sameDow = worked.filter((r) => r.work_date !== todayIso2 && dowIndex(r.work_date) === now.weekday % 7);
@@ -5151,6 +5164,49 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const thisWeek = worked.filter((r) => inRange(r, startThis, endThis));
         const lastWeek = worked.filter((r) => inRange(r, startLast, lastEndSame));
         const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
+        const recordDefs = [
+          { id: "mostParcels", label: "Most parcels ever", type: "max", value: (r) => Number(r == null ? void 0 : r.parcels) || 0, format: (v) => `${Math.round(v).toLocaleString()} parcels` },
+          { id: "leastParcels", label: "Least parcels ever", type: "min", value: (r) => Number(r == null ? void 0 : r.parcels) || 0, valid: (v) => Number.isFinite(v) && v >= 0, format: (v) => `${Math.round(v).toLocaleString()} parcels` },
+          { id: "mostLetters", label: "Most letters ever", type: "max", value: (r) => Number(r == null ? void 0 : r.letters) || 0, format: (v) => `${Math.round(v).toLocaleString()} letters` },
+          { id: "leastLetters", label: "Least letters ever", type: "min", value: (r) => Number(r == null ? void 0 : r.letters) || 0, valid: (v) => Number.isFinite(v) && v >= 0, format: (v) => `${Math.round(v).toLocaleString()} letters` },
+          { id: "highestVolume", label: "Heaviest volume ever", type: "max", value: (r) => combinedVolume2(Number(r == null ? void 0 : r.parcels) || 0, Number(r == null ? void 0 : r.letters) || 0, letterW), format: (v) => `${v.toFixed(1)} vol` },
+          { id: "lowestVolume", label: "Lightest volume ever", type: "min", value: (r) => combinedVolume2(Number(r == null ? void 0 : r.parcels) || 0, Number(r == null ? void 0 : r.letters) || 0, letterW), valid: (v) => Number.isFinite(v) && v >= 0, format: (v) => `${v.toFixed(1)} vol` },
+          { id: "quickestRoute", label: "Quickest route time", type: "min", value: (r) => routeAdjustedHours2(r), valid: (v) => Number.isFinite(v) && v > 0, format: (v) => `${v.toFixed(2)}h` }
+        ];
+        const activeRow = todayRow;
+        const newRecord = (() => {
+          if (!activeRow) return null;
+          for (const def of recordDefs) {
+            const todayValue = def.value(activeRow);
+            const isValidToday = typeof def.valid === "function" ? def.valid(todayValue) : Number.isFinite(todayValue);
+            if (!isValidToday) continue;
+            const history = worked.filter((r) => r.work_date !== todayIso2);
+            let best = null;
+            for (const row of history) {
+              const value = def.value(row);
+              const isValid = typeof def.valid === "function" ? def.valid(value) : Number.isFinite(value);
+              if (!isValid) continue;
+              if (best == null) {
+                best = value;
+                continue;
+              }
+              if (def.type === "min") best = Math.min(best, value);
+              else best = Math.max(best, value);
+            }
+            if (best == null) continue;
+            const isRecord = def.type === "min" ? todayValue < best : todayValue > best;
+            if (!isRecord) continue;
+            const delta = def.type === "min" ? best - todayValue : todayValue - best;
+            return {
+              id: def.id,
+              label: def.label,
+              headline: def.format(todayValue),
+              support: best != null ? `Previous best ${def.format(best)}` : "New record",
+              delta
+            };
+          }
+          return null;
+        })();
         const totalThisWeek = sum(thisWeek, (r) => normalizeHoursValue(r.hours));
         const totalLastWeek = sum(lastWeek, (r) => normalizeHoursValue(r.hours));
         const weekDeltaPct = totalLastWeek > 0 ? Math.round((totalThisWeek - totalLastWeek) / totalLastWeek * 100) : null;
@@ -5164,6 +5220,13 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             action: "reveal-badge",
             actionMeta: buildBadgeStorageKey(latestUnrevealedBadge),
             cue: `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--good);font-weight:700">new reward</span><div style="flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:100%;background:linear-gradient(90deg,var(--warn),var(--good))"></div></div></div>`
+          };
+        } else if (newRecord) {
+          rotatingCard = {
+            kicker: "New record",
+            headline: newRecord.headline,
+            support: newRecord.label,
+            cue: `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--warn);font-weight:700">${newRecord.support}</span><div style="flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:100%;background:linear-gradient(90deg,var(--brand),var(--warn))"></div></div></div>`
           };
         } else if (unresolvedResidual != null) {
           const isOver = unresolvedResidual > 0;

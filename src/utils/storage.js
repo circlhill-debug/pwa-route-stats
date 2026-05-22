@@ -17,6 +17,7 @@ export const AI_SUMMARY_COLLAPSED_KEY = 'routeStats.ai.summaryCollapsed';
 export const TOKEN_USAGE_STORAGE = 'routeStats.ai.tokenUsage';
 export const AI_BASE_PROMPT_KEY = 'routeStats.ai.basePrompt';
 export const BADGE_REVEAL_KEY = 'routeStats.badges.revealed.v1';
+export const BADGE_REVEAL_SEEDED_KEY = 'routeStats.badges.revealedSeeded.v1';
 
 const DEFAULT_FLAGS = {
   weekdayTicks:true,
@@ -92,7 +93,11 @@ export const CUMULATIVE_THRESHOLDS = {
   lifetimeParcels30k: { key: 'parcels', threshold: 30000, label: 'Scanster' },
   lifetimeParcels40k: { key: 'parcels', threshold: 40000, label: 'Route Mule' },
   lifetimeParcels50k: { key: 'parcels', threshold: 50000, label: 'Keeper of the Last Mile' },
-  lifetimeMercuryMagic: { key: 'letters', threshold: 200000, label: 'Lifetime Mercury Magic' },
+  lifetimeLetters100k: { key: 'letters', threshold: 100000, label: 'Mercury Magic' },
+  lifetimeLetters200k: { key: 'letters', threshold: 200000, label: 'Mail Master' },
+  lifetimeLetters300k: { key: 'letters', threshold: 300000, label: 'Envelope Emperor' },
+  lifetimeLetters400k: { key: 'letters', threshold: 400000, label: 'Keeper of the Post' },
+  lifetimeLetters500k: { key: 'letters', threshold: 500000, label: 'Patron of the Mailstream' },
   lifetimeHourDragon: { key: 'hours', threshold: 5000, label: 'Lifetime Dragon Hours' }
 };
 
@@ -110,6 +115,15 @@ export function loadRevealedBadgeKeys(){
 export function saveRevealedBadgeKeys(keys){
   const uniq = [...new Set((Array.isArray(keys) ? keys : []).filter(Boolean))];
   setStored(BADGE_REVEAL_KEY, uniq);
+}
+
+export function ensureBadgeRevealSeeded(badges){
+  if (getStored(BADGE_REVEAL_SEEDED_KEY, false)) return loadRevealedBadgeKeys();
+  const current = Array.isArray(badges) ? badges : (getStored('routeStats.badges', []) || []);
+  const seededKeys = current.map(buildBadgeStorageKey).filter(Boolean);
+  saveRevealedBadgeKeys(seededKeys);
+  setStored(BADGE_REVEAL_SEEDED_KEY, true);
+  return seededKeys;
 }
 
 export function updateYearlyTotals(dayData){

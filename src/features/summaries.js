@@ -264,8 +264,8 @@ export function createSummariesFeature({
         const volume = combinedVolume(parcels, letters, letterW);
         return { totalHours, routeHours, officeHours, volume };
       };
-      const metricDiff = (current, previous, formatter) => {
-        if (!(current && previous)) return { text: 'Need more history', bars: `<div class="muted" style="font-size:12px">No matching last-year history yet.</div>` };
+      const metricDiff = (current, previous) => {
+        if (!(current && previous)) return { text: 'Need more history', bars: `<div class="muted" style="font-size:12px">No matching last-year history yet.</div>`, top: null };
         const defs = [
           { key: 'totalHours', label: 'total hours', fmt: (v) => `${v.toFixed(1)}h` },
           { key: 'routeHours', label: 'route', fmt: (v) => `${v.toFixed(1)}h` },
@@ -281,13 +281,14 @@ export function createSummariesFeature({
           })
           .sort((a, b) => b.score - a.score);
         const top = ranked[0];
-        if (!top || top.pct == null) return { text: 'Need more history', bars: `<div class="muted" style="font-size:12px">No matching last-year history yet.</div>` };
+        if (!top || top.pct == null) return { text: 'Need more history', bars: `<div class="muted" style="font-size:12px">No matching last-year history yet.</div>`, top: null };
         const relation = top.pct > 0 ? 'heavier' : top.pct < 0 ? 'lighter' : 'similar';
         const maxVal = Math.max(top.current || 0, top.previous || 0, 1);
         const currentW = Math.max(8, Math.round(((top.current || 0) / maxVal) * 100));
         const previousW = Math.max(8, Math.round(((top.previous || 0) / maxVal) * 100));
         return {
           text: `${relation} on ${top.label} (${top.pct >= 0 ? '+' : ''}${top.pct}%)`,
+          top,
           bars: `
             <div style="display:grid;gap:6px">
               <div style="display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center">
@@ -318,6 +319,19 @@ export function createSummariesFeature({
       const lastYearWeekMetrics = aggregateMetrics(lastYearWeekRows);
       const todayEcho = metricDiff(currentTodayMetrics, lastYearTodayMetrics);
       const weekEcho = metricDiff(currentWeekMetrics, lastYearWeekMetrics);
+      const isStrongHistoricalCallback = (echo) => {
+        const top = echo?.top;
+        if (!top || top.pct == null) return false;
+        if (Math.abs(top.pct) >= 15) return true;
+        const hourKeys = new Set(['totalHours', 'routeHours', 'officeHours']);
+        if (hourKeys.has(top.key) && Number.isFinite(top.current) && Number.isFinite(top.previous)) {
+          return Math.abs(top.current - top.previous) >= 0.5;
+        }
+        return false;
+      };
+      const historicalTrigger = isStrongHistoricalCallback(todayEcho)
+        ? { scope: 'Today', echo: todayEcho }
+        : (isStrongHistoricalCallback(weekEcho) ? { scope: 'Week', echo: weekEcho } : null);
       const lastYearEchoCard = {
         kicker: 'Last Year Echo',
         headline: 'Today + Week',
@@ -336,6 +350,27 @@ export function createSummariesFeature({
             </div>
           </div>`
       };
+      if (!latestUnrevealedBadge && !newRecord && unresolvedResidual == null && historicalTrigger) {
+        const top = historicalTrigger.echo.top;
+        rotatingCard = {
+          kicker: 'Last Year Echo',
+          headline: `${historicalTrigger.scope} ${top.pct >= 0 ? '+' : ''}${top.pct}%`,
+          support: `${historicalTrigger.scope} is ${top.pct >= 0 ? 'heavier' : 'lighter'} on ${top.label}`,
+          cue: `
+            <div style="display:grid;gap:6px">
+              <div style="display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center">
+                <span class="muted" style="font-size:12px">Now</span>
+                <div style="height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${Math.max(8, Math.round(((top.current || 0) / Math.max(top.current || 0, top.previous || 0, 1)) * 100))}%;background:linear-gradient(90deg,var(--brand),var(--good))"></div></div>
+                <span style="font-size:12px">${top.fmt(top.current)}</span>
+              </div>
+              <div style="display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center">
+                <span class="muted" style="font-size:12px">2025</span>
+                <div style="height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${Math.max(8, Math.round(((top.previous || 0) / Math.max(top.current || 0, top.previous || 0, 1)) * 100))}%;background:linear-gradient(90deg,rgba(255,255,255,0.25),rgba(255,255,255,0.5))"></div></div>
+                <span style="font-size:12px">${top.fmt(top.previous)}</span>
+              </div>
+            </div>`
+        };
+      }
 
       const cards = [workdayCard, routeCard, volumeCard, rotatingCard, lastYearEchoCard];
       el.innerHTML = cards.map(cardDef => `

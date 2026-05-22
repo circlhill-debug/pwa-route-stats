@@ -126,10 +126,12 @@ export function ensureBadgeRevealSeeded(badges){
   return seededKeys;
 }
 
-export function updateYearlyTotals(dayData){
+export function updateYearlyTotals(dayData, options = {}){
   if (!dayData) return;
   const iso = dayData.date || dayData.work_date;
   if (!iso) return;
+  const excludeRow = typeof options.excludeRow === 'function' ? options.excludeRow : null;
+  if (excludeRow && excludeRow(dayData)) return;
   const year = new Date(iso).getFullYear();
   const totals = getStored('routeStats.yearlyTotals', {}) || {};
 
@@ -164,12 +166,14 @@ function checkYearlyMilestones(year, stats){
   setStored('routeStats.badges', badges);
 }
 
-export function recomputeYearlyStats(rows){
+export function recomputeYearlyStats(rows, options = {}){
   try{
     if (!Array.isArray(rows) || !rows.length) return;
+    const excludeRow = typeof options.excludeRow === 'function' ? options.excludeRow : null;
     const totals = {};
     (rows || []).forEach(row=>{
       if (!row) return;
+      if (excludeRow && excludeRow(row)) return;
       const iso = row.work_date || row.date;
       if (!iso) return;
       const dt = new Date(iso);
@@ -205,7 +209,7 @@ export function recomputeYearlyStats(rows){
       });
     });
 
-    const workedRows = (rows || []).filter(row => row && row.status !== 'off');
+    const workedRows = (rows || []).filter(row => row && row.status !== 'off' && !(excludeRow && excludeRow(row)));
     const lifetimeTotals = {
       parcels: workedRows.reduce((t, row) => t + (Number(row.parcels) || 0), 0),
       letters: workedRows.reduce((t, row) => t + (Number(row.letters) || 0), 0),

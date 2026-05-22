@@ -2537,7 +2537,7 @@ function getHourlyRateFromEval(){
     window.__rawRows = rawRows;
     window.allRows = rows;
     window.__holidayCatchupStats = summarizeHolidayCatchups(rawRows);
-    recomputeYearlyStats(rawRows);
+    recomputeYearlyStats(rawRows, { excludeRow: (row) => isVacationDate(row?.work_date || row?.date) });
     updateCurrentLetterWeight(normalRows);
     renderTable(applySearch(rawRows));
     buildCharts(rawRows);
@@ -2598,7 +2598,10 @@ function getHourlyRateFromEval(){
         }
       }catch(e){ error = e; }
       dWrite.textContent = error ? 'Failed' : 'OK'; if (error){ alert(error.message); return; }
-      updateYearlyTotals({ ...payload, date: payload.work_date, parcels: (payload.parcels || 0) + helperParcels });
+      updateYearlyTotals(
+        { ...payload, date: payload.work_date, parcels: (payload.parcels || 0) + helperParcels },
+        { excludeRow: (row) => isVacationDate(row?.work_date || row?.date) }
+      );
       renderYearlyBadges();
       await persistForecastSnapshot(payload, user.id);
       clone.textContent = 'Update'; clone.disabled = true; clone.classList.add('saving','savedFlash');
@@ -2761,7 +2764,7 @@ function getHourlyRateFromEval(){
         container.innerHTML = '<p class="muted">Milestones coming soon.</p>';
         return;
       }
-      const workedRows = (allRows || []).filter(r => r && r.status !== 'off');
+      const workedRows = (allRows || []).filter(r => r && r.status !== 'off' && !isVacationDate(r.work_date || r.date));
       const yearRows = workedRows.filter(r => {
         const iso = r.work_date || r.date;
         return iso && new Date(iso).getFullYear() === year;
@@ -3982,7 +3985,7 @@ function getHourlyRateFromEval(){
       if (!peakConfigured) yearlySummaryIncludePeak.checked = false;
     }
     const includePeak = !!yearlySummaryIncludePeak?.checked;
-    const filtered = filterRowsForParser(rows, includePeak).filter(r=> r.status !== 'off');
+    const filtered = filterRowsForParser(rows, includePeak).filter(r=> r.status !== 'off' && !isVacationDate(r.work_date || r.date));
     const years = getAvailableYears(filtered);
     if (!years.length){
       yearlySummaryStats.textContent = 'No data yet.';

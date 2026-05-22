@@ -220,4 +220,18 @@ describe('milestone badge helpers', () => {
     expect(badges.some(b => b.id === 'lifetimeLetters100k' && b.scope === 'lifetime')).toBe(true);
     expect(badges.some(b => b.id === 'lifetimeLetters200k' && b.scope === 'lifetime')).toBe(false);
   });
+
+  it('excludes vacation rows from yearly and lifetime recompute totals when requested', () => {
+    recomputeYearlyStats([
+      { work_date: '2026-01-10', status: 'worked', parcels: 9000, letters: 0, hours: 8 },
+      { work_date: '2026-01-11', status: 'worked', parcels: 5000, letters: 0, hours: 8 }
+    ], {
+      excludeRow: (row) => row.work_date === '2026-01-11'
+    });
+    const totals = getStored('routeStats.yearlyTotals', {});
+    const badges = getStored('routeStats.badges', []);
+    expect(totals['2026'].parcels).toBe(9000);
+    expect(badges.some(b => b.id === 'parcelTitan' && b.year === 2026)).toBe(false);
+    expect(badges.some(b => b.id === 'lifetimeParcels10k' && b.scope === 'lifetime')).toBe(false);
+  });
 });

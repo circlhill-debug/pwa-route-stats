@@ -219,10 +219,12 @@
     setStored(BADGE_REVEAL_SEEDED_KEY, true);
     return seededKeys;
   }
-  function updateYearlyTotals(dayData) {
+  function updateYearlyTotals(dayData, options = {}) {
     if (!dayData) return;
     const iso = dayData.date || dayData.work_date;
     if (!iso) return;
+    const excludeRow = typeof options.excludeRow === "function" ? options.excludeRow : null;
+    if (excludeRow && excludeRow(dayData)) return;
     const year = new Date(iso).getFullYear();
     const totals = getStored("routeStats.yearlyTotals", {}) || {};
     if (!totals[year]) {
@@ -250,12 +252,14 @@
     });
     setStored("routeStats.badges", badges);
   }
-  function recomputeYearlyStats(rows) {
+  function recomputeYearlyStats(rows, options = {}) {
     try {
       if (!Array.isArray(rows) || !rows.length) return;
+      const excludeRow = typeof options.excludeRow === "function" ? options.excludeRow : null;
       const totals = {};
       (rows || []).forEach((row) => {
         if (!row) return;
+        if (excludeRow && excludeRow(row)) return;
         const iso = row.work_date || row.date;
         if (!iso) return;
         const dt = new Date(iso);
@@ -288,7 +292,7 @@
           }
         });
       });
-      const workedRows = (rows || []).filter((row) => row && row.status !== "off");
+      const workedRows = (rows || []).filter((row) => row && row.status !== "off" && !(excludeRow && excludeRow(row)));
       const lifetimeTotals = {
         parcels: workedRows.reduce((t, row) => t + (Number(row.parcels) || 0), 0),
         letters: workedRows.reduce((t, row) => t + (Number(row.letters) || 0), 0),
@@ -8276,7 +8280,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     window.__rawRows = rawRows;
     window.allRows = rows;
     window.__holidayCatchupStats = summarizeHolidayCatchups(rawRows);
-    recomputeYearlyStats(rawRows);
+    recomputeYearlyStats(rawRows, { excludeRow: (row) => isVacationDate((row == null ? void 0 : row.work_date) || (row == null ? void 0 : row.date)) });
     updateCurrentLetterWeight(normalRows);
     renderTable(applySearch(rawRows));
     buildCharts(rawRows);
@@ -8367,7 +8371,10 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         alert(error.message);
         return;
       }
-      updateYearlyTotals({ ...payload, date: payload.work_date, parcels: (payload.parcels || 0) + helperParcels });
+      updateYearlyTotals(
+        { ...payload, date: payload.work_date, parcels: (payload.parcels || 0) + helperParcels },
+        { excludeRow: (row) => isVacationDate((row == null ? void 0 : row.work_date) || (row == null ? void 0 : row.date)) }
+      );
       renderYearlyBadges();
       await persistForecastSnapshot(payload, user.id);
       clone.textContent = "Update";
@@ -8591,7 +8598,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         container.innerHTML = '<p class="muted">Milestones coming soon.</p>';
         return;
       }
-      const workedRows = (allRows || []).filter((r) => r && r.status !== "off");
+      const workedRows = (allRows || []).filter((r) => r && r.status !== "off" && !isVacationDate(r.work_date || r.date));
       const yearRows = workedRows.filter((r) => {
         const iso = r.work_date || r.date;
         return iso && new Date(iso).getFullYear() === year;
@@ -9842,7 +9849,7 @@ ${lettersSummary}`;
       if (!peakConfigured) yearlySummaryIncludePeak.checked = false;
     }
     const includePeak = !!(yearlySummaryIncludePeak == null ? void 0 : yearlySummaryIncludePeak.checked);
-    const filtered = filterRowsForParser(rows, includePeak).filter((r) => r.status !== "off");
+    const filtered = filterRowsForParser(rows, includePeak).filter((r) => r.status !== "off" && !isVacationDate(r.work_date || r.date));
     const years = getAvailableYears(filtered);
     if (!years.length) {
       yearlySummaryStats.textContent = "No data yet.";

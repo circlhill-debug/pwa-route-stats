@@ -302,7 +302,23 @@ Insight layer direction
   - `Workday forecast`
   - `Route model`
   - `Volume level`
-- Later cards may rotate based on significance, but the anchor cards should remain stable
+- Card 4 is now the rotating significance slot
+- Current card 4 precedence:
+  - `New unlock!`
+  - `New record`
+  - `Action needed`
+  - `Strong historical callback`
+  - `Office time elevated`
+  - `Week running heavy/light`
+  - `Day status`
+- Historical callback trigger threshold:
+  - about `>= 15%`
+  - or `>= 0.5h` for time-based comparisons
+- Record trigger family now includes:
+  - most / least parcels
+  - most / least letters
+  - heaviest / lightest volume
+  - quickest route time
 - If the strip proves useful, it may gradually replace some of the noisier small tiles so the cards become the primary narrative display layer and the raw metrics move further under the hood
 
 Milestone follow-ups
@@ -313,7 +329,14 @@ Milestone follow-ups
   - `30k` `Scanster`
   - `40k` `Route Mule`
   - `50k` `Keeper of the Last Mile`
+- Lifetime letters ladder is now defined at:
+  - `100k` `Mercury Magic`
+  - `200k` `Mail Master`
+  - `300k` `Envelope Emperor`
+  - `400k` `Keeper of the Post`
+  - `500k` `Patron of the Mailstream`
 - Card 4 can now temporarily yield to a `New unlock` milestone event
   - click reveals/highlights the unlocked milestone in `Milestone Engine`
+- Existing historical badges are now seeded as revealed once so they do not keep surfacing as new
 - Next milestone step:
   - decide whether yearly milestones should also participate in the same reveal flow or stay quieter than lifetime parcel ladder unlocks

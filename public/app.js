@@ -4162,24 +4162,30 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           if (culprits) {
             const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
             const routeByDow = (arr) => {
-              const a = Array.from({ length: 7 }, () => 0);
+              const totals = Array.from({ length: 7 }, () => 0);
+              const counts = Array.from({ length: 7 }, () => 0);
               arr.forEach((r) => {
                 const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
                 const idx = (d2.weekday + 6) % 7;
-                a[idx] += mixRouteAdjustedMinutes(r);
+                totals[idx] += mixRouteAdjustedMinutes(r);
+                counts[idx] += 1;
               });
-              return a.map((n) => +(Math.round(n * 100) / 100).toFixed(2));
+              return {
+                totals: totals.map((n) => +(Math.round(n * 100) / 100).toFixed(2)),
+                counts
+              };
             };
             const thisBy = routeByDow(W0);
             const lastBy = routeByDow(W1);
             const out = [];
-            thisBy.forEach((val, idx) => {
-              const prev = lastBy[idx] || 0;
+            thisBy.totals.forEach((val, idx) => {
+              if (!thisBy.counts[idx]) return;
+              const prev = lastBy.totals[idx] || 0;
               if (prev <= 0) return;
               const diff = Math.round((val - prev) / prev * 100);
               if (Math.abs(diff) >= 10) {
                 const fg = diff >= 0 ? "var(--good)" : "var(--bad)";
-                out.push(`${days[idx]}: <span style="color:${fg};font-weight:600">${diff >= 0 ? "\u2191" : "\u2193"}${Math.abs(diff)}%</span>`);
+                out.push(`${days[idx]} route time <span style="color:${fg};font-weight:600">${diff >= 0 ? "\u2191" : "\u2193"}${Math.abs(diff)}%</span>`);
               }
             });
             const routeColor = (goodColor || "#7CE38B").trim() || "#7CE38B";
@@ -9843,6 +9849,7 @@ ${lettersSummary}`;
   }
   function buildYearlySummary(rows) {
     if (!yearlySummaryCard || !yearlySummaryStats || !yearlySummaryYear) return;
+    const now = DateTime.now().setZone(ZONE);
     const peakConfigured = !!((PEAK_SEASON == null ? void 0 : PEAK_SEASON.from) && (PEAK_SEASON == null ? void 0 : PEAK_SEASON.to));
     if (yearlySummaryIncludePeak) {
       yearlySummaryIncludePeak.disabled = !peakConfigured;
@@ -9902,10 +9909,13 @@ ${lettersSummary}`;
       bucket.volumeBase += combinedVolumeBase(r, letterW);
     });
     const activeMonths = byMonth.filter((m) => m.parcels + m.letters + m.hours > 0);
+    const currentMonthIdx = current === now.year ? now.month - 1 : null;
+    const completedMonths = activeMonths.filter((m) => m.idx !== currentMonthIdx);
+    const monthPool = completedMonths.length ? completedMonths : activeMonths;
     const monthVolume = (m) => m.parcels;
-    const heaviest = activeMonths.reduce((max, m) => monthVolume(m) > (max ? monthVolume(max) : -1) ? m : max, null);
-    const lightest = activeMonths.reduce((min, m) => monthVolume(m) < (min ? monthVolume(min) : Infinity) ? m : min, null);
-    const efficient = activeMonths.reduce((best, m) => {
+    const heaviest = monthPool.reduce((max, m) => monthVolume(m) > (max ? monthVolume(max) : -1) ? m : max, null);
+    const lightest = monthPool.reduce((min, m) => monthVolume(m) < (min ? monthVolume(min) : Infinity) ? m : min, null);
+    const efficient = monthPool.reduce((best, m) => {
       const eff = m.volumeBase > 0 ? m.routeHours / m.volumeBase : null;
       if (eff == null) return best;
       if (!best) return { ...m, eff };

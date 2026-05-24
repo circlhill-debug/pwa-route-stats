@@ -3979,6 +3979,7 @@ function getHourlyRateFromEval(){
 
   function buildYearlySummary(rows){
     if (!yearlySummaryCard || !yearlySummaryStats || !yearlySummaryYear) return;
+    const now = DateTime.now().setZone(ZONE);
     const peakConfigured = !!(PEAK_SEASON?.from && PEAK_SEASON?.to);
     if (yearlySummaryIncludePeak){
       yearlySummaryIncludePeak.disabled = !peakConfigured;
@@ -4039,10 +4040,13 @@ function getHourlyRateFromEval(){
       bucket.volumeBase += combinedVolumeBase(r, letterW);
     });
     const activeMonths = byMonth.filter(m => (m.parcels + m.letters + m.hours) > 0);
+    const currentMonthIdx = (current === now.year) ? (now.month - 1) : null;
+    const completedMonths = activeMonths.filter(m => m.idx !== currentMonthIdx);
+    const monthPool = completedMonths.length ? completedMonths : activeMonths;
     const monthVolume = (m)=> m.parcels;
-    const heaviest = activeMonths.reduce((max, m)=> (monthVolume(m) > (max ? monthVolume(max) : -1)) ? m : max, null);
-    const lightest = activeMonths.reduce((min, m)=> (monthVolume(m) < (min ? monthVolume(min) : Infinity)) ? m : min, null);
-    const efficient = activeMonths.reduce((best, m)=>{
+    const heaviest = monthPool.reduce((max, m)=> (monthVolume(m) > (max ? monthVolume(max) : -1)) ? m : max, null);
+    const lightest = monthPool.reduce((min, m)=> (monthVolume(m) < (min ? monthVolume(min) : Infinity)) ? m : min, null);
+    const efficient = monthPool.reduce((best, m)=>{
       const eff = m.volumeBase > 0 ? (m.routeHours / m.volumeBase) : null;
       if (eff == null) return best;
       if (!best) return { ...m, eff };

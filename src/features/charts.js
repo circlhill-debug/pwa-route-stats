@@ -757,20 +757,30 @@ export function createCharts({
         if (culprits){
           const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
           const routeByDow = (arr)=>{
-            const a = Array.from({length:7},()=>0);
-            arr.forEach(r=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); const idx=(d.weekday+6)%7; a[idx]+= mixRouteAdjustedMinutes(r); });
-            return a.map(n=> +(Math.round(n*100)/100).toFixed(2));
+            const totals = Array.from({length:7},()=>0);
+            const counts = Array.from({length:7},()=>0);
+            arr.forEach(r=>{
+              const d=DateTime.fromISO(r.work_date,{zone:ZONE});
+              const idx=(d.weekday+6)%7;
+              totals[idx]+= mixRouteAdjustedMinutes(r);
+              counts[idx]+= 1;
+            });
+            return {
+              totals: totals.map(n=> +(Math.round(n*100)/100).toFixed(2)),
+              counts
+            };
           };
           const thisBy = routeByDow(W0);
           const lastBy = routeByDow(W1);
           const out=[];
-          thisBy.forEach((val,idx)=>{
-            const prev = lastBy[idx] || 0;
+          thisBy.totals.forEach((val,idx)=>{
+            if (!thisBy.counts[idx]) return;
+            const prev = lastBy.totals[idx] || 0;
             if (prev <= 0) return;
             const diff = Math.round(((val-prev)/prev)*100);
             if (Math.abs(diff)>=10){
               const fg = diff >= 0 ? 'var(--good)' : 'var(--bad)';
-              out.push(`${days[idx]}: <span style="color:${fg};font-weight:600">${diff>=0?'↑':'↓'}${Math.abs(diff)}%</span>`);
+              out.push(`${days[idx]} route time <span style="color:${fg};font-weight:600">${diff>=0?'↑':'↓'}${Math.abs(diff)}%</span>`);
             }
           });
           const routeColor = (goodColor || '#7CE38B').trim() || '#7CE38B';

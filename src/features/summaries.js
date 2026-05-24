@@ -26,6 +26,20 @@ export function createSummariesFeature({
   if (typeof combinedVolume !== 'function') throw new Error('createSummariesFeature: combinedVolume is required');
   if (typeof loadDismissedResiduals !== 'function') throw new Error('createSummariesFeature: loadDismissedResiduals is required');
 
+  function getActiveWorkdayContext(rows, now = DateTime.now().setZone(ZONE)) {
+    const worked = (rows || []).filter(r => r && r.status !== 'off');
+    const todayIso = now.toISODate();
+    const hasTodayWorkedRow = worked.some(r => r.work_date === todayIso);
+    const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
+    return {
+      worked,
+      todayIso,
+      hasTodayWorkedRow,
+      activeDay,
+      activeEnd: activeDay.endOf('day')
+    };
+  }
+
   function getLetterWeightForSummary(rows) {
     try {
       const scoped = filterRowsForView(rows || [])
@@ -53,11 +67,10 @@ export function createSummariesFeature({
       }
 
       const scoped = filterRowsForView(rows || []);
-      const worked = scoped.filter(r => r && r.status !== 'off');
       const now = DateTime.now().setZone(ZONE);
+      const { worked, todayIso, activeDay, activeEnd } = getActiveWorkdayContext(scoped, now);
       const prediction = buildPredictionRecord(worked, { now });
       const todayRow = prediction?.row || null;
-      const todayIso = prediction?.iso || now.toISODate();
       const model = getResidualModel(worked);
       const hasModel = !!(model && Number.isFinite(model.a) && Number.isFinite(model.bp) && Number.isFinite(model.bl));
       const residualEntry = hasModel ? (model.residuals || []).find(r => r?.iso === todayIso) || null : null;
@@ -146,9 +159,9 @@ export function createSummariesFeature({
       const officeElevated = officeDeltaH != null && officeDeltaPct != null && officeDeltaH >= 0.4 && officeDeltaPct >= 10;
 
       const startThis = startOfWeekMonday(now);
-      const endThis = now.endOf('day');
+      const endThis = activeEnd;
       const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf('day');
+      const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf('day');
       const inRange = (r, from, to) => {
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
         return d >= from && d <= to;
@@ -425,16 +438,16 @@ export function createSummariesFeature({
 
       const scoped = filterRowsForView(rows || []);
       const now = DateTime.now().setZone(ZONE);
+      const { worked, activeDay, activeEnd } = getActiveWorkdayContext(scoped, now);
       const startThis = startOfWeekMonday(now);
-      const endThis = now.endOf('day');
+      const endThis = activeEnd;
       const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf('day');
+      const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf('day');
       const inRange = (r, from, to) => {
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
         return d >= from && d <= to;
       };
 
-      const worked = scoped.filter(r => r.status !== 'off');
       const W0 = worked.filter(r => inRange(r, startThis, endThis));
       const W1 = worked.filter(r => inRange(r, startLast, lastEndSame));
       const daysThisWeek = [...new Set(W0.map(r => r.work_date))].length;
@@ -487,16 +500,16 @@ export function createSummariesFeature({
     try {
       const scoped = filterRowsForView(rows || []);
       const now = DateTime.now().setZone(ZONE);
+      const { worked, activeDay, activeEnd } = getActiveWorkdayContext(scoped, now);
       const startThis = startOfWeekMonday(now);
-      const endThis = now.endOf('day');
+      const endThis = activeEnd;
       const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf('day');
+      const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf('day');
       const inRange = (r, from, to) => {
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
         return d >= from && d <= to;
       };
 
-      const worked = scoped.filter(r => r.status !== 'off');
       const thisWeek = worked.filter(r => inRange(r, startThis, endThis));
       const lastWeek = worked.filter(r => inRange(r, startLast, lastEndSame));
       if (!thisWeek.length) {
@@ -605,16 +618,16 @@ export function createSummariesFeature({
     try {
       const scoped = filterRowsForView(rows || []);
       const now = DateTime.now().setZone(ZONE);
+      const { worked, activeDay, activeEnd } = getActiveWorkdayContext(scoped, now);
       const startThis = startOfWeekMonday(now);
-      const endThis = now.endOf('day');
+      const endThis = activeEnd;
       const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf('day');
+      const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf('day');
       const inRange = (r, from, to) => {
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
         return d >= from && d <= to;
       };
 
-      const worked = scoped.filter(r => r.status !== 'off');
       const thisWeek = worked.filter(r => inRange(r, startThis, endThis));
       const lastWeek = worked.filter(r => inRange(r, startLast, lastEndSame));
       if (!thisWeek.length || !lastWeek.length) {
@@ -676,8 +689,9 @@ export function createSummariesFeature({
         return;
       }
 
+      const { worked: activeWorked, activeEnd } = getActiveWorkdayContext(scoped, now);
       const startThis = startOfWeekMonday(now);
-      const endToday = now.endOf('day');
+      const endToday = activeEnd;
       const lastStart = startOfWeekMonday(now.minus({ weeks: 1 }));
       const lastEnd = endOfWeekSunday(now.minus({ weeks: 1 }));
       const priorStart = startOfWeekMonday(now.minus({ weeks: 2 }));
@@ -687,7 +701,7 @@ export function createSummariesFeature({
         return d >= from && d <= to;
       };
 
-      const worked = scoped.filter(r => inRange(r, priorStart, endToday));
+      const worked = activeWorked.filter(r => inRange(r, priorStart, endToday));
       const thisWeek = worked.filter(r => inRange(r, startThis, endToday));
       const lastWeek = worked.filter(r => inRange(r, lastStart, lastEnd));
       const priorWeek = worked.filter(r => inRange(r, priorStart, priorEnd));

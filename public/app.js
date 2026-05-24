@@ -5076,6 +5076,19 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (typeof getResidualModel2 !== "function") throw new Error("createSummariesFeature: getResidualModel is required");
     if (typeof combinedVolume2 !== "function") throw new Error("createSummariesFeature: combinedVolume is required");
     if (typeof loadDismissedResiduals2 !== "function") throw new Error("createSummariesFeature: loadDismissedResiduals is required");
+    function getActiveWorkdayContext(rows, now = DateTime.now().setZone(ZONE)) {
+      const worked = (rows || []).filter((r) => r && r.status !== "off");
+      const todayIso2 = now.toISODate();
+      const hasTodayWorkedRow = worked.some((r) => r.work_date === todayIso2);
+      const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
+      return {
+        worked,
+        todayIso: todayIso2,
+        hasTodayWorkedRow,
+        activeDay,
+        activeEnd: activeDay.endOf("day")
+      };
+    }
     function getLetterWeightForSummary2(rows) {
       try {
         const scoped = filterRowsForView2(rows || []).filter((r) => r && r.status !== "off" && (+r.parcels || 0) + (+r.letters || 0) > 0).sort((a, b) => a.work_date < b.work_date ? -1 : 1);
@@ -5098,11 +5111,10 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           return;
         }
         const scoped = filterRowsForView2(rows || []);
-        const worked = scoped.filter((r) => r && r.status !== "off");
         const now = DateTime.now().setZone(ZONE);
+        const { worked, todayIso: todayIso2, activeDay, activeEnd } = getActiveWorkdayContext(scoped, now);
         const prediction = buildPredictionRecord2(worked, { now });
         const todayRow = (prediction == null ? void 0 : prediction.row) || null;
-        const todayIso2 = (prediction == null ? void 0 : prediction.iso) || now.toISODate();
         const model = getResidualModel2(worked);
         const hasModel = !!(model && Number.isFinite(model.a) && Number.isFinite(model.bp) && Number.isFinite(model.bl));
         const residualEntry = hasModel ? (model.residuals || []).find((r) => (r == null ? void 0 : r.iso) === todayIso2) || null : null;
@@ -5164,9 +5176,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const officeDeltaPct = officeDeltaH != null && officeAvgH && officeAvgH > 0 ? Math.round(officeDeltaH / officeAvgH * 100) : null;
         const officeElevated = officeDeltaH != null && officeDeltaPct != null && officeDeltaH >= 0.4 && officeDeltaPct >= 10;
         const startThis = startOfWeekMonday(now);
-        const endThis = now.endOf("day");
+        const endThis = activeEnd;
         const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-        const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf("day");
+        const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf("day");
         const inRange = (r, from, to) => {
           const d = DateTime.fromISO(r.work_date, { zone: ZONE });
           return d >= from && d <= to;
@@ -5432,15 +5444,15 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         }
         const scoped = filterRowsForView2(rows || []);
         const now = DateTime.now().setZone(ZONE);
+        const { worked, activeDay, activeEnd } = getActiveWorkdayContext(scoped, now);
         const startThis = startOfWeekMonday(now);
-        const endThis = now.endOf("day");
+        const endThis = activeEnd;
         const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-        const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf("day");
+        const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf("day");
         const inRange = (r, from, to) => {
           const d = DateTime.fromISO(r.work_date, { zone: ZONE });
           return d >= from && d <= to;
         };
-        const worked = scoped.filter((r) => r.status !== "off");
         const W0 = worked.filter((r) => inRange(r, startThis, endThis));
         const W1 = worked.filter((r) => inRange(r, startLast, lastEndSame));
         const daysThisWeek = [...new Set(W0.map((r) => r.work_date))].length;
@@ -5487,15 +5499,15 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       try {
         const scoped = filterRowsForView2(rows || []);
         const now = DateTime.now().setZone(ZONE);
+        const { worked, activeDay, activeEnd } = getActiveWorkdayContext(scoped, now);
         const startThis = startOfWeekMonday(now);
-        const endThis = now.endOf("day");
+        const endThis = activeEnd;
         const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-        const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf("day");
+        const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf("day");
         const inRange = (r, from, to) => {
           const d = DateTime.fromISO(r.work_date, { zone: ZONE });
           return d >= from && d <= to;
         };
-        const worked = scoped.filter((r) => r.status !== "off");
         const thisWeek = worked.filter((r) => inRange(r, startThis, endThis));
         const lastWeek = worked.filter((r) => inRange(r, startLast, lastEndSame));
         if (!thisWeek.length) {
@@ -5589,15 +5601,15 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       try {
         const scoped = filterRowsForView2(rows || []);
         const now = DateTime.now().setZone(ZONE);
+        const { worked, activeDay, activeEnd } = getActiveWorkdayContext(scoped, now);
         const startThis = startOfWeekMonday(now);
-        const endThis = now.endOf("day");
+        const endThis = activeEnd;
         const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-        const lastEndSame = startLast.plus({ days: now.weekday - 1 }).endOf("day");
+        const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf("day");
         const inRange = (r, from, to) => {
           const d = DateTime.fromISO(r.work_date, { zone: ZONE });
           return d >= from && d <= to;
         };
-        const worked = scoped.filter((r) => r.status !== "off");
         const thisWeek = worked.filter((r) => inRange(r, startThis, endThis));
         const lastWeek = worked.filter((r) => inRange(r, startLast, lastEndSame));
         if (!thisWeek.length || !lastWeek.length) {
@@ -5651,8 +5663,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           el.textContent = "\u2014";
           return;
         }
+        const { worked: activeWorked, activeEnd } = getActiveWorkdayContext(scoped, now);
         const startThis = startOfWeekMonday(now);
-        const endToday = now.endOf("day");
+        const endToday = activeEnd;
         const lastStart = startOfWeekMonday(now.minus({ weeks: 1 }));
         const lastEnd = endOfWeekSunday(now.minus({ weeks: 1 }));
         const priorStart = startOfWeekMonday(now.minus({ weeks: 2 }));
@@ -5661,7 +5674,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           const d = DateTime.fromISO(row.work_date, { zone: ZONE });
           return d >= from && d <= to;
         };
-        const worked = scoped.filter((r) => inRange(r, priorStart, endToday));
+        const worked = activeWorked.filter((r) => inRange(r, priorStart, endToday));
         const thisWeek = worked.filter((r) => inRange(r, startThis, endToday));
         const lastWeek = worked.filter((r) => inRange(r, lastStart, lastEnd));
         const priorWeek = worked.filter((r) => inRange(r, priorStart, priorEnd));
@@ -8867,12 +8880,27 @@ Entries are filtered by this id.`);
     rebuildAll();
     alert(`Imported ${rows.length} rows into this account.`);
   });
+  function getActiveWeekContext(workRows, now = DateTime.now().setZone(ZONE)) {
+    const todayIso2 = now.toISODate();
+    const hasTodayWorkedRow = (workRows || []).some((r) => r && r.work_date === todayIso2 && r.status !== "off");
+    const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
+    const weekStart = startOfWeekMonday(now);
+    const activeDayIndex = activeDay < weekStart ? -1 : (activeDay.weekday + 6) % 7;
+    return {
+      todayIso: todayIso2,
+      hasTodayWorkedRow,
+      activeDay,
+      activeEnd: activeDay.endOf("day"),
+      activeDayIndex
+    };
+  }
   function buildSnapshot(rows) {
     var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B;
     rows = filterRowsForView(rows || []);
     const today = DateTime.now().setZone(ZONE);
     const dow = today.weekday % 7;
     const workRows = rows.filter((r) => r.status !== "off");
+    const { activeDay, activeEnd, activeDayIndex } = getActiveWeekContext(workRows, today);
     const prediction = buildPredictionRecord(workRows, { now: today });
     const predictedTotalHours = (_b = (_a5 = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _a5.totalHours) != null ? _b : null;
     const todayRow = (prediction == null ? void 0 : prediction.row) || null;
@@ -9159,7 +9187,7 @@ Score: ${overallScore}/10 (higher is better)`;
     } catch (_) {
     }
     const weekStart = startOfWeekMonday(today);
-    const weekEnd = today.endOf("day");
+    const weekEnd = activeEnd;
     const prevWeekStart = startOfWeekMonday(today.minus({ weeks: 1 }));
     const prevWeekEnd = endOfWeekSunday2(today.minus({ weeks: 1 }));
     const priorWeekStart = startOfWeekMonday(today.minus({ weeks: 2 }));
@@ -9218,7 +9246,7 @@ ${lettersSummary}`;
     const hCarry = pct(avgOrNull(hLast, dLast), avgOrNull(sum(priorW, (r) => normalizeHoursValue(r.hours)), dPrior));
     const pCarry = pct(avgOrNull(pLast, dLast), avgOrNull(sum(priorW, (r) => +r.parcels || 0), dPrior));
     const lCarry = pct(avgOrNull(lLast, dLast), avgOrNull(sum(priorW, (r) => +r.letters || 0), dPrior));
-    const dayIndexToday = (today.weekday + 6) % 7;
+    const dayIndexToday = activeDayIndex;
     const toWeekArray = (from, to) => {
       const out = Array.from({ length: 7 }, () => ({ h: 0, p: 0, l: 0 }));
       const inRange2 = (r) => {

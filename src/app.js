@@ -2982,11 +2982,27 @@ function getHourlyRateFromEval(){
     alert(`Imported ${rows.length} rows into this account.`);
   });
 
+  function getActiveWeekContext(workRows, now = DateTime.now().setZone(ZONE)) {
+    const todayIso = now.toISODate();
+    const hasTodayWorkedRow = (workRows || []).some(r => r && r.work_date === todayIso && r.status !== 'off');
+    const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
+    const weekStart = startOfWeekMonday(now);
+    const activeDayIndex = activeDay < weekStart ? -1 : (activeDay.weekday + 6) % 7;
+    return {
+      todayIso,
+      hasTodayWorkedRow,
+      activeDay,
+      activeEnd: activeDay.endOf('day'),
+      activeDayIndex
+    };
+  }
+
   function buildSnapshot(rows){
     rows = filterRowsForView(rows||[]);
     const today=DateTime.now().setZone(ZONE);
     const dow=today.weekday%7; // 0=Sun
     const workRows=rows.filter(r=>r.status!=='off');
+    const { activeDay, activeEnd, activeDayIndex } = getActiveWeekContext(workRows, today);
     const prediction = buildPredictionRecord(workRows, { now: today });
     const predictedTotalHours = prediction?.predicted?.totalHours ?? null;
     const todayRow = prediction?.row || null;
@@ -3252,7 +3268,7 @@ function getHourlyRateFromEval(){
 
     // ===== Weekly tiles (Monday-based) =====
     const weekStart = startOfWeekMonday(today);
-    const weekEnd   = today.endOf('day');
+    const weekEnd   = activeEnd;
     const prevWeekStart = startOfWeekMonday(today.minus({weeks:1}));
     const prevWeekEnd   = endOfWeekSunday(today.minus({weeks:1}));
     const priorWeekStart = startOfWeekMonday(today.minus({weeks:2}));
@@ -3317,7 +3333,7 @@ function getHourlyRateFromEval(){
     // ===== Advanced Weekly Metrics (Phase 1) =====
     // Day-by-day comparison Mon..today vs same weekday last week,
     // then compute weighted average and cumulative impact (percent).
-    const dayIndexToday = (today.weekday + 6) % 7; // Mon=0..Sun=6
+    const dayIndexToday = activeDayIndex; // Mon=0..Sun=6, or -1 when no current-week worked row exists yet
 
     // Build arrays for this week and last week by weekday index (Mon..Sun)
     const toWeekArray = (from, to) => {

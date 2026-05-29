@@ -633,14 +633,17 @@ export function createCharts({
     const details = document.getElementById('mixCompareDetails');
     const btn = document.getElementById('mixCompareBtn');
     const now = DateTime.now().setZone(ZONE);
+    const todayIso = now.toISODate();
+    const hasTodayWorkedRow = rows.some(r => r && r.status !== 'off' && r.work_date === todayIso);
+    const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
     const startThis = startOfWeekMonday(now);
-    const endThis   = now.endOf('day');
+    const endThis   = activeDay.endOf('day');
     const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
     const worked = rows.filter(r=> r.status!=='off');
     const baseWeek = getLastNonEmptyWeek(worked, now, { excludeVacation: true });
     const startLast = baseWeek.start;
     const endLastFull = baseWeek.end;
-    const lastEndSame = DateTime.min(endLastFull, baseWeek.start.plus({ days: Math.max(0, now.weekday - 1) }).endOf('day'));
+    const lastEndSame = DateTime.min(endLastFull, baseWeek.start.plus({ days: Math.max(0, activeDay.weekday - 1) }).endOf('day'));
     const W0 = worked.filter(r=> inRange(r,startThis,endThis));
     const W1 = baseWeek.rows.filter(r=> inRange(r,startLast,lastEndSame));
     const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
@@ -798,7 +801,7 @@ export function createCharts({
     let resL = { used: 0 };
     const baselines = ensureWeeklyBaselines(rows) || getWeeklyBaselines();
     const anchor = computeAnchorBaselines(rows, 8);
-    const nowDayIdx = (now.weekday + 6) % 7;
+    const nowDayIdx = (activeDay.weekday + 6) % 7;
     let comparisonPacketP = buildWeeklyComparisonPacket('matched_workday_count', {
       currentTotal: p0,
       referenceTotal: p1,
@@ -952,7 +955,7 @@ export function createCharts({
         if (vol && routeH && vol > 0 && routeH > 0) return +((routeH / vol) * 60).toFixed(2);
         return null;
       });
-        const dayIdxToday = (now.weekday + 6) % 7;
+        const dayIdxToday = (activeDay.weekday + 6) % 7;
         const hasBand = !!(typeof bandMinData !== 'undefined' && typeof bandMaxData !== 'undefined' && bandMinData && bandMaxData);
         const isoForPoint = (datasetIndex, idx) => {
           try{

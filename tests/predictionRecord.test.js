@@ -27,7 +27,7 @@ describe('buildPredictionRecord', () => {
     expect(record.delta.hitMiss).toBe('miss');
   });
 
-  it('falls back to overall averages when no weekday history exists', () => {
+  it('does not forecast when no weekday history exists', () => {
     const rows = [
       { work_date: '2026-04-14', status: 'worked', hours: 6.0, office_minutes: 1.5, route_minutes: 4.5 },
       { work_date: '2026-04-15', status: 'worked', hours: 7.0, office_minutes: 2.0, route_minutes: 5.0 }
@@ -37,10 +37,10 @@ describe('buildPredictionRecord', () => {
       now: DateTime.fromISO('2026-04-17T07:00:00', { zone: 'America/Detroit' })
     });
 
-    expect(record.source.type).toBe('overall_average');
-    expect(record.source.sampleSize).toBe(2);
-    expect(record.predicted.totalHours).toBe(6.5);
-    expect(record.predicted.endTime).toBe('3:00 PM');
+    expect(record.source.type).toBe('no_weekday_history');
+    expect(record.source.sampleSize).toBe(0);
+    expect(record.predicted.totalHours).toBeNull();
+    expect(record.predicted.endTime).toBeNull();
     expect(record.actual.totalHours).toBeNull();
     expect(record.delta.hitMiss).toBeNull();
   });

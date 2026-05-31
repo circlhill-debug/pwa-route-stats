@@ -75,12 +75,9 @@ export function buildPredictionRecord(rows, options = {}) {
   const historicalRows = sourceRows.filter((row) => row.work_date !== todayIso);
   const sameDowRows = historicalRows.filter((row) => dowIndex(row.work_date) === todayDow);
 
-  const predictedTotalHours = mean(sameDowRows.map((row) => parseHours(row.hours)).filter(Boolean))
-    ?? mean(historicalRows.map((row) => parseHours(row.hours)).filter(Boolean));
-  const predictedOfficeHours = mean(sameDowRows.map((row) => parseHours(row.office_minutes)).filter(Boolean))
-    ?? mean(historicalRows.map((row) => parseHours(row.office_minutes)).filter(Boolean));
-  const predictedRouteHours = mean(sameDowRows.map((row) => parseHours(row.route_minutes)).filter(Boolean))
-    ?? mean(historicalRows.map((row) => parseHours(row.route_minutes)).filter(Boolean));
+  const predictedTotalHours = mean(sameDowRows.map((row) => parseHours(row.hours)).filter(Boolean));
+  const predictedOfficeHours = mean(sameDowRows.map((row) => parseHours(row.office_minutes)).filter(Boolean));
+  const predictedRouteHours = mean(sameDowRows.map((row) => parseHours(row.route_minutes)).filter(Boolean));
 
   const predictedStartTime = todayRow?.start_time || options.startTime || null;
   const predictedEndDt = predictedEndDateTime(todayIso, predictedTotalHours, { startHour, startTime: predictedStartTime });
@@ -101,8 +98,8 @@ export function buildPredictionRecord(rows, options = {}) {
     iso: todayIso,
     weekday: todayDow,
     source: {
-      type: sameDowRows.length ? 'weekday_average' : 'overall_average',
-      sampleSize: sameDowRows.length || historicalRows.length
+      type: sameDowRows.length ? 'weekday_average' : 'no_weekday_history',
+      sampleSize: sameDowRows.length
     },
     predicted: {
       totalHours: predictedTotalHours,

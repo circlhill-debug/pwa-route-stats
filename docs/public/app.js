@@ -1751,7 +1751,7 @@
     return Math.round(actualDt.diff(predictedDt, "minutes").minutes);
   }
   function buildPredictionRecord(rows, options = {}) {
-    var _a5, _b, _c, _d;
+    var _a5;
     const now = options.now || DateTime.now().setZone(ZONE);
     const todayIso2 = options.todayIso || now.toISODate();
     const todayDow = (_a5 = options.todayDow) != null ? _a5 : now.weekday % 7;
@@ -1761,9 +1761,9 @@
     const todayRow = selectBestRow(todayCandidates);
     const historicalRows = sourceRows.filter((row) => row.work_date !== todayIso2);
     const sameDowRows = historicalRows.filter((row) => dowIndex(row.work_date) === todayDow);
-    const predictedTotalHours = (_b = mean(sameDowRows.map((row) => parseHours(row.hours)).filter(Boolean))) != null ? _b : mean(historicalRows.map((row) => parseHours(row.hours)).filter(Boolean));
-    const predictedOfficeHours = (_c = mean(sameDowRows.map((row) => parseHours(row.office_minutes)).filter(Boolean))) != null ? _c : mean(historicalRows.map((row) => parseHours(row.office_minutes)).filter(Boolean));
-    const predictedRouteHours = (_d = mean(sameDowRows.map((row) => parseHours(row.route_minutes)).filter(Boolean))) != null ? _d : mean(historicalRows.map((row) => parseHours(row.route_minutes)).filter(Boolean));
+    const predictedTotalHours = mean(sameDowRows.map((row) => parseHours(row.hours)).filter(Boolean));
+    const predictedOfficeHours = mean(sameDowRows.map((row) => parseHours(row.office_minutes)).filter(Boolean));
+    const predictedRouteHours = mean(sameDowRows.map((row) => parseHours(row.route_minutes)).filter(Boolean));
     const predictedStartTime = (todayRow == null ? void 0 : todayRow.start_time) || options.startTime || null;
     const predictedEndDt = predictedEndDateTime(todayIso2, predictedTotalHours, { startHour, startTime: predictedStartTime });
     const predictedEndTime = predictedEndDt ? predictedEndDt.toFormat("h:mm a") : null;
@@ -1778,8 +1778,8 @@
       iso: todayIso2,
       weekday: todayDow,
       source: {
-        type: sameDowRows.length ? "weekday_average" : "overall_average",
-        sampleSize: sameDowRows.length || historicalRows.length
+        type: sameDowRows.length ? "weekday_average" : "no_weekday_history",
+        sampleSize: sameDowRows.length
       },
       predicted: {
         totalHours: predictedTotalHours,

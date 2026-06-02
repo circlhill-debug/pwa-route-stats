@@ -180,6 +180,86 @@ Current resume point
 
 ---
 
+Current production state (Jun 2, 2026)
+
+What shipped recently
+- Intelligence layer phase 1 is live on `main`
+  - optional top insight strip
+  - stable anchor cards:
+    - `Workday forecast`
+    - `Route model`
+    - `Volume level`
+  - rotating card 4 precedence:
+    1. `New unlock!`
+    2. `New record`
+    3. `Action needed`
+    4. `Strong historical callback`
+    5. `Office time elevated`
+    6. `Week running heavy/light`
+    7. `Day status`
+- Milestone/gamification foundation is live
+  - yearly milestones
+  - lifetime parcel ladder
+  - lifetime letters ladder
+  - all-time records
+  - reveal flow from card 4 into Milestones
+- Weekly compare redesign phase 1 is live
+  - `Weekly Compare` is now volume-focused
+  - `Baseline View` is now separate
+  - old mixed dotted-line baseline view removed
+  - volume metric source unified across:
+    - Today Volume tile
+    - Today insight strip volume card
+    - Weekly Compare
+    - Baseline View
+- Forecast/week handling hardening is live
+  - no workday forecast without same-weekday history
+  - week views stop at yesterday until today has a worked row
+  - weekday anomalies skip inactive current-week days
+  - vacation ranges now exclude yearly/lifetime totals and milestones
+
+Product direction now
+- The app is moving from:
+  - a long report of tiles and numbers
+- toward:
+  - a smaller narrative dashboard with drill-down tools underneath
+- Data and raw metrics should increasingly move under the hood.
+- User-facing default experience should increasingly emphasize:
+  - summary cards
+  - simple graphics
+  - clear action paths
+  - progressive disclosure into tools like:
+    - Day Compare
+    - Diagnostics
+    - Milestones
+    - Yearly Summary
+
+Recommended next focus for a semi-professional demo
+1. Treat current math/data scaffolding as sufficiently mature for demo-oriented UX work.
+2. Prioritize user-facing orchestration over adding more raw metrics.
+3. Build clearer click-through flows between insight cards and deep tools.
+4. Continue reducing visible tile clutter by promoting:
+  - insights
+  - simpler visual summaries
+  - obvious drilldowns
+5. Do not expand predictive/model complexity until the experience layer is cleaner.
+
+Immediate next resume point
+- Focus on professional-demo UX:
+  1. connect intelligence cards to the right drilldowns
+  2. identify which raw tiles can be demoted or hidden by default
+  3. refine section hierarchy so the page reads as:
+     - Today
+     - This Week
+     - Model / Exceptions
+     - History / Milestones
+     - Tools
+- Weekly Compare redesign phase 2 can continue later, but the bigger product win now is:
+  - putting more of the data under the hood
+  - elevating the narrative layer
+
+---
+
 Intent Map (Apr 28, 2026)
 
 Purpose of this note

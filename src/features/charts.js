@@ -532,15 +532,7 @@ export function createCharts({
   }
 
   function mixGetLetterWeight(rows){
-    try{
-      const worked = (rows||[])
-        .filter(r=> r && r.status !== 'off' && ((+r.parcels||0) + (+r.letters||0) > 0))
-        .sort((a,b)=> (a.work_date < b.work_date ? -1 : 1));
-      const sample = worked.slice(-60);
-      return mixComputeLetterWeight(sample);
-    }catch(_){
-      return mixLoadLetterWeightFallback();
-    }
+    return mixLoadLetterWeightFallback();
   }
 
   function mixCombinedVolume(p, l, w){
@@ -619,8 +611,14 @@ export function createCharts({
     rows = filterRowsForView(rows||[]);
     const flags = getFlags();
     const card = document.getElementById('mixVizCard'); if(!card) return;
-    if (!flags.mixViz) { card.style.display='none'; return; }
+    const baselineCard = document.getElementById('baselineVizCard');
+    if (!flags.mixViz) {
+      card.style.display='none';
+      if (baselineCard) baselineCard.style.display='none';
+      return;
+    }
     card.style.display='block';
+    if (baselineCard) baselineCard.style.display='block';
     const letterW = mixGetLetterWeight(rows);
     const docStyle = getComputedStyle(document.documentElement);
     const brand = docStyle.getPropertyValue('--brand').trim() || '#2b7fff';
@@ -628,9 +626,11 @@ export function createCharts({
     const goodColor = docStyle.getPropertyValue('--good').trim() || '#7CE38B';
     const text = document.getElementById('mixText');
     const eff  = document.getElementById('mixEff');
+    const hoursSummary = document.getElementById('mixHours');
     const overlay = document.getElementById('weekOverlay');
     const culprits = document.getElementById('mixCulprits');
     const details = document.getElementById('mixCompareDetails');
+    const baselineDriftNote = document.getElementById('baselineDriftNote');
     const btn = document.getElementById('mixCompareBtn');
     const now = DateTime.now().setZone(ZONE);
     const todayIso = now.toISODate();
@@ -733,7 +733,7 @@ export function createCharts({
         const lastColor = (brand || '#2b7fff').trim() || '#2b7fff';
         const thisVacLabel = thisWeekData.days.some(iso => vacGlyph && vacGlyph(iso)) ? ' (Vacation)' : '';
         const lastVacLabel = lastWeekData.days.some(iso => vacGlyph && vacGlyph(iso)) ? ' (Vacation)' : '';
-        text.innerHTML = `<span style="color:${thisColor};font-weight:600">This week${thisVacLabel}</span>: Parcels ${p0}, Letters ${l0} • <span style="color:${lastColor};font-weight:600">Last week${lastVacLabel}</span>: Parcels ${p1}, Letters ${l1}`;
+        text.innerHTML = `<span style="color:${thisColor};font-weight:600">This week volume${thisVacLabel}</span>: ${totalVolumeThis.toFixed(2)} • <span style="color:${lastColor};font-weight:600">Last week volume${lastVacLabel}</span>: ${totalVolumeLast.toFixed(2)}`;
       }
       const wBadge = document.getElementById('mixWeight');
       if (wBadge){ wBadge.style.display='inline-flex'; wBadge.innerHTML = `<small class="modelMetric">Letter w</small> <span>${(Math.round(letterW*100)/100).toFixed(2)}</span>`; }
@@ -754,7 +754,7 @@ export function createCharts({
         const a = efficiencyMinutesCurrent==null? '—' : efficiencyMinutesCurrent.toFixed(2);
         const b = efficiencyMinutesPrev==null? '—' : efficiencyMinutesPrev.toFixed(2);
         const effColor = (goodColor || '#7CE38B').trim() || '#7CE38B';
-        eff.innerHTML = `<span style="color:${effColor};font-weight:600">Efficiency</span> (min/vol): ${a} vs ${b} <span style="${deltaStyle}">${deltaStr}</span>`;
+        eff.innerHTML = `<span style="color:${effColor};font-weight:600">Efficiency</span> (min/vol): ${a} vs ${b} <span style="${deltaStyle}">${deltaStr}</span><br><span class="muted">Parcels ${p0} vs ${p1} • Letters ${l0} vs ${l1} • Route hours ${totalRouteHoursThis.toFixed(2)} vs ${totalRouteHoursLast.toFixed(2)}</span>`;
       }
       try{
         if (culprits){
@@ -817,6 +817,8 @@ export function createCharts({
       usedDays: thisWeekDayCount
     });
     let detailMode = getWeeklyComparisonMode('matched_workday_count');
+    let hoursDetailLabel = 'Hours (vs last week)';
+    let hoursDetailContext = `(${hoursThisWeek.toFixed(1)}h vs ${hoursLastWeek.toFixed(1)}h)`;
     if (flags.baselineCompare){
       const mins = 5;
       const byW = (arr,fn)=>{
@@ -850,6 +852,7 @@ export function createCharts({
       lineLabelP = 'Parcels (vs baseline)';
       lineLabelL = 'Letters (vs baseline)';
       detailMode = getWeeklyComparisonMode('baseline_array');
+      hoursDetailLabel = 'Hours (vs last week)';
       comparisonPacketP = buildWeeklyComparisonPacket('baseline_array', {
         currentTotal: resP.current,
         referenceTotal: resP.baseline,
@@ -877,6 +880,11 @@ export function createCharts({
       return v>=0 ? `↑ ${value}%` : `↓ ${value}%`;
     };
     const color=(v)=> v==null?'var(--text)':(v>=0?'var(--good)':'var(--bad)');
+    if (hoursSummary){
+      const hoursDeltaText = dH == null ? '—' : arrow(dH);
+      const hoursDeltaColor = dH == null ? 'var(--muted)' : color(dH);
+      hoursSummary.innerHTML = `<span style="font-weight:600">Hours</span>: ${hoursThisWeek.toFixed(1)}h vs ${hoursLastWeek.toFixed(1)}h <span style="color:${hoursDeltaColor};font-weight:600">${hoursDeltaText}</span>`;
+    }
     const line=(label,v,ctx,colorOverride)=>{
       const labelHtml = colorOverride ? `<span style="color:${colorOverride};font-weight:600">${label}</span>` : label;
       return `<div style="font-size:15px;line-height:1.45;margin-top:4px">${labelHtml}: <span style="color:${color(v)};font-weight:600">${arrow(v)}</span> ${ctx||''}</div>`;
@@ -886,16 +894,6 @@ export function createCharts({
       const usedL = (resL && resL.used) ? `, ${resL.used} day(s) used` : '';
       const parcelsColor = (brand || '#2b7fff').trim() || '#2b7fff';
       const lettersColor = (warnColor || '#f97316').trim() || '#f97316';
-      const modeSummaryP = formatWeeklyComparisonSummary(comparisonPacketP, {
-        currentLabel: 'Current',
-        referenceLabel: 'Reference',
-        valueFormatter: (n) => `${Math.round(n)}`
-      });
-      const modeSummaryL = formatWeeklyComparisonSummary(comparisonPacketL, {
-        currentLabel: 'Current',
-        referenceLabel: 'Reference',
-        valueFormatter: (n) => `${Math.round(n)}`
-      });
       const parcelsContext = flags.baselineCompare
         ? `(${Math.round(resP?.current ?? p0)} vs ${Math.round(resP?.baseline ?? p1)}${usedP})`
         : `(${p0} vs ${p1}${usedP})`;
@@ -906,10 +904,7 @@ export function createCharts({
         `<div style="margin-bottom:6px"><strong style="font-size:15px">${detailMode.label}</strong></div>`,
         `<div style="margin-bottom:6px"><span style="font-size:15px;color:var(--muted);line-height:1.45">${detailMode.description}</span></div>`,
         line(lineLabelP, dP, parcelsContext, parcelsColor),
-        line(lineLabelL, dLx, lettersContext, lettersColor),
-        line('Hours', dH, `(${hoursThisWeek.toFixed(1)}h vs ${hoursLastWeek.toFixed(1)}h)`),
-        `<div style="font-size:15px;line-height:1.45;margin-top:6px;color:var(--muted)">${modeSummaryP}</div>`,
-        `<div style="font-size:15px;line-height:1.45;color:var(--muted)">${modeSummaryL}</div>`
+        line(lineLabelL, dLx, lettersContext, lettersColor)
       ].join('');
       details.style.display = 'block';
       if (btn) btn.setAttribute('aria-expanded', 'true');
@@ -921,7 +916,6 @@ export function createCharts({
         if (overlay._chart) { try{ overlay._chart.destroy(); }catch(_){ } }
         const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
         const warn = warnColor;
-        const good = goodColor;
         const volByDow = (arr)=>{
           const a = Array.from({length:7},()=>0);
           arr.forEach(r=>{
@@ -945,43 +939,28 @@ export function createCharts({
         const lastBy = volByDow(W1full);
         const thisRoute = routeByDow(W0);
         const lastRoute = routeByDow(W1full);
-      const thisEff = thisBy.map((vol, idx)=>{
-        const routeH = thisRoute[idx];
-        if (vol && routeH && vol > 0 && routeH > 0) return +((routeH / vol) * 60).toFixed(2);
-        return null;
-      });
-      const lastEff = lastBy.map((vol, idx)=>{
-        const routeH = lastRoute[idx];
-        if (vol && routeH && vol > 0 && routeH > 0) return +((routeH / vol) * 60).toFixed(2);
-        return null;
-      });
         const dayIdxToday = (activeDay.weekday + 6) % 7;
-        const hasBand = !!(typeof bandMinData !== 'undefined' && typeof bandMaxData !== 'undefined' && bandMinData && bandMaxData);
         const isoForPoint = (datasetIndex, idx) => {
           try{
-            if (hasBand){
-              if (datasetIndex === 0 || datasetIndex === 1) return startThis.plus({ days: idx }).toISODate();
-              if (datasetIndex === 2) return startLast.plus({ days: idx }).toISODate();
-              if (datasetIndex === 3 || datasetIndex === 4) return startThis.plus({ days: idx }).toISODate();
-            } else {
-              if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
-              if (datasetIndex === 1 || datasetIndex === 2) return startThis.plus({ days: idx }).toISODate();
-            }
+            if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
+            if (datasetIndex === 1) return startThis.plus({ days: idx }).toISODate();
           }catch(_){ }
           return null;
         };
         const thisMasked = thisBy.map((v,i)=> i<=dayIdxToday? v : null);
         const lastMasked = lastBy.map((v,i)=> i<=dayIdxToday? v : null);
-        const thisEffMasked = thisEff.map((v,i)=> i<=dayIdxToday? v : null);
-        const safeBandMin = hasBand && Array.isArray(bandMinData) ? bandMinData : [];
-        const safeBandMax = hasBand && Array.isArray(bandMaxData) ? bandMaxData : [];
+        const separatedWeekly = createSeparatedSeries(
+          [lastMasked, thisMasked],
+          [lastBy, thisBy],
+          days,
+          { separationPct: 0.08, minSeparation: 3 }
+        );
+        const lastSeparated = separatedWeekly[0] || { data: [], offset: 0 };
+        const thisSeparated = separatedWeekly[1] || { data: [], offset: 0 };
         const combinedVolumeRange = computeRange([
-          ...thisMasked,
-          ...(lastMasked.length ? lastMasked : lastBy),
-          ...safeBandMin.filter(Number.isFinite),
-          ...safeBandMax.filter(Number.isFinite)
+          ...lastSeparated.data.map(pt => Number.isFinite(pt?.y) ? pt.y : null),
+          ...thisSeparated.data.map(pt => Number.isFinite(pt?.y) ? pt.y : null)
         ], 5);
-        const effRange = computeRange(thisEffMasked, 1);
         const thisPointColors = days.map((_, idx) => {
           const iso = startThis.plus({ days: idx }).toISODate();
           return vacGlyph && vacGlyph(iso) ? 'rgba(255,99,132,0.9)' : warn;
@@ -1004,44 +983,15 @@ export function createCharts({
         });
         const lastHoverRadius = lastPointRadius.map(r => r ? r + 2 : 0);
         const styleMap = {
-          'Vol this':  { color: 'rgba(255,215,0,0.9)', width: 2.3, alpha: 0.9 },
-          'Vol last':  { color: 'rgba(43,127,255,0.85)', width: 2.1, alpha: 0.85 },
-          'Efficiency (this)': { color: 'rgba(46,204,113,0.9)', width: 2.6, alpha: 0.92 }
+          'Vol this':  { color: 'rgba(255,215,0,0.9)', width: 2.5 },
+          'Vol last':  { color: 'rgba(43,127,255,0.85)', width: 2.1 }
         };
-        const datasets = [];
-        if (hasBand){
-          datasets.push({
-            label:'Vol expect min',
-            data: bandMinData ? [...bandMinData] : [],
-            borderColor:'rgba(255,140,0,0.85)',
-            borderWidth:1,
-            borderDash:[6,4],
-            backgroundColor:'transparent',
-            pointRadius:0,
-            spanGaps:true,
-            fill:false,
-            yAxisID:'yVol'
-          });
-          datasets.push({
-            label:'Vol expect max',
-            data: bandMaxData ? [...bandMaxData] : [],
-            borderColor:'rgba(0,0,0,0)',
-            backgroundColor:'rgba(255,140,0,0.22)',
-            pointRadius:0,
-            borderWidth:0,
-            spanGaps:true,
-            fill:{ target:'-1', above:'rgba(255,140,0,0.22)', below:'rgba(255,140,0,0.22)' },
-            yAxisID:'yVol'
-          });
-        }
-        datasets.push(
-          { label:'Vol last', data:[...lastBy], borderColor:styleMap['Vol last'].color, backgroundColor:'rgba(43,127,255,0.12)', tension:0.25, pointRadius:lastPointRadius, pointHoverRadius:lastHoverRadius, pointBorderColor:lastPointColors, pointBackgroundColor:lastPointColors, borderWidth:styleMap['Vol last'].width, spanGaps:true, yAxisID:'yVol', fill:'origin' },
-          { label:'Vol this', data:[...thisMasked], borderColor:styleMap['Vol this'].color,  backgroundColor:'rgba(255,215,0,0.18)', tension:0.25, pointRadius:thisPointRadius, pointHoverRadius:thisHoverRadius, pointBorderColor:thisPointColors, pointBackgroundColor:thisPointColors, borderWidth:styleMap['Vol this'].width, spanGaps:true, yAxisID:'yVol', fill:'origin' },
-          { label:'Efficiency (this)', data:[...thisEffMasked], borderColor:styleMap['Efficiency (this)'].color, backgroundColor:'transparent', borderDash:[4,3], tension:0.25, pointRadius:2, pointHoverRadius:5, pointHitRadius:12, borderWidth:styleMap['Efficiency (this)'].width, spanGaps:true, yAxisID:'yEff', fill:false }
-        );
         overlay._chart = new Chart(ctx, {
           type:'line',
-          data:{ labels:days, datasets },
+          data:{ labels:days, datasets:[
+            { label:'Last week volume', data:lastSeparated.data, borderColor:styleMap['Vol last'].color, backgroundColor:'rgba(43,127,255,0.10)', tension:0.25, pointRadius:lastPointRadius, pointHoverRadius:lastHoverRadius, pointBorderColor:lastPointColors, pointBackgroundColor:lastPointColors, borderWidth:styleMap['Vol last'].width, spanGaps:true, yAxisID:'yVol', fill:false, parsing:{ yAxisKey:'y' } },
+            { label:'This week volume', data:thisSeparated.data, borderColor:styleMap['Vol this'].color,  backgroundColor:'rgba(255,215,0,0.12)', tension:0.25, pointRadius:thisPointRadius, pointHoverRadius:thisHoverRadius, pointBorderColor:thisPointColors, pointBackgroundColor:thisPointColors, borderWidth:styleMap['Vol this'].width, spanGaps:true, yAxisID:'yVol', fill:false, parsing:{ yAxisKey:'y' } }
+          ]},
           options:{
             responsive:true,
             maintainAspectRatio:false,
@@ -1067,32 +1017,17 @@ export function createCharts({
                   const volLast = lastBy[idx];
                   const routeThis = thisRoute[idx];
                   const routePrev = lastRoute[idx];
-                  const effThisVal = thisEff[idx];
-                  const effPrevVal = lastEff[idx];
                   const formatVol = (prefix, value, routeHours)=>{
                     if (!Number.isFinite(value)) return `${prefix} volume: —`;
                     const lines = [`${prefix} volume: ${value.toLocaleString(undefined, { maximumFractionDigits:1 })}`];
                     if (Number.isFinite(routeHours)) lines.push(`Route hours: ${routeHours.toFixed(2)} h`);
                     return lines;
                   };
-                  const formatEfficiency = (value, routeHours, volume)=>{
-                    if (!Number.isFinite(value)) return 'Efficiency: —';
-                    const parts = [`Efficiency: ${value.toFixed(2)} min/vol`];
-                    if (Number.isFinite(routeHours) && Number.isFinite(volume) && volume > 0){
-                      const hoursPerVol = routeHours / volume;
-                      parts.push(`(${hoursPerVol.toFixed(3)} h/vol)`);
-                      parts.push(`Route: ${routeHours.toFixed(2)} h • Volume: ${volume.toLocaleString(undefined, { maximumFractionDigits:1 })}`);
-                    }
-                    return parts.join(' ');
-                  };
-                  if (datasetLabel === 'Vol this'){
+                  if (datasetLabel === 'This week volume'){
                     return formatVol('This week', volThis, routeThis);
                   }
-                  if (datasetLabel === 'Vol last'){
+                  if (datasetLabel === 'Last week volume'){
                     return formatVol('Last week', volLast, routePrev);
-                  }
-                  if (datasetLabel === 'Efficiency (this)'){
-                    return formatEfficiency(effThisVal, routeThis, volThis);
                   }
                   return '';
                 }
@@ -1100,8 +1035,7 @@ export function createCharts({
             }},
             scales:{
               x:{ display:true, grid:{ display:false } },
-              yVol:{ type:'linear', display:false, suggestedMin: combinedVolumeRange.min, suggestedMax: combinedVolumeRange.max },
-              yEff:{ type:'linear', display:false, suggestedMin: effRange.min, suggestedMax: effRange.max }
+              yVol:{ type:'linear', display:false, suggestedMin: combinedVolumeRange.min, suggestedMax: combinedVolumeRange.max }
             }
           }
         });
@@ -1111,173 +1045,101 @@ export function createCharts({
     (function buildMixDrift(){
       const driftCanvas = document.getElementById('mixDrift');
       const driftText = document.getElementById('mixDriftText');
+      const driftNote = document.getElementById('baselineDriftNote');
       if (!driftCanvas && !driftText) return;
-      const weeksToShow = 6;
-      const weekStats = [];
-      for (let i = weeksToShow - 1; i >= 0; i--){
-        const wkStart = startThis.minus({ weeks: i + 1 });
-        const wkEnd = endOfWeekSunday(wkStart);
-        const wkRows = worked.filter(r=> inRange(r, wkStart, wkEnd));
-        const hasVacation = wkRows.some(r=> vacGlyph && vacGlyph(r.work_date));
-        weekStats.push({
-          start: wkStart,
-          end: wkEnd,
-          parcels: sum(wkRows, r=> +r.parcels||0),
-          letters: sum(wkRows, r=> +r.letters||0),
-          count: wkRows.length,
-          vacation: hasVacation
-        });
-      }
-      const meaningfulWeeks = weekStats.filter(w => (w.parcels>0 || w.letters>0));
-        const hasHistory = meaningfulWeeks.length >= 2;
-
-        const destroyDrift = ()=>{
-          if (driftCanvas && driftCanvas._chart){
-            try{ driftCanvas._chart.destroy(); }catch(_){ }
-            driftCanvas._chart = null;
+      const destroyDrift = ()=>{
+        if (driftCanvas && driftCanvas._chart){
+          try{ driftCanvas._chart.destroy(); }catch(_){ }
+          driftCanvas._chart = null;
         }
       };
+      const labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      const currentVolumeByDay = Array.from({length:7}, ()=> null);
+      const currentRowsByDay = Array.from({length:7}, ()=> 0);
+      W0.forEach(r => {
+        const d = DateTime.fromISO(r.work_date,{zone:ZONE});
+        const idx = (d.weekday+6)%7;
+        const current = currentVolumeByDay[idx] || 0;
+        currentVolumeByDay[idx] = +(current + mixCombinedVolume((+r.parcels||0), (+r.letters||0), letterW)).toFixed(1);
+        currentRowsByDay[idx] += 1;
+      });
+      const baselineParcels = baselines?.parcels || null;
+      const baselineLetters = baselines?.letters || null;
+      const baselineVolumeByDay = baselineParcels && baselineLetters
+        ? baselineParcels.map((p, idx) => (Number.isFinite(p) || Number.isFinite(baselineLetters[idx]))
+          ? +mixCombinedVolume(Number.isFinite(p) ? p : 0, Number.isFinite(baselineLetters[idx]) ? baselineLetters[idx] : 0, letterW).toFixed(1)
+          : null)
+        : null;
+      const activeBaseline = baselineVolumeByDay || Array.from({length:7}, ()=> null);
+      const baselineRange = computeRange([
+        ...currentVolumeByDay.filter(Number.isFinite),
+        ...activeBaseline.filter(Number.isFinite)
+      ], 5);
 
-      if (!window.Chart || !driftCanvas || !driftCanvas.getContext || !hasHistory){
+      if (!window.Chart || !driftCanvas || !driftCanvas.getContext || !activeBaseline.some(Number.isFinite)){
         destroyDrift();
-        if (driftText){
-          if (!hasHistory){
-            driftText.innerHTML = '<span class="muted">Need a few weeks of history to show trends.</span>';
-          } else {
-            driftText.textContent = '—';
-          }
-        }
+        if (driftText) driftText.innerHTML = '<span class="muted">Need weekday baseline history to show this view.</span>';
+        if (driftNote) driftNote.innerHTML = '<span class="muted">Baseline drift: —</span>';
         return;
       }
 
-      const labels = weekStats.map(w => w.start.toFormat('MMM d'));
-      const parcelsSeries = weekStats.map(w => w.parcels);
-      const lettersSeries = weekStats.map(w => w.letters);
-      const baselineParcels = baselines?.parcels || null;
-      const baselineLetters = baselines?.letters || null;
-      const parcBaselineSeries = baselineParcels ? weekStats.map(() => {
-        const val = baselineParcels.reduce((sum, n, idx) => {
-          return sum + (Number.isFinite(n) ? n : 0);
-        }, 0);
-        const count = baselineParcels.filter(n => Number.isFinite(n)).length || 1;
-        return +(val / count).toFixed(1);
-      }) : null;
-      const letterBaselineSeries = baselineLetters ? weekStats.map(() => {
-        const val = baselineLetters.reduce((sum, n, idx) => {
-          return sum + (Number.isFinite(n) ? n : 0);
-        }, 0);
-        const count = baselineLetters.filter(n => Number.isFinite(n)).length || 1;
-        return +(val / count).toFixed(1);
-      }) : null;
-      const parcelsColor = (brand || '#2b7fff').trim() || '#2b7fff';
-      const lettersColor = (warnColor || '#f97316').trim() || '#f97316';
-      const baselineColor = '#a855f7'; // violet
-
       destroyDrift();
       const driftCtx = driftCanvas.getContext('2d');
-      const separatedDrift = createSeparatedSeries(
-        [parcelsSeries, lettersSeries],
-        [parcelsSeries, lettersSeries],
-        labels,
-        { separationPct:0.12, minSeparation:6 }
-      );
-      const parcelsSeparated = separatedDrift[0] || { data:[], offset:0 };
-      const lettersSeparated = separatedDrift[1] || { data:[], offset:0 };
-      const extractRange = (arr)=> computeRange((arr || []).map(pt => Number.isFinite(pt?.y) ? pt.y : null), 10);
-      const parcelsRange = extractRange(parcelsSeparated.data);
-      const lettersRange = extractRange(lettersSeparated.data);
-      const baselineParcelsData = parcBaselineSeries ? parcBaselineSeries.map((val, idx)=>{
-        const numeric = Number.isFinite(val) ? val : null;
-        return {
-          x: labels[idx],
-          y: numeric == null ? null : numeric + (parcelsSeparated.offset || 0),
-          actual: numeric
-        };
-      }) : null;
-      const baselineLettersData = letterBaselineSeries ? letterBaselineSeries.map((val, idx)=>{
-        const numeric = Number.isFinite(val) ? val : null;
-        return {
-          x: labels[idx],
-          y: numeric == null ? null : numeric + (lettersSeparated.offset || 0),
-          actual: numeric
-        };
-      }) : null;
-      const baselineSeriesData = baselineParcelsData || baselineLettersData;
-      const baselineYAxis = baselineParcelsData ? 'yParcels' : 'yLetters';
-
-      const parcelPointColors = weekStats.map(w => w.vacation ? 'rgba(255,99,132,0.9)' : parcelsColor);
-      const parcelPointRadius = weekStats.map(w => w.vacation ? 6 : 3);
-      const letterPointColors = weekStats.map(w => w.vacation ? 'rgba(255,160,122,0.9)' : lettersColor);
-      const letterPointRadius = weekStats.map(w => w.vacation ? 6 : 3);
-
       driftCanvas._chart = new Chart(driftCtx, {
-        type:'line',
+        type:'bar',
         data:{
           labels,
           datasets:[
-            { label:'Parcels', data:parcelsSeparated.data, borderColor:parcelsColor, backgroundColor:'transparent', tension:0.3, pointRadius:parcelPointRadius, pointHoverRadius:parcelPointRadius.map(r=> r? r+2 : 0), pointHitRadius:12, pointBackgroundColor:parcelPointColors, pointBorderColor:parcelPointColors, borderWidth:2, spanGaps:true, fill:false, yAxisID:'yParcels', parsing:{ yAxisKey:'y' } },
-            { label:'Letters', data:lettersSeparated.data, borderColor:lettersColor, backgroundColor:'transparent', tension:0.3, pointRadius:letterPointRadius, pointHoverRadius:letterPointRadius.map(r=> r? r+2 : 0), pointHitRadius:12, pointBackgroundColor:letterPointColors, pointBorderColor:letterPointColors, borderWidth:2, spanGaps:true, fill:false, yAxisID:'yLetters', parsing:{ yAxisKey:'y' } },
-            ...(baselineSeriesData ? [{ label:'Baseline (avg)', data:baselineSeriesData, borderColor:baselineColor, backgroundColor:'transparent', tension:0, pointRadius:0, pointHoverRadius:0, borderDash:[6,4], borderWidth:1.5, spanGaps:true, fill:false, yAxisID:baselineYAxis, parsing:{ yAxisKey:'y' } }] : [])
+            { label:'Current volume', data:currentVolumeByDay.map((value, idx)=> idx <= nowDayIdx ? value : null), backgroundColor:'rgba(255,215,0,0.70)', borderColor:'rgba(255,215,0,0.95)', borderWidth:1.2, borderRadius:6, maxBarThickness:24 },
+            { label:'Weekday baseline', data:activeBaseline, backgroundColor:'rgba(168,85,247,0.34)', borderColor:'rgba(168,85,247,0.95)', borderWidth:1.2, borderRadius:6, maxBarThickness:24 }
           ]
         },
         options:{
           responsive:true,
           maintainAspectRatio:false,
-          elements:{ line:{ tension:0.3 }, point:{ radius:2, hitRadius:10 } },
           plugins:{
             legend:{ display:false },
             tooltip:{
               callbacks:{
-                title:(items)=>{
-                  if (!items || !items.length) return '';
-                  const idx = items[0].dataIndex;
-                  const w = weekStats[idx];
-                  if (!w) return '';
-                  const startLbl = w.start.toFormat('LLL d');
-                  const endLbl = w.end.toFormat('LLL d');
-                  return `Week of ${startLbl} → ${endLbl}`;
-                },
+                title:(items)=> items?.[0]?.label || '',
                 label:(item)=>{
                   const idx = item.dataIndex;
-                  const w = weekStats[idx];
-                  if (!w) return '';
                   const label = item.dataset?.label || '';
-                  if (label.startsWith('Parcels')) return `Parcels: ${Math.round(w.parcels).toLocaleString()}`;
-                  if (label.startsWith('Letters')) return `Letters: ${Math.round(w.letters).toLocaleString()}`;
-                  if (label.includes('Baseline')){
-                    const actual = item.raw?.actual;
-                    return `Baseline: ${Math.round(actual ?? 0).toLocaleString()}`;
-                  }
+                  const value = item.raw;
+                  if (!Number.isFinite(value)) return `${label}: —`;
+                  if (label === 'Current volume') return `Current volume: ${value.toLocaleString(undefined, { maximumFractionDigits:1 })}`;
+                  if (label === 'Weekday baseline') return `Weekday baseline: ${value.toLocaleString(undefined, { maximumFractionDigits:1 })}`;
                   return '';
                 }
               }
             }
           },
           scales:{
-            x:{ display:false },
-            yParcels:{ type:'linear', display:false, suggestedMin: parcelsRange.min, suggestedMax: parcelsRange.max },
-            yLetters:{ type:'linear', display:false, suggestedMin: lettersRange.min, suggestedMax: lettersRange.max }
+            x:{ display:true, grid:{ display:false } },
+            y:{ type:'linear', display:false, suggestedMin: baselineRange.min, suggestedMax: baselineRange.max }
           }
-        },
-        plugins:[baselineStrokeCleanupPlugin]
+        }
       });
 
       if (driftText){
-        const latest = weekStats[weekStats.length-1];
-        const prev = weekStats[weekStats.length-2];
-        const pct = (cur, prior)=>{
-          if (!Number.isFinite(cur) || !Number.isFinite(prior) || prior <= 0) return null;
-          return Math.round(((cur - prior) / prior) * 100);
+        const usedDays = currentRowsByDay.filter(n => n > 0).length;
+        const currentTotal = currentVolumeByDay.reduce((sum, n) => sum + (Number.isFinite(n) ? n : 0), 0);
+        const baselineTotal = activeBaseline.reduce((sum, n, idx) => sum + ((idx <= nowDayIdx && Number.isFinite(n)) ? n : 0), 0);
+        driftText.innerHTML = `<span style="color:rgba(255,215,0,0.95);font-weight:600">Current volume</span>: ${currentTotal.toFixed(1)} • <span style="color:rgba(168,85,247,0.95);font-weight:600">Weekday baseline</span>: ${baselineTotal.toFixed(1)}${usedDays ? ` • ${usedDays} day(s) used` : ''}`;
+      }
+      if (driftNote){
+        const combineBaseline = (arrP, arrL)=>{
+          if (!arrP || !arrL) return null;
+          return arrP.reduce((sum, p, idx)=> sum + (Number.isFinite(p) || Number.isFinite(arrL[idx]) ? mixCombinedVolume(Number.isFinite(p) ? p : 0, Number.isFinite(arrL[idx]) ? arrL[idx] : 0, letterW) : 0), 0);
         };
-        const fmtArrow = (val)=>{
-          if (val == null) return '—';
-          return val >= 0 ? `↑ ${val}%` : `↓ ${Math.abs(val)}%`;
-        };
-        const parcelsDelta = pct(latest?.parcels ?? 0, prev?.parcels ?? 0);
-        const lettersDelta = pct(latest?.letters ?? 0, prev?.letters ?? 0);
-        const parcelsSummary = `${fmtArrow(parcelsDelta)} (${Math.round(latest?.parcels||0).toLocaleString()} vs ${Math.round(prev?.parcels||0).toLocaleString()})${latest?.vacation ? ' (Vacation)' : ''}`;
-        const lettersSummary = `${fmtArrow(lettersDelta)} (${Math.round(latest?.letters||0).toLocaleString()} vs ${Math.round(prev?.letters||0).toLocaleString()})${latest?.vacation ? ' (Vacation)' : ''}`;
-        driftText.innerHTML = `<span style="color:${parcelsColor};font-weight:600">Parcels</span>: ${parcelsSummary} • <span style="color:${lettersColor};font-weight:600">Letters</span>: ${lettersSummary}`;
+        const activeBaselineTotal = combineBaseline(baselines?.parcels, baselines?.letters);
+        const anchorBaselineTotal = combineBaseline(anchor?.parcels, anchor?.letters);
+        const driftPct = (Number.isFinite(activeBaselineTotal) && Number.isFinite(anchorBaselineTotal) && anchorBaselineTotal > 0)
+          ? Math.round(((activeBaselineTotal - anchorBaselineTotal) / anchorBaselineTotal) * 100)
+          : null;
+        const driftTextVal = driftPct == null ? 'stable' : (driftPct >= 0 ? `+${driftPct}%` : `${driftPct}%`);
+        const driftColor = driftPct == null ? 'var(--muted)' : (driftPct >= 0 ? 'var(--warn)' : 'var(--good)');
+        driftNote.innerHTML = `<span style="color:${driftColor};font-weight:600">Baseline drift</span>: ${driftTextVal}${driftPct == null ? '' : ' vs prior anchor weeks'}`;
       }
     })();
 

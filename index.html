@@ -1489,23 +1489,33 @@
     </div>
   </section>
 
-  <!-- Mix Compare (Baseline-aware) -->
-  <section class="card" id="mixVizCard" style="display:none">
-    <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-      <h3 style="margin:0">Weekly Compare</h3>
-      <button id="mixCompareBtn" class="ghost" type="button">Details</button>
-    </div>
-    <div class="sparkline-labels" style="font-size:15px;line-height:1.45">This week vs last (Mon..today vs last Mon..Sun)</div>
-    <canvas id="weekOverlay" class="sparkline" style="margin-top:4px;height:72px;max-height:72px"></canvas>
-    <div id="mixText" class="sparkline-labels" style="font-size:15px;line-height:1.45">—</div>
-    <div id="mixEff" class="sparkline-labels" style="font-size:15px;line-height:1.45">—</div>
-    <div id="mixCulprits" class="sparkline-labels" style="font-size:15px;line-height:1.45">—</div>
-    <div class="sparkline-labels" style="font-size:15px;line-height:1.45">Efficiency (min/vol) — lower is better</div>
-    <canvas id="effOverlay" class="sparkline" style="margin-top:4px;height:64px;max-height:64px"></canvas>
-    <div id="mixCompareDetails" class="sparkline-summary" style="display:none; margin-top:6px">—</div>
-    <canvas id="mixDrift" class="sparkline" style="margin-top:8px"></canvas>
-    <div id="mixDriftText" class="sparkline-labels">—</div>
-  </section>
+  <!-- Weekly Compare -->
+  <div id="weeklyCompareWrap" class="row" style="gap:12px;flex-wrap:wrap">
+    <section class="card" id="mixVizCard" style="display:none;flex:1 1 420px;min-width:320px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <h3 style="margin:0">Weekly Compare</h3>
+      </div>
+      <div class="sparkline-labels" style="font-size:15px;line-height:1.45">This week vs last week</div>
+      <canvas id="weekOverlay" class="sparkline" style="margin-top:4px;height:86px;max-height:86px"></canvas>
+      <div id="mixText" class="sparkline-labels" style="font-size:15px;line-height:1.45">—</div>
+      <div id="mixEff" class="sparkline-labels" style="font-size:15px;line-height:1.45">—</div>
+      <div id="mixHours" class="sparkline-labels" style="font-size:15px;line-height:1.45">—</div>
+      <div id="mixCulprits" class="sparkline-labels" style="font-size:15px;line-height:1.45">—</div>
+    </section>
+
+    <section class="card" id="baselineVizCard" style="display:none;flex:1 1 420px;min-width:320px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <h3 style="margin:0">Baseline View</h3>
+        <button id="mixCompareBtn" class="ghost" type="button">Details</button>
+      </div>
+      <div class="sparkline-labels" style="font-size:15px;line-height:1.45" title="Current daily totals compared against stored weekday baseline averages.">This week vs weekday baseline</div>
+      <div class="sparkline-labels muted" style="font-size:13px;line-height:1.4">Current daily totals compared against stored weekday baseline averages.</div>
+      <canvas id="mixDrift" class="sparkline" style="margin-top:4px;height:96px;max-height:96px"></canvas>
+      <div id="mixDriftText" class="sparkline-labels" style="font-size:15px;line-height:1.45">—</div>
+      <div id="baselineDriftNote" class="sparkline-labels" style="font-size:15px;line-height:1.45">—</div>
+      <div id="mixCompareDetails" class="sparkline-summary" style="display:none; margin-top:6px">—</div>
+    </section>
+  </div>
 
   <!-- Office Time Compare -->
   <section class="card" id="officeCompareCard" style="grid-column:1/-1; display:none">

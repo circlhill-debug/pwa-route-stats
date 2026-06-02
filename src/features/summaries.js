@@ -41,16 +41,6 @@ export function createSummariesFeature({
   }
 
   function getLetterWeightForSummary(rows) {
-    try {
-      const scoped = filterRowsForView(rows || [])
-        .filter(r => r && r.status !== 'off' && ((+r.parcels || 0) + (+r.letters || 0) > 0))
-        .sort((a, b) => (a.work_date < b.work_date ? -1 : 1));
-      const sample = scoped.slice(-60);
-      const learned = computeLetterWeight(sample);
-      if (learned != null) return learned;
-    } catch (_err) {
-      /* fall back */
-    }
     return getCurrentLetterWeight();
   }
 

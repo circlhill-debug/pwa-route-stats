@@ -1139,7 +1139,7 @@ export function createCharts({
           : null;
         const driftTextVal = driftPct == null ? 'stable' : (driftPct >= 0 ? `+${driftPct}%` : `${driftPct}%`);
         const driftColor = driftPct == null ? 'var(--muted)' : (driftPct >= 0 ? 'var(--warn)' : 'var(--good)');
-        driftNote.innerHTML = `<span style="color:${driftColor};font-weight:600">Baseline drift</span>: ${driftTextVal}${driftPct == null ? '' : ' vs prior anchor weeks'}`;
+        driftNote.innerHTML = `<span style="color:${driftColor};font-weight:600">Stored baseline drift</span>: ${driftTextVal}${driftPct == null ? '' : ' vs prior anchor weeks'}`;
       }
     })();
 

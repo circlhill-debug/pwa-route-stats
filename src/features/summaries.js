@@ -44,6 +44,53 @@ export function createSummariesFeature({
     return getCurrentLetterWeight();
   }
 
+  function getWeekComparisonContext(rows, now = DateTime.now().setZone(ZONE)) {
+    const { worked, activeDay, activeEnd } = getActiveWorkdayContext(rows, now);
+    const inRange = (r, from, to) => {
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      return d >= from && d <= to;
+    };
+    const uniqueWorkedDays = (weekRows) => new Set((weekRows || []).map(r => r.work_date)).size;
+
+    const startThis = startOfWeekMonday(now);
+    const endThis = activeEnd;
+    const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
+    const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf('day');
+    const lastFullWeekEnd = startLast.plus({ days: 6 }).endOf('day');
+
+    const thisWeek = worked.filter(r => inRange(r, startThis, endThis));
+    const priorSameRangeWeek = worked.filter(r => inRange(r, startLast, lastEndSame));
+    const priorFullWeek = worked.filter(r => inRange(r, startLast, lastFullWeekEnd));
+    const priorWorkedDays = uniqueWorkedDays(priorFullWeek);
+
+    let referenceLabel = 'vs last week same range';
+    let referenceSameRangeRows = priorSameRangeWeek;
+
+    if (priorWorkedDays < 4) {
+      for (let weeksBack = 2; weeksBack <= 12; weeksBack += 1) {
+        const candidateStart = startOfWeekMonday(now.minus({ weeks: weeksBack }));
+        const candidateEnd = candidateStart.plus({ days: 6 }).endOf('day');
+        const candidateFullWeek = worked.filter(r => inRange(r, candidateStart, candidateEnd));
+        if (uniqueWorkedDays(candidateFullWeek) >= 4) {
+          referenceLabel = 'vs most recent full worked week';
+          referenceSameRangeRows = worked.filter(
+            r => inRange(r, candidateStart, candidateStart.plus({ days: activeDay.weekday - 1 }).endOf('day'))
+          );
+          break;
+        }
+      }
+    }
+
+    return {
+      worked,
+      activeDay,
+      activeEnd,
+      thisWeek,
+      referenceSameRangeRows,
+      referenceLabel
+    };
+  }
+
   function buildInsightStrip(rows) {
     const card = document.getElementById('insightStripCard');
     const el = document.getElementById('insightStrip');
@@ -148,16 +195,11 @@ export function createSummariesFeature({
         : null;
       const officeElevated = officeDeltaH != null && officeDeltaPct != null && officeDeltaH >= 0.4 && officeDeltaPct >= 10;
 
-      const startThis = startOfWeekMonday(now);
-      const endThis = activeEnd;
-      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf('day');
+      const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel } = getWeekComparisonContext(scoped, now);
       const inRange = (r, from, to) => {
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
         return d >= from && d <= to;
       };
-      const thisWeek = worked.filter(r => inRange(r, startThis, endThis));
-      const lastWeek = worked.filter(r => inRange(r, startLast, lastEndSame));
       const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
       const recordDefs = [
         { id: 'mostParcels', label: 'Most parcels ever', type: 'max', value: (r) => Number(r?.parcels) || 0, format: (v) => `${Math.round(v).toLocaleString()} parcels` },
@@ -244,7 +286,7 @@ export function createSummariesFeature({
         rotatingCard = {
           kicker: `Week running ${weekIsHeavy ? 'heavy' : 'light'}`,
           headline: `${weekIsHeavy ? '+' : ''}${weekDeltaPct}%`,
-          support: 'vs last week same range',
+          support: referenceLabel,
           cue: `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:${weekIsHeavy ? 'var(--warn)' : 'var(--good)'};font-weight:700">${weekIsHeavy ? 'Above recent pace' : 'Below recent pace'}</span><div style="flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${Math.max(15, Math.min(100, Math.abs(weekDeltaPct)))}%;background:linear-gradient(90deg,${weekIsHeavy ? 'var(--warn),var(--bad)' : 'var(--good),var(--brand)'})"></div></div></div>`
         };
       } else {
@@ -428,18 +470,7 @@ export function createSummariesFeature({
 
       const scoped = filterRowsForView(rows || []);
       const now = DateTime.now().setZone(ZONE);
-      const { worked, activeDay, activeEnd } = getActiveWorkdayContext(scoped, now);
-      const startThis = startOfWeekMonday(now);
-      const endThis = activeEnd;
-      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf('day');
-      const inRange = (r, from, to) => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        return d >= from && d <= to;
-      };
-
-      const W0 = worked.filter(r => inRange(r, startThis, endThis));
-      const W1 = worked.filter(r => inRange(r, startLast, lastEndSame));
+      const { thisWeek: W0, referenceSameRangeRows: W1, referenceLabel } = getWeekComparisonContext(scoped, now);
       const daysThisWeek = [...new Set(W0.map(r => r.work_date))].length;
       if (!daysThisWeek) {
         el.textContent = 'No worked days yet — 0 day(s) this week.';
@@ -476,7 +507,7 @@ export function createSummariesFeature({
       const top = movers.slice(0, 2).map(it => `${it.k} ${it.v >= 0 ? `↑ ${it.v}%` : `↓ ${Math.abs(it.v)}%`}`);
       const line = top.length ? top.join(' • ') : 'Similar to last week';
 
-      el.textContent = `${line} — ${daysThisWeek} day(s) this week.`;
+      el.textContent = `${line} — ${daysThisWeek} day(s) this week (${referenceLabel.replace('vs ', '')}).`;
       el.style.display = 'block';
     } catch (_err) {
       /* ignore */
@@ -490,18 +521,7 @@ export function createSummariesFeature({
     try {
       const scoped = filterRowsForView(rows || []);
       const now = DateTime.now().setZone(ZONE);
-      const { worked, activeDay, activeEnd } = getActiveWorkdayContext(scoped, now);
-      const startThis = startOfWeekMonday(now);
-      const endThis = activeEnd;
-      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf('day');
-      const inRange = (r, from, to) => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        return d >= from && d <= to;
-      };
-
-      const thisWeek = worked.filter(r => inRange(r, startThis, endThis));
-      const lastWeek = worked.filter(r => inRange(r, startLast, lastEndSame));
+      const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel } = getWeekComparisonContext(scoped, now);
       if (!thisWeek.length) {
         el.style.display = 'none';
         el.innerHTML = '';
@@ -542,7 +562,7 @@ export function createSummariesFeature({
         })
         .join(' ');
       el.style.display = 'block';
-      el.innerHTML = `<small>Weekly Movers</small><div class="pill-row">${pills}</div>`;
+      el.innerHTML = `<small title="${referenceLabel}">Weekly Movers</small><div class="pill-row">${pills}</div><div class="muted" style="margin-top:4px;font-size:12px">${referenceLabel}</div>`;
     } catch (_err) {
       /* ignore */
     }
@@ -608,18 +628,7 @@ export function createSummariesFeature({
     try {
       const scoped = filterRowsForView(rows || []);
       const now = DateTime.now().setZone(ZONE);
-      const { worked, activeDay, activeEnd } = getActiveWorkdayContext(scoped, now);
-      const startThis = startOfWeekMonday(now);
-      const endThis = activeEnd;
-      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
-      const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf('day');
-      const inRange = (r, from, to) => {
-        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
-        return d >= from && d <= to;
-      };
-
-      const thisWeek = worked.filter(r => inRange(r, startThis, endThis));
-      const lastWeek = worked.filter(r => inRange(r, startLast, lastEndSame));
+      const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel } = getWeekComparisonContext(scoped, now);
       if (!thisWeek.length || !lastWeek.length) {
         el.style.display = 'none';
         return;
@@ -647,7 +656,7 @@ export function createSummariesFeature({
 
       el.style.display = 'block';
       const pills = [pill('Office', dOff), pill('Route', dRte), pill('Total', dTot)].join(' ');
-      el.innerHTML = `<small>Heaviness (week)</small><div class="pill-row">${pills}</div>`;
+      el.innerHTML = `<small title="${referenceLabel}">Heaviness (week)</small><div class="pill-row">${pills}</div><div class="muted" style="margin-top:4px;font-size:12px">${referenceLabel}</div>`;
     } catch (_err) {
       /* ignore */
     }

@@ -64,6 +64,7 @@ export function createSummariesFeature({
     const priorWorkedDays = uniqueWorkedDays(priorFullWeek);
 
     let referenceLabel = 'vs last week same range';
+    let usedFallbackReference = false;
     let referenceSameRangeRows = priorSameRangeWeek;
 
     if (priorWorkedDays < 4) {
@@ -73,6 +74,7 @@ export function createSummariesFeature({
         const candidateFullWeek = worked.filter(r => inRange(r, candidateStart, candidateEnd));
         if (uniqueWorkedDays(candidateFullWeek) >= 4) {
           referenceLabel = 'vs most recent full worked week';
+          usedFallbackReference = true;
           referenceSameRangeRows = worked.filter(
             r => inRange(r, candidateStart, candidateStart.plus({ days: activeDay.weekday - 1 }).endOf('day'))
           );
@@ -87,7 +89,9 @@ export function createSummariesFeature({
       activeEnd,
       thisWeek,
       referenceSameRangeRows,
-      referenceLabel
+      referenceLabel,
+      usedFallbackReference,
+      referenceNote: usedFallbackReference ? 'Last week was a partial reference.' : ''
     };
   }
 
@@ -195,7 +199,7 @@ export function createSummariesFeature({
         : null;
       const officeElevated = officeDeltaH != null && officeDeltaPct != null && officeDeltaH >= 0.4 && officeDeltaPct >= 10;
 
-      const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel } = getWeekComparisonContext(scoped, now);
+      const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getWeekComparisonContext(scoped, now);
       const inRange = (r, from, to) => {
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
         return d >= from && d <= to;
@@ -286,7 +290,7 @@ export function createSummariesFeature({
         rotatingCard = {
           kicker: `Week running ${weekIsHeavy ? 'heavy' : 'light'}`,
           headline: `${weekIsHeavy ? '+' : ''}${weekDeltaPct}%`,
-          support: referenceLabel,
+          support: referenceNote ? `${referenceLabel} · ${referenceNote}` : referenceLabel,
           cue: `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:${weekIsHeavy ? 'var(--warn)' : 'var(--good)'};font-weight:700">${weekIsHeavy ? 'Above recent pace' : 'Below recent pace'}</span><div style="flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${Math.max(15, Math.min(100, Math.abs(weekDeltaPct)))}%;background:linear-gradient(90deg,${weekIsHeavy ? 'var(--warn),var(--bad)' : 'var(--good),var(--brand)'})"></div></div></div>`
         };
       } else {
@@ -470,7 +474,7 @@ export function createSummariesFeature({
 
       const scoped = filterRowsForView(rows || []);
       const now = DateTime.now().setZone(ZONE);
-      const { thisWeek: W0, referenceSameRangeRows: W1, referenceLabel } = getWeekComparisonContext(scoped, now);
+      const { thisWeek: W0, referenceSameRangeRows: W1, referenceLabel, referenceNote } = getWeekComparisonContext(scoped, now);
       const daysThisWeek = [...new Set(W0.map(r => r.work_date))].length;
       if (!daysThisWeek) {
         el.textContent = 'No worked days yet — 0 day(s) this week.';
@@ -507,7 +511,7 @@ export function createSummariesFeature({
       const top = movers.slice(0, 2).map(it => `${it.k} ${it.v >= 0 ? `↑ ${it.v}%` : `↓ ${Math.abs(it.v)}%`}`);
       const line = top.length ? top.join(' • ') : 'Similar to last week';
 
-      el.textContent = `${line} — ${daysThisWeek} day(s) this week (${referenceLabel.replace('vs ', '')}).`;
+      el.textContent = `${line} — ${daysThisWeek} day(s) this week (${referenceLabel.replace('vs ', '')})${referenceNote ? ` ${referenceNote}` : ''}`;
       el.style.display = 'block';
     } catch (_err) {
       /* ignore */
@@ -521,7 +525,7 @@ export function createSummariesFeature({
     try {
       const scoped = filterRowsForView(rows || []);
       const now = DateTime.now().setZone(ZONE);
-      const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel } = getWeekComparisonContext(scoped, now);
+      const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getWeekComparisonContext(scoped, now);
       if (!thisWeek.length) {
         el.style.display = 'none';
         el.innerHTML = '';
@@ -562,7 +566,7 @@ export function createSummariesFeature({
         })
         .join(' ');
       el.style.display = 'block';
-      el.innerHTML = `<small title="${referenceLabel}">Weekly Movers</small><div class="pill-row">${pills}</div><div class="muted" style="margin-top:4px;font-size:12px">${referenceLabel}</div>`;
+      el.innerHTML = `<small title="${referenceLabel}">Weekly Movers</small><div class="pill-row">${pills}</div><div class="muted" style="margin-top:4px;font-size:12px">${referenceLabel}</div>${referenceNote ? `<div class="muted" style="font-size:12px">${referenceNote}</div>` : ''}`;
     } catch (_err) {
       /* ignore */
     }
@@ -628,7 +632,7 @@ export function createSummariesFeature({
     try {
       const scoped = filterRowsForView(rows || []);
       const now = DateTime.now().setZone(ZONE);
-      const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel } = getWeekComparisonContext(scoped, now);
+      const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getWeekComparisonContext(scoped, now);
       if (!thisWeek.length || !lastWeek.length) {
         el.style.display = 'none';
         return;
@@ -656,7 +660,7 @@ export function createSummariesFeature({
 
       el.style.display = 'block';
       const pills = [pill('Office', dOff), pill('Route', dRte), pill('Total', dTot)].join(' ');
-      el.innerHTML = `<small title="${referenceLabel}">Heaviness (week)</small><div class="pill-row">${pills}</div><div class="muted" style="margin-top:4px;font-size:12px">${referenceLabel}</div>`;
+      el.innerHTML = `<small title="${referenceLabel}">Heaviness (week)</small><div class="pill-row">${pills}</div><div class="muted" style="margin-top:4px;font-size:12px">${referenceLabel}</div>${referenceNote ? `<div class="muted" style="font-size:12px">${referenceNote}</div>` : ''}`;
     } catch (_err) {
       /* ignore */
     }

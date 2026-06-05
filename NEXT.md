@@ -420,3 +420,83 @@ Milestone follow-ups
 - Existing historical badges are now seeded as revealed once so they do not keep surfacing as new
 - Next milestone step:
   - decide whether yearly milestones should also participate in the same reveal flow or stay quieter than lifetime parcel ladder unlocks
+
+Professional-demo UX strategy
+- Shift emphasis from raw metrics to guided story + drilldown paths
+- Preserve the data/model foundation, but move more of it under the hood
+- The user-facing layer should become:
+  - more selective
+  - more clickable
+  - more clearly organized by purpose
+
+Primary user journeys
+1. Pre-shift / preview
+- Goal:
+  - “How heavy does today look, and when will I likely be done?”
+- Default surfaced items:
+  - `Expected End`
+  - `Expected Route Time`
+  - `Expected Volume` (to add)
+  - `Forecast`
+- Tone:
+  - planning-oriented
+  - lighter on diagnostics
+
+2. Post-shift / review
+- Goal:
+  - “How did the day actually go, and what stands out?”
+- Default surfaced items:
+  - actual vs expected
+  - route residual / action prompt
+  - weekly context
+  - anomaly / tagging path
+  - milestones / historical callbacks
+- Tone:
+  - explanation-oriented
+  - tool-connected
+
+Portal / homepage direction
+- Consider a portal-style homepage with fewer, stronger surface areas
+- Candidate top-level portal areas:
+  - `Today`
+  - `Forecast`
+  - `This Week`
+  - `Route Model`
+  - `History`
+  - `Milestones`
+  - `Tools`
+- Each portal/card should expose 1-2 live stats and open a deeper layer on click
+
+Interconnectivity direction
+- Every important displayed metric should answer:
+  - “What can I click to understand this better?”
+- Desired drilldown paths:
+  - `Expected Volume` -> same-weekday / day-level volume history
+  - `Week running heavy/light` -> `Weekly Compare`
+  - `Route residual` -> `Diagnostics`
+  - `Parcels (week)` -> day-by-day parcel compare
+  - `Last Year Echo` -> historical compare
+  - `Forecast` trend note -> relevant supporting tool/view
+
+What likely moves under the hood
+- Isolated raw percentage tiles
+- Duplicate metric summaries
+- Small standalone stats that do not lead anywhere
+- Dense detail blocks that repeat what charts already show
+
+What likely stays primary
+- Preview cards
+- Insight strip
+- Weekly Compare
+- Route model / action card
+- Milestones
+- Historical callbacks
+
+Next UX checklist
+- [ ] Define homepage information architecture for pre-shift vs post-shift states
+- [ ] Define the final portal/card families for the top-level surface
+- [ ] Add `Expected Volume` to the preview/planning layer
+- [ ] Map click targets for every insight-strip card
+- [ ] Map click targets for Weekly Compare, Baseline View, Last Year Echo, and Forecast
+- [ ] Decide which existing raw tiles remain primary vs secondary
+- [ ] Define which tools should open inline, expand in place, or scroll to section

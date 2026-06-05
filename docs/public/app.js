@@ -4973,6 +4973,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const priorFullWeek = worked.filter((r) => inRange(r, startLast, lastFullWeekEnd));
       const priorWorkedDays = uniqueWorkedDays(priorFullWeek);
       let referenceLabel = "vs last week same range";
+      let usedFallbackReference = false;
       let referenceSameRangeRows = priorSameRangeWeek;
       if (priorWorkedDays < 4) {
         for (let weeksBack = 2; weeksBack <= 12; weeksBack += 1) {
@@ -4981,6 +4982,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           const candidateFullWeek = worked.filter((r) => inRange(r, candidateStart, candidateEnd));
           if (uniqueWorkedDays(candidateFullWeek) >= 4) {
             referenceLabel = "vs most recent full worked week";
+            usedFallbackReference = true;
             referenceSameRangeRows = worked.filter(
               (r) => inRange(r, candidateStart, candidateStart.plus({ days: activeDay.weekday - 1 }).endOf("day"))
             );
@@ -4994,7 +4996,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         activeEnd,
         thisWeek,
         referenceSameRangeRows,
-        referenceLabel
+        referenceLabel,
+        usedFallbackReference,
+        referenceNote: usedFallbackReference ? "Last week was a partial reference." : ""
       };
     }
     function buildInsightStrip2(rows) {
@@ -5073,7 +5077,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const officeDeltaH = officeTodayH != null && officeAvgH != null ? officeTodayH - officeAvgH : null;
         const officeDeltaPct = officeDeltaH != null && officeAvgH && officeAvgH > 0 ? Math.round(officeDeltaH / officeAvgH * 100) : null;
         const officeElevated = officeDeltaH != null && officeDeltaPct != null && officeDeltaH >= 0.4 && officeDeltaPct >= 10;
-        const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel } = getWeekComparisonContext(scoped, now);
+        const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getWeekComparisonContext(scoped, now);
         const inRange = (r, from, to) => {
           const d = DateTime.fromISO(r.work_date, { zone: ZONE });
           return d >= from && d <= to;
@@ -5163,7 +5167,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           rotatingCard = {
             kicker: `Week running ${weekIsHeavy ? "heavy" : "light"}`,
             headline: `${weekIsHeavy ? "+" : ""}${weekDeltaPct}%`,
-            support: referenceLabel,
+            support: referenceNote ? `${referenceLabel} \xB7 ${referenceNote}` : referenceLabel,
             cue: `<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:${weekIsHeavy ? "var(--warn)" : "var(--good)"};font-weight:700">${weekIsHeavy ? "Above recent pace" : "Below recent pace"}</span><div style="flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden"><div style="height:100%;width:${Math.max(15, Math.min(100, Math.abs(weekDeltaPct)))}%;background:linear-gradient(90deg,${weekIsHeavy ? "var(--warn),var(--bad)" : "var(--good),var(--brand)"})"></div></div></div>`
           };
         } else {
@@ -5337,7 +5341,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         }
         const scoped = filterRowsForView2(rows || []);
         const now = DateTime.now().setZone(ZONE);
-        const { thisWeek: W0, referenceSameRangeRows: W1, referenceLabel } = getWeekComparisonContext(scoped, now);
+        const { thisWeek: W0, referenceSameRangeRows: W1, referenceLabel, referenceNote } = getWeekComparisonContext(scoped, now);
         const daysThisWeek = [...new Set(W0.map((r) => r.work_date))].length;
         if (!daysThisWeek) {
           el.textContent = "No worked days yet \u2014 0 day(s) this week.";
@@ -5371,7 +5375,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         movers.sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
         const top = movers.slice(0, 2).map((it) => `${it.k} ${it.v >= 0 ? `\u2191 ${it.v}%` : `\u2193 ${Math.abs(it.v)}%`}`);
         const line = top.length ? top.join(" \u2022 ") : "Similar to last week";
-        el.textContent = `${line} \u2014 ${daysThisWeek} day(s) this week (${referenceLabel.replace("vs ", "")}).`;
+        el.textContent = `${line} \u2014 ${daysThisWeek} day(s) this week (${referenceLabel.replace("vs ", "")})${referenceNote ? ` ${referenceNote}` : ""}`;
         el.style.display = "block";
       } catch (_err) {
       }
@@ -5382,7 +5386,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       try {
         const scoped = filterRowsForView2(rows || []);
         const now = DateTime.now().setZone(ZONE);
-        const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel } = getWeekComparisonContext(scoped, now);
+        const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getWeekComparisonContext(scoped, now);
         if (!thisWeek.length) {
           el.style.display = "none";
           el.innerHTML = "";
@@ -5417,7 +5421,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           return `<span class="pill"><small>${it.label}</small> <b style="color:${fg}">${direction}</b></span>`;
         }).join(" ");
         el.style.display = "block";
-        el.innerHTML = `<small title="${referenceLabel}">Weekly Movers</small><div class="pill-row">${pills}</div><div class="muted" style="margin-top:4px;font-size:12px">${referenceLabel}</div>`;
+        el.innerHTML = `<small title="${referenceLabel}">Weekly Movers</small><div class="pill-row">${pills}</div><div class="muted" style="margin-top:4px;font-size:12px">${referenceLabel}</div>${referenceNote ? `<div class="muted" style="font-size:12px">${referenceNote}</div>` : ""}`;
       } catch (_err) {
       }
     }
@@ -5474,7 +5478,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       try {
         const scoped = filterRowsForView2(rows || []);
         const now = DateTime.now().setZone(ZONE);
-        const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel } = getWeekComparisonContext(scoped, now);
+        const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getWeekComparisonContext(scoped, now);
         if (!thisWeek.length || !lastWeek.length) {
           el.style.display = "none";
           return;
@@ -5500,7 +5504,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         };
         el.style.display = "block";
         const pills = [pill("Office", dOff), pill("Route", dRte), pill("Total", dTot)].join(" ");
-        el.innerHTML = `<small title="${referenceLabel}">Heaviness (week)</small><div class="pill-row">${pills}</div><div class="muted" style="margin-top:4px;font-size:12px">${referenceLabel}</div>`;
+        el.innerHTML = `<small title="${referenceLabel}">Heaviness (week)</small><div class="pill-row">${pills}</div><div class="muted" style="margin-top:4px;font-size:12px">${referenceLabel}</div>${referenceNote ? `<div class="muted" style="font-size:12px">${referenceNote}</div>` : ""}`;
       } catch (_err) {
       }
     }

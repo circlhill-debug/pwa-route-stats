@@ -500,3 +500,160 @@ Next UX checklist
 - [ ] Map click targets for Weekly Compare, Baseline View, Last Year Echo, and Forecast
 - [ ] Decide which existing raw tiles remain primary vs secondary
 - [ ] Define which tools should open inline, expand in place, or scroll to section
+
+Portal map - first draft
+
+1. `Today`
+- Question:
+  - What does today look like, or how did today go?
+- Pre-shift surface:
+  - `Expected End`
+  - `Expected Route Time`
+  - `Expected Volume`
+- Post-shift surface:
+  - actual route/workday outcome
+  - route residual status
+  - day-shape summary
+- Click target:
+  - `Day Compare`
+- Can absorb:
+  - top-row raw tiles over time
+
+2. `Forecast`
+- Question:
+  - What should I expect today/tomorrow?
+- Pre-shift surface:
+  - sentence forecast
+  - heads-up change note
+  - confidence cue if useful
+- Post-shift surface:
+  - forecast vs actual outcome
+- Click target:
+  - forecast detail / factor breakdown
+- Can absorb:
+  - isolated prediction explanation text
+
+3. `This Week`
+- Question:
+  - How is this week trending?
+- Pre-shift surface:
+  - week-to-date volume
+  - pace vs reference
+- Post-shift surface:
+  - `Weekly Compare`
+  - `Heaviness (week)`
+  - `Weekly Movers`
+- Click target:
+  - `Weekly Compare` / `Baseline View`
+- Can absorb:
+  - scattered week summary lines
+
+4. `Route Model`
+- Question:
+  - What did the route model expect, and was it right?
+- Pre-shift surface:
+  - expected route time
+  - route model confidence
+- Post-shift surface:
+  - actual route time
+  - route residual
+  - tag-needed status
+- Click target:
+  - `Diagnostics`
+- Can absorb:
+  - separate route-model status tiles
+
+5. `History`
+- Question:
+  - How does this compare to prior periods?
+- Pre-shift surface:
+  - same-weekday norms
+  - relevant year-over-year callback when available
+- Post-shift surface:
+  - `Last Year Echo`
+  - historical compare hooks
+- Click target:
+  - history compare view / `Day Compare`
+- Can absorb:
+  - passive historical callouts
+
+6. `Milestones`
+- Question:
+  - What progress or achievements matter?
+- Pre-shift surface:
+  - active unlock progress
+  - one current progress badge
+- Post-shift surface:
+  - new unlocks
+  - records
+  - streaks later
+- Click target:
+  - `Milestone Engine`
+- Can absorb:
+  - standalone badge blocks
+
+7. `Tools`
+- Question:
+  - What deeper analysis tools are available?
+- Surface:
+  - `Day Compare`
+  - `Diagnostics`
+  - parser
+  - yearly summary
+  - sleep/drink
+  - future advanced utilities
+- Click target:
+  - direct tool open
+- Recommendation:
+  - keep secondary, not a hero portal on the homepage
+
+Portal decisions to make
+- [ ] Confirm the six primary homepage portals:
+  - `Today`
+  - `Forecast`
+  - `This Week`
+  - `Route Model`
+  - `History`
+  - `Milestones`
+- [ ] Keep `Tools` secondary rather than top-level hero
+- [ ] Decide whether homepage is:
+  - portal icon grid
+  - dashboard card grid
+  - hybrid of icon portals + live cards
+
+Next real design decision
+- Now that the six portals are locked, decide:
+
+1. Homepage layout
+- Candidate directions:
+  - card grid
+  - hybrid grid
+  - tabbed top row plus cards
+  - icon portal board
+
+2. What is visible by default under those portals
+- Candidate layers:
+  - hero row
+  - secondary row
+  - advanced tools hidden below
+
+3. What each portal opens
+- Candidate behaviors:
+  - inline expand
+  - scroll to section
+  - dedicated subpage/panel
+
+Homepage layout decision checklist
+- [ ] Choose one homepage layout direction to prototype first:
+  - portal-first
+  - dashboard-first
+  - hybrid
+- [ ] Decide whether the homepage should prioritize icons, text cards, or a mixed card system
+- [ ] Decide whether the top row should be a hero strip, tab row, or portal row
+- [ ] Decide which portals belong in the hero row vs secondary row
+- [ ] Decide where advanced tools live by default
+
+Portal open-behavior checklist
+- [ ] Decide which portals should scroll to an existing section
+- [ ] Decide which portals should preload a tool with context
+- [ ] Decide which portals should eventually become dedicated subpages/panels

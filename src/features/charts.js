@@ -636,7 +636,7 @@ export function createCharts({
     const todayIso = now.toISODate();
     const hasTodayWorkedRow = rows.some(r => r && r.status !== 'off' && r.work_date === todayIso);
     const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
-    const startThis = startOfWeekMonday(now);
+    const startThis = startOfWeekMonday(activeDay);
     const endThis   = activeDay.endOf('day');
     const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
     const worked = rows.filter(r=> r.status!=='off');
@@ -1163,14 +1163,17 @@ export function createCharts({
       const overlay = document.getElementById('officeOverlay');
       const summary = document.getElementById('officeSummary');
       const now = DateTime.now().setZone(ZONE);
-      const startThis = startOfWeekMonday(now);
-      const endThis   = now.endOf('day');
-      const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
       const worked = (rows||[]).filter(r=> r.status!=='off');
+      const todayIso = now.toISODate();
+      const hasTodayWorkedRow = worked.some(r => r && r.work_date === todayIso);
+      const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
+      const startThis = startOfWeekMonday(activeDay);
+      const endThis   = activeDay.endOf('day');
+      const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
       const baseWeek = getLastNonEmptyWeek(worked, now, { excludeVacation: true });
       const startLast = baseWeek.start;
       const endLast   = baseWeek.end;
-      const lastEndSame = DateTime.min(endLast, baseWeek.start.plus({ days: Math.max(0, now.weekday - 1) }).endOf('day'));
+      const lastEndSame = DateTime.min(endLast, baseWeek.start.plus({ days: Math.max(0, activeDay.weekday - 1) }).endOf('day'));
       const W0 = worked.filter(r=> inRange(r,startThis,endThis));
       const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
       const offByDow = (arr)=>{
@@ -1181,7 +1184,7 @@ export function createCharts({
       const thisBy = offByDow(W0);
       const W1 = baseWeek.rows;
       const lastBy = offByDow(W1);
-      const dayIdxToday = (now.weekday + 6) % 7;
+      const dayIdxToday = (activeDay.weekday + 6) % 7;
       const thisMasked = thisBy.map((v,i)=> i<=dayIdxToday? v : null);
       const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
       const off0 = sum(W0, r=> normalizeHoursValue(r.office_minutes));

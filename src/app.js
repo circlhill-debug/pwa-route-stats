@@ -2986,7 +2986,7 @@ function getHourlyRateFromEval(){
     const todayIso = now.toISODate();
     const hasTodayWorkedRow = (workRows || []).some(r => r && r.work_date === todayIso && r.status !== 'off');
     const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
-    const weekStart = startOfWeekMonday(now);
+    const weekStart = startOfWeekMonday(activeDay);
     const activeDayIndex = activeDay < weekStart ? -1 : (activeDay.weekday + 6) % 7;
     return {
       todayIso,
@@ -3267,12 +3267,12 @@ function getHourlyRateFromEval(){
     }catch(_){ }
 
     // ===== Weekly tiles (Monday-based) =====
-    const weekStart = startOfWeekMonday(today);
+    const weekStart = startOfWeekMonday(activeDay);
     const weekEnd   = activeEnd;
-    const prevWeekStart = startOfWeekMonday(today.minus({weeks:1}));
-    const prevWeekEnd   = endOfWeekSunday(today.minus({weeks:1}));
-    const priorWeekStart = startOfWeekMonday(today.minus({weeks:2}));
-    const priorWeekEnd   = endOfWeekSunday(today.minus({weeks:2}));
+    const prevWeekStart = startOfWeekMonday(activeDay.minus({weeks:1}));
+    const prevWeekEnd   = endOfWeekSunday(activeDay.minus({weeks:1}));
+    const priorWeekStart = startOfWeekMonday(activeDay.minus({weeks:2}));
+    const priorWeekEnd   = endOfWeekSunday(activeDay.minus({weeks:2}));
 
     const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
     const sum=(arr,fn)=>arr.reduce((t,x)=>t+(fn(x)||0),0);

@@ -697,7 +697,7 @@ export function createSummariesFeature({
     try {
       const scoped = filterRowsForView(rows || []);
       const now = DateTime.now().setZone(ZONE);
-      const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getWeekComparisonContext(scoped, now);
+      const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getCalendarWeekComparisonContext(scoped, now);
       if (!thisWeek.length || !lastWeek.length) {
         el.style.display = 'none';
         return;

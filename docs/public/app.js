@@ -5545,7 +5545,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       try {
         const scoped = filterRowsForView2(rows || []);
         const now = DateTime.now().setZone(ZONE);
-        const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getWeekComparisonContext(scoped, now);
+        const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getCalendarWeekComparisonContext(scoped, now);
         if (!thisWeek.length || !lastWeek.length) {
           el.style.display = "none";
           return;

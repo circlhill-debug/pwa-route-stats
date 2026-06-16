@@ -2984,15 +2984,7 @@ function getHourlyRateFromEval(){
 
   function getActiveWeekContext(workRows, now = DateTime.now().setZone(ZONE)) {
     const todayIso = now.toISODate();
-    const hasTodayWorkedRow = (workRows || []).some(r => {
-      if (!r || r.status === 'off' || r.work_date !== todayIso) return false;
-      if (normalizeHoursValue(r.hours) > 0) return true;
-      if (normalizeHoursValue(r.office_minutes) > 0) return true;
-      if (routeAdjustedHours(r) > 0) return true;
-      if ((+r.parcels || 0) > 0) return true;
-      if ((+r.letters || 0) > 0) return true;
-      return false;
-    });
+    const hasTodayWorkedRow = (workRows || []).some(r => hasMeaningfulWorkedData(r, todayIso));
     const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
     const weekStart = startOfWeekMonday(activeDay);
     const activeDayIndex = activeDay < weekStart ? -1 : (activeDay.weekday + 6) % 7;
@@ -3005,12 +2997,24 @@ function getHourlyRateFromEval(){
     };
   }
 
+  function hasMeaningfulWorkedData(row, iso = null) {
+    if (!row || row.status === 'off') return false;
+    if (iso && row.work_date !== iso) return false;
+    if (normalizeHoursValue(row.hours) > 0) return true;
+    if (normalizeHoursValue(row.office_minutes) > 0) return true;
+    if (routeAdjustedHours(row) > 0) return true;
+    if ((+row.parcels || 0) > 0) return true;
+    if ((+row.letters || 0) > 0) return true;
+    return false;
+  }
+
   function buildSnapshot(rows){
     rows = filterRowsForView(rows||[]);
     const today=DateTime.now().setZone(ZONE);
     const dow=today.weekday%7; // 0=Sun
     const workRows=rows.filter(r=>r.status!=='off');
     const { activeDay, activeEnd, activeDayIndex } = getActiveWeekContext(workRows, today);
+    const hasTodayWorkedRow = workRows.some(r => hasMeaningfulWorkedData(r, today.toISODate()));
     const prediction = buildPredictionRecord(workRows, { now: today });
     const predictedTotalHours = prediction?.predicted?.totalHours ?? null;
     const todayRow = prediction?.row || null;
@@ -3275,12 +3279,16 @@ function getHourlyRateFromEval(){
     }catch(_){ }
 
     // ===== Weekly tiles (Monday-based) =====
-    const weekStart = startOfWeekMonday(activeDay);
-    const weekEnd   = activeEnd;
-    const prevWeekStart = startOfWeekMonday(activeDay.minus({weeks:1}));
-    const prevWeekEnd   = endOfWeekSunday(activeDay.minus({weeks:1}));
-    const priorWeekStart = startOfWeekMonday(activeDay.minus({weeks:2}));
-    const priorWeekEnd   = endOfWeekSunday(activeDay.minus({weeks:2}));
+    const calendarWeekStart = startOfWeekMonday(today);
+    const calendarWeekEnd = hasTodayWorkedRow
+      ? today.endOf('day')
+      : today.minus({ days: 1 }).endOf('day');
+    const weekStart = calendarWeekStart;
+    const weekEnd   = calendarWeekEnd;
+    const prevWeekStart = startOfWeekMonday(today.minus({weeks:1}));
+    const prevWeekEnd   = endOfWeekSunday(today.minus({weeks:1}));
+    const priorWeekStart = startOfWeekMonday(today.minus({weeks:2}));
+    const priorWeekEnd   = endOfWeekSunday(today.minus({weeks:2}));
 
     const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
     const sum=(arr,fn)=>arr.reduce((t,x)=>t+(fn(x)||0),0);
@@ -3341,7 +3349,7 @@ function getHourlyRateFromEval(){
     // ===== Advanced Weekly Metrics (Phase 1) =====
     // Day-by-day comparison Mon..today vs same weekday last week,
     // then compute weighted average and cumulative impact (percent).
-    const dayIndexToday = activeDayIndex; // Mon=0..Sun=6, or -1 when no current-week worked row exists yet
+    const dayIndexToday = hasTodayWorkedRow ? ((today.weekday + 6) % 7) : (((today.weekday + 6) % 7) - 1); // completed current-week days only
 
     // Build arrays for this week and last week by weekday index (Mon..Sun)
     const toWeekArray = (from, to) => {
@@ -4802,9 +4810,10 @@ if ('serviceWorker' in navigator) {
       try{
         const now = DateTime.now().setZone(ZONE);
         const start = startOfWeekMonday(now);
-        const end   = now.endOf('day');
+        const hasTodayWorkedRow = (rows || []).some(r => hasMeaningfulWorkedData(r, now.toISODate()));
+        const end   = hasTodayWorkedRow ? now.endOf('day') : now.minus({ days: 1 }).endOf('day');
         const inRange=(r)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=start && d<=end; };
-        const worked = (rows||[]).filter(r=> r.status!=='off' && inRange(r));
+        const worked = (rows||[]).filter(r=> r.status!=='off' && inRange(r) && hasMeaningfulWorkedData(r));
         const days = Array.from(new Set(worked.map(r=> r.work_date))).length;
         const valEl = document.getElementById('uspsRouteEffVal');
         if (!days || cfg.hoursPerDay==null){ valEl.textContent='—'; valEl.style.color=''; }

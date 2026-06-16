@@ -3375,6 +3375,15 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       });
       dowChart = parcelsChart = lettersChart = null;
     }
+    function hasMeaningfulWorkedData(row) {
+      if (!row || row.status === "off") return false;
+      if (normalizeHoursValue(row.hours) > 0) return true;
+      if (normalizeHoursValue(row.office_minutes) > 0) return true;
+      if (routeAdjustedHours2(row) > 0) return true;
+      if ((+row.parcels || 0) > 0) return true;
+      if ((+row.letters || 0) > 0) return true;
+      return false;
+    }
     function loadTrendRangeKey() {
       try {
         const raw = localStorage.getItem(TREND_RANGE_KEY);
@@ -4028,9 +4037,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const btn = document.getElementById("mixCompareBtn");
       const now = DateTime.now().setZone(ZONE);
       const todayIso2 = now.toISODate();
-      const hasTodayWorkedRow = rows.some((r) => r && r.status !== "off" && r.work_date === todayIso2);
+      const hasTodayWorkedRow = rows.some((r) => r && r.work_date === todayIso2 && hasMeaningfulWorkedData(r));
       const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
-      const startThis = startOfWeekMonday(now);
+      const startThis = startOfWeekMonday(activeDay);
       const endThis = activeDay.endOf("day");
       const inRange = (r, from, to) => {
         const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
@@ -4573,17 +4582,20 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const overlay = document.getElementById("officeOverlay");
         const summary = document.getElementById("officeSummary");
         const now = DateTime.now().setZone(ZONE);
-        const startThis = startOfWeekMonday(now);
-        const endThis = now.endOf("day");
+        const worked = (rows || []).filter((r) => r.status !== "off");
+        const todayIso2 = now.toISODate();
+        const hasTodayWorkedRow = worked.some((r) => r && r.work_date === todayIso2 && hasMeaningfulWorkedData(r));
+        const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
+        const startThis = startOfWeekMonday(activeDay);
+        const endThis = activeDay.endOf("day");
         const inRange = (r, from, to) => {
           const d = DateTime.fromISO(r.work_date, { zone: ZONE });
           return d >= from && d <= to;
         };
-        const worked = (rows || []).filter((r) => r.status !== "off");
         const baseWeek = getLastNonEmptyWeek2(worked, now, { excludeVacation: true });
         const startLast = baseWeek.start;
         const endLast = baseWeek.end;
-        const lastEndSame = DateTime.min(endLast, baseWeek.start.plus({ days: Math.max(0, now.weekday - 1) }).endOf("day"));
+        const lastEndSame = DateTime.min(endLast, baseWeek.start.plus({ days: Math.max(0, activeDay.weekday - 1) }).endOf("day"));
         const W0 = worked.filter((r) => inRange(r, startThis, endThis));
         const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
         const offByDow = (arr) => {
@@ -4598,7 +4610,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const thisBy = offByDow(W0);
         const W1 = baseWeek.rows;
         const lastBy = offByDow(W1);
-        const dayIdxToday = (now.weekday + 6) % 7;
+        const dayIdxToday = (activeDay.weekday + 6) % 7;
         const thisMasked = thisBy.map((v, i) => i <= dayIdxToday ? v : null);
         const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
         const off0 = sum(W0, (r) => normalizeHoursValue(r.office_minutes));
@@ -4940,10 +4952,19 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (typeof getResidualModel2 !== "function") throw new Error("createSummariesFeature: getResidualModel is required");
     if (typeof combinedVolume2 !== "function") throw new Error("createSummariesFeature: combinedVolume is required");
     if (typeof loadDismissedResiduals2 !== "function") throw new Error("createSummariesFeature: loadDismissedResiduals is required");
+    function hasMeaningfulWorkedData(row) {
+      if (!row || row.status === "off") return false;
+      if (normalizeHoursValue(row.hours) > 0) return true;
+      if (normalizeHoursValue(row.office_minutes) > 0) return true;
+      if (routeAdjustedHours2(row) > 0) return true;
+      if ((+row.parcels || 0) > 0) return true;
+      if ((+row.letters || 0) > 0) return true;
+      return false;
+    }
     function getActiveWorkdayContext(rows, now = DateTime.now().setZone(ZONE)) {
       const worked = (rows || []).filter((r) => r && r.status !== "off");
       const todayIso2 = now.toISODate();
-      const hasTodayWorkedRow = worked.some((r) => r.work_date === todayIso2);
+      const hasTodayWorkedRow = worked.some((r) => r.work_date === todayIso2 && hasMeaningfulWorkedData(r));
       const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
       return {
         worked,
@@ -4963,9 +4984,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         return d >= from && d <= to;
       };
       const uniqueWorkedDays = (weekRows) => new Set((weekRows || []).map((r) => r.work_date)).size;
-      const startThis = startOfWeekMonday(now);
+      const startThis = startOfWeekMonday(activeDay);
       const endThis = activeEnd;
-      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
+      const startLast = startOfWeekMonday(activeDay.minus({ weeks: 1 }));
       const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf("day");
       const lastFullWeekEnd = startLast.plus({ days: 6 }).endOf("day");
       const thisWeek = worked.filter((r) => inRange(r, startThis, endThis));
@@ -8749,9 +8770,17 @@ Entries are filtered by this id.`);
   });
   function getActiveWeekContext(workRows, now = DateTime.now().setZone(ZONE)) {
     const todayIso2 = now.toISODate();
-    const hasTodayWorkedRow = (workRows || []).some((r) => r && r.work_date === todayIso2 && r.status !== "off");
+    const hasTodayWorkedRow = (workRows || []).some((r) => {
+      if (!r || r.status === "off" || r.work_date !== todayIso2) return false;
+      if (normalizeHoursValue(r.hours) > 0) return true;
+      if (normalizeHoursValue(r.office_minutes) > 0) return true;
+      if (routeAdjustedHours(r) > 0) return true;
+      if ((+r.parcels || 0) > 0) return true;
+      if ((+r.letters || 0) > 0) return true;
+      return false;
+    });
     const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
-    const weekStart = startOfWeekMonday(now);
+    const weekStart = startOfWeekMonday(activeDay);
     const activeDayIndex = activeDay < weekStart ? -1 : (activeDay.weekday + 6) % 7;
     return {
       todayIso: todayIso2,
@@ -9053,12 +9082,12 @@ Score: ${overallScore}/10 (higher is better)`;
       }
     } catch (_) {
     }
-    const weekStart = startOfWeekMonday(today);
+    const weekStart = startOfWeekMonday(activeDay);
     const weekEnd = activeEnd;
-    const prevWeekStart = startOfWeekMonday(today.minus({ weeks: 1 }));
-    const prevWeekEnd = endOfWeekSunday2(today.minus({ weeks: 1 }));
-    const priorWeekStart = startOfWeekMonday(today.minus({ weeks: 2 }));
-    const priorWeekEnd = endOfWeekSunday2(today.minus({ weeks: 2 }));
+    const prevWeekStart = startOfWeekMonday(activeDay.minus({ weeks: 1 }));
+    const prevWeekEnd = endOfWeekSunday2(activeDay.minus({ weeks: 1 }));
+    const priorWeekStart = startOfWeekMonday(activeDay.minus({ weeks: 2 }));
+    const priorWeekEnd = endOfWeekSunday2(activeDay.minus({ weeks: 2 }));
     const inRange = (r, from, to) => {
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       return d >= from && d <= to;

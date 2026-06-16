@@ -35,6 +35,16 @@ export function createCharts({
     dowChart = parcelsChart = lettersChart = null;
   }
 
+  function hasMeaningfulWorkedData(row){
+    if (!row || row.status === 'off') return false;
+    if (normalizeHoursValue(row.hours) > 0) return true;
+    if (normalizeHoursValue(row.office_minutes) > 0) return true;
+    if (routeAdjustedHours(row) > 0) return true;
+    if ((+row.parcels || 0) > 0) return true;
+    if ((+row.letters || 0) > 0) return true;
+    return false;
+  }
+
   function loadTrendRangeKey(){
     try{
       const raw = localStorage.getItem(TREND_RANGE_KEY);
@@ -634,7 +644,7 @@ export function createCharts({
     const btn = document.getElementById('mixCompareBtn');
     const now = DateTime.now().setZone(ZONE);
     const todayIso = now.toISODate();
-    const hasTodayWorkedRow = rows.some(r => r && r.status !== 'off' && r.work_date === todayIso);
+    const hasTodayWorkedRow = rows.some(r => r && r.work_date === todayIso && hasMeaningfulWorkedData(r));
     const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
     const startThis = startOfWeekMonday(activeDay);
     const endThis   = activeDay.endOf('day');
@@ -1165,7 +1175,7 @@ export function createCharts({
       const now = DateTime.now().setZone(ZONE);
       const worked = (rows||[]).filter(r=> r.status!=='off');
       const todayIso = now.toISODate();
-      const hasTodayWorkedRow = worked.some(r => r && r.work_date === todayIso);
+      const hasTodayWorkedRow = worked.some(r => r && r.work_date === todayIso && hasMeaningfulWorkedData(r));
       const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
       const startThis = startOfWeekMonday(activeDay);
       const endThis   = activeDay.endOf('day');

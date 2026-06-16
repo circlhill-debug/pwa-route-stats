@@ -2984,7 +2984,15 @@ function getHourlyRateFromEval(){
 
   function getActiveWeekContext(workRows, now = DateTime.now().setZone(ZONE)) {
     const todayIso = now.toISODate();
-    const hasTodayWorkedRow = (workRows || []).some(r => r && r.work_date === todayIso && r.status !== 'off');
+    const hasTodayWorkedRow = (workRows || []).some(r => {
+      if (!r || r.status === 'off' || r.work_date !== todayIso) return false;
+      if (normalizeHoursValue(r.hours) > 0) return true;
+      if (normalizeHoursValue(r.office_minutes) > 0) return true;
+      if (routeAdjustedHours(r) > 0) return true;
+      if ((+r.parcels || 0) > 0) return true;
+      if ((+r.letters || 0) > 0) return true;
+      return false;
+    });
     const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
     const weekStart = startOfWeekMonday(activeDay);
     const activeDayIndex = activeDay < weekStart ? -1 : (activeDay.weekday + 6) % 7;

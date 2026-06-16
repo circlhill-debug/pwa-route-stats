@@ -26,10 +26,20 @@ export function createSummariesFeature({
   if (typeof combinedVolume !== 'function') throw new Error('createSummariesFeature: combinedVolume is required');
   if (typeof loadDismissedResiduals !== 'function') throw new Error('createSummariesFeature: loadDismissedResiduals is required');
 
+  function hasMeaningfulWorkedData(row) {
+    if (!row || row.status === 'off') return false;
+    if (normalizeHoursValue(row.hours) > 0) return true;
+    if (normalizeHoursValue(row.office_minutes) > 0) return true;
+    if (routeAdjustedHours(row) > 0) return true;
+    if ((+row.parcels || 0) > 0) return true;
+    if ((+row.letters || 0) > 0) return true;
+    return false;
+  }
+
   function getActiveWorkdayContext(rows, now = DateTime.now().setZone(ZONE)) {
     const worked = (rows || []).filter(r => r && r.status !== 'off');
     const todayIso = now.toISODate();
-    const hasTodayWorkedRow = worked.some(r => r.work_date === todayIso);
+    const hasTodayWorkedRow = worked.some(r => r.work_date === todayIso && hasMeaningfulWorkedData(r));
     const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
     return {
       worked,

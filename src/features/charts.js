@@ -645,15 +645,17 @@ export function createCharts({
     const now = DateTime.now().setZone(ZONE);
     const todayIso = now.toISODate();
     const hasTodayWorkedRow = rows.some(r => r && r.work_date === todayIso && hasMeaningfulWorkedData(r));
-    const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
-    const startThis = startOfWeekMonday(activeDay);
-    const endThis   = activeDay.endOf('day');
+    const startThis = startOfWeekMonday(now);
+    const endThis = hasTodayWorkedRow ? now.endOf('day') : now.minus({ days: 1 }).endOf('day');
+    const completedDayIdx = hasTodayWorkedRow ? ((now.weekday + 6) % 7) : (((now.weekday + 6) % 7) - 1);
     const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
     const worked = rows.filter(r=> r.status!=='off');
     const baseWeek = getLastNonEmptyWeek(worked, now, { excludeVacation: true });
     const startLast = baseWeek.start;
     const endLastFull = baseWeek.end;
-    const lastEndSame = DateTime.min(endLastFull, baseWeek.start.plus({ days: Math.max(0, activeDay.weekday - 1) }).endOf('day'));
+    const lastEndSame = completedDayIdx >= 0
+      ? DateTime.min(endLastFull, baseWeek.start.plus({ days: completedDayIdx }).endOf('day'))
+      : baseWeek.start.minus({ seconds: 1 });
     const W0 = worked.filter(r=> inRange(r,startThis,endThis));
     const W1 = baseWeek.rows.filter(r=> inRange(r,startLast,lastEndSame));
     const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
@@ -811,7 +813,7 @@ export function createCharts({
     let resL = { used: 0 };
     const baselines = ensureWeeklyBaselines(rows) || getWeeklyBaselines();
     const anchor = computeAnchorBaselines(rows, 8);
-    const nowDayIdx = (activeDay.weekday + 6) % 7;
+    const nowDayIdx = completedDayIdx;
     let comparisonPacketP = buildWeeklyComparisonPacket('matched_workday_count', {
       currentTotal: p0,
       referenceTotal: p1,
@@ -949,7 +951,7 @@ export function createCharts({
         const lastBy = volByDow(W1full);
         const thisRoute = routeByDow(W0);
         const lastRoute = routeByDow(W1full);
-        const dayIdxToday = (activeDay.weekday + 6) % 7;
+        const dayIdxToday = completedDayIdx;
         const isoForPoint = (datasetIndex, idx) => {
           try{
             if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
@@ -1176,14 +1178,16 @@ export function createCharts({
       const worked = (rows||[]).filter(r=> r.status!=='off');
       const todayIso = now.toISODate();
       const hasTodayWorkedRow = worked.some(r => r && r.work_date === todayIso && hasMeaningfulWorkedData(r));
-      const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
-      const startThis = startOfWeekMonday(activeDay);
-      const endThis   = activeDay.endOf('day');
+      const startThis = startOfWeekMonday(now);
+      const endThis = hasTodayWorkedRow ? now.endOf('day') : now.minus({ days: 1 }).endOf('day');
+      const completedDayIdx = hasTodayWorkedRow ? ((now.weekday + 6) % 7) : (((now.weekday + 6) % 7) - 1);
       const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
       const baseWeek = getLastNonEmptyWeek(worked, now, { excludeVacation: true });
       const startLast = baseWeek.start;
       const endLast   = baseWeek.end;
-      const lastEndSame = DateTime.min(endLast, baseWeek.start.plus({ days: Math.max(0, activeDay.weekday - 1) }).endOf('day'));
+      const lastEndSame = completedDayIdx >= 0
+        ? DateTime.min(endLast, baseWeek.start.plus({ days: completedDayIdx }).endOf('day'))
+        : baseWeek.start.minus({ seconds: 1 });
       const W0 = worked.filter(r=> inRange(r,startThis,endThis));
       const sum = (arr,fn)=> arr.reduce((t,x)=> t + (fn(x)||0), 0);
       const offByDow = (arr)=>{
@@ -1194,7 +1198,7 @@ export function createCharts({
       const thisBy = offByDow(W0);
       const W1 = baseWeek.rows;
       const lastBy = offByDow(W1);
-      const dayIdxToday = (activeDay.weekday + 6) % 7;
+      const dayIdxToday = completedDayIdx;
       const thisMasked = thisBy.map((v,i)=> i<=dayIdxToday? v : null);
       const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
       const off0 = sum(W0, r=> normalizeHoursValue(r.office_minutes));

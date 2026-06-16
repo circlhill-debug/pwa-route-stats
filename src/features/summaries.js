@@ -105,6 +105,61 @@ export function createSummariesFeature({
     };
   }
 
+  function getCalendarWeekComparisonContext(rows, now = DateTime.now().setZone(ZONE)) {
+    const { worked, activeDay, hasTodayWorkedRow } = getActiveWorkdayContext(rows, now);
+    const inRange = (r, from, to) => {
+      const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+      return d >= from && d <= to;
+    };
+    const uniqueWorkedDays = (weekRows) => new Set((weekRows || []).map(r => r.work_date)).size;
+    const weekStart = startOfWeekMonday(now);
+    const completedDayIndex = hasTodayWorkedRow ? now.weekday : (now.weekday - 1);
+    const weekEnd = hasTodayWorkedRow ? now.endOf('day') : now.minus({ days: 1 }).endOf('day');
+    const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
+    const lastEndSame = completedDayIndex > 0
+      ? startLast.plus({ days: completedDayIndex - 1 }).endOf('day')
+      : startLast.minus({ seconds: 1 });
+    const lastFullWeekEnd = startLast.plus({ days: 6 }).endOf('day');
+
+    const thisWeek = worked.filter(r => inRange(r, weekStart, weekEnd));
+    const priorSameRangeWeek = completedDayIndex > 0
+      ? worked.filter(r => inRange(r, startLast, lastEndSame))
+      : [];
+    const priorFullWeek = worked.filter(r => inRange(r, startLast, lastFullWeekEnd));
+    const priorWorkedDays = uniqueWorkedDays(priorFullWeek);
+
+    let referenceLabel = 'vs last week same range';
+    let usedFallbackReference = false;
+    let referenceSameRangeRows = priorSameRangeWeek;
+
+    if (completedDayIndex > 0 && priorWorkedDays < 4) {
+      for (let weeksBack = 2; weeksBack <= 12; weeksBack += 1) {
+        const candidateStart = startOfWeekMonday(now.minus({ weeks: weeksBack }));
+        const candidateEnd = candidateStart.plus({ days: 6 }).endOf('day');
+        const candidateFullWeek = worked.filter(r => inRange(r, candidateStart, candidateEnd));
+        if (uniqueWorkedDays(candidateFullWeek) >= 4) {
+          referenceLabel = 'vs most recent full worked week';
+          usedFallbackReference = true;
+          referenceSameRangeRows = worked.filter(
+            r => inRange(r, candidateStart, candidateStart.plus({ days: completedDayIndex - 1 }).endOf('day'))
+          );
+          break;
+        }
+      }
+    }
+
+    return {
+      worked,
+      activeDay,
+      hasTodayWorkedRow,
+      thisWeek,
+      referenceSameRangeRows,
+      referenceLabel,
+      usedFallbackReference,
+      referenceNote: usedFallbackReference ? 'Last week was a partial reference.' : ''
+    };
+  }
+
   function buildInsightStrip(rows) {
     const card = document.getElementById('insightStripCard');
     const el = document.getElementById('insightStrip');
@@ -209,7 +264,7 @@ export function createSummariesFeature({
         : null;
       const officeElevated = officeDeltaH != null && officeDeltaPct != null && officeDeltaH >= 0.4 && officeDeltaPct >= 10;
 
-      const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getWeekComparisonContext(scoped, now);
+      const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getCalendarWeekComparisonContext(scoped, now);
       const inRange = (r, from, to) => {
         const d = DateTime.fromISO(r.work_date, { zone: ZONE });
         return d >= from && d <= to;

@@ -4038,9 +4038,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const now = DateTime.now().setZone(ZONE);
       const todayIso2 = now.toISODate();
       const hasTodayWorkedRow = rows.some((r) => r && r.work_date === todayIso2 && hasMeaningfulWorkedData2(r));
-      const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
-      const startThis = startOfWeekMonday(activeDay);
-      const endThis = activeDay.endOf("day");
+      const startThis = startOfWeekMonday(now);
+      const endThis = hasTodayWorkedRow ? now.endOf("day") : now.minus({ days: 1 }).endOf("day");
+      const completedDayIdx = hasTodayWorkedRow ? (now.weekday + 6) % 7 : (now.weekday + 6) % 7 - 1;
       const inRange = (r, from, to) => {
         const d2 = DateTime.fromISO(r.work_date, { zone: ZONE });
         return d2 >= from && d2 <= to;
@@ -4049,7 +4049,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const baseWeek = getLastNonEmptyWeek2(worked, now, { excludeVacation: true });
       const startLast = baseWeek.start;
       const endLastFull = baseWeek.end;
-      const lastEndSame = DateTime.min(endLastFull, baseWeek.start.plus({ days: Math.max(0, activeDay.weekday - 1) }).endOf("day"));
+      const lastEndSame = completedDayIdx >= 0 ? DateTime.min(endLastFull, baseWeek.start.plus({ days: completedDayIdx }).endOf("day")) : baseWeek.start.minus({ seconds: 1 });
       const W0 = worked.filter((r) => inRange(r, startThis, endThis));
       const W1 = baseWeek.rows.filter((r) => inRange(r, startLast, lastEndSame));
       const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
@@ -4216,7 +4216,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       let resL = { used: 0 };
       const baselines = ensureWeeklyBaselines(rows) || getWeeklyBaselines();
       const anchor = computeAnchorBaselines(rows, 8);
-      const nowDayIdx = (activeDay.weekday + 6) % 7;
+      const nowDayIdx = completedDayIdx;
       let comparisonPacketP = buildWeeklyComparisonPacket("matched_workday_count", {
         currentTotal: p0,
         referenceTotal: p1,
@@ -4358,7 +4358,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           const lastBy = volByDow(W1full);
           const thisRoute = routeByDow(W0);
           const lastRoute = routeByDow(W1full);
-          const dayIdxToday = (activeDay.weekday + 6) % 7;
+          const dayIdxToday = completedDayIdx;
           const isoForPoint = (datasetIndex, idx) => {
             try {
               if (datasetIndex === 0) return startLast.plus({ days: idx }).toISODate();
@@ -4585,9 +4585,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const worked = (rows || []).filter((r) => r.status !== "off");
         const todayIso2 = now.toISODate();
         const hasTodayWorkedRow = worked.some((r) => r && r.work_date === todayIso2 && hasMeaningfulWorkedData2(r));
-        const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
-        const startThis = startOfWeekMonday(activeDay);
-        const endThis = activeDay.endOf("day");
+        const startThis = startOfWeekMonday(now);
+        const endThis = hasTodayWorkedRow ? now.endOf("day") : now.minus({ days: 1 }).endOf("day");
+        const completedDayIdx = hasTodayWorkedRow ? (now.weekday + 6) % 7 : (now.weekday + 6) % 7 - 1;
         const inRange = (r, from, to) => {
           const d = DateTime.fromISO(r.work_date, { zone: ZONE });
           return d >= from && d <= to;
@@ -4595,7 +4595,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const baseWeek = getLastNonEmptyWeek2(worked, now, { excludeVacation: true });
         const startLast = baseWeek.start;
         const endLast = baseWeek.end;
-        const lastEndSame = DateTime.min(endLast, baseWeek.start.plus({ days: Math.max(0, activeDay.weekday - 1) }).endOf("day"));
+        const lastEndSame = completedDayIdx >= 0 ? DateTime.min(endLast, baseWeek.start.plus({ days: completedDayIdx }).endOf("day")) : baseWeek.start.minus({ seconds: 1 });
         const W0 = worked.filter((r) => inRange(r, startThis, endThis));
         const sum = (arr, fn) => arr.reduce((t, x) => t + (fn(x) || 0), 0);
         const offByDow = (arr) => {
@@ -4610,7 +4610,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const thisBy = offByDow(W0);
         const W1 = baseWeek.rows;
         const lastBy = offByDow(W1);
-        const dayIdxToday = (activeDay.weekday + 6) % 7;
+        const dayIdxToday = completedDayIdx;
         const thisMasked = thisBy.map((v, i) => i <= dayIdxToday ? v : null);
         const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
         const off0 = sum(W0, (r) => normalizeHoursValue(r.office_minutes));
@@ -5022,6 +5022,52 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         referenceNote: usedFallbackReference ? "Last week was a partial reference." : ""
       };
     }
+    function getCalendarWeekComparisonContext(rows, now = DateTime.now().setZone(ZONE)) {
+      const { worked, activeDay, hasTodayWorkedRow } = getActiveWorkdayContext(rows, now);
+      const inRange = (r, from, to) => {
+        const d = DateTime.fromISO(r.work_date, { zone: ZONE });
+        return d >= from && d <= to;
+      };
+      const uniqueWorkedDays = (weekRows) => new Set((weekRows || []).map((r) => r.work_date)).size;
+      const weekStart = startOfWeekMonday(now);
+      const completedDayIndex = hasTodayWorkedRow ? now.weekday : now.weekday - 1;
+      const weekEnd = hasTodayWorkedRow ? now.endOf("day") : now.minus({ days: 1 }).endOf("day");
+      const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
+      const lastEndSame = completedDayIndex > 0 ? startLast.plus({ days: completedDayIndex - 1 }).endOf("day") : startLast.minus({ seconds: 1 });
+      const lastFullWeekEnd = startLast.plus({ days: 6 }).endOf("day");
+      const thisWeek = worked.filter((r) => inRange(r, weekStart, weekEnd));
+      const priorSameRangeWeek = completedDayIndex > 0 ? worked.filter((r) => inRange(r, startLast, lastEndSame)) : [];
+      const priorFullWeek = worked.filter((r) => inRange(r, startLast, lastFullWeekEnd));
+      const priorWorkedDays = uniqueWorkedDays(priorFullWeek);
+      let referenceLabel = "vs last week same range";
+      let usedFallbackReference = false;
+      let referenceSameRangeRows = priorSameRangeWeek;
+      if (completedDayIndex > 0 && priorWorkedDays < 4) {
+        for (let weeksBack = 2; weeksBack <= 12; weeksBack += 1) {
+          const candidateStart = startOfWeekMonday(now.minus({ weeks: weeksBack }));
+          const candidateEnd = candidateStart.plus({ days: 6 }).endOf("day");
+          const candidateFullWeek = worked.filter((r) => inRange(r, candidateStart, candidateEnd));
+          if (uniqueWorkedDays(candidateFullWeek) >= 4) {
+            referenceLabel = "vs most recent full worked week";
+            usedFallbackReference = true;
+            referenceSameRangeRows = worked.filter(
+              (r) => inRange(r, candidateStart, candidateStart.plus({ days: completedDayIndex - 1 }).endOf("day"))
+            );
+            break;
+          }
+        }
+      }
+      return {
+        worked,
+        activeDay,
+        hasTodayWorkedRow,
+        thisWeek,
+        referenceSameRangeRows,
+        referenceLabel,
+        usedFallbackReference,
+        referenceNote: usedFallbackReference ? "Last week was a partial reference." : ""
+      };
+    }
     function buildInsightStrip2(rows) {
       var _a5, _b, _c;
       const card = document.getElementById("insightStripCard");
@@ -5098,7 +5144,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const officeDeltaH = officeTodayH != null && officeAvgH != null ? officeTodayH - officeAvgH : null;
         const officeDeltaPct = officeDeltaH != null && officeAvgH && officeAvgH > 0 ? Math.round(officeDeltaH / officeAvgH * 100) : null;
         const officeElevated = officeDeltaH != null && officeDeltaPct != null && officeDeltaH >= 0.4 && officeDeltaPct >= 10;
-        const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getWeekComparisonContext(scoped, now);
+        const { thisWeek, referenceSameRangeRows: lastWeek, referenceLabel, referenceNote } = getCalendarWeekComparisonContext(scoped, now);
         const inRange = (r, from, to) => {
           const d = DateTime.fromISO(r.work_date, { zone: ZONE });
           return d >= from && d <= to;

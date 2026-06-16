@@ -3375,6 +3375,15 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       });
       dowChart = parcelsChart = lettersChart = null;
     }
+    function hasMeaningfulWorkedData2(row) {
+      if (!row || row.status === "off") return false;
+      if (normalizeHoursValue(row.hours) > 0) return true;
+      if (normalizeHoursValue(row.office_minutes) > 0) return true;
+      if (routeAdjustedHours2(row) > 0) return true;
+      if ((+row.parcels || 0) > 0) return true;
+      if ((+row.letters || 0) > 0) return true;
+      return false;
+    }
     function loadTrendRangeKey() {
       try {
         const raw = localStorage.getItem(TREND_RANGE_KEY);
@@ -4028,7 +4037,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const btn = document.getElementById("mixCompareBtn");
       const now = DateTime.now().setZone(ZONE);
       const todayIso2 = now.toISODate();
-      const hasTodayWorkedRow = rows.some((r) => r && r.status !== "off" && r.work_date === todayIso2);
+      const hasTodayWorkedRow = rows.some((r) => r && r.work_date === todayIso2 && hasMeaningfulWorkedData2(r));
       const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
       const startThis = startOfWeekMonday(activeDay);
       const endThis = activeDay.endOf("day");
@@ -4575,7 +4584,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const now = DateTime.now().setZone(ZONE);
         const worked = (rows || []).filter((r) => r.status !== "off");
         const todayIso2 = now.toISODate();
-        const hasTodayWorkedRow = worked.some((r) => r && r.work_date === todayIso2);
+        const hasTodayWorkedRow = worked.some((r) => r && r.work_date === todayIso2 && hasMeaningfulWorkedData2(r));
         const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
         const startThis = startOfWeekMonday(activeDay);
         const endThis = activeDay.endOf("day");
@@ -4943,10 +4952,19 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (typeof getResidualModel2 !== "function") throw new Error("createSummariesFeature: getResidualModel is required");
     if (typeof combinedVolume2 !== "function") throw new Error("createSummariesFeature: combinedVolume is required");
     if (typeof loadDismissedResiduals2 !== "function") throw new Error("createSummariesFeature: loadDismissedResiduals is required");
+    function hasMeaningfulWorkedData2(row) {
+      if (!row || row.status === "off") return false;
+      if (normalizeHoursValue(row.hours) > 0) return true;
+      if (normalizeHoursValue(row.office_minutes) > 0) return true;
+      if (routeAdjustedHours2(row) > 0) return true;
+      if ((+row.parcels || 0) > 0) return true;
+      if ((+row.letters || 0) > 0) return true;
+      return false;
+    }
     function getActiveWorkdayContext(rows, now = DateTime.now().setZone(ZONE)) {
       const worked = (rows || []).filter((r) => r && r.status !== "off");
       const todayIso2 = now.toISODate();
-      const hasTodayWorkedRow = worked.some((r) => r.work_date === todayIso2);
+      const hasTodayWorkedRow = worked.some((r) => r.work_date === todayIso2 && hasMeaningfulWorkedData2(r));
       const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
       return {
         worked,
@@ -8988,7 +9006,7 @@ Entries are filtered by this id.`);
   });
   function getActiveWeekContext(workRows, now = DateTime.now().setZone(ZONE)) {
     const todayIso2 = now.toISODate();
-    const hasTodayWorkedRow = (workRows || []).some((r) => r && r.work_date === todayIso2 && r.status !== "off");
+    const hasTodayWorkedRow = (workRows || []).some((r) => hasMeaningfulWorkedData(r, todayIso2));
     const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
     const weekStart = startOfWeekMonday(activeDay);
     const activeDayIndex = activeDay < weekStart ? -1 : (activeDay.weekday + 6) % 7;
@@ -9000,6 +9018,16 @@ Entries are filtered by this id.`);
       activeDayIndex
     };
   }
+  function hasMeaningfulWorkedData(row, iso = null) {
+    if (!row || row.status === "off") return false;
+    if (iso && row.work_date !== iso) return false;
+    if (normalizeHoursValue(row.hours) > 0) return true;
+    if (normalizeHoursValue(row.office_minutes) > 0) return true;
+    if (routeAdjustedHours(row) > 0) return true;
+    if ((+row.parcels || 0) > 0) return true;
+    if ((+row.letters || 0) > 0) return true;
+    return false;
+  }
   function buildSnapshot(rows) {
     var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B;
     rows = filterRowsForView(rows || []);
@@ -9007,6 +9035,7 @@ Entries are filtered by this id.`);
     const dow = today.weekday % 7;
     const workRows = rows.filter((r) => r.status !== "off");
     const { activeDay, activeEnd, activeDayIndex } = getActiveWeekContext(workRows, today);
+    const hasTodayWorkedRow = workRows.some((r) => hasMeaningfulWorkedData(r, today.toISODate()));
     const prediction = buildPredictionRecord(workRows, { now: today });
     const predictedTotalHours = (_b = (_a5 = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _a5.totalHours) != null ? _b : null;
     const todayRow = (prediction == null ? void 0 : prediction.row) || null;
@@ -9292,12 +9321,14 @@ Score: ${overallScore}/10 (higher is better)`;
       }
     } catch (_) {
     }
-    const weekStart = startOfWeekMonday(activeDay);
-    const weekEnd = activeEnd;
-    const prevWeekStart = startOfWeekMonday(activeDay.minus({ weeks: 1 }));
-    const prevWeekEnd = endOfWeekSunday2(activeDay.minus({ weeks: 1 }));
-    const priorWeekStart = startOfWeekMonday(activeDay.minus({ weeks: 2 }));
-    const priorWeekEnd = endOfWeekSunday2(activeDay.minus({ weeks: 2 }));
+    const calendarWeekStart = startOfWeekMonday(today);
+    const calendarWeekEnd = hasTodayWorkedRow ? today.endOf("day") : today.minus({ days: 1 }).endOf("day");
+    const weekStart = calendarWeekStart;
+    const weekEnd = calendarWeekEnd;
+    const prevWeekStart = startOfWeekMonday(today.minus({ weeks: 1 }));
+    const prevWeekEnd = endOfWeekSunday2(today.minus({ weeks: 1 }));
+    const priorWeekStart = startOfWeekMonday(today.minus({ weeks: 2 }));
+    const priorWeekEnd = endOfWeekSunday2(today.minus({ weeks: 2 }));
     const inRange = (r, from, to) => {
       const d = DateTime.fromISO(r.work_date, { zone: ZONE });
       return d >= from && d <= to;
@@ -9352,7 +9383,7 @@ ${lettersSummary}`;
     const hCarry = pct(avgOrNull(hLast, dLast), avgOrNull(sum(priorW, (r) => normalizeHoursValue(r.hours)), dPrior));
     const pCarry = pct(avgOrNull(pLast, dLast), avgOrNull(sum(priorW, (r) => +r.parcels || 0), dPrior));
     const lCarry = pct(avgOrNull(lLast, dLast), avgOrNull(sum(priorW, (r) => +r.letters || 0), dPrior));
-    const dayIndexToday = activeDayIndex;
+    const dayIndexToday = hasTodayWorkedRow ? (today.weekday + 6) % 7 : (today.weekday + 6) % 7 - 1;
     const toWeekArray = (from, to) => {
       const out = Array.from({ length: 7 }, () => ({ h: 0, p: 0, l: 0 }));
       const inRange2 = (r) => {
@@ -10837,12 +10868,13 @@ ${lettersSummary}`;
       try {
         const now = DateTime.now().setZone(ZONE);
         const start2 = startOfWeekMonday(now);
-        const end2 = now.endOf("day");
+        const hasTodayWorkedRow = (rows || []).some((r) => hasMeaningfulWorkedData(r, now.toISODate()));
+        const end2 = hasTodayWorkedRow ? now.endOf("day") : now.minus({ days: 1 }).endOf("day");
         const inRange = (r) => {
           const d = DateTime.fromISO(r.work_date, { zone: ZONE });
           return d >= start2 && d <= end2;
         };
-        const worked = (rows || []).filter((r) => r.status !== "off" && inRange(r));
+        const worked = (rows || []).filter((r) => r.status !== "off" && inRange(r) && hasMeaningfulWorkedData(r));
         const days = Array.from(new Set(worked.map((r) => r.work_date))).length;
         const valEl = document.getElementById("uspsRouteEffVal");
         if (!days || cfg.hoursPerDay == null) {

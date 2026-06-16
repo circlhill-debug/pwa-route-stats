@@ -103,6 +103,110 @@
     background:linear-gradient(180deg, rgba(7,11,20,.9), rgba(7,11,20,.68));
   }
   .wrap{ max-width:1160px; margin:0 auto; padding:16px 18px }
+  .app-shell{
+    display:grid;
+    grid-template-columns:minmax(210px, 250px) minmax(0, 1fr);
+    gap:16px;
+    align-items:start;
+  }
+  .portal-rail{
+    position:sticky;
+    top:14px;
+    display:grid;
+    gap:10px;
+  }
+  .portal-nav{
+    display:grid;
+    gap:8px;
+  }
+  .portal-nav-btn{
+    width:100%;
+    text-align:left;
+    background:rgba(148,180,220,.06);
+    color:var(--rs-text-primary);
+    border:1px solid color-mix(in srgb, var(--rs-border) 66%, #7ab8ff 34%);
+    border-radius:14px;
+    padding:12px 13px;
+    cursor:pointer;
+    box-shadow:none;
+  }
+  .portal-nav-btn:hover{
+    background:rgba(148,180,220,.12);
+    transform:none;
+  }
+  .portal-nav-btn.is-active{
+    background:linear-gradient(180deg, rgba(66,165,245,.16), rgba(66,165,245,.08));
+    border-color:color-mix(in srgb, var(--rs-brand) 55%, white 45%);
+    box-shadow:0 0 0 1px rgba(66,165,245,.16), 0 12px 24px rgba(5,14,30,.22);
+  }
+  .portal-nav-btn strong{
+    display:block;
+    font-size:14px;
+    letter-spacing:.02em;
+  }
+  .portal-nav-btn small{
+    display:block;
+    margin-top:4px;
+    color:var(--rs-text-secondary)!important;
+    line-height:1.35;
+  }
+  .portal-main{
+    min-width:0;
+  }
+  .portal-hero{
+    display:grid;
+    gap:8px;
+  }
+  .portal-hero .kicker{
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    font-size:12px;
+    font-weight:700;
+  }
+  .portal-hero .headline{
+    font-size: clamp(1.35rem, 2vw, 2rem);
+    font-weight:700;
+    line-height:1.1;
+  }
+  .portal-hero .summary{
+    color:var(--text);
+    font-size:15px;
+    line-height:1.5;
+  }
+  .portal-hero .actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:2px;
+  }
+  .portal-context{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
+    gap:10px;
+    margin-top:6px;
+  }
+  .portal-context .context-chip{
+    border:1px solid color-mix(in srgb, var(--rs-border) 70%, #7ab8ff 30%);
+    border-radius:12px;
+    padding:10px 12px;
+    background:rgba(148,180,220,.04);
+  }
+  .portal-context .context-chip small{
+    display:block;
+    margin-bottom:4px;
+  }
+  @media(max-width:980px){
+    .app-shell{
+      grid-template-columns:1fr;
+    }
+    .portal-rail{
+      position:static;
+    }
+    .portal-nav{
+      grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+    }
+  }
   h1{
     margin:0;
     font-size:20px;
@@ -1033,7 +1137,56 @@
   </div>
 </header>
 
-<main class="wrap grid grid-2">
+<main class="wrap app-shell">
+  <aside class="portal-rail" id="portalRail">
+    <section class="card">
+      <div class="portal-nav" id="portalNav">
+        <button class="portal-nav-btn is-active" type="button" data-portal-target="home">
+          <strong>Home</strong>
+          <small>What matters right now</small>
+        </button>
+        <button class="portal-nav-btn" type="button" data-portal-target="today">
+          <strong>Today</strong>
+          <small>Current day detail</small>
+        </button>
+        <button class="portal-nav-btn" type="button" data-portal-target="forecast">
+          <strong>Forecast</strong>
+          <small>Expectations and heads-up</small>
+        </button>
+        <button class="portal-nav-btn" type="button" data-portal-target="week">
+          <strong>This Week</strong>
+          <small>Weekly trend and compare</small>
+        </button>
+        <button class="portal-nav-btn" type="button" data-portal-target="route-model">
+          <strong>Route Model</strong>
+          <small>Expectation vs actual route</small>
+        </button>
+        <button class="portal-nav-btn" type="button" data-portal-target="history">
+          <strong>History</strong>
+          <small>Context and comparisons</small>
+        </button>
+        <button class="portal-nav-btn" type="button" data-portal-target="milestones">
+          <strong>Milestones</strong>
+          <small>Progress, records, unlocks</small>
+        </button>
+        <button class="portal-nav-btn" type="button" data-portal-target="tools">
+          <strong>Tools</strong>
+          <small>Deep analysis and utilities</small>
+        </button>
+      </div>
+    </section>
+  </aside>
+
+  <div class="portal-main grid grid-2" id="portalMain">
+  <section class="card fullWidth" id="portalHeroCard">
+    <div class="portal-hero">
+      <div class="kicker" id="portalHeroKicker">Home</div>
+      <div class="headline" id="portalHeroTitle">What matters right now</div>
+      <div class="summary" id="portalHeroSummary">This prototype groups the current dashboard into portal views so we can shape the new UX without rebuilding the tool layer yet.</div>
+      <div class="portal-context" id="portalHeroContext"></div>
+      <div class="actions" id="portalHeroActions"></div>
+    </div>
+  </section>
   <section class="card fullWidth" id="insightStripCard" style="display:none">
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <div>
@@ -1809,6 +1962,7 @@
       </tr></thead><tbody></tbody></table>
     </div>
   </section>
+</div>
 </main>
 
 <!-- Magic link dialog -->

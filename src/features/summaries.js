@@ -52,9 +52,9 @@ export function createSummariesFeature({
     };
     const uniqueWorkedDays = (weekRows) => new Set((weekRows || []).map(r => r.work_date)).size;
 
-    const startThis = startOfWeekMonday(now);
+    const startThis = startOfWeekMonday(activeDay);
     const endThis = activeEnd;
-    const startLast = startOfWeekMonday(now.minus({ weeks: 1 }));
+    const startLast = startOfWeekMonday(activeDay.minus({ weeks: 1 }));
     const lastEndSame = startLast.plus({ days: activeDay.weekday - 1 }).endOf('day');
     const lastFullWeekEnd = startLast.plus({ days: 6 }).endOf('day');
 

@@ -2504,6 +2504,250 @@ function parseDrinkFromWeatherString(weatherStr){
   }
 }
 
+const PORTAL_STATE_KEY = 'routeStats.portal.active';
+const PORTAL_SECTION_MAP = {
+  home: ['portalHeroCard', 'insightStripCard', 'snapshotCard', 'weeklyCompareWrap'],
+  today: ['portalHeroCard', 'snapshotCard', 'dayCompareCard', 'addEntryCard'],
+  forecast: ['portalHeroCard', 'snapshotCard', 'dowCard', 'parcelsOverTimeCard', 'lettersOverTimeCard'],
+  week: ['portalHeroCard', 'snapshotCard', 'weeklyCompareWrap', 'officeCompareCard', 'evalCompareCard'],
+  'route-model': ['portalHeroCard', 'snapshotCard', 'diagnosticsCard', 'evalCompareCard'],
+  history: ['portalHeroCard', 'dayCompareCard', 'quickFilterCard', 'dowCard', 'parcelsOverTimeCard', 'lettersOverTimeCard'],
+  milestones: ['portalHeroCard', 'milestoneCard', 'yearlySummaryCard'],
+  tools: ['portalHeroCard', 'addEntryCard', 'dayCompareCard', 'parserCard', 'sleepDrinkCard', 'diagnosticsCard', 'quickFilterCard', 'evalCompareCard', 'yearlySummaryCard']
+};
+const PORTAL_COPY = {
+  home: {
+    kicker: 'Home',
+    title: 'What matters right now',
+    summary: 'A time-aware overview that highlights the next useful action or insight before you dig into a portal.'
+  },
+  today: {
+    kicker: 'Today',
+    title: 'Current day detail',
+    summary: 'Practical day view with expected end, route expectation, current daily context, and quick compare access.'
+  },
+  forecast: {
+    kicker: 'Forecast',
+    title: 'Expectation and heads-up',
+    summary: 'Use this view to understand what the next day should feel like and what factors may push it heavier or lighter.'
+  },
+  week: {
+    kicker: 'This Week',
+    title: 'Weekly trend and comparison',
+    summary: 'Week-to-date pace, volume shape, weekly movers, and baseline context belong here.'
+  },
+  'route-model': {
+    kicker: 'Route Model',
+    title: 'Route expectation vs actual',
+    summary: 'Model confidence, expected route time, actual route result, and diagnostics all live in this portal.'
+  },
+  history: {
+    kicker: 'History',
+    title: 'Context and comparison',
+    summary: 'Curated historical callbacks and direct compare tools help the user understand how a day fits prior patterns.'
+  },
+  milestones: {
+    kicker: 'Milestones',
+    title: 'Progress, records, and unlocks',
+    summary: 'Surface achievement, progress toward the next unlock, and notable records without crowding the daily work view.'
+  },
+  tools: {
+    kicker: 'Tools',
+    title: 'Deep analysis and utilities',
+    summary: 'Advanced views stay available here without dominating the primary experience.'
+  }
+};
+
+function getStoredPortal(){
+  try{
+    const raw = localStorage.getItem(PORTAL_STATE_KEY);
+    return PORTAL_SECTION_MAP[raw] ? raw : 'home';
+  }catch(_){
+    return 'home';
+  }
+}
+
+function saveStoredPortal(id){
+  try{ localStorage.setItem(PORTAL_STATE_KEY, id); }catch(_){ }
+}
+
+function getPortalContextChips(portalId){
+  const chips = [];
+  const pushChip = (label, value)=>{
+    if (!value || value === '—') return;
+    chips.push(`<div class="context-chip"><small>${label}</small><strong>${value}</strong></div>`);
+  };
+  const expEnd = document.getElementById('expEnd')?.textContent?.trim();
+  const expMeta = document.getElementById('expMeta')?.textContent?.trim();
+  const routeExpected = document.getElementById('routeExpected')?.textContent?.trim();
+  const routeExpectedMeta = document.getElementById('routeExpectedMeta')?.textContent?.trim();
+  const routeActual = document.getElementById('routeHitMiss')?.textContent?.trim();
+  const routeActualMeta = document.getElementById('routeHitMissMeta')?.textContent?.trim();
+  const volumeToday = document.getElementById('badgeVolumeToday')?.textContent?.trim() || document.getElementById('badgeVolume')?.textContent?.trim();
+  const trendFactors = document.getElementById('trendFactors')?.textContent?.trim();
+  const weekHeaviness = document.getElementById('weekHeaviness')?.textContent?.trim();
+  const smartSummary = document.getElementById('smartSummary')?.textContent?.trim();
+  const headlineDigest = document.getElementById('headlineDigest')?.textContent?.trim();
+
+  switch (portalId) {
+    case 'home':
+      pushChip('Expected End', expEnd && expMeta ? `${expEnd} · ${expMeta}` : expEnd);
+      pushChip('Expected Route', routeExpected && routeExpectedMeta ? `${routeExpected} · ${routeExpectedMeta}` : routeExpected);
+      pushChip('Volume', volumeToday);
+      break;
+    case 'today':
+      pushChip('Expected End', expEnd);
+      pushChip('Expected Route', routeExpected);
+      pushChip('Expected Volume', volumeToday);
+      break;
+    case 'forecast':
+      pushChip('Forecast', headlineDigest);
+      pushChip('Same-day avg', expMeta);
+      pushChip('Expected Route', routeExpected);
+      break;
+    case 'week':
+      pushChip('Summary', smartSummary);
+      pushChip('Movers', trendFactors);
+      pushChip('Heaviness', weekHeaviness);
+      break;
+    case 'route-model':
+      pushChip('Expected Route', routeExpected);
+      pushChip('Actual Route', routeActual && routeActualMeta ? `${routeActual} · ${routeActualMeta}` : routeActual);
+      break;
+    case 'history':
+      pushChip('Historical note', headlineDigest);
+      pushChip('Week context', smartSummary);
+      break;
+    case 'milestones':
+      pushChip('Latest unlock', document.querySelector('#milestoneBadges strong')?.textContent?.trim());
+      break;
+    case 'tools':
+      pushChip('Tools', 'Compare, diagnostics, parser');
+      break;
+  }
+  return chips;
+}
+
+function getPortalHeroModel(portalId){
+  const now = DateTime.now().setZone(ZONE);
+  if (portalId === 'home') {
+    const todayIso = now.toISODate();
+    const hasTodayEntry = (allRows || []).some(r => r && r.status !== 'off' && r.work_date === todayIso);
+    const phase = hasTodayEntry ? 'Review' : (now.hour >= 20 ? 'Tomorrow' : 'Today');
+    return {
+      kicker: `Home · ${phase}`,
+      title: hasTodayEntry
+        ? `Review — ${now.toFormat('cccc, LLL d')}`
+        : `${phase} — ${now.toFormat('cccc, LLL d')}`,
+      summary: hasTodayEntry
+        ? 'Current-day entry exists, so Home should surface the strongest review insights and launch points.'
+        : (now.hour >= 20
+            ? 'Home should help the user prepare for tomorrow with expected end, expected route time, volume, and a short heads-up.'
+            : 'Home should orient the user to today with the most relevant expectation and one clear next action.')
+    };
+  }
+  return PORTAL_COPY[portalId] || PORTAL_COPY.home;
+}
+
+function updatePortalShell(){
+  try{
+    const portalId = getStoredPortal();
+    const hero = getPortalHeroModel(portalId);
+    const heroKicker = document.getElementById('portalHeroKicker');
+    const heroTitle = document.getElementById('portalHeroTitle');
+    const heroSummary = document.getElementById('portalHeroSummary');
+    const heroContext = document.getElementById('portalHeroContext');
+    const heroActions = document.getElementById('portalHeroActions');
+    if (heroKicker) heroKicker.textContent = hero.kicker || '';
+    if (heroTitle) heroTitle.textContent = hero.title || '';
+    if (heroSummary) heroSummary.textContent = hero.summary || '';
+    if (heroContext) heroContext.innerHTML = getPortalContextChips(portalId).join('');
+    if (heroActions) {
+      const actionsByPortal = {
+        home: [
+          { label:'Open Today', portal:'today' },
+          { label:'Open Forecast', portal:'forecast' },
+          { label:'Open This Week', portal:'week' }
+        ],
+        today: [
+          { label:'Open Day Compare', scroll:'dayCompareCard' },
+          { label:'Jump to Entry', scroll:'addEntryCard' }
+        ],
+        forecast: [
+          { label:'Open Today', portal:'today' },
+          { label:'Open History', portal:'history' }
+        ],
+        week: [
+          { label:'Open Weekly Compare', scroll:'mixVizCard' },
+          { label:'Open Baseline View', scroll:'baselineVizCard' }
+        ],
+        'route-model': [
+          { label:'Open Diagnostics', scroll:'diagnosticsCard' },
+          { label:'Open Today', portal:'today' }
+        ],
+        history: [
+          { label:'Open Day Compare', scroll:'dayCompareCard' },
+          { label:'Open Filters', scroll:'quickFilterCard' }
+        ],
+        milestones: [
+          { label:'Open Milestones', scroll:'milestoneCard' },
+          { label:'Open Yearly Summary', scroll:'yearlySummaryCard' }
+        ],
+        tools: [
+          { label:'Jump to Entry', scroll:'addEntryCard' },
+          { label:'Open Diagnostics', scroll:'diagnosticsCard' }
+        ]
+      };
+      const actions = actionsByPortal[portalId] || [];
+      heroActions.innerHTML = actions.map(action => {
+        if (action.portal) return `<button class="ghost" type="button" data-portal-jump="${action.portal}">${action.label}</button>`;
+        if (action.scroll) return `<button class="ghost" type="button" data-portal-scroll="${action.scroll}">${action.label}</button>`;
+        return '';
+      }).join('');
+      heroActions.querySelectorAll('[data-portal-jump]').forEach(btn => {
+        btn.addEventListener('click', () => setActivePortal(btn.getAttribute('data-portal-jump') || 'home'));
+      });
+      heroActions.querySelectorAll('[data-portal-scroll]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-portal-scroll');
+          const node = id ? document.getElementById(id) : null;
+          if (node) node.scrollIntoView({ behavior:'smooth', block:'start' });
+        });
+      });
+    }
+  }catch(_){ }
+}
+
+function setActivePortal(portalId){
+  const valid = PORTAL_SECTION_MAP[portalId] ? portalId : 'home';
+  saveStoredPortal(valid);
+  const allowed = new Set(PORTAL_SECTION_MAP[valid] || []);
+  Object.values(PORTAL_SECTION_MAP).flat().forEach((id) => {
+    const node = document.getElementById(id);
+    if (!node) return;
+    if (id === 'portalHeroCard') {
+      node.hidden = false;
+      return;
+    }
+    node.hidden = !allowed.has(id);
+  });
+  document.querySelectorAll('[data-portal-target]').forEach(btn => {
+    const active = btn.getAttribute('data-portal-target') === valid;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-current', active ? 'page' : 'false');
+  });
+  updatePortalShell();
+}
+
+function initPortalShell(){
+  try{
+    document.querySelectorAll('[data-portal-target]').forEach(btn => {
+      btn.addEventListener('click', () => setActivePortal(btn.getAttribute('data-portal-target') || 'home'));
+    });
+    setActivePortal(getStoredPortal());
+  }catch(_){ }
+}
+
 async function persistForecastSnapshot(payload, userId){
   try{
     const snapshot = buildForecastSnapshotFromPayload(payload, {
@@ -2562,6 +2806,7 @@ function getHourlyRateFromEval(){
     buildYearlySummary(rawRows);
     buildParserChart(rawRows);
     buildSleepDrinkChart(rawRows);
+    updatePortalShell();
   }
 
   async function loadByDate(){
@@ -2986,7 +3231,7 @@ function getHourlyRateFromEval(){
     const todayIso = now.toISODate();
     const hasTodayWorkedRow = (workRows || []).some(r => r && r.work_date === todayIso && r.status !== 'off');
     const activeDay = hasTodayWorkedRow ? now : now.minus({ days: 1 });
-    const weekStart = startOfWeekMonday(now);
+    const weekStart = startOfWeekMonday(activeDay);
     const activeDayIndex = activeDay < weekStart ? -1 : (activeDay.weekday + 6) % 7;
     return {
       todayIso,
@@ -3267,12 +3512,12 @@ function getHourlyRateFromEval(){
     }catch(_){ }
 
     // ===== Weekly tiles (Monday-based) =====
-    const weekStart = startOfWeekMonday(today);
+    const weekStart = startOfWeekMonday(activeDay);
     const weekEnd   = activeEnd;
-    const prevWeekStart = startOfWeekMonday(today.minus({weeks:1}));
-    const prevWeekEnd   = endOfWeekSunday(today.minus({weeks:1}));
-    const priorWeekStart = startOfWeekMonday(today.minus({weeks:2}));
-    const priorWeekEnd   = endOfWeekSunday(today.minus({weeks:2}));
+    const prevWeekStart = startOfWeekMonday(activeDay.minus({weeks:1}));
+    const prevWeekEnd   = endOfWeekSunday(activeDay.minus({weeks:1}));
+    const priorWeekStart = startOfWeekMonday(activeDay.minus({weeks:2}));
+    const priorWeekEnd   = endOfWeekSunday(activeDay.minus({weeks:2}));
 
     const inRange=(r,from,to)=>{ const d=DateTime.fromISO(r.work_date,{zone:ZONE}); return d>=from && d<=to; };
     const sum=(arr,fn)=>arr.reduce((t,x)=>t+(fn(x)||0),0);
@@ -4728,6 +4973,7 @@ function getHourlyRateFromEval(){
     window.allRows = rows;
     rebuildAll();
     computeBreakdown();
+    initPortalShell();
     applyTrendPillsVisibility();
     applySectionCollapse();
     applyRecentEntriesAutoCollapse();

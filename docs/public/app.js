@@ -108,6 +108,196 @@
     return Number.isFinite(hours) ? hours * 60 : 0;
   }
 
+  // src/utils/diagnostics.js
+  var DIAGNOSTIC_TAG_CATALOG = [
+    { key: "parcels", label: "Parcels", aliases: ["parcel", "pkgs", "packages", "volume"] },
+    { key: "letters", label: "Letters", aliases: ["mail", "letters heavy", "letters light"] },
+    { key: "flats", label: "Flats", aliases: ["flat", "flats time"] },
+    { key: "weather", label: "Weather", aliases: ["rain", "snow", "wind", "storm", "heat", "cold"] },
+    { key: "traffic", label: "Traffic", aliases: ["jam", "congestion"] },
+    { key: "detour", label: "Detour", aliases: ["reroute", "detoured"] },
+    { key: "road_closure", label: "Road closure", aliases: ["road", "closure", "construction"] },
+    { key: "boxholders", label: "Boxholders", aliases: ["box holder", "boxholder", "box"] },
+    { key: "second_trip", label: "Second trip", aliases: ["second-trip", "2nd trip", "extra trip"] },
+    { key: "load", label: "Load/Setup", aliases: ["load time", "setup", "vehicle load"] },
+    { key: "break", label: "Break", aliases: ["lunch", "rest"] },
+    { key: "vehicle_issue", label: "Vehicle issue", aliases: ["vehicle", "truck", "maintenance", "gas", "fuel"] },
+    { key: "misc", label: "Misc", aliases: ["other", "miscellaneous", "unknown"] }
+  ];
+  var CATALOG_BY_KEY = new Map(DIAGNOSTIC_TAG_CATALOG.map((item) => [item.key, item]));
+  function tagLabelForKey(key) {
+    const item = CATALOG_BY_KEY.get(String(key || "").trim());
+    return (item == null ? void 0 : item.label) || "Misc";
+  }
+  function canonicalizeTagReason(rawReason) {
+    const reason = String(rawReason || "").replace(/\s+/g, " ").trim();
+    if (!reason) return { key: "misc", reason: "misc" };
+    const normalized = reason.toLowerCase().replace(/[_-]+/g, " ");
+    for (const item of DIAGNOSTIC_TAG_CATALOG) {
+      if (normalized === item.key.replace(/_/g, " ")) return { key: item.key, reason: item.key };
+      const aliases = item.aliases || [];
+      if (aliases.some((alias) => normalized.includes(String(alias).toLowerCase()))) {
+        return { key: item.key, reason: item.key };
+      }
+    }
+    return { key: "misc", reason };
+  }
+  function normalizeTagEntries(entries, options = {}) {
+    const notedAt = options.notedAt || (/* @__PURE__ */ new Date()).toISOString();
+    const aggregated = /* @__PURE__ */ new Map();
+    (entries || []).forEach((entry) => {
+      if (!entry) return;
+      const rawReason = entry.reason || entry.key || "";
+      const canonical = canonicalizeTagReason(rawReason);
+      const key = canonical.key || "misc";
+      const reason = key === "misc" ? String(rawReason || "").trim() || "misc" : key;
+      const minutesVal = entry.minutes != null && entry.minutes !== "" ? Number(entry.minutes) : null;
+      const minutes = Number.isFinite(minutesVal) ? minutesVal : null;
+      const mapKey = `${key}:${reason.toLowerCase()}`;
+      const existing = aggregated.get(mapKey) || { key, reason, minutes: 0, hasMinutes: false, notedAt };
+      if (minutes != null) {
+        existing.minutes += minutes;
+        existing.hasMinutes = true;
+      }
+      aggregated.set(mapKey, existing);
+    });
+    return Array.from(aggregated.values()).map((item) => ({
+      key: item.key,
+      reason: item.reason,
+      minutes: item.hasMinutes ? item.minutes : null,
+      notedAt: item.notedAt
+    }));
+  }
+  function parseDismissReasonInput(raw) {
+    if (!raw) return [];
+    let working = String(raw).replace(/[;\n]+/g, ",").replace(/\s*,\s*/g, ",").trim();
+    if (!working) return [];
+    const parsed = [];
+    working = working.replace(/([^,]+?)\s*([+\-]\s*\d+(?:\.\d+)?)/g, (_, reasonPart, minutesPart) => {
+      const reason = String(reasonPart || "").trim();
+      const minutes = Number(String(minutesPart || "").replace(/\s+/g, ""));
+      if (reason && Number.isFinite(minutes)) parsed.push({ reason, minutes });
+      return " ";
+    });
+    working = working.replace(/([^,]+?)\s*:\s*([^,+\s]+)/g, (_, left, right) => {
+      const reason = `${String(left || "").trim()}:${String(right || "").trim()}`;
+      if (reason && reason !== ":") parsed.push({ reason, minutes: null });
+      return " ";
+    });
+    working.split(",").map((segment) => segment.trim()).filter(Boolean).forEach((segment) => {
+      if (/^[+\-]?\d+(?:\.\d+)?$/.test(segment)) return;
+      parsed.push({ reason: segment, minutes: null });
+    });
+    return normalizeTagEntries(parsed);
+  }
+
+  // src/utils/diagnosticsStorage.js
+  var TAG_HISTORY_KEY = "routeStats.tagHistory";
+  function loadTagHistory() {
+    try {
+      const raw = localStorage.getItem(TAG_HISTORY_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  function readTagHistoryForIso(iso) {
+    if (!iso) return [];
+    const history = loadTagHistory();
+    const entry = history.find((item) => item && (item.iso === iso || item.date === iso));
+    return Array.isArray(entry == null ? void 0 : entry.tags) ? entry.tags.filter(Boolean) : [];
+  }
+  function saveTagHistory(history) {
+    try {
+      localStorage.setItem(TAG_HISTORY_KEY, JSON.stringify(history || []));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+  function mergeTagListsStable(primary = [], incoming = []) {
+    const byReason = /* @__PURE__ */ new Map();
+    const upsert = (tag, preferIncoming = false) => {
+      if (!tag) return;
+      const key = String(tag.key || "").trim() || "misc";
+      const reason = String(tag.reason || key).trim() || key;
+      const mapKey = `${key}:${reason.toLowerCase()}`;
+      if (!byReason.has(mapKey) || preferIncoming) {
+        byReason.set(mapKey, {
+          key,
+          reason,
+          minutes: tag.minutes != null && Number.isFinite(Number(tag.minutes)) ? Number(tag.minutes) : null,
+          notedAt: tag.notedAt || (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+    };
+    (primary || []).forEach((tag) => upsert(tag, false));
+    (incoming || []).forEach((tag) => upsert(tag, true));
+    return Array.from(byReason.values());
+  }
+  function upsertTagHistoryEntry(iso, tags) {
+    if (!iso) return [];
+    const normalizedTags = normalizeTagEntries(tags || []);
+    if (!normalizedTags.length) return loadTagHistory();
+    const history = loadTagHistory();
+    const existing = history.find((item) => item && item.iso === iso);
+    if (existing) {
+      existing.tags = mergeTagListsStable(existing.tags || [], normalizedTags);
+    } else {
+      history.push({ iso, tags: [...normalizedTags] });
+    }
+    history.sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
+    saveTagHistory(history);
+    return history;
+  }
+  function normalizeTagHistory(seedFromDismissed = []) {
+    try {
+      const history = loadTagHistory();
+      const byIso = /* @__PURE__ */ new Map();
+      history.forEach((item) => {
+        const iso = (item == null ? void 0 : item.iso) || (item == null ? void 0 : item.date) || null;
+        if (!iso) return;
+        const tags = normalizeTagEntries(item.tags || []);
+        if (!tags.length) return;
+        byIso.set(iso, { iso, tags });
+      });
+      (seedFromDismissed || []).forEach((item) => {
+        const iso = (item == null ? void 0 : item.iso) || null;
+        if (!iso) return;
+        const current = byIso.get(iso);
+        const mergedTags = mergeTagListsStable((current == null ? void 0 : current.tags) || [], normalizeTagEntries(item.tags || []));
+        if (!mergedTags.length) return;
+        byIso.set(iso, { iso, tags: mergedTags });
+      });
+      const normalized = Array.from(byIso.values()).sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
+      const before = JSON.stringify(history);
+      const after = JSON.stringify(normalized);
+      if (before !== after) {
+        saveTagHistory(normalized);
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+  function saveDismissedResidualWithTags({ iso, tags, loadDismissedResiduals: loadDismissedResiduals2, saveDismissedResiduals: saveDismissedResiduals2 }) {
+    if (!iso || typeof loadDismissedResiduals2 !== "function" || typeof saveDismissedResiduals2 !== "function") return null;
+    const normalizedTags = normalizeTagEntries(tags || []);
+    if (!normalizedTags.length) return null;
+    const dismissed = loadDismissedResiduals2().filter((item) => item && item.iso !== iso);
+    const entry = {
+      iso,
+      tags: normalizedTags,
+      notedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    upsertTagHistoryEntry(iso, normalizedTags);
+    dismissed.push(entry);
+    saveDismissedResiduals2(dismissed);
+    return entry;
+  }
+
   // src/utils/storage.js
   var FLAG_KEY = "routeStats.flags.v1";
   var EVAL_KEY = "routeStats.uspsEval.v1";
@@ -679,10 +869,9 @@
   function loadDismissedResiduals(parseDismissReasonInput2) {
     try {
       const raw = localStorage.getItem(RESIDUAL_DISMISS_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.map((item) => {
+      const parsed = raw ? JSON.parse(raw) : [];
+      const dismissedList = Array.isArray(parsed) ? parsed : [];
+      const dismissedEntries = dismissedList.map((item) => {
         if (!item || typeof item !== "object") return null;
         const iso = item.iso || item.date || null;
         if (!iso) return null;
@@ -733,6 +922,58 @@
         }).filter(Boolean);
         return tags.length ? { iso, tags } : null;
       }).filter(Boolean);
+      const tagHistoryEntries = loadTagHistory().map((item) => {
+        const iso = (item == null ? void 0 : item.iso) || (item == null ? void 0 : item.date) || null;
+        const tags = Array.isArray(item == null ? void 0 : item.tags) ? item.tags.filter(Boolean) : [];
+        if (!iso || !tags.length) return null;
+        return { iso, tags };
+      }).filter(Boolean);
+      if (!tagHistoryEntries.length) return dismissedEntries;
+      const merged = /* @__PURE__ */ new Map();
+      const mergeTags = (existing = [], incoming = []) => {
+        const byKey = /* @__PURE__ */ new Map();
+        const normalizeTagIdentity = (tag) => {
+          const fallback = canonicalizeTagReason((tag == null ? void 0 : tag.reason) || (tag == null ? void 0 : tag.key) || "");
+          const key = String((tag == null ? void 0 : tag.key) || fallback.key || "").trim() || "misc";
+          const reason = String((tag == null ? void 0 : tag.reason) || (key === "misc" ? fallback.reason : key) || "").trim() || key;
+          const minutes = (tag == null ? void 0 : tag.minutes) != null && Number.isFinite(Number(tag.minutes)) ? Number(tag.minutes) : null;
+          const notedAt = (tag == null ? void 0 : tag.notedAt) || (/* @__PURE__ */ new Date()).toISOString();
+          return { key, reason, minutes, notedAt, mapKey: `${key}:${reason.toLowerCase()}` };
+        };
+        existing.forEach((tag) => {
+          if (!tag) return;
+          const normalized = normalizeTagIdentity(tag);
+          byKey.set(normalized.mapKey, {
+            key: normalized.key,
+            reason: normalized.reason,
+            minutes: normalized.minutes,
+            notedAt: normalized.notedAt
+          });
+        });
+        incoming.forEach((tag) => {
+          if (!tag) return;
+          const normalized = normalizeTagIdentity(tag);
+          if (byKey.has(normalized.mapKey)) return;
+          byKey.set(normalized.mapKey, {
+            key: normalized.key,
+            reason: normalized.reason,
+            minutes: normalized.minutes,
+            notedAt: normalized.notedAt
+          });
+        });
+        return Array.from(byKey.values());
+      };
+      dismissedEntries.forEach((item) => {
+        merged.set(item.iso, { iso: item.iso, tags: mergeTags([], item.tags || []) });
+      });
+      tagHistoryEntries.forEach((item) => {
+        const current = merged.get(item.iso);
+        merged.set(item.iso, {
+          iso: item.iso,
+          tags: mergeTags((current == null ? void 0 : current.tags) || [], item.tags || [])
+        });
+      });
+      return Array.from(merged.values()).filter((item) => (item == null ? void 0 : item.iso) && (item.tags || []).length);
     } catch (_) {
       return [];
     }
@@ -956,89 +1197,6 @@
     }
   }
 
-  // src/utils/diagnostics.js
-  var DIAGNOSTIC_TAG_CATALOG = [
-    { key: "parcels", label: "Parcels", aliases: ["parcel", "pkgs", "packages", "volume"] },
-    { key: "letters", label: "Letters", aliases: ["mail", "letters heavy", "letters light"] },
-    { key: "flats", label: "Flats", aliases: ["flat", "flats time"] },
-    { key: "weather", label: "Weather", aliases: ["rain", "snow", "wind", "storm", "heat", "cold"] },
-    { key: "traffic", label: "Traffic", aliases: ["jam", "congestion"] },
-    { key: "detour", label: "Detour", aliases: ["reroute", "detoured"] },
-    { key: "road_closure", label: "Road closure", aliases: ["road", "closure", "construction"] },
-    { key: "boxholders", label: "Boxholders", aliases: ["box holder", "boxholder", "box"] },
-    { key: "second_trip", label: "Second trip", aliases: ["second-trip", "2nd trip", "extra trip"] },
-    { key: "load", label: "Load/Setup", aliases: ["load time", "setup", "vehicle load"] },
-    { key: "break", label: "Break", aliases: ["lunch", "rest"] },
-    { key: "vehicle_issue", label: "Vehicle issue", aliases: ["vehicle", "truck", "maintenance", "gas", "fuel"] },
-    { key: "misc", label: "Misc", aliases: ["other", "miscellaneous", "unknown"] }
-  ];
-  var CATALOG_BY_KEY = new Map(DIAGNOSTIC_TAG_CATALOG.map((item) => [item.key, item]));
-  function tagLabelForKey(key) {
-    const item = CATALOG_BY_KEY.get(String(key || "").trim());
-    return (item == null ? void 0 : item.label) || "Misc";
-  }
-  function canonicalizeTagReason(rawReason) {
-    const reason = String(rawReason || "").replace(/\s+/g, " ").trim();
-    if (!reason) return { key: "misc", reason: "misc" };
-    const normalized = reason.toLowerCase().replace(/[_-]+/g, " ");
-    for (const item of DIAGNOSTIC_TAG_CATALOG) {
-      if (normalized === item.key.replace(/_/g, " ")) return { key: item.key, reason: item.key };
-      const aliases = item.aliases || [];
-      if (aliases.some((alias) => normalized.includes(String(alias).toLowerCase()))) {
-        return { key: item.key, reason: item.key };
-      }
-    }
-    return { key: "misc", reason };
-  }
-  function normalizeTagEntries(entries, options = {}) {
-    const notedAt = options.notedAt || (/* @__PURE__ */ new Date()).toISOString();
-    const aggregated = /* @__PURE__ */ new Map();
-    (entries || []).forEach((entry) => {
-      if (!entry) return;
-      const rawReason = entry.reason || entry.key || "";
-      const canonical = canonicalizeTagReason(rawReason);
-      const key = canonical.key || "misc";
-      const reason = key === "misc" ? String(rawReason || "").trim() || "misc" : key;
-      const minutesVal = entry.minutes != null && entry.minutes !== "" ? Number(entry.minutes) : null;
-      const minutes = Number.isFinite(minutesVal) ? minutesVal : null;
-      const mapKey = `${key}:${reason.toLowerCase()}`;
-      const existing = aggregated.get(mapKey) || { key, reason, minutes: 0, hasMinutes: false, notedAt };
-      if (minutes != null) {
-        existing.minutes += minutes;
-        existing.hasMinutes = true;
-      }
-      aggregated.set(mapKey, existing);
-    });
-    return Array.from(aggregated.values()).map((item) => ({
-      key: item.key,
-      reason: item.reason,
-      minutes: item.hasMinutes ? item.minutes : null,
-      notedAt: item.notedAt
-    }));
-  }
-  function parseDismissReasonInput(raw) {
-    if (!raw) return [];
-    let working = String(raw).replace(/[;\n]+/g, ",").replace(/\s*,\s*/g, ",").trim();
-    if (!working) return [];
-    const parsed = [];
-    working = working.replace(/([^,]+?)\s*([+\-]\s*\d+(?:\.\d+)?)/g, (_, reasonPart, minutesPart) => {
-      const reason = String(reasonPart || "").trim();
-      const minutes = Number(String(minutesPart || "").replace(/\s+/g, ""));
-      if (reason && Number.isFinite(minutes)) parsed.push({ reason, minutes });
-      return " ";
-    });
-    working = working.replace(/([^,]+?)\s*:\s*([^,+\s]+)/g, (_, left, right) => {
-      const reason = `${String(left || "").trim()}:${String(right || "").trim()}`;
-      if (reason && reason !== ":") parsed.push({ reason, minutes: null });
-      return " ";
-    });
-    working.split(",").map((segment) => segment.trim()).filter(Boolean).forEach((segment) => {
-      if (/^[+\-]?\d+(?:\.\d+)?$/.test(segment)) return;
-      parsed.push({ reason: segment, minutes: null });
-    });
-    return normalizeTagEntries(parsed);
-  }
-
   // src/modules/forecast.js
   var STEADY_MESSAGE = "Steady outlook based on recent trends.";
   var FORECAST_BADGE_STORAGE_KEYS = ["forecastBadgeData_v2", "routeStats.forecastBadgeData_v2"];
@@ -1057,7 +1215,7 @@
       return todayIso ? todayIso() : "";
     }
   }
-  function loadTagHistory() {
+  function loadTagHistory2() {
     try {
       const raw = localStorage.getItem("routeStats.tagHistory");
       const history = raw ? JSON.parse(raw) : [];
@@ -1552,7 +1710,7 @@
   function computeForecastText(options = {}) {
     const badgeSnapshots = loadForecastBadgeData();
     const derivedHistory = deriveTagHistoryFromSnapshots(badgeSnapshots);
-    const history = Array.isArray(options.tagHistory) ? options.tagHistory : derivedHistory.length ? derivedHistory : loadTagHistory();
+    const history = Array.isArray(options.tagHistory) ? options.tagHistory : derivedHistory.length ? derivedHistory : loadTagHistory2();
     const targetDow = typeof options.targetDow === "number" ? options.targetDow : null;
     const fallbackDow = new Date(Date.now() + 864e5).getDay();
     const weekday = targetDow != null ? targetDow : fallbackDow;
@@ -1592,7 +1750,7 @@
   if (typeof window !== "undefined") {
     window.generateForecastText = (tagHistory) => {
       const fallbackDow = new Date(Date.now() + 864e5).getDay();
-      return generateForecastText(tagHistory || loadTagHistory(), fallbackDow);
+      return generateForecastText(tagHistory || loadTagHistory2(), fallbackDow);
     };
     window.loadForecastBadgeData = loadForecastBadgeData;
     window.buildTrendForecast = (dow) => {
@@ -5646,113 +5804,6 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       buildWeekHeaviness: buildWeekHeaviness2,
       buildHeadlineDigest: buildHeadlineDigest2
     };
-  }
-
-  // src/utils/diagnosticsStorage.js
-  var TAG_HISTORY_KEY = "routeStats.tagHistory";
-  function loadTagHistory2() {
-    try {
-      const raw = localStorage.getItem(TAG_HISTORY_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
-    } catch (_) {
-      return [];
-    }
-  }
-  function readTagHistoryForIso(iso) {
-    if (!iso) return [];
-    const history = loadTagHistory2();
-    const entry = history.find((item) => item && (item.iso === iso || item.date === iso));
-    return Array.isArray(entry == null ? void 0 : entry.tags) ? entry.tags.filter(Boolean) : [];
-  }
-  function saveTagHistory(history) {
-    try {
-      localStorage.setItem(TAG_HISTORY_KEY, JSON.stringify(history || []));
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-  function mergeTagListsStable(primary = [], incoming = []) {
-    const byReason = /* @__PURE__ */ new Map();
-    const upsert = (tag, preferIncoming = false) => {
-      if (!tag) return;
-      const key = String(tag.key || "").trim() || "misc";
-      const reason = String(tag.reason || key).trim() || key;
-      const mapKey = `${key}:${reason.toLowerCase()}`;
-      if (!byReason.has(mapKey) || preferIncoming) {
-        byReason.set(mapKey, {
-          key,
-          reason,
-          minutes: tag.minutes != null && Number.isFinite(Number(tag.minutes)) ? Number(tag.minutes) : null,
-          notedAt: tag.notedAt || (/* @__PURE__ */ new Date()).toISOString()
-        });
-      }
-    };
-    (primary || []).forEach((tag) => upsert(tag, false));
-    (incoming || []).forEach((tag) => upsert(tag, true));
-    return Array.from(byReason.values());
-  }
-  function upsertTagHistoryEntry(iso, tags) {
-    if (!iso) return [];
-    const normalizedTags = normalizeTagEntries(tags || []);
-    if (!normalizedTags.length) return loadTagHistory2();
-    const history = loadTagHistory2();
-    const existing = history.find((item) => item && item.iso === iso);
-    if (existing) {
-      existing.tags = mergeTagListsStable(existing.tags || [], normalizedTags);
-    } else {
-      history.push({ iso, tags: [...normalizedTags] });
-    }
-    history.sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
-    saveTagHistory(history);
-    return history;
-  }
-  function normalizeTagHistory(seedFromDismissed = []) {
-    try {
-      const history = loadTagHistory2();
-      const byIso = /* @__PURE__ */ new Map();
-      history.forEach((item) => {
-        const iso = (item == null ? void 0 : item.iso) || (item == null ? void 0 : item.date) || null;
-        if (!iso) return;
-        const tags = normalizeTagEntries(item.tags || []);
-        if (!tags.length) return;
-        byIso.set(iso, { iso, tags });
-      });
-      (seedFromDismissed || []).forEach((item) => {
-        const iso = (item == null ? void 0 : item.iso) || null;
-        if (!iso) return;
-        const current = byIso.get(iso);
-        const mergedTags = mergeTagListsStable((current == null ? void 0 : current.tags) || [], normalizeTagEntries(item.tags || []));
-        if (!mergedTags.length) return;
-        byIso.set(iso, { iso, tags: mergedTags });
-      });
-      const normalized = Array.from(byIso.values()).sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
-      const before = JSON.stringify(history);
-      const after = JSON.stringify(normalized);
-      if (before !== after) {
-        saveTagHistory(normalized);
-        return true;
-      }
-      return false;
-    } catch (_) {
-      return false;
-    }
-  }
-  function saveDismissedResidualWithTags({ iso, tags, loadDismissedResiduals: loadDismissedResiduals2, saveDismissedResiduals: saveDismissedResiduals2 }) {
-    if (!iso || typeof loadDismissedResiduals2 !== "function" || typeof saveDismissedResiduals2 !== "function") return null;
-    const normalizedTags = normalizeTagEntries(tags || []);
-    if (!normalizedTags.length) return null;
-    const dismissed = loadDismissedResiduals2().filter((item) => item && item.iso !== iso);
-    const entry = {
-      iso,
-      tags: normalizedTags,
-      notedAt: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    upsertTagHistoryEntry(iso, normalizedTags);
-    dismissed.push(entry);
-    saveDismissedResiduals2(dismissed);
-    return entry;
   }
 
   // src/app.js

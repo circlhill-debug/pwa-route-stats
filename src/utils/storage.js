@@ -1,4 +1,6 @@
 // LocalStorage adapters and baseline helpers used by multiple features.
+import { canonicalizeTagReason } from './diagnostics.js';
+import { loadTagHistory } from './diagnosticsStorage.js';
 import { DateTime, ZONE, startOfWeekMonday, endOfWeekSunday } from './date.js';
 
 export const FLAG_KEY = 'routeStats.flags.v1';
@@ -636,10 +638,9 @@ export function setModelScope(v){
 export function loadDismissedResiduals(parseDismissReasonInput){
   try{
     const raw = localStorage.getItem(RESIDUAL_DISMISS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
+    const parsed = raw ? JSON.parse(raw) : [];
+    const dismissedList = Array.isArray(parsed) ? parsed : [];
+    const dismissedEntries = dismissedList
       .map(item => {
         if (!item || typeof item !== 'object') return null;
         const iso = item.iso || item.date || null;
@@ -694,6 +695,60 @@ export function loadDismissedResiduals(parseDismissReasonInput){
         return tags.length ? { iso, tags } : null;
       })
       .filter(Boolean);
+    const tagHistoryEntries = loadTagHistory()
+      .map(item => {
+        const iso = item?.iso || item?.date || null;
+        const tags = Array.isArray(item?.tags) ? item.tags.filter(Boolean) : [];
+        if (!iso || !tags.length) return null;
+        return { iso, tags };
+      })
+      .filter(Boolean);
+    if (!tagHistoryEntries.length) return dismissedEntries;
+    const merged = new Map();
+    const mergeTags = (existing = [], incoming = []) => {
+      const byKey = new Map();
+      const normalizeTagIdentity = (tag) => {
+        const fallback = canonicalizeTagReason(tag?.reason || tag?.key || '');
+        const key = String(tag?.key || fallback.key || '').trim() || 'misc';
+        const reason = String(tag?.reason || (key === 'misc' ? fallback.reason : key) || '').trim() || key;
+        const minutes = (tag?.minutes != null && Number.isFinite(Number(tag.minutes))) ? Number(tag.minutes) : null;
+        const notedAt = tag?.notedAt || new Date().toISOString();
+        return { key, reason, minutes, notedAt, mapKey: `${key}:${reason.toLowerCase()}` };
+      };
+      existing.forEach(tag => {
+        if (!tag) return;
+        const normalized = normalizeTagIdentity(tag);
+        byKey.set(normalized.mapKey, {
+          key: normalized.key,
+          reason: normalized.reason,
+          minutes: normalized.minutes,
+          notedAt: normalized.notedAt
+        });
+      });
+      incoming.forEach(tag => {
+        if (!tag) return;
+        const normalized = normalizeTagIdentity(tag);
+        if (byKey.has(normalized.mapKey)) return;
+        byKey.set(normalized.mapKey, {
+          key: normalized.key,
+          reason: normalized.reason,
+          minutes: normalized.minutes,
+          notedAt: normalized.notedAt
+        });
+      });
+      return Array.from(byKey.values());
+    };
+    dismissedEntries.forEach(item => {
+      merged.set(item.iso, { iso: item.iso, tags: mergeTags([], item.tags || []) });
+    });
+    tagHistoryEntries.forEach(item => {
+      const current = merged.get(item.iso);
+      merged.set(item.iso, {
+        iso: item.iso,
+        tags: mergeTags(current?.tags || [], item.tags || [])
+      });
+    });
+    return Array.from(merged.values()).filter(item => item?.iso && (item.tags || []).length);
   }catch(_){
     return [];
   }

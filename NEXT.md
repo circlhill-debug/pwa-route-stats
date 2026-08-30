@@ -260,6 +260,152 @@ Immediate next resume point
 
 ---
 
+Portal UX strategy (locked direction)
+
+Core philosophy
+- The app should increasingly behave like a smaller, smarter dashboard rather than a long page of raw tiles.
+- Default user experience should be:
+  - contextual
+  - mode-aware
+  - narrative first
+  - drilldown second
+- The app should feel more intelligent by surfacing the next relevant thing to look at, then offering the right continuation action.
+- Raw metric density should move under the hood over time.
+- The visible layer should become:
+  - fewer surfaces
+  - stronger summaries
+  - clearer action paths
+  - cleaner portal structure
+
+Professional-demo direction
+- Portal prototype work is the right next step for demo-readiness.
+- Build and validate one portal at a time instead of trying to redesign the whole app at once.
+- The order of work should be:
+  1. lock portal purpose
+  2. lock first-screen content
+  3. lock when that content changes
+  4. lock contextual continuation actions
+  5. wire the portal
+  6. validate it in use
+- Do not try to finalize visual style, full graphic language, or all card content up front.
+- Information architecture comes first; graphic refinement comes later.
+
+Portal-surface rule
+- Each portal should show only its curated section set.
+- Selecting a portal should not reveal the entire legacy page underneath.
+- Hidden sections should stay hidden unless explicitly opened by a drilldown action.
+- The portal shell is intended to become the primary UX, not just a header over the old site.
+
+Contextual action rule
+- Avoid generic utility labels where possible:
+  - avoid blunt actions like `Open Today` as the end-state language
+- Prefer contextual continuation actions tied to the user’s current view:
+  - `Review today's route result`
+  - `See tomorrow's forecast`
+  - `View weekly trend`
+  - `See unlocks`
+- Under the hood, these still route into the proper portal/tool.
+- The app should feel like it is guiding the user through the next useful step, not presenting a flat menu.
+
+Portal build approach
+- Build one portal at a time.
+- Validate each portal as its own usable surface before moving to the next.
+- Current preferred sequence:
+  1. `Home`
+  2. `Today`
+  3. `Forecast`
+  4. `This Week`
+  5. `Route Model`
+  6. `History`
+  7. `Milestones`
+  8. `Tools`
+
+Home portal (currently locked direction)
+- `Home` should be the living front door of the app.
+- `Home` should be mode-aware and switch by state/time, not stay fixed.
+- Important rule:
+  - entry state overrides the 8 PM forecast rule
+  - if the user enters today's numbers after 8 PM, `Home` should stay in review mode rather than immediately switching to tomorrow mode
+
+Home mode rules
+- Review mode:
+  - if today has a completed entry
+  - show:
+    - Home review hero
+    - compact quick-stats strip
+    - `Today Insights`
+    - contextual continuation actions
+- Pre-entry / daytime mode:
+  - if today has no completed entry and it is before 8 PM
+  - show:
+    - Home hero
+    - compact expectation strip
+    - short orientation note
+    - contextual continuation action into Forecast or Today
+- Evening preview mode:
+  - if today has no completed entry and it is after 8 PM
+  - show:
+    - Home hero
+    - tomorrow-facing expectation strip
+    - short heads-up line
+    - contextual continuation action into Forecast
+
+Home content rule
+- `Home` should stay lighter than `Today`.
+- It should not try to repeat full daily detail.
+- `Home` should summarize and orient; `Today` should operationalize.
+- `Tomorrow / Forecast` content should primarily live under the `Forecast` portal, not be duplicated heavily on `Home`.
+
+Home review-mode quick stats
+- Current preferred quick stats:
+  - total hours
+  - total parcels
+  - total letters
+  - expected route
+  - actual route
+  - volume
+- These should sit above `Today Insights`.
+- `Today Insights` remains the narrative/alert layer below the quick stats.
+
+Home alert rule
+- `Home` should surface notable alerts, but lightly.
+- Milestone/unlock events should be surfaced through `Today Insights` / rotating-card logic rather than duplicated in a separate Home block.
+- Route-model misses that need attention should also surface on `Home`, but as alerts only:
+  - `Home` notifies
+  - `Today` contextualizes
+  - `Route Model` / `Diagnostics` resolves
+
+Model-history note
+- Historical route-model performance explanation is desirable later:
+  - hit/miss rate over time
+  - residual patterns
+  - confidence / fit over time
+  - tagging impact
+- That belongs in the `Route Model` portal later, not in the first Home pass.
+
+Visual direction note
+- Graphic refinement is intentionally deferred.
+- Later, the portal UX should move toward a more polished professional-demo skin inspired by earlier dashboard references discussed from Dribbble.
+- Goal for the later visual pass:
+  - stronger graphics
+  - clearer instrument-style summary cards
+  - more intentional hierarchy
+  - richer motion and polish
+- That is a later pass after portal structure and drilldown behavior are stable.
+
+Current portal prototype resume point
+- The shell now behaves like a true portal surface.
+- Next implementation step:
+  - wire `Home` as the first fully shaped portal
+- For `Home`, the next concrete tasks are:
+  1. implement mode-aware content swapping
+  2. implement compact review-mode quick stats
+  3. keep `Today Insights` as the review-mode narrative layer
+  4. replace generic actions with contextual continuation actions
+  5. validate whether `Home` feels distinct from `Today`
+
+---
+
 Intent Map (Apr 28, 2026)
 
 Purpose of this note

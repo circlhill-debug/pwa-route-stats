@@ -2505,9 +2505,13 @@ function parseDrinkFromWeatherString(weatherStr){
 }
 
 const PORTAL_STATE_KEY = 'routeStats.portal.active';
+const PORTAL_DAY_COMPARE_STORE = {
+  subject: 'routeStats.dayCompare.subject',
+  mode: 'routeStats.dayCompare.mode'
+};
 const PORTAL_SECTION_MAP = {
-  home: ['portalHeroCard', 'insightStripCard', 'snapshotCard', 'weeklyCompareWrap'],
-  today: ['portalHeroCard', 'snapshotCard', 'dayCompareCard', 'addEntryCard'],
+  home: ['portalHeroCard', 'homeSurfaceCard'],
+  today: ['portalHeroCard', 'insightStripCard', 'snapshotCard', 'dayCompareCard', 'addEntryCard'],
   forecast: ['portalHeroCard', 'snapshotCard', 'dowCard', 'parcelsOverTimeCard', 'lettersOverTimeCard'],
   week: ['portalHeroCard', 'snapshotCard', 'weeklyCompareWrap', 'officeCompareCard', 'evalCompareCard'],
   'route-model': ['portalHeroCard', 'snapshotCard', 'diagnosticsCard', 'evalCompareCard'],
@@ -2571,16 +2575,60 @@ function saveStoredPortal(id){
   try{ localStorage.setItem(PORTAL_STATE_KEY, id); }catch(_){ }
 }
 
+function getForecastPortalState(now = DateTime.now().setZone(ZONE)){
+  const workedRows = (allRows || []).filter(r => r && r.status !== 'off');
+  const targetDay = (() => {
+    if (now.weekday === 7) return now.plus({ days: 1 });
+    if (now.weekday === 6 && now.hour >= 20) return now.plus({ days: 2 });
+    return now.hour >= 20 ? now.plus({ days: 1 }) : now;
+  })();
+  const targetDow = targetDay.weekday % 7;
+  const letterWeight = CURRENT_LETTER_WEIGHT || 0.33;
+  const sameDowRows = workedRows
+    .filter(r => r && r.work_date && dowIndex(r.work_date) === targetDow)
+    .filter(r => r.work_date !== targetDay.toISODate());
+  const avgValue = (rows, fn) => {
+    const values = (rows || []).map(fn).filter(v => Number.isFinite(v) && v > 0);
+    return values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
+  };
+  const avgHours = avgValue(sameDowRows, r => normalizeHoursValue(r.hours));
+  const avgParcels = avgValue(sameDowRows, r => +r.parcels || 0);
+  const avgLetters = avgValue(sameDowRows, r => +r.letters || 0);
+  const avgOffice = avgValue(sameDowRows, r => normalizeHoursValue(r.office_minutes));
+  const avgVolume = (avgParcels != null || avgLetters != null)
+    ? combinedVolume(avgParcels || 0, avgLetters || 0, letterWeight)
+    : null;
+  const prediction = buildPredictionRecord(workedRows, { now: targetDay });
+  const expectedRoute = prediction?.predicted?.routeHours ?? null;
+  return {
+    targetDay,
+    avgHours,
+    avgParcels,
+    avgLetters,
+    avgOffice,
+    avgVolume,
+    prediction,
+    expectedRoute,
+    focusLabel: now.hour >= 20 || now.weekday === 7 ? `Upcoming workday · ${targetDay.toFormat('cccc')}` : `Today outlook · ${targetDay.toFormat('cccc')}`
+  };
+}
+
 function getPortalContextChips(portalId){
   const chips = [];
-  const pushChip = (label, value)=>{
+  const pushChip = (label, value, attrs = '')=>{
     if (!value || value === '—') return;
-    chips.push(`<div class="context-chip"><small>${label}</small><strong>${value}</strong></div>`);
+    const attrText = attrs ? ` ${attrs}` : '';
+    chips.push(`<div class="context-chip"${attrText}><small>${label}</small><strong>${value}</strong></div>`);
   };
   const expEnd = document.getElementById('expEnd')?.textContent?.trim();
   const expMeta = document.getElementById('expMeta')?.textContent?.trim();
   const routeExpected = document.getElementById('routeExpected')?.textContent?.trim();
   const routeExpectedMeta = document.getElementById('routeExpectedMeta')?.textContent?.trim();
+  const forecastExpectedEnd = document.getElementById('forecastExpectedEnd')?.textContent?.trim();
+  const forecastExpectedEndMeta = document.getElementById('forecastExpectedEndMeta')?.textContent?.trim();
+  const forecastExpectedRoute = document.getElementById('forecastExpectedRoute')?.textContent?.trim();
+  const forecastAvgHours = document.getElementById('forecastAvgHours')?.textContent?.trim();
+  const forecastAvgVolume = document.getElementById('forecastAvgVolume')?.textContent?.trim();
   const routeActual = document.getElementById('routeHitMiss')?.textContent?.trim();
   const routeActualMeta = document.getElementById('routeHitMissMeta')?.textContent?.trim();
   const volumeToday = document.getElementById('badgeVolumeToday')?.textContent?.trim() || document.getElementById('badgeVolume')?.textContent?.trim();
@@ -2591,19 +2639,43 @@ function getPortalContextChips(portalId){
 
   switch (portalId) {
     case 'home':
-      pushChip('Expected End', expEnd && expMeta ? `${expEnd} · ${expMeta}` : expEnd);
-      pushChip('Expected Route', routeExpected && routeExpectedMeta ? `${routeExpected} · ${routeExpectedMeta}` : routeExpected);
-      pushChip('Volume', volumeToday);
+      if (getHomePortalState().mode === 'review') {
+        pushChip('Expected End', expEnd && expMeta ? `${expEnd} · ${expMeta}` : expEnd);
+        pushChip('Expected Route', routeExpected && routeExpectedMeta ? `${routeExpected} · ${routeExpectedMeta}` : routeExpected);
+        pushChip('Actual Route', routeActual && routeActualMeta ? `${routeActual} · ${routeActualMeta}` : routeActual);
+      } else {
+        pushChip('Expected End', expEnd && expMeta ? `${expEnd} · ${expMeta}` : expEnd);
+        pushChip('Expected Route', routeExpected && routeExpectedMeta ? `${routeExpected} · ${routeExpectedMeta}` : routeExpected);
+      }
       break;
     case 'today':
-      pushChip('Expected End', expEnd);
-      pushChip('Expected Route', routeExpected);
-      pushChip('Expected Volume', volumeToday);
+      {
+        const nowLocal = DateTime.now().setZone(ZONE);
+        const todayIsoLocal = nowLocal.toISODate();
+        const workedRows = (allRows || []).filter(r => r && r.status !== 'off');
+        const todayRow = workedRows.find(r => hasMeaningfulWorkedData(r, todayIsoLocal)) || null;
+        const compareSourceRows = workedRows.filter(r => hasMeaningfulWorkedData(r));
+        const canCompareToday = compareSourceRows.length > 0;
+        const canOpenDiagnostics = !!todayRow && ((+todayRow.parcels || 0) + (+todayRow.letters || 0) > 0);
+        pushChip('Entry', todayRow ? 'Logged' : 'Needs entry', 'data-portal-jump="today" data-portal-scroll="addEntryCard"');
+        pushChip(
+          'Compare',
+          canCompareToday ? 'Ready' : 'Need worked day',
+          canCompareToday ? 'data-portal-jump="today" data-portal-scroll="dayCompareCard" data-portal-preload-compare="today"' : ''
+        );
+        pushChip(
+          'Diagnostics',
+          canOpenDiagnostics ? 'Available' : 'After route result',
+          canOpenDiagnostics ? 'data-portal-jump="route-model" data-portal-scroll="diagnosticsCard"' : ''
+        );
+        pushChip('Week', 'Context', 'data-portal-jump="week"');
+      }
       break;
     case 'forecast':
-      pushChip('Forecast', headlineDigest);
-      pushChip('Same-day avg', expMeta);
-      pushChip('Expected Route', routeExpected);
+      pushChip('Expected End', forecastExpectedEnd && forecastExpectedEndMeta ? `${forecastExpectedEnd} · ${forecastExpectedEndMeta}` : forecastExpectedEnd);
+      pushChip('Expected Route', forecastExpectedRoute);
+      pushChip('Avg Hours', forecastAvgHours);
+      pushChip('Avg Volume', forecastAvgVolume);
       break;
     case 'week':
       pushChip('Summary', smartSummary);
@@ -2628,31 +2700,265 @@ function getPortalContextChips(portalId){
   return chips;
 }
 
-function getPortalHeroModel(portalId){
+function preloadDayCompareFromToday(){
+  try{
+    const nowLocal = DateTime.now().setZone(ZONE);
+    const todayIsoLocal = nowLocal.toISODate();
+    const workedRows = (allRows || [])
+      .filter(r => r && r.status !== 'off' && r.work_date)
+      .sort((a, b) => String(b.work_date).localeCompare(String(a.work_date)));
+    const todayRow = workedRows.find(r => hasMeaningfulWorkedData(r, todayIsoLocal)) || null;
+    const fallbackRow = workedRows.find(r => hasMeaningfulWorkedData(r)) || null;
+    const targetIso = todayRow?.work_date || fallbackRow?.work_date || null;
+    if (!targetIso) return;
+    localStorage.setItem(PORTAL_DAY_COMPARE_STORE.subject, targetIso);
+    localStorage.setItem(PORTAL_DAY_COMPARE_STORE.mode, 'last');
+  }catch(_){ }
+}
+
+function bindPortalActionNodes(root){
+  if (!root) return;
+  root.querySelectorAll('[data-portal-jump]').forEach(node => {
+    if (node.dataset.portalBoundJump === '1') return;
+    node.dataset.portalBoundJump = '1';
+    node.style.cursor = 'pointer';
+    node.addEventListener('click', () => {
+      const shouldPreloadCompare = node.getAttribute('data-portal-preload-compare') === 'today';
+      if (shouldPreloadCompare) preloadDayCompareFromToday();
+      const targetPortal = node.getAttribute('data-portal-jump') || 'home';
+      const scrollId = node.getAttribute('data-portal-scroll');
+      setActivePortal(targetPortal);
+      if (shouldPreloadCompare) {
+        try{ buildDayCompare(allRows || []); }catch(_){ }
+      }
+      if (scrollId) {
+        requestAnimationFrame(() => {
+          const targetNode = document.getElementById(scrollId);
+          if (targetNode) targetNode.scrollIntoView({ behavior:'smooth', block:'start' });
+        });
+      }
+    });
+  });
+  root.querySelectorAll('[data-portal-scroll]:not([data-portal-jump])').forEach(node => {
+    if (node.dataset.portalBoundScroll === '1') return;
+    node.dataset.portalBoundScroll = '1';
+    node.style.cursor = 'pointer';
+    node.addEventListener('click', () => {
+      const id = node.getAttribute('data-portal-scroll');
+      const targetNode = id ? document.getElementById(id) : null;
+      if (targetNode) targetNode.scrollIntoView({ behavior:'smooth', block:'start' });
+    });
+  });
+}
+
+function getHomePortalState(){
   const now = DateTime.now().setZone(ZONE);
+  const todayIsoLocal = now.toISODate();
+  const workedRows = (allRows || []).filter(r => r && r.status !== 'off');
+  const todayRow = workedRows.find(r => hasMeaningfulWorkedData(r, todayIsoLocal)) || null;
+  const mode = todayRow ? 'review' : (now.hour >= 20 ? 'evening-preview' : 'pre-entry');
+  return { now, todayIso: todayIsoLocal, todayRow, mode };
+}
+
+function getPortalHeroModel(portalId){
   if (portalId === 'home') {
-    const todayIso = now.toISODate();
-    const hasTodayEntry = (allRows || []).some(r => r && r.status !== 'off' && r.work_date === todayIso);
-    const phase = hasTodayEntry ? 'Review' : (now.hour >= 20 ? 'Tomorrow' : 'Today');
+    const { now, mode } = getHomePortalState();
     return {
-      kicker: `Home · ${phase}`,
-      title: hasTodayEntry
+      kicker: mode === 'review' ? 'Home · Review' : (mode === 'evening-preview' ? 'Home · Tomorrow' : 'Home · Today'),
+      title: mode === 'review'
         ? `Review — ${now.toFormat('cccc, LLL d')}`
-        : `${phase} — ${now.toFormat('cccc, LLL d')}`,
-      summary: hasTodayEntry
-        ? 'Current-day entry exists, so Home should surface the strongest review insights and launch points.'
-        : (now.hour >= 20
-            ? 'Home should help the user prepare for tomorrow with expected end, expected route time, volume, and a short heads-up.'
-            : 'Home should orient the user to today with the most relevant expectation and one clear next action.')
+        : (mode === 'evening-preview'
+            ? `Tomorrow — ${now.plus({ days: 1 }).toFormat('cccc, LLL d')}`
+            : `Today — ${now.toFormat('cccc, LLL d')}`),
+      summary: mode === 'review'
+        ? 'Home should surface the strongest review insight first, then offer the right next step into the day, model, or milestones.'
+        : (mode === 'evening-preview'
+            ? 'Home should point forward lightly, while Forecast remains the dedicated portal for the full tomorrow outlook.'
+            : 'Home should orient the user to the day with a concise expectation view and a clear continuation into Forecast or Today.')
     };
   }
   return PORTAL_COPY[portalId] || PORTAL_COPY.home;
+}
+
+function renderForecastPortalSurface(){
+  const focusLabel = document.getElementById('forecastFocusLabel');
+  const expectedEnd = document.getElementById('forecastExpectedEnd');
+  const expectedEndMeta = document.getElementById('forecastExpectedEndMeta');
+  const expectedRoute = document.getElementById('forecastExpectedRoute');
+  const expectedRouteMeta = document.getElementById('forecastExpectedRouteMeta');
+  const avgHours = document.getElementById('forecastAvgHours');
+  const avgParcels = document.getElementById('forecastAvgParcels');
+  const avgLetters = document.getElementById('forecastAvgLetters');
+  const avgOffice = document.getElementById('forecastAvgOffice');
+  const avgVolume = document.getElementById('forecastAvgVolume');
+  if (!focusLabel || !expectedEnd || !expectedEndMeta || !expectedRoute || !expectedRouteMeta) return;
+
+  const state = getForecastPortalState();
+  const targetLabel = state.targetDay.toFormat('cccc');
+  focusLabel.textContent = state.focusLabel;
+  expectedEnd.textContent = state.prediction?.predicted?.endTime || '—';
+  expectedEndMeta.textContent = state.prediction?.predicted?.totalHours != null
+    ? `${targetLabel} avg ${state.prediction.predicted.totalHours.toFixed(2)}h`
+    : 'Need more history';
+  expectedRoute.textContent = Number.isFinite(state.expectedRoute) ? `${state.expectedRoute.toFixed(2)}h` : '—';
+  expectedRouteMeta.textContent = Number.isFinite(state.expectedRoute)
+    ? `${targetLabel} route average`
+    : 'Need more route history';
+  if (avgHours) avgHours.textContent = state.avgHours != null ? `${state.avgHours.toFixed(1)}h` : '—';
+  if (avgParcels) avgParcels.textContent = state.avgParcels != null ? `${Math.round(state.avgParcels)}` : '—';
+  if (avgLetters) avgLetters.textContent = state.avgLetters != null ? `${Math.round(state.avgLetters)}` : '—';
+  if (avgOffice) avgOffice.textContent = state.avgOffice != null ? `${state.avgOffice.toFixed(1)}h` : '—';
+  if (avgVolume) avgVolume.textContent = state.avgVolume != null ? `${state.avgVolume.toFixed(1)} vol` : '—';
+}
+
+function updateSnapshotPortalSections(portalId){
+  const todaySection = document.getElementById('snapshotTodaySection');
+  const forecastSection = document.getElementById('snapshotForecastSection');
+  const weekSection = document.getElementById('snapshotWeekSection');
+  const snapshotCard = document.getElementById('snapshotCard');
+  if (!snapshotCard || !todaySection || !forecastSection || !weekSection) return;
+
+  const showTodaySection = portalId === 'today' || portalId === 'route-model';
+  const showForecastSection = portalId === 'forecast';
+  const showWeekSection = portalId === 'week';
+
+  todaySection.style.display = showTodaySection ? '' : 'none';
+  forecastSection.style.display = showForecastSection ? '' : 'none';
+  weekSection.style.display = showWeekSection ? '' : 'none';
+  snapshotCard.style.display = (showTodaySection || showForecastSection || showWeekSection) ? '' : 'none';
+}
+
+function renderHomePortalSurface(){
+  const card = document.getElementById('homeSurfaceCard');
+  const title = document.getElementById('homeSurfaceTitle');
+  const note = document.getElementById('homeSurfaceNote');
+  const stats = document.getElementById('homeQuickStats');
+  const actions = document.getElementById('homeSurfaceActions');
+  const alertCard = document.getElementById('homeAlertCard');
+  const insightCard = document.getElementById('insightStripCard');
+  if (!card || !title || !note || !stats || !actions || !alertCard) return;
+
+  const activePortal = getStoredPortal();
+  if (activePortal !== 'home') {
+    card.style.display = 'none';
+    return;
+  }
+
+  const { now, todayRow, mode } = getHomePortalState();
+  const expEnd = document.getElementById('expEnd')?.textContent?.trim() || '—';
+  const expMeta = document.getElementById('expMeta')?.textContent?.trim() || '—';
+  const routeExpected = document.getElementById('routeExpected')?.textContent?.trim() || '—';
+  const routeExpectedMeta = document.getElementById('routeExpectedMeta')?.textContent?.trim() || '—';
+  const routeActual = document.getElementById('routeHitMiss')?.textContent?.trim() || '—';
+  const routeActualMeta = document.getElementById('routeHitMissMeta')?.textContent?.trim() || '—';
+  const volumeToday = document.getElementById('badgeVolumeToday')?.textContent?.trim() || '—';
+  const forecastNote = document.getElementById('forecastBadgeContainer')?.textContent?.trim() || '';
+  const totalHours = todayRow ? `${normalizeHoursValue(todayRow.hours).toFixed(2)}h` : '—';
+  const totalParcels = todayRow ? `${Math.round(+todayRow.parcels || 0)}` : '—';
+  const totalLetters = todayRow ? `${Math.round(+todayRow.letters || 0)}` : '—';
+  const workedRows = (allRows || []).filter(r => r && r.status !== 'off');
+  const targetDow = mode === 'evening-preview' ? (now.plus({ days: 1 }).weekday % 7) : (now.weekday % 7);
+  const sameDowRows = workedRows.filter(r => !todayRow || r.work_date !== todayRow.work_date).filter(r => dowIndex(r.work_date) === targetDow);
+  const avgValue = (arr, fn) => {
+    const values = arr.map(fn).filter(v => Number.isFinite(v) && v > 0);
+    return values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
+  };
+  const avgHours = avgValue(sameDowRows, r => normalizeHoursValue(r.hours));
+  const avgParcels = avgValue(sameDowRows, r => +r.parcels || 0);
+  const avgLetters = avgValue(sameDowRows, r => +r.letters || 0);
+  const avgRoute = avgValue(sameDowRows, r => routeAdjustedHours(r));
+  const expectedVolume = (avgParcels != null || avgLetters != null)
+    ? combinedVolume(avgParcels || 0, avgLetters || 0, CURRENT_LETTER_WEIGHT || 0.33)
+    : null;
+  const avgDowLabel = mode === 'evening-preview' ? now.plus({ days: 1 }).toFormat('cccc') : now.toFormat('cccc');
+
+  const statCard = (label, value, meta = '') => `
+    <div class="home-quick-stat">
+      <small>${label}</small>
+      <strong>${value || '—'}</strong>
+      ${meta ? `<small>${meta}</small>` : ''}
+    </div>
+  `;
+  const setHomeAlert = (kicker, headline, support) => {
+    alertCard.style.display = 'block';
+    alertCard.innerHTML = `
+      <small>${kicker}</small>
+      <div class="statValue statValue--lg" style="margin-top:4px">${headline}</div>
+      <small class="muted" style="display:block;margin-top:6px">${support}</small>
+    `;
+  };
+
+  const actionButton = (label, attrs) => `<button class="ghost" type="button" ${attrs}>${label}</button>`;
+
+  let statMarkup = '';
+  let actionMarkup = '';
+  alertCard.style.display = 'none';
+  alertCard.innerHTML = '';
+  if (mode === 'review') {
+    title.textContent = 'Today Review';
+    note.textContent = 'Use Home as the quick read of the finished day. Let Today carry the fuller operational detail.';
+    statMarkup = [
+      statCard('Total Hours', totalHours),
+      statCard('Parcels', totalParcels),
+      statCard('Letters', totalLetters),
+      statCard('Day Volume', volumeToday)
+    ].join('');
+    const hasUnlock = /milestone reached|new unlock/i.test(document.getElementById('insightStrip')?.textContent?.trim() || '');
+    const routeNeedsReview = /miss/i.test(routeActualMeta);
+    if (hasUnlock) {
+      setHomeAlert('New unlock!', 'Milestone reached', 'See unlocks to reveal the latest reward.');
+    } else if (routeNeedsReview) {
+      setHomeAlert('Action needed', routeActualMeta, 'Review the route model result from today.');
+    }
+    actionMarkup = [
+      actionButton("Review today's details", 'data-portal-jump="today"'),
+      routeNeedsReview ? actionButton('Review route model', 'data-portal-jump="route-model"') : '',
+      actionButton('See unlocks', 'data-portal-jump="milestones"')
+    ].join('');
+    if (insightCard) insightCard.style.display = 'none';
+  } else if (mode === 'evening-preview') {
+    title.textContent = `Tomorrow Preview · ${now.plus({ days: 1 }).toFormat('cccc')}`;
+    note.textContent = forecastNote || 'A light evening preview belongs on Home. Forecast remains the place for the fuller day-ahead explanation.';
+    statMarkup = [
+      statCard(`${avgDowLabel} Avg Hours`, avgHours != null ? `${avgHours.toFixed(1)}h` : '—'),
+      statCard(`${avgDowLabel} Avg Parcels`, avgParcels != null ? `${Math.round(avgParcels)}` : '—'),
+      statCard(`${avgDowLabel} Avg Letters`, avgLetters != null ? `${Math.round(avgLetters)}` : '—'),
+      statCard(`${avgDowLabel} Avg Volume`, expectedVolume != null ? `${expectedVolume.toFixed(1)} vol` : '—')
+    ].join('');
+    actionMarkup = [
+      actionButton('Add entry', 'data-portal-jump="today" data-portal-scroll="addEntryCard"'),
+      actionButton("See tomorrow's forecast", 'data-portal-jump="forecast"'),
+      actionButton('View weekly trend', 'data-portal-jump="week"')
+    ].join('');
+    if (insightCard) insightCard.style.display = 'none';
+  } else {
+    title.textContent = `Today Outlook · ${now.toFormat('cccc')}`;
+    note.textContent = 'Home should orient the user to the current day without duplicating the full Today portal.';
+    statMarkup = [
+      statCard(`${avgDowLabel} Avg Hours`, avgHours != null ? `${avgHours.toFixed(1)}h` : '—'),
+      statCard(`${avgDowLabel} Avg Parcels`, avgParcels != null ? `${Math.round(avgParcels)}` : '—'),
+      statCard(`${avgDowLabel} Avg Letters`, avgLetters != null ? `${Math.round(avgLetters)}` : '—'),
+      statCard(`${avgDowLabel} Avg Volume`, expectedVolume != null ? `${expectedVolume.toFixed(1)} vol` : '—')
+    ].join('');
+    actionMarkup = [
+      actionButton('Add entry', 'data-portal-jump="today" data-portal-scroll="addEntryCard"'),
+      actionButton("See today's forecast", 'data-portal-jump="forecast"'),
+      actionButton("Open today's detail", 'data-portal-jump="today"')
+    ].join('');
+    if (insightCard) insightCard.style.display = 'none';
+  }
+
+  stats.innerHTML = statMarkup;
+  actions.innerHTML = actionMarkup;
+  bindPortalActionNodes(actions);
+  card.style.display = 'block';
 }
 
 function updatePortalShell(){
   try{
     const portalId = getStoredPortal();
     const hero = getPortalHeroModel(portalId);
+    renderForecastPortalSurface();
     const heroKicker = document.getElementById('portalHeroKicker');
     const heroTitle = document.getElementById('portalHeroTitle');
     const heroSummary = document.getElementById('portalHeroSummary');
@@ -2661,7 +2967,11 @@ function updatePortalShell(){
     if (heroKicker) heroKicker.textContent = hero.kicker || '';
     if (heroTitle) heroTitle.textContent = hero.title || '';
     if (heroSummary) heroSummary.textContent = hero.summary || '';
-    if (heroContext) heroContext.innerHTML = getPortalContextChips(portalId).join('');
+    if (heroContext) {
+      heroContext.innerHTML = getPortalContextChips(portalId).join('');
+      bindPortalActionNodes(heroContext);
+    }
+    updateSnapshotPortalSections(portalId);
     if (heroActions) {
       const actionsByPortal = {
         home: [
@@ -2669,10 +2979,7 @@ function updatePortalShell(){
           { label:'Open Forecast', portal:'forecast' },
           { label:'Open This Week', portal:'week' }
         ],
-        today: [
-          { label:'Open Day Compare', scroll:'dayCompareCard' },
-          { label:'Jump to Entry', scroll:'addEntryCard' }
-        ],
+        today: [],
         forecast: [
           { label:'Open Today', portal:'today' },
           { label:'Open History', portal:'history' }
@@ -2704,17 +3011,10 @@ function updatePortalShell(){
         if (action.scroll) return `<button class="ghost" type="button" data-portal-scroll="${action.scroll}">${action.label}</button>`;
         return '';
       }).join('');
-      heroActions.querySelectorAll('[data-portal-jump]').forEach(btn => {
-        btn.addEventListener('click', () => setActivePortal(btn.getAttribute('data-portal-jump') || 'home'));
-      });
-      heroActions.querySelectorAll('[data-portal-scroll]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = btn.getAttribute('data-portal-scroll');
-          const node = id ? document.getElementById(id) : null;
-          if (node) node.scrollIntoView({ behavior:'smooth', block:'start' });
-        });
-      });
+      bindPortalActionNodes(heroActions);
     }
+    renderHomePortalSurface();
+    try{ buildInsightStrip(allRows || []); }catch(_){ }
   }catch(_){ }
 }
 
@@ -2722,14 +3022,23 @@ function setActivePortal(portalId){
   const valid = PORTAL_SECTION_MAP[portalId] ? portalId : 'home';
   saveStoredPortal(valid);
   const allowed = new Set(PORTAL_SECTION_MAP[valid] || []);
-  Object.values(PORTAL_SECTION_MAP).flat().forEach((id) => {
-    const node = document.getElementById(id);
-    if (!node) return;
-    if (id === 'portalHeroCard') {
+  const portalMain = document.getElementById('portalMain');
+  const controlledNodes = portalMain
+    ? Array.from(portalMain.children).filter(node => node && node.id)
+    : Object.values(PORTAL_SECTION_MAP)
+        .flat()
+        .map((id) => document.getElementById(id))
+        .filter(Boolean);
+  controlledNodes.forEach((node) => {
+    if (!node?.id) return;
+    if (node.id === 'portalHeroCard') {
       node.hidden = false;
+      node.dataset.portalHidden = 'false';
       return;
     }
-    node.hidden = !allowed.has(id);
+    const isAllowed = allowed.has(node.id);
+    node.hidden = !isAllowed;
+    node.dataset.portalHidden = isAllowed ? 'false' : 'true';
   });
   document.querySelectorAll('[data-portal-target]').forEach(btn => {
     const active = btn.getAttribute('data-portal-target') === valid;

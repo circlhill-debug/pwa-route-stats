@@ -153,6 +153,43 @@
   .portal-main{
     min-width:0;
   }
+  .portal-main > [data-portal-hidden="true"]{
+    display:none !important;
+  }
+  .home-surface{
+    display:grid;
+    gap:14px;
+  }
+  .home-mode-note{
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.45;
+  }
+  .home-quick-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    gap:10px;
+  }
+  .home-quick-stat{
+    border:1px solid color-mix(in srgb, var(--rs-border) 70%, #7ab8ff 30%);
+    border-radius:12px;
+    padding:12px;
+    background:rgba(148,180,220,.05);
+    display:grid;
+    gap:4px;
+  }
+  .home-quick-stat small{
+    color:var(--muted)!important;
+  }
+  .home-quick-stat strong{
+    font-size:1.15rem;
+    line-height:1.15;
+  }
+  .home-actions-inline{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
   .portal-hero{
     display:grid;
     gap:8px;
@@ -1187,6 +1224,17 @@
       <div class="actions" id="portalHeroActions"></div>
     </div>
   </section>
+  <section class="card fullWidth" id="homeSurfaceCard" style="display:none">
+    <div class="home-surface">
+      <div>
+        <h3 id="homeSurfaceTitle" style="margin:0 0 6px 0">Home</h3>
+        <div id="homeSurfaceNote" class="home-mode-note">—</div>
+      </div>
+      <div id="homeQuickStats" class="home-quick-grid"></div>
+      <div id="homeAlertCard" class="stat" style="display:none"></div>
+      <div id="homeSurfaceActions" class="home-actions-inline"></div>
+    </div>
+  </section>
   <section class="card fullWidth" id="insightStripCard" style="display:none">
     <div class="row" style="justify-content:space-between;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <div>
@@ -1199,7 +1247,7 @@
   <!-- SNAPSHOT -->
   <section class="card fullWidth" id="snapshotCard">
     <div class="snapshot-sections">
-    <div class="snapshot-section">
+    <div class="snapshot-section" id="snapshotTodaySection">
       <h4>Today</h4>
       <div class="snapshot-grid">
         <div class="stat">
@@ -1267,10 +1315,51 @@
         </div>
         <div class="stat full-span" id="todayHeaviness" style="display:none"></div>
       </div>
+    </div>
+
+    <div class="snapshot-section" id="snapshotForecastSection">
+      <h4>Forecast</h4>
+      <div class="snapshot-grid">
+        <div class="stat">
+          <small id="forecastFocusLabel">Upcoming workday</small>
+          <span id="forecastExpectedEnd" class="statValue statValue--lg">—</span>
+          <small id="forecastExpectedEndMeta" class="muted">Expected end</small>
+        </div>
+        <div class="stat">
+          <small>Expected Route</small>
+          <span id="forecastExpectedRoute" class="statValue statValue--lg">—</span>
+          <small id="forecastExpectedRouteMeta" class="muted">Weekday route average</small>
+        </div>
+        <div class="stat">
+          <small>Avg Hours</small>
+          <span id="forecastAvgHours" class="statValue statValue--lg">—</span>
+          <small class="muted">Same weekday average</small>
+        </div>
+        <div class="stat">
+          <small>Avg Parcels</small>
+          <span id="forecastAvgParcels" class="statValue statValue--lg">—</span>
+          <small class="muted">Same weekday average</small>
+        </div>
+        <div class="stat">
+          <small>Avg Letters</small>
+          <span id="forecastAvgLetters" class="statValue statValue--lg">—</span>
+          <small class="muted">Same weekday average</small>
+        </div>
+        <div class="stat">
+          <small>Avg Office</small>
+          <span id="forecastAvgOffice" class="statValue statValue--lg">—</span>
+          <small class="muted">Same weekday average</small>
+        </div>
+        <div class="stat">
+          <small>Avg Volume</small>
+          <span id="forecastAvgVolume" class="statValue statValue--lg">—</span>
+          <small class="muted">Parcels + w×letters</small>
+        </div>
+      </div>
       <div id="forecastBadgeContainer" class="forecast-badge-container"></div>
     </div>
 
-    <div class="snapshot-section">
+    <div class="snapshot-section" id="snapshotWeekSection">
       <h4>Week & USPS</h4>
       <div class="snapshot-grid">
         <div class="stat" id="tileWkHours" style="cursor:pointer" tabindex="0" title="Click for weekly hours breakdown">

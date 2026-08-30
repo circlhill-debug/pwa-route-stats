@@ -167,7 +167,15 @@ export function createSummariesFeature({
 
     try {
       const flags = getFlags();
-      if (!flags?.insightStrip) {
+      const activePortal = (() => {
+        try {
+          return localStorage.getItem('routeStats.portal.active') || 'home';
+        } catch (_) {
+          return 'home';
+        }
+      })();
+      const forceInsightStrip = activePortal === 'today';
+      if (!flags?.insightStrip && !forceInsightStrip) {
         card.style.display = 'none';
         return;
       }

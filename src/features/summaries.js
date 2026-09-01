@@ -36,6 +36,89 @@ export function createSummariesFeature({
     return false;
   }
 
+  function nthWeekdayOfMonth(year, month, weekday, ordinal) {
+    let dt = DateTime.fromObject({ year, month, day: 1 }, { zone: ZONE });
+    while ((dt.weekday % 7) !== weekday) dt = dt.plus({ days: 1 });
+    return dt.plus({ weeks: ordinal - 1 }).startOf('day');
+  }
+
+  function lastWeekdayOfMonth(year, month, weekday) {
+    let dt = DateTime.fromObject({ year, month, day: 1 }, { zone: ZONE }).endOf('month').startOf('day');
+    while ((dt.weekday % 7) !== weekday) dt = dt.minus({ days: 1 });
+    return dt;
+  }
+
+  function observedDate(dt) {
+    if (!dt?.isValid) return dt;
+    if (dt.weekday === 6) return dt.minus({ days: 1 }).startOf('day');
+    if (dt.weekday === 7) return dt.plus({ days: 1 }).startOf('day');
+    return dt.startOf('day');
+  }
+
+  function buildUspsHolidaySchedule(year) {
+    const fixedHoliday = (month, day, label) => ({
+      label,
+      actual: DateTime.fromObject({ year, month, day }, { zone: ZONE }).startOf('day')
+    });
+    const dynamic = [
+      { label: 'New Year\'s Day', actual: DateTime.fromObject({ year, month: 1, day: 1 }, { zone: ZONE }).startOf('day') },
+      { label: 'Martin Luther King Jr. Day', actual: nthWeekdayOfMonth(year, 1, 1, 3) },
+      { label: 'Presidents Day', actual: nthWeekdayOfMonth(year, 2, 1, 3) },
+      { label: 'Memorial Day', actual: lastWeekdayOfMonth(year, 5, 1) },
+      { label: 'Juneteenth', actual: DateTime.fromObject({ year, month: 6, day: 19 }, { zone: ZONE }).startOf('day') },
+      { label: 'Independence Day', actual: DateTime.fromObject({ year, month: 7, day: 4 }, { zone: ZONE }).startOf('day') },
+      { label: 'Labor Day', actual: nthWeekdayOfMonth(year, 9, 1, 1) },
+      { label: 'Columbus Day', actual: nthWeekdayOfMonth(year, 10, 1, 2) },
+      { label: 'Veterans Day', actual: DateTime.fromObject({ year, month: 11, day: 11 }, { zone: ZONE }).startOf('day') },
+      { label: 'Thanksgiving', actual: nthWeekdayOfMonth(year, 11, 4, 4) },
+      { label: 'Christmas Day', actual: DateTime.fromObject({ year, month: 12, day: 25 }, { zone: ZONE }).startOf('day') }
+    ];
+    return dynamic.map(item => ({
+      ...item,
+      observed: observedDate(item.actual)
+    }));
+  }
+
+  function firstWorkedDayAfter(rows, iso, limitDays = 7) {
+    if (!iso) return null;
+    const start = DateTime.fromISO(iso, { zone: ZONE }).startOf('day');
+    for (let offset = 1; offset <= limitDays; offset += 1) {
+      const targetIso = start.plus({ days: offset }).toISODate();
+      const row = (rows || []).find(r => r?.work_date === targetIso && hasMeaningfulWorkedData(r));
+      if (row) return row;
+    }
+    return null;
+  }
+
+  function inferHolidayAlert(scopedRows, now) {
+    const schedule = buildUspsHolidaySchedule(now.year);
+    const upcoming = schedule.find(holiday => {
+      const daysUntil = Math.round(holiday.observed.diff(now.startOf('day'), 'days').days);
+      return daysUntil >= 0 && daysUntil <= 7;
+    });
+    if (!upcoming) return null;
+    const previousYearMatch = buildUspsHolidaySchedule(now.year - 1).find(h => h.label === upcoming.label) || null;
+    if (!previousYearMatch) return null;
+
+    const priorPostHolidayRow = firstWorkedDayAfter(scopedRows, previousYearMatch.observed.toISODate(), 7);
+    if (!priorPostHolidayRow) return null;
+
+    const noteParts = [];
+    const reasonMatch = String(priorPostHolidayRow.weather_json || '').match(/Reason:\s*([^·]+)/i);
+    const noteText = (priorPostHolidayRow.notes || '').trim();
+    if (reasonMatch?.[1]) noteParts.push(reasonMatch[1].trim());
+    if (noteText) noteParts.push(noteText);
+
+    return {
+      label: upcoming.label,
+      observedIso: upcoming.observed.toISODate(),
+      targetWorkdayIso: firstWorkedDayAfter(scopedRows, upcoming.observed.toISODate(), 7)?.work_date || upcoming.observed.plus({ days: 1 }).toISODate(),
+      priorRow: priorPostHolidayRow,
+      daysUntil: Math.round(upcoming.observed.diff(now.startOf('day'), 'days').days),
+      note: noteParts.join(' · ')
+    };
+  }
+
   function getActiveWorkdayContext(rows, now = DateTime.now().setZone(ZONE)) {
     const worked = (rows || []).filter(r => r && r.status !== 'off');
     const todayIso = now.toISODate();
@@ -238,6 +321,27 @@ export function createSummariesFeature({
         support: volumeSupport,
         cue: volumeCue
       };
+
+      const postHolidayAlert = inferHolidayAlert(scoped, now);
+      const postHolidayCard = postHolidayAlert
+        ? {
+            kicker: 'Post Holiday Alert',
+            headline: postHolidayAlert.label,
+            support: `Prior catch-up: ${postHolidayAlert.priorRow.work_date}`,
+            cue: `
+              <div style="display:grid;gap:6px">
+                <div class="muted" style="font-size:12px">
+                  Parcels ${Math.round(+postHolidayAlert.priorRow.parcels || 0)} ·
+                  Letters ${Math.round(+postHolidayAlert.priorRow.letters || 0)} ·
+                  Office ${normalizeHoursValue(postHolidayAlert.priorRow.office_minutes).toFixed(1)}h ·
+                  Total ${normalizeHoursValue(postHolidayAlert.priorRow.hours).toFixed(1)}h
+                </div>
+                <div class="muted" style="font-size:12px">
+                  ${postHolidayAlert.note || 'What to expect based on the same post-holiday day last year.'}
+                </div>
+              </div>`
+          }
+        : null;
 
       const dismissedSet = new Set((loadDismissedResiduals() || []).map(item => item?.iso).filter(Boolean));
       const unresolvedResidual = residualEntry && !dismissedSet.has(todayIso) && Math.abs(Number(residualEntry.residMin) || 0) > 15
@@ -486,7 +590,7 @@ export function createSummariesFeature({
         };
       }
 
-      const cards = [workdayCard, routeCard, volumeCard, rotatingCard, lastYearEchoCard];
+      const cards = [workdayCard, routeCard, volumeCard, rotatingCard, postHolidayCard, lastYearEchoCard].filter(Boolean);
       el.innerHTML = cards.map(cardDef => `
         <div class="stat" style="min-height:132px;justify-content:space-between${cardDef.action ? ';cursor:pointer' : ''}"${cardDef.action ? ` data-insight-action="${cardDef.action}" data-insight-meta="${cardDef.actionMeta || ''}"` : ''}>
           <div>

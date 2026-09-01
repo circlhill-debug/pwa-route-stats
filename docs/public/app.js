@@ -5119,6 +5119,81 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       if ((+row.letters || 0) > 0) return true;
       return false;
     }
+    function nthWeekdayOfMonth(year, month, weekday, ordinal) {
+      let dt = DateTime.fromObject({ year, month, day: 1 }, { zone: ZONE });
+      while (dt.weekday % 7 !== weekday) dt = dt.plus({ days: 1 });
+      return dt.plus({ weeks: ordinal - 1 }).startOf("day");
+    }
+    function lastWeekdayOfMonth(year, month, weekday) {
+      let dt = DateTime.fromObject({ year, month, day: 1 }, { zone: ZONE }).endOf("month").startOf("day");
+      while (dt.weekday % 7 !== weekday) dt = dt.minus({ days: 1 });
+      return dt;
+    }
+    function observedDate(dt) {
+      if (!(dt == null ? void 0 : dt.isValid)) return dt;
+      if (dt.weekday === 6) return dt.minus({ days: 1 }).startOf("day");
+      if (dt.weekday === 7) return dt.plus({ days: 1 }).startOf("day");
+      return dt.startOf("day");
+    }
+    function buildUspsHolidaySchedule(year) {
+      const fixedHoliday = (month, day, label) => ({
+        label,
+        actual: DateTime.fromObject({ year, month, day }, { zone: ZONE }).startOf("day")
+      });
+      const dynamic = [
+        { label: "New Year's Day", actual: DateTime.fromObject({ year, month: 1, day: 1 }, { zone: ZONE }).startOf("day") },
+        { label: "Martin Luther King Jr. Day", actual: nthWeekdayOfMonth(year, 1, 1, 3) },
+        { label: "Presidents Day", actual: nthWeekdayOfMonth(year, 2, 1, 3) },
+        { label: "Memorial Day", actual: lastWeekdayOfMonth(year, 5, 1) },
+        { label: "Juneteenth", actual: DateTime.fromObject({ year, month: 6, day: 19 }, { zone: ZONE }).startOf("day") },
+        { label: "Independence Day", actual: DateTime.fromObject({ year, month: 7, day: 4 }, { zone: ZONE }).startOf("day") },
+        { label: "Labor Day", actual: nthWeekdayOfMonth(year, 9, 1, 1) },
+        { label: "Columbus Day", actual: nthWeekdayOfMonth(year, 10, 1, 2) },
+        { label: "Veterans Day", actual: DateTime.fromObject({ year, month: 11, day: 11 }, { zone: ZONE }).startOf("day") },
+        { label: "Thanksgiving", actual: nthWeekdayOfMonth(year, 11, 4, 4) },
+        { label: "Christmas Day", actual: DateTime.fromObject({ year, month: 12, day: 25 }, { zone: ZONE }).startOf("day") }
+      ];
+      return dynamic.map((item) => ({
+        ...item,
+        observed: observedDate(item.actual)
+      }));
+    }
+    function firstWorkedDayAfter(rows, iso, limitDays = 7) {
+      if (!iso) return null;
+      const start2 = DateTime.fromISO(iso, { zone: ZONE }).startOf("day");
+      for (let offset = 1; offset <= limitDays; offset += 1) {
+        const targetIso = start2.plus({ days: offset }).toISODate();
+        const row = (rows || []).find((r) => (r == null ? void 0 : r.work_date) === targetIso && hasMeaningfulWorkedData2(r));
+        if (row) return row;
+      }
+      return null;
+    }
+    function inferHolidayAlert(scopedRows, now) {
+      var _a5;
+      const schedule = buildUspsHolidaySchedule(now.year);
+      const upcoming = schedule.find((holiday2) => {
+        const daysUntil = Math.round(holiday2.observed.diff(now.startOf("day"), "days").days);
+        return daysUntil >= 0 && daysUntil <= 7;
+      });
+      if (!upcoming) return null;
+      const previousYearMatch = buildUspsHolidaySchedule(now.year - 1).find((h) => h.label === upcoming.label) || null;
+      if (!previousYearMatch) return null;
+      const priorPostHolidayRow = firstWorkedDayAfter(scopedRows, previousYearMatch.observed.toISODate(), 7);
+      if (!priorPostHolidayRow) return null;
+      const noteParts = [];
+      const reasonMatch = String(priorPostHolidayRow.weather_json || "").match(/Reason:\s*([^·]+)/i);
+      const noteText = (priorPostHolidayRow.notes || "").trim();
+      if (reasonMatch == null ? void 0 : reasonMatch[1]) noteParts.push(reasonMatch[1].trim());
+      if (noteText) noteParts.push(noteText);
+      return {
+        label: upcoming.label,
+        observedIso: upcoming.observed.toISODate(),
+        targetWorkdayIso: ((_a5 = firstWorkedDayAfter(scopedRows, upcoming.observed.toISODate(), 7)) == null ? void 0 : _a5.work_date) || upcoming.observed.plus({ days: 1 }).toISODate(),
+        priorRow: priorPostHolidayRow,
+        daysUntil: Math.round(upcoming.observed.diff(now.startOf("day"), "days").days),
+        note: noteParts.join(" \xB7 ")
+      };
+    }
     function getActiveWorkdayContext(rows, now = DateTime.now().setZone(ZONE)) {
       const worked = (rows || []).filter((r) => r && r.status !== "off");
       const todayIso2 = now.toISODate();
@@ -5285,6 +5360,24 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           support: volumeSupport,
           cue: volumeCue
         };
+        const postHolidayAlert = inferHolidayAlert(scoped, now);
+        const postHolidayCard = postHolidayAlert ? {
+          kicker: "Post Holiday Alert",
+          headline: postHolidayAlert.label,
+          support: `Prior catch-up: ${postHolidayAlert.priorRow.work_date}`,
+          cue: `
+              <div style="display:grid;gap:6px">
+                <div class="muted" style="font-size:12px">
+                  Parcels ${Math.round(+postHolidayAlert.priorRow.parcels || 0)} \xB7
+                  Letters ${Math.round(+postHolidayAlert.priorRow.letters || 0)} \xB7
+                  Office ${normalizeHoursValue(postHolidayAlert.priorRow.office_minutes).toFixed(1)}h \xB7
+                  Total ${normalizeHoursValue(postHolidayAlert.priorRow.hours).toFixed(1)}h
+                </div>
+                <div class="muted" style="font-size:12px">
+                  ${postHolidayAlert.note || "What to expect based on the same post-holiday day last year."}
+                </div>
+              </div>`
+        } : null;
         const dismissedSet = new Set((loadDismissedResiduals2() || []).map((item) => item == null ? void 0 : item.iso).filter(Boolean));
         const unresolvedResidual = residualEntry && !dismissedSet.has(todayIso2) && Math.abs(Number(residualEntry.residMin) || 0) > 15 ? Math.round(residualEntry.residMin) : null;
         const latestUnrevealedBadge = (() => {
@@ -5515,7 +5608,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             </div>`
           };
         }
-        const cards = [workdayCard, routeCard, volumeCard, rotatingCard, lastYearEchoCard];
+        const cards = [workdayCard, routeCard, volumeCard, rotatingCard, postHolidayCard, lastYearEchoCard].filter(Boolean);
         el.innerHTML = cards.map((cardDef) => `
         <div class="stat" style="min-height:132px;justify-content:space-between${cardDef.action ? ";cursor:pointer" : ""}"${cardDef.action ? ` data-insight-action="${cardDef.action}" data-insight-meta="${cardDef.actionMeta || ""}"` : ""}>
           <div>
@@ -6126,6 +6219,18 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     const hasCode = base.toLowerCase().includes(code.toLowerCase());
     return hasCode ? base : `${base} ${code}`;
   }
+  function getEvalVolumeShapeLabel(profile) {
+    if (!profile) return "Evaluation";
+    const base = getEvalHeaderLabel(profile);
+    const { from, to } = getProfileRange(profile);
+    if (!(from == null ? void 0 : from.isValid) || !(to == null ? void 0 : to.isValid)) return base;
+    let displayTo = to;
+    if (to.day === 1 && to.hour === 23 && to.minute === 59) {
+      displayTo = to.minus({ days: 1 });
+    }
+    const monthSpan = `${from.toFormat("LLL")}-${displayTo.toFormat("LLL")}`;
+    return `${base} (${monthSpan})`;
+  }
   function applyEvalProfileToInputs(profileId) {
     const profile = getEvalProfileById(profileId) || USPS_EVAL || EVAL_PROFILES && EVAL_PROFILES[0] || null;
     if (!profile) return;
@@ -6498,6 +6603,163 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (!summary) return "No comparison data available.";
     return summary.narrative;
   }
+  function buildEvalVolumeShape(rows) {
+    var _a5;
+    const card = document.getElementById("evalVolumeShapeCard");
+    const canvas = document.getElementById("evalVolumeShapeChart");
+    const textEl = document.getElementById("evalVolumeShapeText");
+    if (!card || !canvas || !textEl) return;
+    const destroyChart = () => {
+      if (evalVolumeShapeChart && typeof evalVolumeShapeChart.destroy === "function") {
+        try {
+          evalVolumeShapeChart.destroy();
+        } catch (_) {
+        }
+      }
+      evalVolumeShapeChart = null;
+    };
+    const profiles = getOrderedEvalProfiles();
+    if (!Array.isArray(profiles) || profiles.length < 2) {
+      card.style.display = "none";
+      destroyChart();
+      return;
+    }
+    const activeId = findActiveEvalProfileId() || (USPS_EVAL == null ? void 0 : USPS_EVAL.profileId) || ((_a5 = profiles[profiles.length - 1]) == null ? void 0 : _a5.profileId) || null;
+    const activeProfile = getEvalProfileById(activeId) || profiles[profiles.length - 1] || null;
+    const priorProfile = activeProfile ? getPreviousEvalProfile(activeProfile.profileId) : null;
+    if (!activeProfile || !priorProfile) {
+      card.style.display = "none";
+      destroyChart();
+      return;
+    }
+    const workedRows = selectWorkedRows(rows || []);
+    const weight = CURRENT_LETTER_WEIGHT || 0.33;
+    const buildWeeklySeries = (profile) => {
+      const { from } = getProfileRange(profile);
+      if (!from || !from.isValid) return [];
+      const scoped = rowsForEvaluationRange(workedRows, profile).sort((a, b) => String(a.work_date).localeCompare(String(b.work_date)));
+      const buckets = /* @__PURE__ */ new Map();
+      scoped.forEach((row) => {
+        const dt = DateTime.fromISO(row.work_date, { zone: ZONE });
+        if (!dt.isValid) return;
+        const weekIndex = Math.floor(dt.startOf("day").diff(from.startOf("day"), "days").days / 7) + 1;
+        if (weekIndex < 1) return;
+        const bucket = buckets.get(weekIndex) || { volume: 0, count: 0 };
+        bucket.volume += combinedVolume(+row.parcels || 0, +row.letters || 0, weight);
+        bucket.count += 1;
+        buckets.set(weekIndex, bucket);
+      });
+      return Array.from(buckets.entries()).sort((a, b) => a[0] - b[0]).map(([weekIndex, bucket]) => ({
+        weekIndex,
+        avgVolume: bucket.count ? bucket.volume / bucket.count : null,
+        totalVolume: bucket.volume,
+        workedDays: bucket.count
+      })).filter((point) => Number.isFinite(point.avgVolume));
+    };
+    const currentSeries = buildWeeklySeries(activeProfile);
+    const priorSeries = buildWeeklySeries(priorProfile);
+    const compareLength = Math.min(currentSeries.length, priorSeries.length);
+    if (!compareLength) {
+      card.style.display = "none";
+      destroyChart();
+      return;
+    }
+    const currentPoints = currentSeries.slice(0, compareLength);
+    const priorPoints = priorSeries.slice(0, compareLength);
+    const labels = currentPoints.map((_, idx) => `W${idx + 1}`);
+    const currentTotalVolume = currentPoints.reduce((sum, point) => sum + (point.totalVolume || 0), 0);
+    const currentWorkedDays = currentPoints.reduce((sum, point) => sum + (point.workedDays || 0), 0);
+    const priorTotalVolume = priorPoints.reduce((sum, point) => sum + (point.totalVolume || 0), 0);
+    const priorWorkedDays = priorPoints.reduce((sum, point) => sum + (point.workedDays || 0), 0);
+    const currentAvg = currentWorkedDays ? currentTotalVolume / currentWorkedDays : null;
+    const priorAvg = priorWorkedDays ? priorTotalVolume / priorWorkedDays : null;
+    const pctDelta = priorAvg > 0 ? (currentAvg - priorAvg) / priorAvg * 100 : null;
+    const roundedPct = pctDelta == null ? null : Math.round(pctDelta);
+    if (roundedPct == null) {
+      textEl.textContent = "Need more evaluation history.";
+    } else if (Math.abs(roundedPct) < 1) {
+      textEl.textContent = `Current eval is tracking near prior eval cumulatively through week ${compareLength}.`;
+    } else {
+      textEl.textContent = `Current eval is ${roundedPct > 0 ? "heavier" : "lighter"} by ${Math.abs(roundedPct)}% cumulatively through week ${compareLength}.`;
+    }
+    card.style.display = "";
+    if (typeof Chart === "undefined") {
+      destroyChart();
+      return;
+    }
+    destroyChart();
+    evalVolumeShapeChart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: getEvalVolumeShapeLabel(priorProfile),
+            data: priorPoints.map((point) => +point.avgVolume.toFixed(1)),
+            borderColor: "rgba(255,255,255,0.45)",
+            backgroundColor: "rgba(255,255,255,0.18)",
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointHitRadius: 14,
+            borderWidth: 2,
+            tension: 0.28
+          },
+          {
+            label: getEvalVolumeShapeLabel(activeProfile),
+            data: currentPoints.map((point) => +point.avgVolume.toFixed(1)),
+            borderColor: "#7ab8ff",
+            backgroundColor: "rgba(122,184,255,0.22)",
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointHitRadius: 14,
+            borderWidth: 2,
+            tension: 0.28
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: "nearest",
+          axis: "x",
+          intersect: false
+        },
+        plugins: {
+          legend: {
+            display: true,
+            labels: { boxWidth: 10, boxHeight: 10, color: "#cbd5e1" }
+          },
+          tooltip: {
+            callbacks: {
+              title: (items) => {
+                const first = items == null ? void 0 : items[0];
+                return (first == null ? void 0 : first.label) ? `Week ${String(first.label).replace(/^W/, "")}` : "Week";
+              },
+              label: (ctx) => {
+                const val = Number(ctx.raw);
+                if (!Number.isFinite(val)) return `${ctx.dataset.label}: \u2014`;
+                return `${ctx.dataset.label}: ${val.toFixed(1)} vol`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: "#94a3b8", maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+            grid: { display: false }
+          },
+          y: {
+            ticks: {
+              color: "#94a3b8",
+              callback: (value) => `${value}`
+            },
+            grid: { color: "rgba(148, 163, 184, 0.12)" }
+          }
+        }
+      }
+    });
+  }
   function computeEvaluationProgress(profile) {
     if (!profile) return { hasActiveWindow: false };
     const today = DateTime.now().setZone(ZONE).startOf("day");
@@ -6556,6 +6818,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     compareId: null,
     last14: false
   };
+  var evalVolumeShapeChart = null;
   var parserChart = null;
   var sleepTrendChart = null;
   var sleepWeekdayChart = null;
@@ -8293,6 +8556,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     buildMonthlyGlance(rawRows);
     buildQuickFilter(rawRows);
     buildMixViz(rawRows);
+    buildEvalVolumeShape(rawRows);
     buildHeadlineDigest(rawRows);
     buildSmartSummary(rawRows);
     buildTrendingFactors(rawRows);

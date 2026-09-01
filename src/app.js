@@ -407,6 +407,19 @@ window.__sb = createSupabaseClient();
     return hasCode ? base : `${base} ${code}`;
   }
 
+  function getEvalVolumeShapeLabel(profile){
+    if (!profile) return 'Evaluation';
+    const base = getEvalHeaderLabel(profile);
+    const { from, to } = getProfileRange(profile);
+    if (!from?.isValid || !to?.isValid) return base;
+    let displayTo = to;
+    if (to.day === 1 && to.hour === 23 && to.minute === 59){
+      displayTo = to.minus({ days: 1 });
+    }
+    const monthSpan = `${from.toFormat('LLL')}-${displayTo.toFormat('LLL')}`;
+    return `${base} (${monthSpan})`;
+  }
+
   function applyEvalProfileToInputs(profileId){
     const profile = getEvalProfileById(profileId) || USPS_EVAL || (EVAL_PROFILES && EVAL_PROFILES[0]) || null;
     if (!profile) return;
@@ -807,6 +820,173 @@ window.__sb = createSupabaseClient();
     return summary.narrative;
   }
 
+  function buildEvalVolumeShape(rows){
+    const card = document.getElementById('evalVolumeShapeCard');
+    const canvas = document.getElementById('evalVolumeShapeChart');
+    const textEl = document.getElementById('evalVolumeShapeText');
+    if (!card || !canvas || !textEl) return;
+
+    const destroyChart = () => {
+      if (evalVolumeShapeChart && typeof evalVolumeShapeChart.destroy === 'function'){
+        try { evalVolumeShapeChart.destroy(); } catch (_) { }
+      }
+      evalVolumeShapeChart = null;
+    };
+
+    const profiles = getOrderedEvalProfiles();
+    if (!Array.isArray(profiles) || profiles.length < 2){
+      card.style.display = 'none';
+      destroyChart();
+      return;
+    }
+
+    const activeId = findActiveEvalProfileId() || USPS_EVAL?.profileId || profiles[profiles.length - 1]?.profileId || null;
+    const activeProfile = getEvalProfileById(activeId) || profiles[profiles.length - 1] || null;
+    const priorProfile = activeProfile ? getPreviousEvalProfile(activeProfile.profileId) : null;
+    if (!activeProfile || !priorProfile){
+      card.style.display = 'none';
+      destroyChart();
+      return;
+    }
+
+    const workedRows = selectWorkedRows(rows || []);
+    const weight = CURRENT_LETTER_WEIGHT || 0.33;
+    const buildWeeklySeries = (profile) => {
+      const { from } = getProfileRange(profile);
+      if (!from || !from.isValid) return [];
+      const scoped = rowsForEvaluationRange(workedRows, profile)
+        .sort((a, b) => String(a.work_date).localeCompare(String(b.work_date)));
+      const buckets = new Map();
+      scoped.forEach((row) => {
+        const dt = DateTime.fromISO(row.work_date, { zone: ZONE });
+        if (!dt.isValid) return;
+        const weekIndex = Math.floor(dt.startOf('day').diff(from.startOf('day'), 'days').days / 7) + 1;
+        if (weekIndex < 1) return;
+        const bucket = buckets.get(weekIndex) || { volume: 0, count: 0 };
+        bucket.volume += combinedVolume(+row.parcels || 0, +row.letters || 0, weight);
+        bucket.count += 1;
+        buckets.set(weekIndex, bucket);
+      });
+      return Array.from(buckets.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([weekIndex, bucket]) => ({
+          weekIndex,
+          avgVolume: bucket.count ? bucket.volume / bucket.count : null,
+          totalVolume: bucket.volume,
+          workedDays: bucket.count
+        }))
+        .filter(point => Number.isFinite(point.avgVolume));
+    };
+
+    const currentSeries = buildWeeklySeries(activeProfile);
+    const priorSeries = buildWeeklySeries(priorProfile);
+    const compareLength = Math.min(currentSeries.length, priorSeries.length);
+    if (!compareLength){
+      card.style.display = 'none';
+      destroyChart();
+      return;
+    }
+
+    const currentPoints = currentSeries.slice(0, compareLength);
+    const priorPoints = priorSeries.slice(0, compareLength);
+    const labels = currentPoints.map((_, idx) => `W${idx + 1}`);
+    const currentTotalVolume = currentPoints.reduce((sum, point) => sum + (point.totalVolume || 0), 0);
+    const currentWorkedDays = currentPoints.reduce((sum, point) => sum + (point.workedDays || 0), 0);
+    const priorTotalVolume = priorPoints.reduce((sum, point) => sum + (point.totalVolume || 0), 0);
+    const priorWorkedDays = priorPoints.reduce((sum, point) => sum + (point.workedDays || 0), 0);
+    const currentAvg = currentWorkedDays ? currentTotalVolume / currentWorkedDays : null;
+    const priorAvg = priorWorkedDays ? priorTotalVolume / priorWorkedDays : null;
+    const pctDelta = priorAvg > 0 ? ((currentAvg - priorAvg) / priorAvg) * 100 : null;
+    const roundedPct = pctDelta == null ? null : Math.round(pctDelta);
+
+    if (roundedPct == null){
+      textEl.textContent = 'Need more evaluation history.';
+    } else if (Math.abs(roundedPct) < 1){
+      textEl.textContent = `Current eval is tracking near prior eval cumulatively through week ${compareLength}.`;
+    } else {
+      textEl.textContent = `Current eval is ${roundedPct > 0 ? 'heavier' : 'lighter'} by ${Math.abs(roundedPct)}% cumulatively through week ${compareLength}.`;
+    }
+
+    card.style.display = '';
+    if (typeof Chart === 'undefined'){
+      destroyChart();
+      return;
+    }
+    destroyChart();
+
+    evalVolumeShapeChart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: getEvalVolumeShapeLabel(priorProfile),
+            data: priorPoints.map(point => +point.avgVolume.toFixed(1)),
+            borderColor: 'rgba(255,255,255,0.45)',
+            backgroundColor: 'rgba(255,255,255,0.18)',
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointHitRadius: 14,
+            borderWidth: 2,
+            tension: 0.28
+          },
+          {
+            label: getEvalVolumeShapeLabel(activeProfile),
+            data: currentPoints.map(point => +point.avgVolume.toFixed(1)),
+            borderColor: '#7ab8ff',
+            backgroundColor: 'rgba(122,184,255,0.22)',
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointHitRadius: 14,
+            borderWidth: 2,
+            tension: 0.28
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'nearest',
+          axis: 'x',
+          intersect: false
+        },
+        plugins: {
+          legend: {
+            display: true,
+            labels: { boxWidth: 10, boxHeight: 10, color: '#cbd5e1' }
+          },
+          tooltip: {
+            callbacks: {
+              title: (items) => {
+                const first = items?.[0];
+                return first?.label ? `Week ${String(first.label).replace(/^W/, '')}` : 'Week';
+              },
+              label: (ctx) => {
+                const val = Number(ctx.raw);
+                if (!Number.isFinite(val)) return `${ctx.dataset.label}: —`;
+                return `${ctx.dataset.label}: ${val.toFixed(1)} vol`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#94a3b8', maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+            grid: { display: false }
+          },
+          y: {
+            ticks: {
+              color: '#94a3b8',
+              callback: (value) => `${value}`
+            },
+            grid: { color: 'rgba(148, 163, 184, 0.12)' }
+          }
+        }
+      }
+    });
+  }
+
   function computeEvaluationProgress(profile){
     if (!profile) return { hasActiveWindow:false };
     const today = DateTime.now().setZone(ZONE).startOf('day');
@@ -872,6 +1052,7 @@ window.__sb = createSupabaseClient();
     compareId: null,
     last14: false
   };
+  let evalVolumeShapeChart = null;
 
   // === Feature Flags (localStorage) ===
   let parserChart = null;
@@ -2546,6 +2727,7 @@ function getHourlyRateFromEval(){
     buildMonthlyGlance(rawRows);
     buildQuickFilter(rawRows);
     buildMixViz(rawRows);
+    buildEvalVolumeShape(rawRows);
     buildHeadlineDigest(rawRows);
     buildSmartSummary(rawRows);
     buildTrendingFactors(rawRows);

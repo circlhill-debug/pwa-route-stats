@@ -887,8 +887,9 @@ window.__sb = createSupabaseClient();
     // Retain calendar-week positions. An off or vacation week is a gap, not a zero-volume week.
     const compareThroughWeek = Math.min(currentLastWeek, priorLastWeek);
     if (!compareThroughWeek){
-      card.style.display = 'none';
+      card.style.display = '';
       destroyChart();
+      textEl.textContent = 'Waiting for worked days in both the current and prior evaluations.';
       return;
     }
 

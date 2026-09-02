@@ -6664,8 +6664,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     const priorLastWeek = priorSeries.length ? priorSeries[priorSeries.length - 1].weekIndex : 0;
     const compareThroughWeek = Math.min(currentLastWeek, priorLastWeek);
     if (!compareThroughWeek) {
-      card.style.display = "none";
+      card.style.display = "";
       destroyChart();
+      textEl.textContent = "Waiting for worked days in both the current and prior evaluations.";
       return;
     }
     const labels = Array.from({ length: compareThroughWeek }, (_, idx) => `W${idx + 1}`);

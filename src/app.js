@@ -66,6 +66,7 @@ import { computeForecastText, storeForecastSnapshot, saveForecastSnapshot, syncF
 import { buildForecastRenderPlan, buildForecastSnapshotFromPayload } from './modules/forecastSurface.js';
 import { buildPredictionRecord } from './modules/predictionRecord.js';
 import { buildWeeklyComparisonPacket, getWeeklyComparisonMode, formatWeeklyComparisonSummary } from './modules/weeklyComparisons.js';
+import { getEffectiveEvaluationHourly, getEvaluationPayAllocation } from './modules/evaluationPay.js';
 import { USER_SETTINGS_SELECT, USER_SETTINGS_TABLE, applyRemoteUserSettingsData, buildUserSettingsPayload } from './modules/userSettingsSync.js';
 import { fitVolumeTimeModel as fitSharedVolumeTimeModel, learnedLetterWeightFromModel } from './modules/volumeModel.js';
 
@@ -700,8 +701,11 @@ window.__sb = createSupabaseClient();
 
     const avg = (value) => (days > 0 ? value / days : null);
     const avgDeltaHoursPerDay = deltaCount > 0 ? deltaSum / deltaCount : null;
-    const quarterlyPay = Number.isFinite(Number(profile?.annualSalary)) ? Number(profile.annualSalary) / 4 : null;
-    const effectiveHourly = quarterlyPay && totals.hours > 0 ? quarterlyPay / totals.hours : null;
+    const evaluationPayAllocation = getEvaluationPayAllocation(profile);
+    const evaluationHours = worked.reduce((sum, row) => sum + normalizeHoursValue(row?.hours), 0);
+    const evaluationPay = evaluationPayAllocation?.evaluationPay ?? null;
+    // Paid time off receives calendar pay but never adds to logged work hours.
+    const effectiveHourly = getEffectiveEvaluationHourly(profile, evaluationHours);
     const volumePerHour = (totals.hours > 0) ? (totals.volume / totals.hours) : null;
     const parcelsPerHour = (totals.hours > 0) ? (totals.parcels / totals.hours) : null;
     const volumePerEvalHour = Number.isFinite(evalHoursPerDay) && evalHoursPerDay > 0 ? ((avg(totals.volume)) / evalHoursPerDay) : null;
@@ -729,7 +733,9 @@ window.__sb = createSupabaseClient();
       avgDeltaHoursPerDay,
       overEvalDays,
       underEvalDays,
-      quarterlyPay,
+      evaluationPay,
+      evaluationHours,
+      evaluationPayMonths: evaluationPayAllocation?.calendarMonths ?? null,
       effectiveHourly,
       density: {
         volumePerHour,
@@ -4067,7 +4073,7 @@ function getHourlyRateFromEval(){
           { k:'Avg flats/day', v: formatMaybe(activeMetrics.averages.flatsPerDay, 1), cls: 'eval-neutral' },
           { k:'Total hours', v: formatMaybe(activeMetrics.totals.hours, 1, 'h'), cls: 'eval-neutral' },
           { k:'Days logged', v: formatNumber(activeMetrics.workedDays, 0), cls: 'eval-neutral' },
-          { k:'Quarterly pay', v: formatMoney(activeMetrics.quarterlyPay, 0), cls: 'eval-neutral' },
+          { k:'Evaluation pay', v: formatMoney(activeMetrics.evaluationPay, 0), cls: 'eval-neutral' },
           { k:'Volume/hour', v: formatMaybe(activeMetrics.density.volumePerHour, 2), cls: 'eval-neutral' },
           { k:'Parcels/hour', v: formatMaybe(activeMetrics.density.parcelsPerHour, 2), cls: 'eval-neutral' },
           { k:'Avg delta/day', v: formatSignedMaybe(activeMetrics.avgDeltaHoursPerDay, 2, 'h'), cls: metricClassByDelta(activeMetrics.avgDeltaHoursPerDay, 'overUnder') }
@@ -4099,7 +4105,7 @@ function getHourlyRateFromEval(){
           { label: 'Avg hours/day', value: formatMaybe(metrics.averages.hoursPerDay, 2, 'h') },
           { label: 'Avg delta/day', value: formatSignedMaybe(metrics.avgDeltaHoursPerDay, 2, 'h'), cls: metricClassByDelta(metrics.avgDeltaHoursPerDay, 'overUnder') },
           { label: 'Effective $/hour', value: formatMoney(metrics.effectiveHourly) },
-          { label: 'Evaluated pay', value: formatMoney(metrics.profile?.annualSalary, 0) }
+          { label: 'Annual pay', value: formatMoney(metrics.profile?.annualSalary, 0) }
         ]);
         renderEvalList(evalPaneA, paneItems(compareMetrics));
         renderEvalList(evalPaneB, paneItems(activeMetrics));

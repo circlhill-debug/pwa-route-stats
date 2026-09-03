@@ -2017,6 +2017,43 @@
     return `${packet.label} \xB7 ${parts.join(". ")}`;
   }
 
+  // src/modules/evaluationPay.js
+  function parseIsoDate(value) {
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (!Number.isInteger(year) || month < 1 || month > 12 || day < 1 || day > 31) return null;
+    return { year, month, day };
+  }
+  function getEvaluationPayAllocation(profile) {
+    const annualPay = Number(profile == null ? void 0 : profile.annualSalary);
+    if (!Number.isFinite(annualPay) || annualPay <= 0) return null;
+    const from = parseIsoDate(profile == null ? void 0 : profile.effectiveFrom);
+    const to = parseIsoDate(profile == null ? void 0 : profile.effectiveTo);
+    if (!from || !to) return { annualPay, calendarMonths: 6, payShare: 0.5, evaluationPay: annualPay / 2 };
+    let endYear = to.year;
+    let endMonth = to.month;
+    if (to.day === 1) {
+      endMonth -= 1;
+      if (endMonth === 0) {
+        endMonth = 12;
+        endYear -= 1;
+      }
+    }
+    const calendarMonths = (endYear - from.year) * 12 + (endMonth - from.month) + 1;
+    if (!Number.isFinite(calendarMonths) || calendarMonths <= 0) return null;
+    const payShare = calendarMonths / 12;
+    return { annualPay, calendarMonths, payShare, evaluationPay: annualPay * payShare };
+  }
+  function getEffectiveEvaluationHourly(profile, loggedHours) {
+    const allocation = getEvaluationPayAllocation(profile);
+    const hours = Number(loggedHours);
+    if (!allocation || !Number.isFinite(hours) || hours <= 0) return null;
+    return allocation.evaluationPay / hours;
+  }
+
   // src/modules/userSettingsSync.js
   var USER_SETTINGS_TABLE = "user_settings";
   var USER_SETTINGS_SELECT = "eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed";
@@ -6443,6 +6480,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     return (rows || []).filter((row) => row && row.status !== "off" && row.work_date);
   }
   function computeWindowMetrics(profile, rows, options = {}) {
+    var _a5, _b;
     const threshold = 0.1;
     const worked = rowsForEvaluationRange(selectWorkedRows(rows), profile).sort((a, b) => String(a.work_date).localeCompare(String(b.work_date)));
     const wantsLast14 = !!options.last14;
@@ -6465,12 +6503,12 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     let overEvalDays = 0;
     let underEvalDays = 0;
     selected.forEach((row) => {
-      var _a5;
+      var _a6;
       const parcels2 = Number(row == null ? void 0 : row.parcels) || 0;
       const letters2 = Number(row == null ? void 0 : row.letters) || 0;
       const flats = getFlatCount(row);
       const hours = normalizeHoursValue(row == null ? void 0 : row.hours);
-      const officeTime = normalizeHoursValue((_a5 = row == null ? void 0 : row.office_minutes) != null ? _a5 : row == null ? void 0 : row.officeMinutes);
+      const officeTime = normalizeHoursValue((_a6 = row == null ? void 0 : row.office_minutes) != null ? _a6 : row == null ? void 0 : row.officeMinutes);
       const miles2 = Number(row == null ? void 0 : row.miles) || 0;
       const volume = parcels2 + letters2 + flats;
       totals.parcels += parcels2;
@@ -6490,8 +6528,10 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     });
     const avg = (value) => days > 0 ? value / days : null;
     const avgDeltaHoursPerDay = deltaCount > 0 ? deltaSum / deltaCount : null;
-    const quarterlyPay = Number.isFinite(Number(profile == null ? void 0 : profile.annualSalary)) ? Number(profile.annualSalary) / 4 : null;
-    const effectiveHourly = quarterlyPay && totals.hours > 0 ? quarterlyPay / totals.hours : null;
+    const evaluationPayAllocation = getEvaluationPayAllocation(profile);
+    const evaluationHours = worked.reduce((sum, row) => sum + normalizeHoursValue(row == null ? void 0 : row.hours), 0);
+    const evaluationPay = (_a5 = evaluationPayAllocation == null ? void 0 : evaluationPayAllocation.evaluationPay) != null ? _a5 : null;
+    const effectiveHourly = getEffectiveEvaluationHourly(profile, evaluationHours);
     const volumePerHour = totals.hours > 0 ? totals.volume / totals.hours : null;
     const parcelsPerHour = totals.hours > 0 ? totals.parcels / totals.hours : null;
     const volumePerEvalHour = Number.isFinite(evalHoursPerDay) && evalHoursPerDay > 0 ? avg(totals.volume) / evalHoursPerDay : null;
@@ -6516,7 +6556,9 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       avgDeltaHoursPerDay,
       overEvalDays,
       underEvalDays,
-      quarterlyPay,
+      evaluationPay,
+      evaluationHours,
+      evaluationPayMonths: (_b = evaluationPayAllocation == null ? void 0 : evaluationPayAllocation.calendarMonths) != null ? _b : null,
       effectiveHourly,
       density: {
         volumePerHour,
@@ -10022,7 +10064,7 @@ ${lettersSummary}`;
           { k: "Avg flats/day", v: formatMaybe(activeMetrics.averages.flatsPerDay, 1), cls: "eval-neutral" },
           { k: "Total hours", v: formatMaybe(activeMetrics.totals.hours, 1, "h"), cls: "eval-neutral" },
           { k: "Days logged", v: formatNumber(activeMetrics.workedDays, 0), cls: "eval-neutral" },
-          { k: "Quarterly pay", v: formatMoney(activeMetrics.quarterlyPay, 0), cls: "eval-neutral" },
+          { k: "Evaluation pay", v: formatMoney(activeMetrics.evaluationPay, 0), cls: "eval-neutral" },
           { k: "Volume/hour", v: formatMaybe(activeMetrics.density.volumePerHour, 2), cls: "eval-neutral" },
           { k: "Parcels/hour", v: formatMaybe(activeMetrics.density.parcelsPerHour, 2), cls: "eval-neutral" },
           { k: "Avg delta/day", v: formatSignedMaybe(activeMetrics.avgDeltaHoursPerDay, 2, "h"), cls: metricClassByDelta(activeMetrics.avgDeltaHoursPerDay, "overUnder") }
@@ -10053,7 +10095,7 @@ ${lettersSummary}`;
             { label: "Avg hours/day", value: formatMaybe(metrics.averages.hoursPerDay, 2, "h") },
             { label: "Avg delta/day", value: formatSignedMaybe(metrics.avgDeltaHoursPerDay, 2, "h"), cls: metricClassByDelta(metrics.avgDeltaHoursPerDay, "overUnder") },
             { label: "Effective $/hour", value: formatMoney(metrics.effectiveHourly) },
-            { label: "Evaluated pay", value: formatMoney((_a6 = metrics.profile) == null ? void 0 : _a6.annualSalary, 0) }
+            { label: "Annual pay", value: formatMoney((_a6 = metrics.profile) == null ? void 0 : _a6.annualSalary, 0) }
           ];
         };
         renderEvalList(evalPaneA, paneItems(compareMetrics));

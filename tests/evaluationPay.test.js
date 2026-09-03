@@ -14,15 +14,15 @@ describe('evaluation pay allocation', () => {
     expect(getEffectiveEvaluationHourly(profile, 860.9)).toBeCloseTo(36.5896, 3);
   });
 
-  it('treats a first-of-month end as the next evaluation boundary', () => {
+  it('keeps pay at half the annual salary when data dates span seven labeled months', () => {
     const profile = {
-      annualSalary: 63000,
-      effectiveFrom: '2026-04-01',
-      effectiveTo: '2026-10-01'
+      annualSalary: 57700,
+      effectiveFrom: '2026-03-01',
+      effectiveTo: '2026-09-30'
     };
     expect(getEvaluationPayAllocation(profile)).toMatchObject({
       calendarMonths: 6,
-      evaluationPay: 31500
+      evaluationPay: 28850
     });
   });
 });

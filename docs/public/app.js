@@ -2018,34 +2018,10 @@
   }
 
   // src/modules/evaluationPay.js
-  function parseIsoDate(value) {
-    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (!match) return null;
-    const year = Number(match[1]);
-    const month = Number(match[2]);
-    const day = Number(match[3]);
-    if (!Number.isInteger(year) || month < 1 || month > 12 || day < 1 || day > 31) return null;
-    return { year, month, day };
-  }
   function getEvaluationPayAllocation(profile) {
     const annualPay = Number(profile == null ? void 0 : profile.annualSalary);
     if (!Number.isFinite(annualPay) || annualPay <= 0) return null;
-    const from = parseIsoDate(profile == null ? void 0 : profile.effectiveFrom);
-    const to = parseIsoDate(profile == null ? void 0 : profile.effectiveTo);
-    if (!from || !to) return { annualPay, calendarMonths: 6, payShare: 0.5, evaluationPay: annualPay / 2 };
-    let endYear = to.year;
-    let endMonth = to.month;
-    if (to.day === 1) {
-      endMonth -= 1;
-      if (endMonth === 0) {
-        endMonth = 12;
-        endYear -= 1;
-      }
-    }
-    const calendarMonths = (endYear - from.year) * 12 + (endMonth - from.month) + 1;
-    if (!Number.isFinite(calendarMonths) || calendarMonths <= 0) return null;
-    const payShare = calendarMonths / 12;
-    return { annualPay, calendarMonths, payShare, evaluationPay: annualPay * payShare };
+    return { annualPay, calendarMonths: 6, payShare: 0.5, evaluationPay: annualPay / 2 };
   }
   function getEffectiveEvaluationHourly(profile, loggedHours) {
     const allocation = getEvaluationPayAllocation(profile);

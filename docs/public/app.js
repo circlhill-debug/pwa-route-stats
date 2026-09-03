@@ -5402,15 +5402,14 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           kicker: "Post Holiday Alert",
           headline: postHolidayAlert.label,
           support: `Prior catch-up: ${postHolidayAlert.priorRow.work_date}`,
+          topAligned: true,
           cue: `
-              <div style="display:grid;gap:6px">
-                <div class="muted" style="font-size:12px">
-                  Parcels ${Math.round(+postHolidayAlert.priorRow.parcels || 0)} \xB7
-                  Letters ${Math.round(+postHolidayAlert.priorRow.letters || 0)} \xB7
-                  Office ${normalizeHoursValue(postHolidayAlert.priorRow.office_minutes).toFixed(1)}h \xB7
-                  Total ${normalizeHoursValue(postHolidayAlert.priorRow.hours).toFixed(1)}h
-                </div>
-                <div class="muted" style="font-size:12px">
+              <div style="display:grid;gap:4px;font-size:12px">
+                <div class="muted">Parcels <strong style="color:var(--text)">${Math.round(+postHolidayAlert.priorRow.parcels || 0)}</strong></div>
+                <div class="muted">Letters <strong style="color:var(--text)">${Math.round(+postHolidayAlert.priorRow.letters || 0)}</strong></div>
+                <div class="muted">Office <strong style="color:var(--text)">${normalizeHoursValue(postHolidayAlert.priorRow.office_minutes).toFixed(1)}h</strong></div>
+                <div class="muted">Total <strong style="color:var(--text)">${normalizeHoursValue(postHolidayAlert.priorRow.hours).toFixed(1)}h</strong></div>
+                <div class="muted" style="margin-top:4px">
                   ${postHolidayAlert.note || "What to expect based on the same post-holiday day last year."}
                 </div>
               </div>`
@@ -5647,7 +5646,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         }
         const cards = [workdayCard, routeCard, volumeCard, rotatingCard, postHolidayCard, lastYearEchoCard].filter(Boolean);
         el.innerHTML = cards.map((cardDef) => `
-        <div class="stat" style="min-height:132px;justify-content:space-between${cardDef.action ? ";cursor:pointer" : ""}"${cardDef.action ? ` data-insight-action="${cardDef.action}" data-insight-meta="${cardDef.actionMeta || ""}"` : ""}>
+        <div class="stat" style="min-height:132px;justify-content:${cardDef.topAligned ? "flex-start" : "space-between"}${cardDef.action ? ";cursor:pointer" : ""}"${cardDef.action ? ` data-insight-action="${cardDef.action}" data-insight-meta="${cardDef.actionMeta || ""}"` : ""}>
           <div>
             <small>${cardDef.kicker}</small>
             <div class="statValue statValue--lg" style="margin-top:4px">${cardDef.headline}</div>

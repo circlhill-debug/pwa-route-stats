@@ -54,6 +54,18 @@ Click any tile to see a short plain‑English explanation. Hover tooltips show d
   4. Cache the generated text in `routeStats.latestForecast_v2` (ISO date + timestamp) so it can be reused offline and synced to Supabase.
 - Reason tags created in Diagnostics immediately feed Phase 1; once snapshots are saved (manual or Supabase sync), Phase 2 factors them into the weekday trend comparison.
 
+## Today Insights
+- The optional insight strip is a narrative layer, not a separate predictive model. It organizes the most relevant existing metrics into a short daily briefing.
+- Stable cards: Workday forecast, Route model, and Volume level. They surface the workday estimate, route-time prediction, and today’s combined-volume position without replacing the underlying tools.
+- Rotating card: highlights the most significant current signal, such as a new milestone, record, route residual needing review, office-time change, week running heavy/light, or a calm normal-day status.
+- Post Holiday Alert: appears before an upcoming catch-up day and shows the same post-holiday workday from last year, including parcels, letters, office time, total hours, and any saved note.
+
+## Historical Callbacks
+- **Last Year Echo**: compares today and the current calendar week-to-date against the same calendar weekday/week range one year earlier. It is a historical callback, not a forecast or route-model score.
+- **Eval Volume Shape**: compares the current evaluation with the prior evaluation by matching evaluation week number. Each dot is average combined volume per worked day for that evaluation week.
+- These tools may show different numbers because they answer different questions: Last Year Echo uses the same calendar range last year; Eval Volume Shape uses the matching point within each evaluation term.
+- Eval chart gaps mean no worked days were logged in that evaluation week. They are not treated as zero volume. Hover a dot for its evaluation-week dates and worked-day count.
+
 ## Smart Summary (under the title)
 - Week‑to‑date comparison (Mon..today) vs last Mon..today.
 - Includes three movers when ≥5%:
@@ -72,6 +84,8 @@ Click any tile to see a short plain‑English explanation. Hover tooltips show d
 - Fixed tag: Route ID, Eval (e.g., 44K), Boxes, Salary, Hours/day, Office/day.
 - Hours vs Eval (tile): Weekly progress percent = WTD hours ÷ (hours/day × worked days). Tooltip shows `Xh of Yh eval`.
 - Weekly $/h (tile): 4‑week rolling average of `(annualSalary / 52) / hours` (completed weeks only).
+- Evaluation pay: each Spring/Fall evaluation receives one-half of its configured annual salary. Evaluation dates assign work records to the term; they do not change the pay share.
+- Effective $/hour: evaluation pay ÷ actual logged work hours in that evaluation. Paid vacation, holidays, and leave keep their calendar pay but add no work hours, so this realized rate can move over the term.
 
 ## Boxholders (route adjustments)
 - Offsets add time on the street; we subtract offsets from route hours for efficiency metrics:

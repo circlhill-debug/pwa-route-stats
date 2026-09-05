@@ -57,6 +57,7 @@ export function createDiagnostics({
 
   let residModelCache = null;
   let latestDiagnosticsContext = null;
+  let routeModelHistoryChart = null;
   const __testApi = {};
 
   const DAY_COMPARE_STORE = {
@@ -409,6 +410,132 @@ export function createDiagnostics({
     el.style.display = 'flex';
   }
 
+  function buildRouteModelHistory(model) {
+    const card = document.getElementById('routeModelHistoryCard');
+    const metricsEl = document.getElementById('routeModelHistoryMetrics');
+    const chartCanvas = document.getElementById('routeModelHistoryChart');
+    const noteEl = document.getElementById('routeModelHistoryNote');
+    const infoBtn = document.getElementById('routeModelHistoryInfoBtn');
+    const infoEl = document.getElementById('routeModelHistoryInfo');
+    const diagnosticsBtn = document.getElementById('routeModelHistoryDiagnosticsBtn');
+    if (!card || !metricsEl || !chartCanvas || !noteEl) return;
+
+    if (infoBtn && infoEl) {
+      infoBtn.onclick = () => {
+        const isOpen = infoEl.style.display !== 'none';
+        infoEl.style.display = isOpen ? 'none' : '';
+        infoBtn.setAttribute('aria-expanded', String(!isOpen));
+      };
+    }
+    if (diagnosticsBtn) {
+      diagnosticsBtn.onclick = () => {
+        const toggle = document.getElementById('toggleDiagDetails');
+        const diagnosticsCard = document.getElementById('diagnosticsCard');
+        if (toggle && toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+        diagnosticsCard?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      };
+    }
+    if (routeModelHistoryChart && typeof routeModelHistoryChart.destroy === 'function') {
+      try { routeModelHistoryChart.destroy(); } catch (_) { /* noop */ }
+      routeModelHistoryChart = null;
+    }
+
+    if (!model || !Array.isArray(model.residuals) || !model.residuals.length) {
+      card.style.display = 'none';
+      return;
+    }
+
+    const recent = [...model.residuals]
+      .filter(item => item && Number.isFinite(item.residMin) && item.iso)
+      .sort((a, b) => String(a.iso).localeCompare(String(b.iso)))
+      .slice(-30);
+    if (!recent.length) {
+      card.style.display = 'none';
+      return;
+    }
+
+    const hitMinutes = 15;
+    const absoluteResiduals = recent.map(item => Math.abs(item.residMin)).sort((a, b) => a - b);
+    const medianAbsolute = absoluteResiduals.length % 2
+      ? absoluteResiduals[(absoluteResiduals.length - 1) / 2]
+      : (absoluteResiduals[absoluteResiduals.length / 2 - 1] + absoluteResiduals[absoluteResiduals.length / 2]) / 2;
+    const hits = recent.filter(item => Math.abs(item.residMin) <= hitMinutes).length;
+    const hitRate = Math.round((hits / recent.length) * 100);
+    const averageBias = recent.reduce((sum, item) => sum + item.residMin, 0) / recent.length;
+    const latest = recent[recent.length - 1];
+    const r2Pct = Math.round(Math.max(0, Math.min(1, model.r2 || 0)) * 100);
+    const biasText = Math.abs(averageBias) < 0.5
+      ? 'Near zero'
+      : `${averageBias > 0 ? '+' : ''}${Math.round(averageBias)}m`;
+    const biasNote = Math.abs(averageBias) < 0.5
+      ? 'No consistent direction'
+      : averageBias > 0 ? 'Routes tend longer than predicted' : 'Routes tend faster than predicted';
+    metricsEl.innerHTML = [
+      { label: 'Recent hit rate', value: `${hitRate}%`, meta: `${hits}/${recent.length} within ±${hitMinutes}m` },
+      { label: 'Median miss', value: `${Math.round(medianAbsolute)}m`, meta: 'Typical absolute route error' },
+      { label: 'Recent bias', value: biasText, meta: biasNote },
+      { label: 'Model confidence', value: `${r2Pct}%`, meta: `R² on ${model.n} worked days` }
+    ].map(item => `<div class="stat" style="padding:10px"><small>${item.label}</small><span class="statValue" style="font-size:1.35rem">${item.value}</span><small class="muted">${item.meta}</small></div>`).join('');
+
+    const latestDate = DateTime.fromISO(latest.iso, { zone: ZONE });
+    const latestLabel = latestDate.isValid ? latestDate.toFormat('ccc, LLL d') : latest.iso;
+    noteEl.textContent = `Latest result: ${latestLabel} · Actual ${(latest.routeMin / 60).toFixed(2)}h vs ${(latest.predMin / 60).toFixed(2)}h predicted · ${latest.residMin >= 0 ? '+' : ''}${Math.round(latest.residMin)}m.`;
+    card.style.display = 'block';
+
+    if (typeof Chart === 'undefined') return;
+    routeModelHistoryChart = new Chart(chartCanvas, {
+      type: 'bar',
+      data: {
+        labels: recent.map(item => {
+          const dt = DateTime.fromISO(item.iso, { zone: ZONE });
+          return dt.isValid ? dt.toFormat('LLL d') : item.iso;
+        }),
+        datasets: [{
+          label: 'Actual minus predicted route time',
+          data: recent.map(item => Math.round(item.residMin)),
+          backgroundColor: recent.map(item => item.residMin > hitMinutes
+            ? 'rgba(239, 68, 68, 0.65)'
+            : item.residMin < -hitMinutes
+              ? 'rgba(34, 197, 94, 0.65)'
+              : 'rgba(148, 163, 184, 0.55)'),
+          borderRadius: 3,
+          borderSkipped: false
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'nearest', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => {
+                const item = recent[items?.[0]?.dataIndex];
+                return item?.iso || 'Route result';
+              },
+              label: (ctx) => {
+                const item = recent[ctx.dataIndex];
+                if (!item) return 'No result';
+                return [
+                  `Actual ${(item.routeMin / 60).toFixed(2)}h · Predicted ${(item.predMin / 60).toFixed(2)}h`,
+                  `Residual ${item.residMin >= 0 ? '+' : ''}${Math.round(item.residMin)}m`
+                ];
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#94a3b8', maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } },
+          y: {
+            ticks: { color: '#94a3b8', callback: value => `${value}m` },
+            grid: { color: 'rgba(148, 163, 184, 0.12)' }
+          }
+        }
+      }
+    });
+  }
+
   function buildDiagnostics(rows) {
     const filteredRows = filterRowsForView(rows || []);
     const card = document.getElementById('diagnosticsCard');
@@ -423,6 +550,7 @@ export function createDiagnostics({
     const weightCfg = getResidualWeighting();
     const model = fitVolumeTimeModel(scoped, weightCfg.fn ? { weightFn: weightCfg.fn } : undefined);
     renderModelStrip(model);
+    buildRouteModelHistory(model);
 
     const badge = document.getElementById('diagModelBadge');
     const summaryEl = document.getElementById('diagSummary');

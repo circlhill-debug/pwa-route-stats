@@ -875,12 +875,18 @@ window.__sb = createSupabaseClient();
       });
       return Array.from(buckets.entries())
         .sort((a, b) => a[0] - b[0])
-        .map(([weekIndex, bucket]) => ({
-          weekIndex,
-          avgVolume: bucket.count ? bucket.volume / bucket.count : null,
-          totalVolume: bucket.volume,
-          workedDays: bucket.count
-        }))
+        .map(([weekIndex, bucket]) => {
+          const weekStart = from.startOf('day').plus({ days: (weekIndex - 1) * 7 });
+          const weekEnd = weekStart.plus({ days: 6 });
+          return {
+            weekIndex,
+            weekStart: weekStart.toISODate(),
+            weekEnd: weekEnd.toISODate(),
+            avgVolume: bucket.count ? bucket.volume / bucket.count : null,
+            totalVolume: bucket.volume,
+            workedDays: bucket.count
+          };
+        })
         .filter(point => Number.isFinite(point.avgVolume));
     };
 
@@ -902,6 +908,12 @@ window.__sb = createSupabaseClient();
     const labels = Array.from({ length: compareThroughWeek }, (_, idx) => `W${idx + 1}`);
     const currentPoints = labels.map((_, idx) => currentByWeek.get(idx + 1) || null);
     const priorPoints = labels.map((_, idx) => priorByWeek.get(idx + 1) || null);
+    const formatEvalWeekRange = (point) => {
+      const start = DateTime.fromISO(point?.weekStart || '', { zone: ZONE });
+      const end = DateTime.fromISO(point?.weekEnd || '', { zone: ZONE });
+      if (!start.isValid || !end.isValid) return 'Date range unavailable';
+      return `${start.toFormat('LLL d')} - ${end.toFormat('LLL d, yyyy')}`;
+    };
     // Compare only like-for-like calendar weeks with worked data in both evaluations.
     const matchedWeeks = currentPoints.map((currentPoint, idx) => ({
       currentPoint,
@@ -982,13 +994,19 @@ window.__sb = createSupabaseClient();
             callbacks: {
               title: (items) => {
                 const first = items?.[0];
-                return first?.label ? `Week ${String(first.label).replace(/^W/, '')}` : 'Week';
+                return first?.label ? `Evaluation Week ${String(first.label).replace(/^W/, '')}` : 'Evaluation week';
               },
               label: (ctx) => {
                 if (ctx.raw == null) return `${ctx.dataset.label}: no worked days logged`;
                 const val = Number(ctx.raw);
                 if (!Number.isFinite(val)) return `${ctx.dataset.label}: —`;
-                return `${ctx.dataset.label}: ${val.toFixed(1)} vol`;
+                const point = ctx.datasetIndex === 0 ? priorPoints[ctx.dataIndex] : currentPoints[ctx.dataIndex];
+                const range = formatEvalWeekRange(point);
+                const days = point?.workedDays || 0;
+                return [
+                  `${ctx.dataset.label}: ${val.toFixed(1)} vol/day`,
+                  `${range} · ${days} worked day(s)`
+                ];
               }
             }
           }

@@ -1714,9 +1714,14 @@
       <button id="routeModelHistoryDiagnosticsBtn" class="ghost" type="button">Open Diagnostics</button>
     </div>
     <div class="sparkline-labels" style="font-size:15px;line-height:1.45">How closely the volume-to-time model has tracked recent route results.</div>
-    <div id="routeModelHistoryInfo" class="muted" style="display:none;margin-top:6px;font-size:12px;line-height:1.45">This model predicts route time only from parcels and letters. A hit is within ±15 minutes of the prediction. The chart shows actual minus predicted route minutes; it does not measure total workday hours or Expected End.</div>
+    <div id="routeModelHistoryInfo" class="muted" style="display:none;margin-top:6px;font-size:12px;line-height:1.45">This model predicts route time only from parcels and letters. It is re-fit using the selected model scope, normally the latest 120 calendar days of worked entries. A hit is within ±15 minutes. The chart shows actual minus predicted route minutes; it does not measure total workday hours or Expected End.</div>
     <div id="routeModelHistoryMetrics" class="snapshot-grid" style="margin-top:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px"></div>
     <canvas id="routeModelHistoryChart" class="sparkline" style="margin-top:10px;height:150px;max-height:150px"></canvas>
+    <div class="muted" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;font-size:12px">
+      <span><i class="legend-swatch" style="background:rgba(148,163,184,0.55)"></i>Hit (within ±15m)</span>
+      <span><i class="legend-swatch" style="background:rgba(239,68,68,0.65)"></i>Slower than predicted</span>
+      <span><i class="legend-swatch" style="background:rgba(34,197,94,0.65)"></i>Faster than predicted</span>
+    </div>
     <div id="routeModelHistoryNote" class="sparkline-labels" style="margin-top:6px;font-size:13px;line-height:1.45">—</div>
   </section>
 

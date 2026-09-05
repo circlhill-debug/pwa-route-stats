@@ -830,7 +830,16 @@ window.__sb = createSupabaseClient();
     const card = document.getElementById('evalVolumeShapeCard');
     const canvas = document.getElementById('evalVolumeShapeChart');
     const textEl = document.getElementById('evalVolumeShapeText');
+    const infoBtn = document.getElementById('evalVolumeShapeInfoBtn');
+    const infoEl = document.getElementById('evalVolumeShapeInfo');
     if (!card || !canvas || !textEl) return;
+    if (infoBtn && infoEl){
+      infoBtn.onclick = () => {
+        const isOpen = infoEl.style.display !== 'none';
+        infoEl.style.display = isOpen ? 'none' : '';
+        infoBtn.setAttribute('aria-expanded', String(!isOpen));
+      };
+    }
 
     const destroyChart = () => {
       if (evalVolumeShapeChart && typeof evalVolumeShapeChart.destroy === 'function'){

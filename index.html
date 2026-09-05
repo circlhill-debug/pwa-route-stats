@@ -1506,8 +1506,10 @@
     <section class="card" id="evalVolumeShapeCard" style="display:none;flex:1 1 100%;min-width:320px">
       <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <h3 style="margin:0">Eval Volume Shape</h3>
+        <button id="evalVolumeShapeInfoBtn" class="ghost" type="button" aria-expanded="false" aria-controls="evalVolumeShapeInfo" title="How this comparison works" style="width:24px;height:24px;min-height:24px;padding:0;border-radius:50%;font-weight:700;line-height:1">i</button>
       </div>
       <div class="sparkline-labels" style="font-size:15px;line-height:1.45">Current eval vs prior eval</div>
+      <div id="evalVolumeShapeInfo" class="muted" style="display:none;margin-top:6px;font-size:12px;line-height:1.45">Last Year Echo compares the same calendar week last year. Eval Volume Shape compares matching weeks within two separate evaluation terms. Hover a dot for its exact dates and worked-day count.</div>
       <canvas id="evalVolumeShapeChart" class="sparkline" style="margin-top:4px;height:120px;max-height:120px"></canvas>
       <div id="evalVolumeShapeText" class="sparkline-labels" style="font-size:15px;line-height:1.45">—</div>
     </section>

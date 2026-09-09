@@ -2380,7 +2380,8 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
     buildPredictionRecord,
     getResidualModel,
     combinedVolume,
-    loadDismissedResiduals: () => loadDismissedResiduals(parseDismissReasonInput)
+    loadDismissedResiduals: () => loadDismissedResiduals(parseDismissReasonInput),
+    revealMilestoneBadge
   });
 
   // === Diagnostics model & outliers ===
@@ -2980,6 +2981,30 @@ function getHourlyRateFromEval(){
       tbody.appendChild(tr);
   }
 }
+
+  function revealMilestoneBadge(key){
+    const milestoneCard = document.getElementById('milestoneCard');
+    if (!milestoneCard || !key) return;
+
+    // The general collapse utility wraps the section body after initial render.
+    const body = milestoneCard.querySelector(':scope > .__collapseBody');
+    if (body) body.style.display = '';
+    try { localStorage.setItem('routeStats.collapse.milestoneCard', '0'); } catch (_err) { }
+
+    renderYearlyBadges();
+    window.requestAnimationFrame(() => {
+      const target = document.querySelector(`[data-badge-key="${key}"]`) || milestoneCard;
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const previousOutline = target.style.outline;
+      const previousOffset = target.style.outlineOffset;
+      target.style.outline = '2px solid var(--good)';
+      target.style.outlineOffset = '4px';
+      window.setTimeout(() => {
+        target.style.outline = previousOutline;
+        target.style.outlineOffset = previousOffset;
+      }, 2600);
+    });
+  }
 
   function renderYearlyBadges(){
     const container = document.getElementById('milestoneBadges');

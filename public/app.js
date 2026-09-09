@@ -5224,7 +5224,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     buildPredictionRecord: buildPredictionRecord2,
     getResidualModel: getResidualModel2,
     combinedVolume: combinedVolume2,
-    loadDismissedResiduals: loadDismissedResiduals2
+    loadDismissedResiduals: loadDismissedResiduals2,
+    revealMilestoneBadge: revealMilestoneBadge2
   }) {
     if (typeof getFlags !== "function") throw new Error("createSummariesFeature: getFlags is required");
     if (typeof filterRowsForView2 !== "function") throw new Error("createSummariesFeature: filterRowsForView is required");
@@ -5236,6 +5237,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (typeof getResidualModel2 !== "function") throw new Error("createSummariesFeature: getResidualModel is required");
     if (typeof combinedVolume2 !== "function") throw new Error("createSummariesFeature: combinedVolume is required");
     if (typeof loadDismissedResiduals2 !== "function") throw new Error("createSummariesFeature: loadDismissedResiduals is required");
+    if (typeof revealMilestoneBadge2 !== "function") throw new Error("createSummariesFeature: revealMilestoneBadge is required");
     function hasMeaningfulWorkedData2(row) {
       if (!row || row.status === "off") return false;
       if (normalizeHoursValue(row.hours) > 0) return true;
@@ -5746,25 +5748,11 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       `).join("");
         el.querySelectorAll('[data-insight-action="reveal-badge"]').forEach((node) => {
           node.addEventListener("click", () => {
-            var _a6;
             const key = node.getAttribute("data-insight-meta") || "";
             if (!key) return;
             const nextKeys = [.../* @__PURE__ */ new Set([...loadRevealedBadgeKeys(), key])];
             saveRevealedBadgeKeys(nextKeys);
-            const milestoneCard = document.getElementById("milestoneCard");
-            const badgeCard = document.querySelector(`[data-badge-key="${key}"]`);
-            (_a6 = badgeCard || milestoneCard) == null ? void 0 : _a6.scrollIntoView({ behavior: "smooth", block: "center" });
-            const target = badgeCard || milestoneCard;
-            if (target) {
-              const prevOutline = target.style.outline;
-              const prevOffset = target.style.outlineOffset;
-              target.style.outline = "2px solid var(--good)";
-              target.style.outlineOffset = "4px";
-              window.setTimeout(() => {
-                target.style.outline = prevOutline;
-                target.style.outlineOffset = prevOffset;
-              }, 2200);
-            }
+            revealMilestoneBadge2(key);
             buildInsightStrip2(rows);
           }, { once: true });
         });
@@ -8287,7 +8275,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     buildPredictionRecord,
     getResidualModel,
     combinedVolume,
-    loadDismissedResiduals: () => loadDismissedResiduals(parseDismissReasonInput)
+    loadDismissedResiduals: () => loadDismissedResiduals(parseDismissReasonInput),
+    revealMilestoneBadge
   });
   function setNow(el) {
     el.value = hhmmNow();
@@ -9022,6 +9011,29 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         <td>${r.weather_json || ""}</td><td></td>`;
       tbody.appendChild(tr);
     }
+  }
+  function revealMilestoneBadge(key) {
+    const milestoneCard = document.getElementById("milestoneCard");
+    if (!milestoneCard || !key) return;
+    const body = milestoneCard.querySelector(":scope > .__collapseBody");
+    if (body) body.style.display = "";
+    try {
+      localStorage.setItem("routeStats.collapse.milestoneCard", "0");
+    } catch (_err) {
+    }
+    renderYearlyBadges();
+    window.requestAnimationFrame(() => {
+      const target = document.querySelector(`[data-badge-key="${key}"]`) || milestoneCard;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      const previousOutline = target.style.outline;
+      const previousOffset = target.style.outlineOffset;
+      target.style.outline = "2px solid var(--good)";
+      target.style.outlineOffset = "4px";
+      window.setTimeout(() => {
+        target.style.outline = previousOutline;
+        target.style.outlineOffset = previousOffset;
+      }, 2600);
+    });
   }
   function renderYearlyBadges() {
     const container = document.getElementById("milestoneBadges");

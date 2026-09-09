@@ -13,7 +13,8 @@ export function createSummariesFeature({
   buildPredictionRecord,
   getResidualModel,
   combinedVolume,
-  loadDismissedResiduals
+  loadDismissedResiduals,
+  revealMilestoneBadge
 }) {
   if (typeof getFlags !== 'function') throw new Error('createSummariesFeature: getFlags is required');
   if (typeof filterRowsForView !== 'function') throw new Error('createSummariesFeature: filterRowsForView is required');
@@ -25,6 +26,7 @@ export function createSummariesFeature({
   if (typeof getResidualModel !== 'function') throw new Error('createSummariesFeature: getResidualModel is required');
   if (typeof combinedVolume !== 'function') throw new Error('createSummariesFeature: combinedVolume is required');
   if (typeof loadDismissedResiduals !== 'function') throw new Error('createSummariesFeature: loadDismissedResiduals is required');
+  if (typeof revealMilestoneBadge !== 'function') throw new Error('createSummariesFeature: revealMilestoneBadge is required');
 
   function hasMeaningfulWorkedData(row) {
     if (!row || row.status === 'off') return false;
@@ -606,20 +608,8 @@ export function createSummariesFeature({
           if (!key) return;
           const nextKeys = [...new Set([...loadRevealedBadgeKeys(), key])];
           saveRevealedBadgeKeys(nextKeys);
-          const milestoneCard = document.getElementById('milestoneCard');
-          const badgeCard = document.querySelector(`[data-badge-key="${key}"]`);
-          (badgeCard || milestoneCard)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          const target = badgeCard || milestoneCard;
-          if (target) {
-            const prevOutline = target.style.outline;
-            const prevOffset = target.style.outlineOffset;
-            target.style.outline = '2px solid var(--good)';
-            target.style.outlineOffset = '4px';
-            window.setTimeout(() => {
-              target.style.outline = prevOutline;
-              target.style.outlineOffset = prevOffset;
-            }, 2200);
-          }
+          // Rebuild and expand Milestones before focusing the newly revealed badge.
+          revealMilestoneBadge(key);
           buildInsightStrip(rows);
         }, { once: true });
       });

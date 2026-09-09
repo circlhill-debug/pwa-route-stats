@@ -2177,6 +2177,7 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
   const officeH=$('officeH'), routeH=$('routeH'), totalH=$('totalH');
   const expEnd=$('expEnd'), expMeta=$('expMeta');
   const routeExpectedEl=$('routeExpected'), routeExpectedMeta=$('routeExpectedMeta');
+  const routeExpectedInfoBtn=$('routeExpectedInfoBtn'), routeExpectedInfo=$('routeExpectedInfo');
   const routeHitMissEl=$('routeHitMiss'), routeHitMissMeta=$('routeHitMissMeta');
   const routeHitMissTile=routeHitMissEl?.closest('.stat') || null;
   const badgeVolume=$('badgeVolume'), badgeRouteEff=$('badgeRouteEff'), badgeOverall=$('badgeOverall');
@@ -2184,6 +2185,13 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
 
   badgeVolume.title   = 'Volume = parcels + w×letters (learned from data, rank vs recent, 0–10)';
   badgeRouteEff.title = 'Route Efficiency = today’s street hours vs typical for this weekday (0–10)';
+  if (routeExpectedInfoBtn && routeExpectedInfo){
+    routeExpectedInfoBtn.onclick = () => {
+      const isOpen = routeExpectedInfo.style.display !== 'none';
+      routeExpectedInfo.style.display = isOpen ? 'none' : 'block';
+      routeExpectedInfoBtn.setAttribute('aria-expanded', String(!isOpen));
+    };
+  }
   badgeOverall.title  = 'Overall = total hours vs expected (weekday avg)';
 
   date.value = todayStr();

@@ -1065,9 +1065,13 @@
           <button id="openVolumeLeaderboard" type="button" class="ghost" style="align-self:flex-start;font-size:12px;padding:4px 8px;">Top days</button>
         </div>
         <div class="stat">
-          <small>Expected Route Time</small>
+          <div class="row" style="justify-content:space-between;align-items:center;gap:6px">
+            <small>Expected Route Time</small>
+            <button id="routeExpectedInfoBtn" class="ghost" type="button" aria-expanded="false" aria-controls="routeExpectedInfo" title="How Expected Route Time works" style="width:20px;height:20px;min-height:20px;padding:0;border-radius:50%;font-size:11px;font-weight:700;line-height:1">i</button>
+          </div>
           <span id="routeExpected" class="statValue statValue--lg">—</span>
           <small id="routeExpectedMeta" class="muted">Route model pending</small>
+          <div id="routeExpectedInfo" class="muted" style="display:none;margin-top:7px;font-size:12px;line-height:1.4">This is a route-only check, not the Expected End forecast. After today’s parcels and letters are entered, the model estimates how long a route with that specific volume should take. It then compares that estimate with Actual Route Time; a hit is within ±15 minutes.</div>
         </div>
         <div class="stat">
           <small>Actual Route Time</small>

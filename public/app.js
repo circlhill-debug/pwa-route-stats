@@ -8095,6 +8095,8 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var expMeta = $("expMeta");
   var routeExpectedEl = $("routeExpected");
   var routeExpectedMeta = $("routeExpectedMeta");
+  var routeExpectedInfoBtn = $("routeExpectedInfoBtn");
+  var routeExpectedInfo = $("routeExpectedInfo");
   var routeHitMissEl = $("routeHitMiss");
   var routeHitMissMeta = $("routeHitMissMeta");
   var routeHitMissTile = (routeHitMissEl == null ? void 0 : routeHitMissEl.closest(".stat")) || null;
@@ -8106,6 +8108,13 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var dWriteEl = $("dWrite");
   badgeVolume.title = "Volume = parcels + w\xD7letters (learned from data, rank vs recent, 0\u201310)";
   badgeRouteEff.title = "Route Efficiency = today\u2019s street hours vs typical for this weekday (0\u201310)";
+  if (routeExpectedInfoBtn && routeExpectedInfo) {
+    routeExpectedInfoBtn.onclick = () => {
+      const isOpen = routeExpectedInfo.style.display !== "none";
+      routeExpectedInfo.style.display = isOpen ? "none" : "block";
+      routeExpectedInfoBtn.setAttribute("aria-expanded", String(!isOpen));
+    };
+  }
   badgeOverall.title = "Overall = total hours vs expected (weekday avg)";
   date.value = todayStr();
   route.value = "R1";

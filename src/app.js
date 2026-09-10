@@ -65,6 +65,7 @@ import {
 import { computeForecastText, storeForecastSnapshot, saveForecastSnapshot, syncForecastSnapshotsFromSupabase, loadLatestForecastMessage } from './modules/forecast.js';
 import { buildForecastRenderPlan, buildForecastSnapshotFromPayload } from './modules/forecastSurface.js';
 import { buildPredictionRecord } from './modules/predictionRecord.js';
+import { buildPreShiftRouteForecast, loadPreShiftRouteForecasts, savePreShiftRouteForecast, scorePreShiftRouteForecast } from './modules/preShiftRouteForecast.js';
 import { buildWeeklyComparisonPacket, getWeeklyComparisonMode, formatWeeklyComparisonSummary } from './modules/weeklyComparisons.js';
 import { getEffectiveEvaluationHourly, getEvaluationPayAllocation } from './modules/evaluationPay.js';
 import { USER_SETTINGS_SELECT, USER_SETTINGS_TABLE, applyRemoteUserSettingsData, buildUserSettingsPayload } from './modules/userSettingsSync.js';
@@ -1180,7 +1181,7 @@ window.__sb = createSupabaseClient();
   async function renderTomorrowForecast(){
     try{
       const container = document.querySelector('#forecastBadgeContainer') || document.body;
-      const showMessage = ({ title = '🌤 Tomorrow’s Forecast', msg = '' } = {}) => {
+      const showMessage = ({ title = '🌤 Tomorrow’s Forecast', msg = '', routeForecast = null } = {}) => {
         if (!container) return;
         const existingBadges = container.querySelectorAll('.forecast-badge');
         existingBadges.forEach(node => node.remove());
@@ -1192,6 +1193,13 @@ window.__sb = createSupabaseClient();
         bodyEl.textContent = msg;
         forecastBadge.appendChild(titleEl);
         forecastBadge.appendChild(bodyEl);
+        if (routeForecast) {
+          const routeEl = document.createElement('p');
+          routeEl.className = 'muted';
+          routeEl.style.marginTop = '8px';
+          routeEl.textContent = `Route model guess: ${(routeForecast.predictedMinutes / 60).toFixed(2)}h from typical ${Math.round(routeForecast.expectedParcels)} parcels and ${Math.round(routeForecast.expectedLetters).toLocaleString()} letters.`;
+          forecastBadge.appendChild(routeEl);
+        }
         container.appendChild(forecastBadge);
       };
 
@@ -1228,12 +1236,35 @@ window.__sb = createSupabaseClient();
         }catch(err){ console.warn('saveForecastSnapshot (remote) failed', err); }
       }
 
-      showMessage({ title: plan.title, msg: plan.message });
+      showMessage({ title: plan.title, msg: plan.message, routeForecast: getPreShiftRouteForecast(plan.iso, now) });
     }catch(err){
       console.warn('renderTomorrowForecast failed', err);
     }
   }
   window.renderTomorrowForecast = renderTomorrowForecast;
+
+  function getPreShiftRouteForecast(targetIso, now = DateTime.now().setZone(ZONE)){
+    try {
+      const target = DateTime.fromISO(targetIso || '', { zone: ZONE });
+      // The carrier workflow only needs a forecast for standard workdays.
+      if (!target.isValid || target.weekday > 5) return null;
+      const targetHasEntry = (allRows || []).some(row => (
+        row?.work_date === targetIso && row.status !== 'off' && hasMeaningfulWorkedData(row, targetIso)
+      ));
+      if (targetHasEntry) return null;
+
+      const existing = loadPreShiftRouteForecasts().find(snapshot => snapshot?.iso === targetIso) || null;
+      if (existing) return existing;
+
+      // Save only during the actual forecast windows: evening before or early morning.
+      if (!(now.hour >= 20 || now.hour < 8)) return null;
+      const model = getResidualModel((allRows || []).filter(row => row && row.status !== 'off'));
+      const forecast = buildPreShiftRouteForecast(allRows || [], { targetIso, model, now });
+      return forecast ? savePreShiftRouteForecast(forecast) : null;
+    } catch (_err) {
+      return null;
+    }
+  }
   // initial render
   renderUspsEvalTag();
   renderVacationRanges();
@@ -3310,6 +3341,9 @@ function getHourlyRateFromEval(){
       const actualRouteMin = routeResidualEntry
         ? Math.round(routeResidualEntry.routeMin)
         : (todayRow ? routeAdjustedMinutes(todayRow) : null);
+      if (Number.isFinite(actualRouteMin) && actualRouteMin > 0) {
+        scorePreShiftRouteForecast(prediction?.iso, actualRouteMin);
+      }
       const routeResidualMin = (Number.isFinite(predictedRouteMin) && Number.isFinite(actualRouteMin))
         ? Math.round(actualRouteMin - predictedRouteMin)
         : null;
@@ -5008,6 +5042,8 @@ function getHourlyRateFromEval(){
     allRows = rows;
     window.allRows = rows;
     rebuildAll();
+    // Entries are now available, so refresh the forecast with the route-model guess.
+    renderTomorrowForecast();
     computeBreakdown();
     applyTrendPillsVisibility();
     applySectionCollapse();

@@ -18,6 +18,22 @@ Current production guardrail
 - Keep legacy and unfinished Focus Mode UI out of `main`.
 - Mobile branch work belongs on `dev/mobile-focus-integrated` until intentionally shipped.
 
+Route-model forecast baseline (Sep 10, 2026)
+- `main` now has the first pre-shift route-model forecast foundation.
+  - Reuses the existing Diagnostics volume-to-time coefficients; no second model or duplicated math.
+  - Uses prior same-weekday average parcels and letters as the input estimate.
+  - Runs only for standard workdays in the evening-before or early-morning forecast windows.
+  - Preserves the first forecast per target date in local storage (`routeStats.preShiftRouteForecasts.v1`) so later entry data cannot rewrite it.
+  - Scores the preserved estimate after an actual route result: residual, ±15m hit, median absolute miss, and average bias are available in storage helpers.
+  - The initial result appears in the existing forecast badge as `Route model guess`.
+- Deliberate v1 boundaries:
+  - No tag, holiday, or Last Year Echo modifiers yet. Measure the plain volume model first.
+  - Local persistence only. Add a dedicated Supabase snapshot schema before presenting cross-device historical scores.
+- Next validation:
+  - Observe several saved pre-shift forecasts and compare them with actual route results.
+  - Then add a compact scorecard only after enough observations exist to make its hit rate meaningful.
+  - Consider carefully evidenced contextual modifiers afterward, beginning with post-holiday history.
+
 ---
 
 Audit Track

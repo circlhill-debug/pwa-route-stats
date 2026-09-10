@@ -793,9 +793,9 @@
       const pW2 = byW(W2, (r) => +r.parcels || 0);
       const lW1 = byW(W1, (r) => +r.letters || 0);
       const lW2 = byW(W2, (r) => +r.letters || 0);
-      const mean2 = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-      const parcels2 = Array.from({ length: 7 }, (_, i) => mean2([...pW1[i] || [], ...pW2[i] || []]));
-      const letters2 = Array.from({ length: 7 }, (_, i) => mean2([...lW1[i] || [], ...lW2[i] || []]));
+      const mean3 = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+      const parcels2 = Array.from({ length: 7 }, (_, i) => mean3([...pW1[i] || [], ...pW2[i] || []]));
+      const letters2 = Array.from({ length: 7 }, (_, i) => mean3([...lW1[i] || [], ...lW2[i] || []]));
       const snap = { weekStart: weekStartIso, parcels: parcels2, letters: letters2 };
       localStorage.setItem(BASELINE_KEY, JSON.stringify(snap));
       return snap;
@@ -1962,6 +1962,78 @@
     };
   }
 
+  // src/modules/preShiftRouteForecast.js
+  var PRE_SHIFT_ROUTE_FORECAST_STORAGE_KEY = "routeStats.preShiftRouteForecasts.v1";
+  function mean2(values) {
+    if (!Array.isArray(values) || !values.length) return null;
+    return values.reduce((total, value) => total + value, 0) / values.length;
+  }
+  function isValidModel(model) {
+    return !!(model && Number.isFinite(model.a) && Number.isFinite(model.bp) && Number.isFinite(model.bl));
+  }
+  function buildPreShiftRouteForecast(rows, { targetIso, model, now = DateTime.now().setZone(ZONE) } = {}) {
+    const target = DateTime.fromISO(targetIso || "", { zone: ZONE });
+    if (!target.isValid || !isValidModel(model)) return null;
+    const expectedDow = dowIndex(target.toISODate());
+    const historicalRows = (rows || []).filter((row) => row && row.status !== "off" && row.work_date !== target.toISODate() && dowIndex(row.work_date) === expectedDow && (Number(row.parcels) > 0 || Number(row.letters) > 0));
+    const expectedParcels = mean2(historicalRows.map((row) => Number(row.parcels) || 0));
+    const expectedLetters = mean2(historicalRows.map((row) => Number(row.letters) || 0));
+    if (!Number.isFinite(expectedParcels) || !Number.isFinite(expectedLetters)) return null;
+    const predictedMinutes = Math.round(model.a + model.bp * expectedParcels + model.bl * expectedLetters);
+    if (!Number.isFinite(predictedMinutes) || predictedMinutes <= 0) return null;
+    return {
+      iso: target.toISODate(),
+      weekday: expectedDow,
+      forecastedAt: now.toISO(),
+      expectedParcels,
+      expectedLetters,
+      predictedMinutes,
+      sampleSize: historicalRows.length,
+      modelR2: Number.isFinite(model.r2) ? model.r2 : null,
+      modelSampleSize: Number.isFinite(model.n) ? model.n : null
+    };
+  }
+  function loadPreShiftRouteForecasts(storage = globalThis.localStorage) {
+    try {
+      const parsed = JSON.parse((storage == null ? void 0 : storage.getItem(PRE_SHIFT_ROUTE_FORECAST_STORAGE_KEY)) || "[]");
+      return Array.isArray(parsed) ? parsed.filter((entry) => entry == null ? void 0 : entry.iso) : [];
+    } catch (_err) {
+      return [];
+    }
+  }
+  function savePreShiftRouteForecast(snapshot, storage = globalThis.localStorage) {
+    if (!(snapshot == null ? void 0 : snapshot.iso) || !Number.isFinite(snapshot.predictedMinutes)) return null;
+    const existing = loadPreShiftRouteForecasts(storage);
+    const prior = existing.find((entry) => entry.iso === snapshot.iso);
+    if (prior) return prior;
+    const next = [...existing, snapshot].sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
+    try {
+      storage == null ? void 0 : storage.setItem(PRE_SHIFT_ROUTE_FORECAST_STORAGE_KEY, JSON.stringify(next));
+    } catch (_err) {
+    }
+    return snapshot;
+  }
+  function scorePreShiftRouteForecast(iso, actualRouteMinutes, storage = globalThis.localStorage) {
+    const actualMinutes = Math.round(Number(actualRouteMinutes));
+    if (!iso || !Number.isFinite(actualMinutes) || actualMinutes <= 0) return null;
+    const existing = loadPreShiftRouteForecasts(storage);
+    const prior = existing.find((entry) => entry.iso === iso);
+    if (!prior || !Number.isFinite(prior.predictedMinutes)) return null;
+    const residualMinutes = actualMinutes - prior.predictedMinutes;
+    const scored = {
+      ...prior,
+      actualRouteMinutes: actualMinutes,
+      residualMinutes,
+      hit: Math.abs(residualMinutes) <= 15
+    };
+    const next = existing.map((entry) => entry.iso === iso ? scored : entry);
+    try {
+      storage == null ? void 0 : storage.setItem(PRE_SHIFT_ROUTE_FORECAST_STORAGE_KEY, JSON.stringify(next));
+    } catch (_err) {
+    }
+    return scored;
+  }
+
   // src/modules/weeklyComparisons.js
   var WEEKLY_COMPARISON_MODES = {
     calendar_same_range: {
@@ -2788,13 +2860,13 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         const stats = (() => {
           const pool = residuals.filter((r) => !dismissedMap.has(r.iso));
           if (!pool.length) return { mean: 0, std: 0 };
-          const mean2 = pool.reduce((acc, r) => acc + r.residMin, 0) / pool.length;
-          if (pool.length < 2) return { mean: mean2, std: 0 };
+          const mean3 = pool.reduce((acc, r) => acc + r.residMin, 0) / pool.length;
+          if (pool.length < 2) return { mean: mean3, std: 0 };
           const variance = pool.reduce((acc, r) => {
-            const diff = r.residMin - mean2;
+            const diff = r.residMin - mean3;
             return acc + diff * diff;
           }, 0) / (pool.length - 1);
-          return { mean: mean2, std: Math.sqrt(Math.max(variance, 0)) };
+          return { mean: mean3, std: Math.sqrt(Math.max(variance, 0)) };
         })();
         const visibleResiduals = residuals.filter((r) => !dismissedMap.has(r.iso));
         const cutoff = DateTime.now().setZone(ZONE).startOf("day").minus({ days: ACTIVE_RESIDUAL_WINDOW_DAYS - 1 });
@@ -7056,7 +7128,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   async function renderTomorrowForecast() {
     try {
       const container = document.querySelector("#forecastBadgeContainer") || document.body;
-      const showMessage = ({ title = "\u{1F324} Tomorrow\u2019s Forecast", msg = "" } = {}) => {
+      const showMessage = ({ title = "\u{1F324} Tomorrow\u2019s Forecast", msg = "", routeForecast = null } = {}) => {
         if (!container) return;
         const existingBadges = container.querySelectorAll(".forecast-badge");
         existingBadges.forEach((node) => node.remove());
@@ -7068,6 +7140,13 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         bodyEl.textContent = msg;
         forecastBadge.appendChild(titleEl);
         forecastBadge.appendChild(bodyEl);
+        if (routeForecast) {
+          const routeEl = document.createElement("p");
+          routeEl.className = "muted";
+          routeEl.style.marginTop = "8px";
+          routeEl.textContent = `Route model guess: ${(routeForecast.predictedMinutes / 60).toFixed(2)}h from typical ${Math.round(routeForecast.expectedParcels)} parcels and ${Math.round(routeForecast.expectedLetters).toLocaleString()} letters.`;
+          forecastBadge.appendChild(routeEl);
+        }
         container.appendChild(forecastBadge);
       };
       const now = DateTime.now().setZone(ZONE);
@@ -7101,12 +7180,28 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
           console.warn("saveForecastSnapshot (remote) failed", err);
         }
       }
-      showMessage({ title: plan.title, msg: plan.message });
+      showMessage({ title: plan.title, msg: plan.message, routeForecast: getPreShiftRouteForecast(plan.iso, now) });
     } catch (err) {
       console.warn("renderTomorrowForecast failed", err);
     }
   }
   window.renderTomorrowForecast = renderTomorrowForecast;
+  function getPreShiftRouteForecast(targetIso, now = DateTime.now().setZone(ZONE)) {
+    try {
+      const target = DateTime.fromISO(targetIso || "", { zone: ZONE });
+      if (!target.isValid || target.weekday > 5) return null;
+      const targetHasEntry = (allRows || []).some((row) => (row == null ? void 0 : row.work_date) === targetIso && row.status !== "off" && hasMeaningfulWorkedData(row, targetIso));
+      if (targetHasEntry) return null;
+      const existing = loadPreShiftRouteForecasts().find((snapshot) => (snapshot == null ? void 0 : snapshot.iso) === targetIso) || null;
+      if (existing) return existing;
+      if (!(now.hour >= 20 || now.hour < 8)) return null;
+      const model = getResidualModel((allRows || []).filter((row) => row && row.status !== "off"));
+      const forecast = buildPreShiftRouteForecast(allRows || [], { targetIso, model, now });
+      return forecast ? savePreShiftRouteForecast(forecast) : null;
+    } catch (_err) {
+      return null;
+    }
+  }
   renderUspsEvalTag();
   renderVacationRanges();
   (async () => {
@@ -9374,6 +9469,9 @@ Entries are filtered by this id.`);
       const predictedRouteHours = Number.isFinite(routeModelPredictedMinutes) ? routeModelPredictedMinutes / 60 : (_e = (_d = prediction == null ? void 0 : prediction.predicted) == null ? void 0 : _d.routeHours) != null ? _e : null;
       const predictedRouteMin = Number.isFinite(predictedRouteHours) ? Math.round(predictedRouteHours * 60) : null;
       const actualRouteMin = routeResidualEntry ? Math.round(routeResidualEntry.routeMin) : todayRow ? routeAdjustedMinutes(todayRow) : null;
+      if (Number.isFinite(actualRouteMin) && actualRouteMin > 0) {
+        scorePreShiftRouteForecast(prediction == null ? void 0 : prediction.iso, actualRouteMin);
+      }
       const routeResidualMin = Number.isFinite(predictedRouteMin) && Number.isFinite(actualRouteMin) ? Math.round(actualRouteMin - predictedRouteMin) : null;
       const routeHitMiss = routeResidualMin == null ? null : Math.abs(routeResidualMin) <= 15 ? "Hit" : "Miss";
       routeExpectedEl.textContent = Number.isFinite(predictedRouteMin) ? `${(predictedRouteMin / 60).toFixed(2)}h` : "\u2014";
@@ -10465,11 +10563,11 @@ ${lettersSummary}`;
     const effRaw = series.map((s) => s.efficiency);
     const zScore = (values) => {
       const valid = values.filter((v) => Number.isFinite(v));
-      const mean2 = valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : 0;
-      const variance = valid.length ? valid.reduce((a, b) => a + Math.pow(b - mean2, 2), 0) / valid.length : 0;
+      const mean3 = valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : 0;
+      const variance = valid.length ? valid.reduce((a, b) => a + Math.pow(b - mean3, 2), 0) / valid.length : 0;
       const std = variance > 0 ? Math.sqrt(variance) : 0;
-      const z = values.map((v) => std > 0 && Number.isFinite(v) ? (v - mean2) / std : 0);
-      return { z, mean: mean2, std };
+      const z = values.map((v) => std > 0 && Number.isFinite(v) ? (v - mean3) / std : 0);
+      return { z, mean: mean3, std };
     };
     const view = (parserView == null ? void 0 : parserView.value) || "relationship";
     if (view === "efficiency") {
@@ -11123,6 +11221,7 @@ ${lettersSummary}`;
     allRows = rows;
     window.allRows = rows;
     rebuildAll();
+    renderTomorrowForecast();
     computeBreakdown();
     applyTrendPillsVisibility();
     applySectionCollapse();

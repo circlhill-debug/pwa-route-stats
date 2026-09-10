@@ -5,6 +5,7 @@ This sheet explains what each number means and how it’s computed so you can tr
 ## Model Guide
 - **Forecast**: the sentence-style heads-up tile for tomorrow. It is descriptive/heuristic and looks at recent trends, snapshots, and tags.
 - **Expected End**: the workday estimate for today. It uses worked-hours expectation and start time to give a practical end-of-day estimate.
+- **Route Model Guess**: the pre-shift version of the route model. It feeds expected same-weekday parcels and letters into the existing volume-to-time model. It is a planning estimate, distinct from Expected End.
 - **Expected Route Time / Actual Route Time**: the route-model surfaces for today. These belong with the Diagnostics route model, not the workday estimate.
 - **Diagnostics — Volume→Time Model**: the route-time prediction model (`bp`, `bl`, `w`, `R²`) plus residual review. Tagging belongs here and explains route-time misses only.
 - **Weekday anomalies**: weekly comparison anomalies from `Weekly Compare`. These are not diagnostics residuals.
@@ -21,6 +22,7 @@ This sheet explains what each number means and how it’s computed so you can tr
 - Learned weight `w = bl ÷ bp` converts letters into parcel equivalents so mixed volume comparisons stay fair.
 - `R²` shows what share of route-minute variance the model explains; higher = fit follows your history more closely.
 - The pills in the header surface these live values so you can spot shifts in the route quickly.
+- **Pre-shift route forecast**: during the evening-before or early-morning forecast window, the app averages prior same-weekday parcels and letters, runs those expected inputs through the same fitted route model, and preserves the first result for that date. Once an actual route result exists, it records the route-only residual and whether the pre-shift guess was within ±15 minutes. This first version is local-device history; it intentionally does not use tags or Last Year Echo as modifiers yet.
 
 ## Snapshot Tiles (top row)
 - Volume (0–10): Percentile rank vs your recent worked days using combined volume. 3/10 ≈ 30th percentile (not “30% of max”).

@@ -34,6 +34,12 @@ Route-model forecast baseline (Sep 10, 2026)
   - Then add a compact scorecard only after enough observations exist to make its hit rate meaningful.
   - Consider carefully evidenced contextual modifiers afterward, beginning with post-holiday history.
 
+Saturation observation baseline (Sep 17, 2026)
+- Add Entry has an optional `DPS Saturation` field: High or Low.
+- High saturation means near-every-box DPS coverage; Low means frequent skips. Neither is a boxholder and neither changes recorded or adjusted route time.
+- Conditions are stored structurally in `weather_json` and preselect the matching Diagnostics residual tag when a day is reviewed.
+- Do not fit saturation into the route equation yet. Collect enough labeled days first, then test whether a high/low categorical term improves held-out route forecasts.
+
 ---
 
 Audit Track

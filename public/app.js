@@ -118,6 +118,8 @@
     { key: "detour", label: "Detour", aliases: ["reroute", "detoured"] },
     { key: "road_closure", label: "Road closure", aliases: ["road", "closure", "construction"] },
     { key: "boxholders", label: "Boxholders", aliases: ["box holder", "boxholder", "box"] },
+    { key: "high_saturation", label: "High DPS saturation", aliases: ["high saturation", "high dps saturation", "dps high", "every box", "saturated"] },
+    { key: "low_saturation", label: "Low DPS saturation", aliases: ["low saturation", "dps low", "frequent skips", "sparse dps"] },
     { key: "second_trip", label: "Second trip", aliases: ["second-trip", "2nd trip", "extra trip"] },
     { key: "load", label: "Load/Setup", aliases: ["load time", "setup", "vehicle load"] },
     { key: "break", label: "Break", aliases: ["lunch", "rest"] },
@@ -2971,6 +2973,10 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       const parcels2 = residual ? Math.round(residual.parcels) : Math.round(+row.parcels || 0);
       const letters2 = residual ? Math.round(residual.letters) : Math.round(+row.letters || 0);
       const defaultReason = (() => {
+        var _a6, _b;
+        const saturation = (_b = (_a6 = String(row.weather_json || "").match(/Saturation:\s*(high|low)/i)) == null ? void 0 : _a6[1]) == null ? void 0 : _b.toLowerCase();
+        if (saturation === "high") return [{ key: "high_saturation", reason: "high_saturation", minutes: null }];
+        if (saturation === "low") return [{ key: "low_saturation", reason: "low_saturation", minutes: null }];
         if (parcels2 != null && parcels2 > 0 && letters2 != null && letters2 === 0) return [{ key: "parcels", reason: "parcels", minutes: null }];
         if (letters2 != null && letters2 > parcels2) return [{ key: "letters", reason: "letters", minutes: null }];
         return [];
@@ -8189,6 +8195,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
   var weather = $("weather");
   var temp = $("temp");
   var boxholders = $("boxholders");
+  var dpsSaturation = $("dpsSaturation");
   var holiday = $("holiday");
   var offDay = $("offDay");
   var officeH = $("officeH");
@@ -8423,7 +8430,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       computeBreakdown();
     }
   });
-  [date, start, departTime, returnTime, end, parcels, misdeliveryInput, letters, miles, offDay, weather, temp, boxholders, flatsMinutesInput].forEach((el) => el == null ? void 0 : el.addEventListener("input", computeBreakdown));
+  [date, start, departTime, returnTime, end, parcels, misdeliveryInput, letters, miles, offDay, weather, temp, boxholders, dpsSaturation, flatsMinutesInput].forEach((el) => el == null ? void 0 : el.addEventListener("input", computeBreakdown));
   secondTripMilesInput == null ? void 0 : secondTripMilesInput.addEventListener("input", updateSecondTripSummary);
   secondTripTimeInput == null ? void 0 : secondTripTimeInput.addEventListener("input", updateSecondTripSummary);
   secondTripEmaInput == null ? void 0 : secondTripEmaInput.addEventListener("input", updateSecondTripSummary);
@@ -8448,6 +8455,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (weather == null ? void 0 : weather.value) parts.push(weather.value);
     if (temp == null ? void 0 : temp.value) parts.push(`${temp.value}\xB0F`);
     if (boxholders == null ? void 0 : boxholders.value) parts.push(`Box: ${boxholders.value}`);
+    if (dpsSaturation == null ? void 0 : dpsSaturation.value) parts.push(`Saturation:${dpsSaturation.value}`);
     if (holiday == null ? void 0 : holiday.checked) parts.push("Holiday");
     if (reasonTag == null ? void 0 : reasonTag.value) parts.push(`Reason: ${reasonTag.value}`);
     const breakVal = parseFloat((breakMinutesInput == null ? void 0 : breakMinutesInput.value) || "0");
@@ -8532,6 +8540,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     if (!raw) {
       if (temp) temp.value = "";
       if (boxholders) boxholders.value = "";
+      if (dpsSaturation) dpsSaturation.value = "";
       if (holiday) holiday.checked = false;
       weather.value = "";
       const reasonTag2 = document.getElementById("reasonTag");
@@ -8548,7 +8557,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       if (drinkInput) drinkInput.value = "";
     } else {
       const parts = String(raw).split("\xB7").map((s) => s.trim());
-      let w = "", t = "", b = "";
+      let w = "", t = "", b = "", saturation = "";
       let hol = false;
       let rsn = "";
       let stData = null;
@@ -8561,6 +8570,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       for (const p of parts) {
         if (/°F$/.test(p)) t = p.replace("\xB0F", "").trim();
         else if (/^Box:/i.test(p)) b = p.split(":").slice(1).join(":").trim();
+        else if (/^Saturation:/i.test(p)) saturation = p.split(":").slice(1).join(":").trim().toLowerCase();
         else if (/^Reason:/i.test(p)) rsn = p.split(":").slice(1).join(":").trim();
         else if (/^SecondTrip:/i.test(p)) {
           try {
@@ -8587,6 +8597,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       weather.value = w || "";
       if (temp) temp.value = t || "";
       if (boxholders) boxholders.value = b || "";
+      if (dpsSaturation) dpsSaturation.value = /^(high|low)$/.test(saturation) ? saturation : "";
       if (holiday) holiday.checked = !!hol;
       const reasonTag2 = document.getElementById("reasonTag");
       if (reasonTag2) reasonTag2.value = rsn || "";
@@ -9511,6 +9522,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     weather.value = "";
     if (temp) temp.value = "";
     if (boxholders) boxholders.value = "";
+    if (dpsSaturation) dpsSaturation.value = "";
     if (sleepInput) sleepInput.value = "";
     if (drinkInput) drinkInput.value = "";
     computeBreakdown();

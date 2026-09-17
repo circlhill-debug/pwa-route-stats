@@ -813,6 +813,9 @@ export function createDiagnostics({
     const parcels = residual ? Math.round(residual.parcels) : Math.round(+row.parcels || 0);
     const letters = residual ? Math.round(residual.letters) : Math.round(+row.letters || 0);
     const defaultReason = (() => {
+      const saturation = String(row.weather_json || '').match(/Saturation:\s*(high|low)/i)?.[1]?.toLowerCase();
+      if (saturation === 'high') return [{ key: 'high_saturation', reason: 'high_saturation', minutes: null }];
+      if (saturation === 'low') return [{ key: 'low_saturation', reason: 'low_saturation', minutes: null }];
       if (parcels != null && parcels > 0 && letters != null && letters === 0) return [{ key: 'parcels', reason: 'parcels', minutes: null }];
       if (letters != null && letters > parcels) return [{ key: 'letters', reason: 'letters', minutes: null }];
       return [];

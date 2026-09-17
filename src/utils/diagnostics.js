@@ -9,6 +9,8 @@ export const DIAGNOSTIC_TAG_CATALOG = [
   { key: 'detour', label: 'Detour', aliases: ['reroute', 'detoured'] },
   { key: 'road_closure', label: 'Road closure', aliases: ['road', 'closure', 'construction'] },
   { key: 'boxholders', label: 'Boxholders', aliases: ['box holder', 'boxholder', 'box'] },
+  { key: 'high_saturation', label: 'High DPS saturation', aliases: ['high saturation', 'high dps saturation', 'dps high', 'every box', 'saturated'] },
+  { key: 'low_saturation', label: 'Low DPS saturation', aliases: ['low saturation', 'dps low', 'frequent skips', 'sparse dps'] },
   { key: 'second_trip', label: 'Second trip', aliases: ['second-trip', '2nd trip', 'extra trip'] },
   { key: 'load', label: 'Load/Setup', aliases: ['load time', 'setup', 'vehicle load'] },
   { key: 'break', label: 'Break', aliases: ['lunch', 'rest'] },

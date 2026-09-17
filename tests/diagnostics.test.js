@@ -31,6 +31,13 @@ describe('parseDismissReasonInput', () => {
       ])
     );
   });
+
+  it('keeps high and low DPS saturation distinct from boxholders', () => {
+    expect(parseDismissReasonInput('High DPS saturation +35, low saturation -30')).toEqual([
+      { key: 'high_saturation', reason: 'high_saturation', minutes: 35, notedAt: expect.any(String) },
+      { key: 'low_saturation', reason: 'low_saturation', minutes: -30, notedAt: expect.any(String) }
+    ]);
+  });
 });
 
 describe('loadDismissedResiduals', () => {

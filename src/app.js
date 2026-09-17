@@ -2203,7 +2203,7 @@ if (breakMinutesInput) breakMinutesInput.value = '0';
 if (parcelHelperInput) parcelHelperInput.value = '0';
 if (misdeliveryInput) misdeliveryInput.value = '0';
 if (flatsMinutesInput) flatsMinutesInput.value = '';
-  const weather=$('weather'), temp=$('temp'), boxholders=$('boxholders'), holiday=$('holiday');
+  const weather=$('weather'), temp=$('temp'), boxholders=$('boxholders'), dpsSaturation=$('dpsSaturation'), holiday=$('holiday');
   const offDay=$('offDay');
   const officeH=$('officeH'), routeH=$('routeH'), totalH=$('totalH');
   const expEnd=$('expEnd'), expMeta=$('expMeta');
@@ -2434,7 +2434,7 @@ if (flatsMinutesInput) flatsMinutesInput.value = '';
   $('btnClockNow2').addEventListener('click',()=>{ setNow(end); if(!returnTime.value){ returnTime.value = end.value; } });
 
   offDay.addEventListener('change', ()=>{ if(offDay.checked){ end.value=hhmmNow(); parcels.value=letters.value=miles.value=0; if(misdeliveryInput) misdeliveryInput.value='0'; if(flatsMinutesInput) flatsMinutesInput.value=''; mood.value='🛑 off'; computeBreakdown(); }});
-;[date,start,departTime,returnTime,end,parcels,misdeliveryInput,letters,miles,offDay,weather,temp,boxholders,flatsMinutesInput].forEach(el=> el?.addEventListener('input', computeBreakdown));
+;[date,start,departTime,returnTime,end,parcels,misdeliveryInput,letters,miles,offDay,weather,temp,boxholders,dpsSaturation,flatsMinutesInput].forEach(el=> el?.addEventListener('input', computeBreakdown));
 secondTripMilesInput?.addEventListener('input', updateSecondTripSummary);
 secondTripTimeInput?.addEventListener('input', updateSecondTripSummary);
 secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
@@ -2447,7 +2447,7 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
   });
 
   function weatherString(){
-    const parts=[]; if(weather?.value) parts.push(weather.value); if(temp?.value) parts.push(`${temp.value}°F`); if(boxholders?.value) parts.push(`Box: ${boxholders.value}`); if (holiday?.checked) parts.push('Holiday'); if (reasonTag?.value) parts.push(`Reason: ${reasonTag.value}`);
+    const parts=[]; if(weather?.value) parts.push(weather.value); if(temp?.value) parts.push(`${temp.value}°F`); if(boxholders?.value) parts.push(`Box: ${boxholders.value}`); if(dpsSaturation?.value) parts.push(`Saturation:${dpsSaturation.value}`); if (holiday?.checked) parts.push('Holiday'); if (reasonTag?.value) parts.push(`Reason: ${reasonTag.value}`);
     const breakVal = parseFloat(breakMinutesInput?.value || '0'); if (Number.isFinite(breakVal) && breakVal > 0) parts.push(`Break:${breakVal}`);
     const st = getSecondTripPayload();
     if (st){ parts.push(`SecondTrip:${JSON.stringify(st)}`); }
@@ -2529,6 +2529,7 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
     if (!raw){
       if(temp) temp.value='';
       if(boxholders) boxholders.value='';
+      if(dpsSaturation) dpsSaturation.value='';
       if(holiday) holiday.checked=false;
       weather.value='';
       const reasonTag = document.getElementById('reasonTag'); if (reasonTag) reasonTag.value = '';
@@ -2546,10 +2547,11 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
       if (drinkInput) drinkInput.value = '';
     } else {
       const parts = String(raw).split('·').map(s=>s.trim());
-      let w='', t='', b=''; let hol=false; let rsn=''; let stData=null; let brk=null; let helperParcels=''; let misdeliveryVal=''; let flatsMinutesVal=''; let sleepVal=''; let drinkVal='';
+      let w='', t='', b='', saturation=''; let hol=false; let rsn=''; let stData=null; let brk=null; let helperParcels=''; let misdeliveryVal=''; let flatsMinutesVal=''; let sleepVal=''; let drinkVal='';
       for (const p of parts){
         if (/°F$/.test(p)) t = p.replace('°F','').trim();
         else if (/^Box:/i.test(p)) b = p.split(':').slice(1).join(':').trim();
+        else if (/^Saturation:/i.test(p)) saturation = p.split(':').slice(1).join(':').trim().toLowerCase();
         else if (/^Reason:/i.test(p)) rsn = p.split(':').slice(1).join(':').trim();
         else if (/^SecondTrip:/i.test(p)) {
           try{ stData = JSON.parse(p.split(':').slice(1).join(':')); }catch(_){ stData=null; }
@@ -2579,6 +2581,7 @@ secondTripEmaInput?.addEventListener('input', updateSecondTripSummary);
       weather.value = w || '';
       if (temp) temp.value = t || '';
       if (boxholders) boxholders.value = b || '';
+      if (dpsSaturation) dpsSaturation.value = /^(high|low)$/.test(saturation) ? saturation : '';
       if (holiday) holiday.checked = !!hol;
       const reasonTag = document.getElementById('reasonTag'); if (reasonTag) reasonTag.value = rsn || '';
       setSecondTripInputs(stData);
@@ -2900,7 +2903,7 @@ function getHourlyRateFromEval(){
     if(!confirm(`Delete your entry for ${d}? This cannot be undone (unless you press Undo).`)) return;
     const { error } = await sb.from('entries').delete().eq('user_id',user.id).eq('work_date',d); if(error){ alert(error.message); return; }
     lastDeleted = rowToDelete; showUndo(true);
-    $('notes').value=''; parcels.value=0; if(parcelHelperInput) parcelHelperInput.value='0'; if(misdeliveryInput) misdeliveryInput.value='0'; if(flatsMinutesInput) flatsMinutesInput.value=''; letters.value=0; miles.value=53; offDay.checked=false; start.value='08:30'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; if(sleepInput) sleepInput.value=''; if(drinkInput) drinkInput.value=''; computeBreakdown();
+    $('notes').value=''; parcels.value=0; if(parcelHelperInput) parcelHelperInput.value='0'; if(misdeliveryInput) misdeliveryInput.value='0'; if(flatsMinutesInput) flatsMinutesInput.value=''; letters.value=0; miles.value=53; offDay.checked=false; start.value='08:30'; end.value=''; departTime.value=''; returnTime.value=''; mood.value=''; weather.value=''; if(temp) temp.value=''; if(boxholders) boxholders.value=''; if(dpsSaturation) dpsSaturation.value=''; if(sleepInput) sleepInput.value=''; if(drinkInput) drinkInput.value=''; computeBreakdown();
     const rows = await fetchEntries();
     allRows = rows;
     rebuildAll();

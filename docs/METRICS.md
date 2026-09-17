@@ -13,6 +13,7 @@ This sheet explains what each number means and how it’s computed so you can tr
 ## Units & Conventions
 - Hours: Stored/compared in hours (e.g., 4.75 = 4h45m).
 - Route adjusted hours: `route_hours − boxholder_offset_minutes/60` (x1=30m, x2=45m, x3=60m).
+- DPS saturation: optional route-condition field. `High` means near-every-box DPS coverage; `Low` means frequent skips. It is stored as a distinct condition and does not use the boxholder adjustment or alter recorded route time.
 - Combined volume: `parcels + (w × letters)` with a learned letter weight `w = bl ÷ bp` (defaults to 0.33 until the model has data).
 - “Mon..today”: This week-to-date (WTD). “Last” means last full week (Mon..Sun) unless noted.
 
@@ -42,6 +43,7 @@ Click any tile to see a short plain‑English explanation. Hover tooltips show d
 - Toggle "Show Residuals" to sort the biggest misses (± minutes) and decide if they’re noise, weather, detours, or require baseline tweaks.
 - Export: copy the table straight into notes when coaching or reviewing past adjustments.
 - **Tag route residual workflow**: use the route-residual tagging action to log one or more comma-separated reasons (e.g., `parcels +15, flats +10`). The residual is hidden from the active queue, the tag list is stored locally (and in Supabase), and you can reinstate it via “Manage dismissed.” Tagged days feed future summaries.
+- **DPS saturation workflow**: select High or Low when entering a day. If that day later needs route-residual review, Diagnostics preselects the matching `High DPS saturation` or `Low DPS saturation` tag. This is evidence collection for a later route-model factor, not an automatic prediction adjustment.
 
 ## Forecast badge (Phase 1 & 2)
 - Data sources:

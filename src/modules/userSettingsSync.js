@@ -1,6 +1,29 @@
 export const USER_SETTINGS_TABLE = 'user_settings';
 export const USER_SETTINGS_SELECT = 'eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed';
 
+function mergeDismissedResiduals(localList = [], remoteList = []) {
+  const byIso = new Map();
+  const mergeOne = (item) => {
+    const iso = item?.iso || item?.date || null;
+    if (!iso) return;
+    const incomingTags = Array.isArray(item.tags)
+      ? item.tags.filter(Boolean)
+      : (item.reason ? [{ reason: item.reason, minutes: item.minutes, notedAt: item.notedAt }] : []);
+    const current = byIso.get(iso) || { iso, tags: [] };
+    const seen = new Set(current.tags.map(tag => `${tag?.key || ''}:${String(tag?.reason || '').toLowerCase()}`));
+    incomingTags.forEach(tag => {
+      const key = `${tag?.key || ''}:${String(tag?.reason || '').toLowerCase()}`;
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      current.tags.push(tag);
+    });
+    byIso.set(iso, current);
+  };
+  (localList || []).forEach(mergeOne);
+  (remoteList || []).forEach(mergeOne);
+  return Array.from(byIso.values()).sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
+}
+
 export function buildUserSettingsPayload({
   evalProfiles = [],
   activeEvalId = null,
@@ -21,8 +44,9 @@ export function buildUserSettingsPayload({
 
 export function applyRemoteUserSettingsData(data, deps = {}) {
   let pushTokenUsageAfterSync = false;
+  let pushDiagnosticsAfterSync = false;
   if (!data || typeof data !== 'object') {
-    return { pushTokenUsageAfterSync: true };
+    return { pushTokenUsageAfterSync: true, pushDiagnosticsAfterSync: false };
   }
 
   if (Array.isArray(data.eval_profiles)) {
@@ -58,8 +82,11 @@ export function applyRemoteUserSettingsData(data, deps = {}) {
   }
 
   if (Array.isArray(data.diagnostics_dismissed)) {
-    deps.saveDismissedResiduals?.(data.diagnostics_dismissed);
+    const local = deps.loadDismissedResiduals?.() || [];
+    const merged = mergeDismissedResiduals(local, data.diagnostics_dismissed);
+    deps.saveDismissedResiduals?.(merged);
+    pushDiagnosticsAfterSync = JSON.stringify(merged) !== JSON.stringify(data.diagnostics_dismissed);
   }
 
-  return { pushTokenUsageAfterSync };
+  return { pushTokenUsageAfterSync, pushDiagnosticsAfterSync };
 }

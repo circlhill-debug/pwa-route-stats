@@ -2107,6 +2107,26 @@
   // src/modules/userSettingsSync.js
   var USER_SETTINGS_TABLE = "user_settings";
   var USER_SETTINGS_SELECT = "eval_profiles, active_eval_id, vacation_ranges, extra_trip, ai_token_usage, diagnostics_dismissed";
+  function mergeDismissedResiduals(localList = [], remoteList = []) {
+    const byIso = /* @__PURE__ */ new Map();
+    const mergeOne = (item) => {
+      const iso = (item == null ? void 0 : item.iso) || (item == null ? void 0 : item.date) || null;
+      if (!iso) return;
+      const incomingTags = Array.isArray(item.tags) ? item.tags.filter(Boolean) : item.reason ? [{ reason: item.reason, minutes: item.minutes, notedAt: item.notedAt }] : [];
+      const current = byIso.get(iso) || { iso, tags: [] };
+      const seen = new Set(current.tags.map((tag) => `${(tag == null ? void 0 : tag.key) || ""}:${String((tag == null ? void 0 : tag.reason) || "").toLowerCase()}`));
+      incomingTags.forEach((tag) => {
+        const key = `${(tag == null ? void 0 : tag.key) || ""}:${String((tag == null ? void 0 : tag.reason) || "").toLowerCase()}`;
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        current.tags.push(tag);
+      });
+      byIso.set(iso, current);
+    };
+    (localList || []).forEach(mergeOne);
+    (remoteList || []).forEach(mergeOne);
+    return Array.from(byIso.values()).sort((a, b) => String(a.iso).localeCompare(String(b.iso)));
+  }
   function buildUserSettingsPayload({
     evalProfiles = [],
     activeEvalId = null,
@@ -2125,10 +2145,11 @@
     };
   }
   function applyRemoteUserSettingsData(data, deps = {}) {
-    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+    var _a5, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
     let pushTokenUsageAfterSync = false;
+    let pushDiagnosticsAfterSync = false;
     if (!data || typeof data !== "object") {
-      return { pushTokenUsageAfterSync: true };
+      return { pushTokenUsageAfterSync: true, pushDiagnosticsAfterSync: false };
     }
     if (Array.isArray(data.eval_profiles)) {
       (_a5 = deps.saveEvalProfiles) == null ? void 0 : _a5.call(deps, data.eval_profiles);
@@ -2157,9 +2178,12 @@
       pushTokenUsageAfterSync = true;
     }
     if (Array.isArray(data.diagnostics_dismissed)) {
-      (_j = deps.saveDismissedResiduals) == null ? void 0 : _j.call(deps, data.diagnostics_dismissed);
+      const local = ((_j = deps.loadDismissedResiduals) == null ? void 0 : _j.call(deps)) || [];
+      const merged = mergeDismissedResiduals(local, data.diagnostics_dismissed);
+      (_k = deps.saveDismissedResiduals) == null ? void 0 : _k.call(deps, merged);
+      pushDiagnosticsAfterSync = JSON.stringify(merged) !== JSON.stringify(data.diagnostics_dismissed);
     }
-    return { pushTokenUsageAfterSync };
+    return { pushTokenUsageAfterSync, pushDiagnosticsAfterSync };
   }
 
   // src/modules/volumeModel.js
@@ -6322,9 +6346,15 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       upsertUserSettingsRemote(payload);
     }, 800);
   }
+  function saveDismissedResidualsNow() {
+    scheduleUserSettingsSave();
+    if (!CURRENT_USER_ID || suppressSettingsSave) return;
+    void upsertUserSettingsRemote(collectUserSettingsPayload());
+  }
   async function syncUserSettingsFromRemote() {
     if (!CURRENT_USER_ID) return;
     let pushTokenUsageAfterSync = false;
+    let pushDiagnosticsAfterSync = false;
     try {
       const { data, error } = await sb.from(USER_SETTINGS_TABLE).select(USER_SETTINGS_SELECT).eq("user_id", CURRENT_USER_ID).maybeSingle();
       if (error && error.code !== "PGRST116") {
@@ -6334,7 +6364,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       suppressSettingsSave = true;
       try {
         if (data) {
-          ({ pushTokenUsageAfterSync } = applyRemoteUserSettingsData(data, {
+          ({ pushTokenUsageAfterSync, pushDiagnosticsAfterSync } = applyRemoteUserSettingsData(data, {
             saveEvalProfiles,
             setActiveEvalId,
             syncEvalGlobals,
@@ -6352,6 +6382,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
             loadTokenUsage,
             mergeTokenUsage,
             saveTokenUsage,
+            loadDismissedResiduals: () => loadDismissedResiduals(parseDismissReasonInput),
             saveDismissedResiduals
           }));
         } else {
@@ -6360,7 +6391,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
       } finally {
         suppressSettingsSave = false;
       }
-      if (pushTokenUsageAfterSync) scheduleUserSettingsSave();
+      if (pushTokenUsageAfterSync || pushDiagnosticsAfterSync) scheduleUserSettingsSave();
       if (normalizeDiagnosticsTagData()) scheduleUserSettingsSave();
       renderVacationRanges();
       renderUspsEvalTag();
@@ -7410,7 +7441,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     combinedVolume,
     routeAdjustedMinutes,
     colorForDelta,
-    onDismissedChange: scheduleUserSettingsSave,
+    onDismissedChange: saveDismissedResidualsNow,
     saveDismissedResidualWithTags: ({ iso, tags }) => saveDismissedResidualWithTags({
       iso,
       tags,

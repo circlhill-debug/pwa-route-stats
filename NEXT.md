@@ -40,6 +40,11 @@ Saturation observation baseline (Sep 17, 2026)
 - Conditions are stored structurally in `weather_json` and preselect the matching Diagnostics residual tag when a day is reviewed.
 - Do not fit saturation into the route equation yet. Collect enough labeled days first, then test whether a high/low categorical term improves held-out route forecasts.
 
+Diagnostics dismissal sync safeguard (Oct 6, 2026)
+- `diagnostics_dismissed` remote settings data must merge with local tagged residuals; it must never replace them wholesale.
+- Residual tags now trigger an immediate settings upsert as well as the normal debounced save.
+- This protects Manage Dismissed across refreshes and stale remote settings records. Regression coverage: `tests/userSettingsSync.test.js`.
+
 ---
 
 Audit Track

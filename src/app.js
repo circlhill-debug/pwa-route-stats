@@ -317,9 +317,16 @@ window.__sb = createSupabaseClient();
     }, 800);
   }
 
+  function saveDismissedResidualsNow(){
+    scheduleUserSettingsSave();
+    if (!CURRENT_USER_ID || suppressSettingsSave) return;
+    void upsertUserSettingsRemote(collectUserSettingsPayload());
+  }
+
   async function syncUserSettingsFromRemote(){
     if (!CURRENT_USER_ID) return;
     let pushTokenUsageAfterSync = false;
+    let pushDiagnosticsAfterSync = false;
     try{
       const { data, error } = await sb
         .from(USER_SETTINGS_TABLE)
@@ -333,7 +340,7 @@ window.__sb = createSupabaseClient();
       suppressSettingsSave = true;
       try{
         if (data){
-          ({ pushTokenUsageAfterSync } = applyRemoteUserSettingsData(data, {
+          ({ pushTokenUsageAfterSync, pushDiagnosticsAfterSync } = applyRemoteUserSettingsData(data, {
             saveEvalProfiles,
             setActiveEvalId,
             syncEvalGlobals,
@@ -348,6 +355,7 @@ window.__sb = createSupabaseClient();
             loadTokenUsage,
             mergeTokenUsage,
             saveTokenUsage,
+            loadDismissedResiduals: () => loadDismissedResiduals(parseDismissReasonInput),
             saveDismissedResiduals
           }));
         } else {
@@ -356,7 +364,7 @@ window.__sb = createSupabaseClient();
       } finally {
         suppressSettingsSave = false;
       }
-      if (pushTokenUsageAfterSync) scheduleUserSettingsSave();
+      if (pushTokenUsageAfterSync || pushDiagnosticsAfterSync) scheduleUserSettingsSave();
       if (normalizeDiagnosticsTagData()) scheduleUserSettingsSave();
       renderVacationRanges();
       renderUspsEvalTag();
@@ -1478,7 +1486,7 @@ window.__sb = createSupabaseClient();
     combinedVolume,
     routeAdjustedMinutes,
     colorForDelta,
-    onDismissedChange: scheduleUserSettingsSave,
+    onDismissedChange: saveDismissedResidualsNow,
     saveDismissedResidualWithTags: ({ iso, tags }) => saveDismissedResidualWithTags({
       iso,
       tags,

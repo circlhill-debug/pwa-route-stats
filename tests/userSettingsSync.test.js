@@ -45,7 +45,7 @@ describe('applyRemoteUserSettingsData', () => {
       diagnostics_dismissed: [{ iso: '2026-04-14', tags: [] }]
     }, deps);
 
-    expect(result).toEqual({ pushTokenUsageAfterSync: false });
+    expect(result).toEqual({ pushTokenUsageAfterSync: false, pushDiagnosticsAfterSync: false });
     expect(deps.saveEvalProfiles).toHaveBeenCalledWith([{ profileId: 'p1' }]);
     expect(deps.setActiveEvalId).toHaveBeenCalledWith('p1');
     expect(deps.syncEvalGlobals).toHaveBeenCalled();
@@ -56,7 +56,7 @@ describe('applyRemoteUserSettingsData', () => {
   });
 
   it('requests a local token push when remote token usage is absent', () => {
-    expect(applyRemoteUserSettingsData({}, {})).toEqual({ pushTokenUsageAfterSync: true });
+    expect(applyRemoteUserSettingsData({}, {})).toEqual({ pushTokenUsageAfterSync: true, pushDiagnosticsAfterSync: false });
   });
 
   it('keeps local token usage when local usage is newer and requests push-back', () => {
@@ -73,10 +73,28 @@ describe('applyRemoteUserSettingsData', () => {
       ai_token_usage: { today: 3, updatedAt: '2026-04-17T09:00:00.000Z' }
     }, deps);
 
-    expect(result).toEqual({ pushTokenUsageAfterSync: true });
+    expect(result).toEqual({ pushTokenUsageAfterSync: true, pushDiagnosticsAfterSync: false });
     expect(deps.saveTokenUsage).toHaveBeenCalledWith({
       today: 9,
       updatedAt: '2026-04-17T10:00:00.000Z'
     });
+  });
+
+  it('merges local dismissed residuals instead of replacing them with a stale remote list', () => {
+    const saveDismissedResiduals = vi.fn();
+    const local = [{ iso: '2026-10-05', tags: [{ key: 'weather', reason: 'weather', minutes: 20 }] }];
+
+    const result = applyRemoteUserSettingsData({
+      diagnostics_dismissed: [{ iso: '2026-09-25', tags: [{ key: 'traffic', reason: 'traffic', minutes: 15 }] }]
+    }, {
+      loadDismissedResiduals: () => local,
+      saveDismissedResiduals
+    });
+
+    expect(saveDismissedResiduals).toHaveBeenCalledWith([
+      { iso: '2026-09-25', tags: [{ key: 'traffic', reason: 'traffic', minutes: 15 }] },
+      { iso: '2026-10-05', tags: [{ key: 'weather', reason: 'weather', minutes: 20 }] }
+    ]);
+    expect(result).toEqual({ pushTokenUsageAfterSync: true, pushDiagnosticsAfterSync: true });
   });
 });

@@ -45,6 +45,11 @@ Diagnostics dismissal sync safeguard (Oct 6, 2026)
 - Residual tags now trigger an immediate settings upsert as well as the normal debounced save.
 - This protects Manage Dismissed across refreshes and stale remote settings records. Regression coverage: `tests/userSettingsSync.test.js`.
 
+Entry-save reliability safeguard (Oct 8, 2026)
+- All Supabase client calls time out after 15 seconds rather than leaving the UI blocked for minutes.
+- Add Entry now immediately shows `Saving...`, reports a clear failure, and re-enables the form after any failed request.
+- A successful entry write is no longer made dependent on optional forecast syncing or a follow-up history refresh; a failed refresh preserves the visible dashboard.
+
 ---
 
 Audit Track

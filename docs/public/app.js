@@ -1166,8 +1166,23 @@
   // src/services/supabaseClient.js
   var SUPABASE_URL = "https://ouwkdtiixkaydrtfdhnh.supabase.co";
   var SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91d2tkdGlpeGtheWRydGZkaG5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMDc0NDksImV4cCI6MjA3MDU4MzQ0OX0.KI-dYG5_A8jvPEHSog3wlnLbIGYIHQR_4ztXHL2SzIg";
+  var SUPABASE_REQUEST_TIMEOUT_MS = 15e3;
+  function fetchWithTimeout(input, init = {}) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), SUPABASE_REQUEST_TIMEOUT_MS);
+    const externalSignal = init.signal;
+    const abortFromCaller = () => controller.abort();
+    if (externalSignal) externalSignal.addEventListener("abort", abortFromCaller, { once: true });
+    return fetch(input, { ...init, signal: controller.signal }).finally(() => {
+      clearTimeout(timeout);
+      if (externalSignal) externalSignal.removeEventListener("abort", abortFromCaller);
+    });
+  }
   function createSupabaseClient() {
-    return supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: true } });
+    return supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+      auth: { persistSession: true },
+      global: { fetch: fetchWithTimeout }
+    });
   }
   async function handleAuthCallback(sb2) {
     try {
@@ -9436,64 +9451,52 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     const clone = btn.cloneNode(true);
     btn.parentNode.replaceChild(clone, btn);
     clone.addEventListener("click", async () => {
-      const { data: { user } } = await sb.auth.getUser();
-      if (!user) {
-        alert("No session. Try Link devices or refresh.");
-        return;
-      }
-      const helperParcels = readHelperParcelsInput();
-      const payload = collectPayload(user.id);
-      let error;
+      const idleLabel = clone.textContent;
+      clone.disabled = true;
+      clone.textContent = "Saving\u2026";
+      clone.classList.add("saving");
       try {
+        const { data: { user } } = await sb.auth.getUser();
+        if (!user) throw new Error("No session. Try Link devices or refresh.");
+        const helperParcels = readHelperParcelsInput();
+        const payload = collectPayload(user.id);
         const { data: existing, error: findErr } = await sb.from("entries").select("work_date", { count: "exact", head: false }).eq("user_id", user.id).eq("work_date", payload.work_date);
-        if (findErr) console.warn("find existing failed", findErr);
+        if (findErr) throw findErr;
         const exists = Array.isArray(existing) && existing.length > 0;
         if (exists) {
           const { error: delErr } = await sb.from("entries").delete().eq("user_id", user.id).eq("work_date", payload.work_date);
-          if (delErr) {
-            error = delErr;
-            throw delErr;
-          }
+          if (delErr) throw delErr;
           const { error: insErr } = await sb.from("entries").insert(payload);
-          if (insErr) {
-            error = insErr;
-            throw insErr;
-          }
+          if (insErr) throw insErr;
         } else {
           const { error: insErr } = await sb.from("entries").insert(payload);
-          if (insErr) {
-            error = insErr;
-            throw insErr;
-          }
+          if (insErr) throw insErr;
         }
-      } catch (e) {
-        error = e;
-      }
-      dWrite.textContent = error ? "Failed" : "OK";
-      if (error) {
-        alert(error.message);
-        return;
-      }
-      updateYearlyTotals(
-        { ...payload, date: payload.work_date, parcels: (payload.parcels || 0) + helperParcels },
-        { excludeRow: (row) => isVacationDate((row == null ? void 0 : row.work_date) || (row == null ? void 0 : row.date)) }
-      );
-      renderYearlyBadges();
-      await persistForecastSnapshot(payload, user.id);
-      clone.textContent = "Update";
-      clone.disabled = true;
-      clone.classList.add("saving", "savedFlash");
-      setTimeout(() => {
+        dWrite.textContent = "OK";
+        updateYearlyTotals(
+          { ...payload, date: payload.work_date, parcels: (payload.parcels || 0) + helperParcels },
+          { excludeRow: (row) => isVacationDate((row == null ? void 0 : row.work_date) || (row == null ? void 0 : row.date)) }
+        );
+        renderYearlyBadges();
+        void persistForecastSnapshot(payload, user.id);
+        const rows = await fetchEntries();
+        if (Array.isArray(rows)) allRows = rows;
+        rebuildAll();
+        renderTomorrowForecast();
+        editingKey = { user_id: user.id, work_date: date.value };
+        clone.textContent = "Update";
+        clone.classList.add("savedFlash");
+        clone.classList.remove("ghost");
+        setTimeout(() => clone.classList.remove("savedFlash"), 700);
+      } catch (error) {
+        console.error("Unable to save entry:", error);
+        dWrite.textContent = "Failed";
+        alert(`Entry was not saved: ${(error == null ? void 0 : error.message) || "network request timed out"}`);
+        clone.textContent = idleLabel;
+      } finally {
         clone.disabled = false;
         clone.classList.remove("saving");
-      }, 400);
-      setTimeout(() => clone.classList.remove("savedFlash"), 700);
-      const rows = await fetchEntries();
-      allRows = rows;
-      rebuildAll();
-      renderTomorrowForecast();
-      editingKey = { user_id: user.id, work_date: date.value };
-      clone.classList.remove("ghost");
+      }
     });
   })();
   var _a2;
@@ -9588,7 +9591,7 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
     const { data, error } = await sb.from("entries").select("*").eq("user_id", user.id).order("work_date", { ascending: false }).limit(365);
     if (error) {
       console.error(error);
-      return [];
+      return null;
     }
     return applyHelperParcels(ensurePostHolidayTags(dedupeEntriesByDate(data || [])));
   }

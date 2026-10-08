@@ -757,8 +757,9 @@ export function loadDismissedResiduals(parseDismissReasonInput){
 export function saveDismissedResiduals(list){
   try{
     localStorage.setItem(RESIDUAL_DISMISS_KEY, JSON.stringify(list || []));
+    return true;
   }catch(_){
-    // ignore storage errors
+    return false;
   }
 }
 

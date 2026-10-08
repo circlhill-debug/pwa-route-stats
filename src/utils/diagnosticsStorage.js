@@ -109,6 +109,11 @@ export function saveDismissedResidualWithTags({ iso, tags, loadDismissedResidual
   };
   upsertTagHistoryEntry(iso, normalizedTags);
   dismissed.push(entry);
-  saveDismissedResiduals(dismissed);
-  return entry;
+  const wroteDismissed = saveDismissedResiduals(dismissed);
+  if (wroteDismissed === false) return null;
+
+  // Do not hide a residual unless its dismissal can be read back immediately.
+  const persisted = loadDismissedResiduals();
+  const verified = persisted.some(item => item?.iso === iso && (item.tags || []).length);
+  return verified ? entry : null;
 }

@@ -44,6 +44,7 @@ Diagnostics dismissal sync safeguard (Oct 6, 2026)
 - `diagnostics_dismissed` remote settings data must merge with local tagged residuals; it must never replace them wholesale.
 - Residual tags now trigger an immediate settings upsert as well as the normal debounced save.
 - This protects Manage Dismissed across refreshes and stale remote settings records. Regression coverage: `tests/userSettingsSync.test.js`.
+- Route tags now verify that their dismissed record can be read back before the UI hides the residual. A failed write leaves the residual open and reports the failure instead of creating a false-success dismissal.
 
 Entry-save reliability safeguard (Oct 8, 2026)
 - All Supabase client calls time out after 15 seconds rather than leaving the UI blocked for minutes.

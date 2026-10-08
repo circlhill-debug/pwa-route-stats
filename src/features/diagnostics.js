@@ -835,7 +835,11 @@ export function createDiagnostics({
       window.alert('No reason provided; dismissal cancelled.');
       return false;
     }
-    persistDismissedResidualWithTags({ iso, tags });
+    const saved = persistDismissedResidualWithTags({ iso, tags });
+    if (!saved) {
+      window.alert('The route tag could not be saved. The residual is still open so you can retry.');
+      return false;
+    }
     window.renderTomorrowForecast?.();
     notifyDismissedChange();
     rebuildAll();

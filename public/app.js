@@ -296,8 +296,11 @@
     };
     upsertTagHistoryEntry(iso, normalizedTags);
     dismissed.push(entry);
-    saveDismissedResiduals2(dismissed);
-    return entry;
+    const wroteDismissed = saveDismissedResiduals2(dismissed);
+    if (wroteDismissed === false) return null;
+    const persisted = loadDismissedResiduals2();
+    const verified = persisted.some((item) => (item == null ? void 0 : item.iso) === iso && (item.tags || []).length);
+    return verified ? entry : null;
   }
 
   // src/utils/storage.js
@@ -983,7 +986,9 @@
   function saveDismissedResiduals(list) {
     try {
       localStorage.setItem(RESIDUAL_DISMISS_KEY, JSON.stringify(list || []));
+      return true;
     } catch (_) {
+      return false;
     }
   }
   function getOpenAiKey() {
@@ -3035,7 +3040,11 @@ Enter a date (yyyy-mm-dd) to reinstate, or leave blank to keep all:`, "");
         window.alert("No reason provided; dismissal cancelled.");
         return false;
       }
-      persistDismissedResidualWithTags({ iso, tags });
+      const saved = persistDismissedResidualWithTags({ iso, tags });
+      if (!saved) {
+        window.alert("The route tag could not be saved. The residual is still open so you can retry.");
+        return false;
+      }
       (_a5 = window.renderTomorrowForecast) == null ? void 0 : _a5.call(window);
       notifyDismissedChange();
       rebuildAll2();

@@ -73,4 +73,15 @@ describe('diagnosticsStorage helpers', () => {
       { key: 'detour', reason: 'detour', minutes: 20, notedAt: expect.any(String) }
     ]);
   });
+
+  it('does not report success when the dismissed record cannot be read back', () => {
+    const result = saveDismissedResidualWithTags({
+      iso: '2026-04-14',
+      tags: [{ key: 'weather', reason: 'weather', minutes: 15 }],
+      loadDismissedResiduals: () => [],
+      saveDismissedResiduals: () => true
+    });
+
+    expect(result).toBeNull();
+  });
 });
